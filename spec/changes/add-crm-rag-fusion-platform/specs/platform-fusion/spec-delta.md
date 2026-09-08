@@ -8,11 +8,12 @@
 系统 SHALL 以 Spring Boot 3.5.x / Java 21 作为唯一构建基线，所有迁入代码 MUST 在该基线下编译与运行。
 
 #### Scenario: RAG 代码回填到基线
-GIVEN RAG 原基于 Spring Boot 4.0.2（Jackson 3 `tools.jackson`、`spring-boot-starter-webmvc`、Security 7）
-WHEN 将其迁入融合平台
-THEN 系统将其适配为 Jackson 2、`spring-boot-starter-web`、Spring Security 6
-AND LangChain4j、Qdrant、MinIO、Spring Data JPA 与 MyBatis-Plus 在同一构建中同时可用
-AND 应用可正常启动
+GIVEN RAG 原基于 Spring Boot 4.0.2（Jackson 3 `tools.jackson`、`spring-boot-starter-webmvc`、Spring Security、LangChain4j、Spring Data JPA）
+WHEN 将其知识库能力迁入融合平台
+THEN 系统适配为 Jackson 2、`spring-boot-starter-web`
+AND 移除 Spring Security（认证统一由 CRM 拦截器承担，见“单一身份与认证源”）
+AND LangChain4j→Spring AI、Spring Data JPA→MyBatis-Plus（唯一持久化，不引 JPA/Hibernate）
+AND Spring AI、Qdrant VectorStore、MinIO 与 MyBatis-Plus 在同一构建中可用，应用可正常启动
 
 #### Scenario: 依赖版本冲突
 GIVEN CRM 使用 jjwt 0.12.5 而 RAG 使用 jjwt 0.11.5
@@ -110,9 +111,25 @@ GIVEN 应用以 prod profile 启动
 WHEN 检测到不安全的默认配置
 THEN 系统拒绝启动并给出明确的配置缺失项
 
+### Requirement: Actuator 端点保护
+移除 Spring Security 后，系统 MUST 将 `/actuator/**` 交由 CRM 的 JWT + 权限拦截器保护，仅放行健康探针；敏感端点 MUST 需超级管理员，生产 MUST NOT 匿名暴露 Actuator。
+
+#### Scenario: 探针放行、其余受保护
+GIVEN 编排器/监控请求 `/actuator/health/liveness` 或 `/actuator/health/readiness`
+WHEN 请求到达
+THEN 系统放行探针且仅返回 UP/DOWN（不含详情）
+AND 其余端点（metrics/prometheus/loggers/env/heapdump 等）经 JWT + 权限拦截，敏感端点需超管
+
+#### Scenario: 未授权访问 Actuator 被拒
+GIVEN 请求未携带有效 JWT 或非超管访问敏感端点
+WHEN 访问 `/actuator/**`（探针除外）
+THEN 系统返回统一未授权/越权错误
+AND 不泄露 heapdump/env 等敏感信息
+
 ---
 
 ## 备注
 
-- 本能力域对应决策 D1（Boot 基线）、D2（持久化归一 MyBatis-Plus）、D3（认证）、D5（模块结构）。
+- 本能力域对应决策 D1（Boot 基线）、D2（持久化归一 MyBatis-Plus）、D3（认证，移除 Spring Security）、D5（模块结构）、D11（架构重定位：仅迁入知识库能力，RAG 独立对话层丢弃）。
 - 包重命名 `com.mark.knowledge.*` → `com.slz.crm.knowledge.*` 属实现细节，须在基座阶段一次完成。
+- Actuator 保护是“移除 Security 后不留裸奔”的兜底；健康 indicator 与指标合并见 `platform-governance`。

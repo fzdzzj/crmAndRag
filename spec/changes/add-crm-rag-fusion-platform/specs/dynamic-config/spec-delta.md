@@ -6,7 +6,7 @@
 ## ADDED 需求
 
 ### Requirement: 动态配置项模型
-系统 SHALL 提供以数据库为存储、按命名空间组织的动态配置项模型，覆盖 AI（提示词、模型选择、温度/最大 token、限流、Token 预算）与业务（数据范围开关、提醒参数、检索/分块参数、功能开关）等可运行期调整的配置。
+系统 SHALL 提供以数据库为存储、按命名空间组织的动态配置项模型，覆盖 AI（提示词、模型 Provider/名称、温度/最大 token、限流、Token 预算）、知识库（检索 topK/阈值、分块参数、**意图/类目与关键词**、`intent-filter-enabled`、`strict-KB` 空匹配兜底开关）与业务（数据范围开关、提醒参数、功能开关）等可运行期调整的配置。
 
 #### Scenario: 配置项分层与默认值
 GIVEN 某配置项在数据库中不存在
@@ -15,10 +15,16 @@ THEN 系统回退到代码/配置文件中的默认值
 AND 数据库存在该项时以数据库值为准（动态覆盖静态默认）
 
 #### Scenario: 命名空间隔离
-GIVEN 配置项按命名空间（如 `ai.prompt.*`、`ai.model.*`、`rag.retrieval.*`、`business.*`）组织
+GIVEN 配置项按命名空间（如 `ai.prompt.*`、`ai.model.*`、`rag.retrieval.*`、`rag.intent.*`、`business.*`）组织
 WHEN 超级管理员查询或修改配置
 THEN 系统按命名空间分组展示与校验
 AND 不同类型配置使用各自的值校验规则
+
+#### Scenario: 意图类目可配
+GIVEN 超级管理员在 `rag.intent.*` 配置 CRM 域类目与关键词
+WHEN 后续知识库检索到达
+THEN 系统按更新后的类目过滤候选片段
+AND 无配置或 `intent-filter-enabled=false` 时跳过类目过滤
 
 ### Requirement: 仅超级管理员可写
 系统 SHALL 限定动态配置的写操作仅超级管理员（roleId=1）可执行，读取按最小必要原则暴露。
@@ -80,4 +86,4 @@ AND 记录回滚审计事件
 
 - 本能力域回应评审需求 #11；与 `platform-governance` 的审计、`ai-assistant` 的提示词/参数、`knowledge-rag` 的检索参数协同。
 - 动态配置不替代启动期强校验的生产配置保护（敏感项仍应环境变量注入）；两者边界：静态=部署级/敏感，动态=运行期可调/业务与 AI 策略。
-- 提示词、模型 Provider 选择（见 D4 修订）与限流/配额阈值优先纳入动态配置范围。
+- 提示词、模型 Provider 选择（见 D4）、限流/配额阈值、**意图类目与关键词（D17）**、**strict-KB 空匹配兜底开关（D16）**、图片缓存上限（D13）优先纳入动态配置范围。

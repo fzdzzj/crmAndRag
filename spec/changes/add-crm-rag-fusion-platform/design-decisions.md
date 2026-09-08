@@ -1,7 +1,9 @@
 # 关键取舍决策（评审已确认 2026-09-08）
 
-> 本文件展开 `proposal.md` 中的 D1–D10 决策。D1–D7 为初版对比，D8–D10 为评审新增。
+> 本文件展开 `proposal.md` 中的 D1–D17 决策。D1–D7 初版对比，D8–D10 评审新增，D11–D17 为「架构重定位」评审新增（RAG 从对等系统收敛为助手能力）。
 > 每项已标注✅确认结果；保留对比表以备后续回顾。
+>
+> **★架构重定位（贯穿全局，先读）**：本项目不是「融合两个对等系统」，而是**以 CRM 为基座构建一个 CRM 单体，其 AI 助手具备知识库(RAG)能力**。RAG 的**独立对话层**（`chat_conversation`/`chat_message`、`RagChatPipeline`/`RagStreamSessionManager` 独立入口、匿名问答、独立登录）**丢弃不迁**；其**对话能力**（思考/记忆/图文/流式接管）由 CRM 助手**吸收**；**知识库/文档/检索/嵌入/视觉**能力**移植**为 `com.slz.crm.knowledge`。整合工作量集中在 **AI/知识库模块 + 横切治理**，业务模块原样搬入。**D2/D4 的迁移范围据此收窄到知识库模块**（不再全量迁移一个在跑的 RAG 后端）。行为细节见 `assistant-decision-tree.md`。
 
 ---
 
@@ -167,6 +169,92 @@
 
 ---
 
+## D11. 架构重定位：RAG 作为助手能力（丢弃独立对话层）
+
+**背景**：初版把 CRM 与 RAG 当对等系统「融合」，导致要塞两套聊天子系统、全量重写能跑的 RAG。评审重定位：这是**一个 CRM 产品、一个助手**，RAG 是助手的知识库能力。
+
+**✅ 已确认**：
+- **丢弃**：RAG 独立对话层（`chat_conversation`/`chat_message` 表、`RagChatPipeline`/`RagStreamSessionManager` 独立入口与 SSE、独立会话控制器、`AnonymousRagChatService`、独立登录/`teacher_account`）。
+- **吸收进助手**：思考模式、会话记忆(摘要/事实/意图)、图文混合、流式接管(shouldAbort)、图片缓存、连接重试/降级 → 并入 CRM 助手管线（`server.ai.*` + `AiChatServiceImpl`）。
+- **移植为知识库模块**：文档解析/OCR/视觉/分块/嵌入/混合检索/图文双路/MinIO/批量上传 + 7 张知识库表 → `com.slz.crm.knowledge`。
+
+**影响**：D2(JPA→MyBatis)、D4(LangChain4j→Spring AI) 范围收窄到知识库模块；助手与知识库共用一套 SSE/记忆/Token 口径，不再有「两套聊天」。
+
+---
+
+## D12. 知识库触发方式：前端手动开关 vs LLM 自主工具
+
+**背景**：RAG 现状是前端 `useKnowledgeBase` 开关 + 每轮强制检索，模型不参与「要不要查」。
+
+**✅ 已确认（手动开关）**：助手请求契约带 `useKnowledgeBase`——ON=每轮强制检索并注入上下文；OFF=纯助手（闲聊+业务工具+图片理解）。**业务工具仍由 LLM 自动调用**（两套触发并存、互不干扰）。
+
+**影响**：确定性/可控性强；空匹配兜底须按 D16 修复，避免 KB OFF 误吐「未检索到」。
+
+---
+
+## D13. 图片与知识库解耦
+
+**背景**：RAG 里图片必然走检索；「无图追问自动回退最近图」会把旧图塞进无关闲聊；「同图换问题」复用旧问题的聚焦/向量导致焦点错位。
+
+**✅ 已确认**：
+- **理解文本恒注入**：有图/`imageRef` → OCR+摘要+实体+问题聚焦注入 prompt，**与 KB 开关无关**。
+- **图片向量仅 KB ON 懒生成+缓存**：KB OFF 不 embed、不缓存向量。
+- **取消无差别最近图回退**，改 `imageRef` 显式引用；**缓存分层** L1(OCR/摘要/实体，按 hash) / L2(问题聚焦+向量，按 hash+问题)；每会话图片缓存加**上限+LRU** 叠加 TTL。
+
+**影响**：`imageRef` 指向的图/理解需可恢复（推荐把 L1 理解按 hash 持久化，免重跑 vision）。
+
+---
+
+## D14. 会话记忆持久化
+
+**背景**：RAG 记忆纯内存（`ConcurrentHashMap`，TTL 1800s）——重启丢、多实例不共享；`recentMessages` 与 CRM 持久 `ai_message` 是同批对话两份副本；意图/摘要用 `chat(String)` 重载，token 未计量。
+
+**✅ 已确认**：
+- `ai_message` 为**唯一真相源**，`recentMessages` 改其**内存投影**（`restoreMemoryIfAbsent` 回灌，不双写）。
+- `summary/facts/intent` **持久化到新表 `ai_conversation_memory`**（1:1 ai_session，乐观锁 version），归属改 `userId`；内存 map 退化为缓存。
+- 意图/摘要仍走**异步旁路**（专用执行器 pool=2/队列=64/AbortPolicy + CAS 单飞 + 拒绝降级）→ 归 platform-governance。
+- **补 Token 计量盲点**：意图/摘要改用能返回 usage 的重载，纳入统一计量。
+
+**影响**：新增 `ai_conversation_memory`（Flyway V4x）；content 存剥离 think 正文（避免回灌膨胀）。
+
+---
+
+## D15. 来源引用与高亮（档 B 页级）
+
+**背景**：RAG `SourceReference` 只有 filename/documentId/excerpt/score，无定位锚点；`pageNo` 只在日志、未进片段元数据；PDF 把全页 merge 成一个 `mergedText` 再整体分块，页边界丢失。
+
+**✅ 已确认（档 B 页级）**：
+- 入库**按页分块**并打 `pageNo`（PDF text/OCR 都改；`extraMetadata`→`document_vector_chunk.extra_metadata_json`）。
+- `SourceReference` 补 `chunkIndex/pageNo/chunkId`（+ Excel `rowIndex`）。
+- 流式 `sources` 事件（检索后、答案前）+ 答案内联 `[n]` + `payload.citations`（实际引用编号集，供只高亮承重来源 + 引用精度评测）。
+- 前端点 `[n]` → 跳 `pageNo` 页 + `chunk_text` 段内匹配高亮；Excel 用 `rowIndex`。
+
+**边界**：bbox 像素级高亮不在本期（OCR/vision 只返回纯文本、无坐标）。
+
+---
+
+## D16. 空匹配兜底修复
+
+**背景（★坑）**：RAG `if (matches.isEmpty() && !hasUsableImageContext)` 未判 `useKnowledgeBase`，KB OFF 时 `retrievalResult` 恒 empty → 无图恒吐「未检索到」、不进正常生成。
+
+**✅ 已确认**：
+- **必修**：兜底 guard 加 `useKnowledgeBase &&` → **KB OFF 绝不触发**，直接正常生成（闲聊+工具+图片）。
+- **建议**：KB ON 零命中也不硬 return canned，改「注入未命中标记 + 诚实约束、仍进正常生成」；`strict-KB` 硬兜底由 DynamicConfig 可选保留。
+
+**影响**：ai-assistant 增 MODIFIED 需求 + 负向场景（KB OFF 不得返回「未检索到」）。
+
+---
+
+## D17. 意图/类目 CRM 化
+
+**背景**：RAG `QueryIntentClassifier`（技术栈类目 Java/Python/Vue…）**是死代码**（无调用点，仅单测引用），与「财务处知识库助手」系统提示词类目对不上；文档侧 `category/direction/techStack` 元数据存了但检索未用。
+
+**✅ 已确认**：丢弃死代码 `QueryIntentClassifier`；**新建** CRM 域意图/类目机制，接进检索 metadata 过滤（复用已存的 `category/direction` 元数据位，换成 CRM 类目）；类目+关键词由 `DynamicConfig` 可配；无配置则跳过过滤（保留 `intent-filter-enabled` 开关）。
+
+**影响**：文档入库按 CRM 类目打 metadata 标签，过滤才生效。
+
+---
+
 ## 决策汇总表（已确认）
 
 | # | 决策 | 确认结果 |
@@ -181,3 +269,10 @@
 | D8 | RAG 匿名态 | ✅ B 移除匿名，全部需登录 |
 | D9 | 向量库回退 | ✅ A+B compose 真 Qdrant + VectorStore 内存回退 |
 | D10 | 动态配置 | ✅ B 超管运行期动态配置（含提示词） |
+| D11 | 架构重定位 | ✅ RAG=助手能力；丢弃独立对话层，助手吸收对话能力，知识库能力移植 |
+| D12 | KB 触发 | ✅ 前端手动 `useKnowledgeBase`；业务工具 LLM 自动 |
+| D13 | 图片解耦 | ✅ 理解恒注入、向量仅 KB ON 懒生成；取消最近图回退改 imageRef；缓存分层+上限 |
+| D14 | 记忆持久化 | ✅ ai_message 真相源+投影；summary/facts/intent 落 ai_conversation_memory；userId；补 Token 盲点 |
+| D15 | 来源高亮 | ✅ 档 B 页级：按页分块打 pageNo + SourceReference 补锚点 + 内联 [n]/citations |
+| D16 | 空匹配兜底 | ✅ KB OFF 绝不触发；KB ON 零命中软标记+诚实生成；strict-KB 可配 |
+| D17 | 意图/类目 | ✅ 丢死代码 QueryIntentClassifier；新建 CRM 域类目接检索过滤，DynamicConfig 可配 |

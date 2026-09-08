@@ -143,6 +143,21 @@ WHEN 优化上线
 THEN 系统保留实验开关并支持回退到旧参数
 AND 以固定基准集验证不产生质量回退
 
+### Requirement: Actuator 健康与指标
+系统 SHALL 移植 Qdrant/MinIO 健康 indicator 并挂到 VectorStore 抽象与 MinIO，提供 liveness/readiness 健康分组与 Micrometer/Prometheus 指标；`show-details` MUST 为 when_authorized，健康端点 MUST 收敛统一。
+
+#### Scenario: 依赖健康分级
+GIVEN Qdrant 或 MinIO 不可用
+WHEN 健康检查探测
+THEN readiness 判为不健康、liveness 仍为 UP（停发新流量但不杀进程）
+AND 向量库切内存回退时健康为降级(WARN)而非 DOWN
+
+#### Scenario: 指标合并与暴露
+GIVEN 助手 SSE 指标、线程池指标、检索耗时与治理指标
+WHEN 采集
+THEN 系统统一到 Micrometer 并经 `/actuator/prometheus` 暴露
+AND 健康端点由 CRM `/health` 与 Actuator health 收敛为统一分组
+
 ### Requirement: 验证门禁与发布检查
 系统 SHALL 为关键 API 建立契约测试，并将安全、数据权限、状态机、依赖韧性与 RAG 评估纳入 CI，定义性能预算与发布前检查、灰度与回退策略。
 
@@ -162,3 +177,6 @@ AND 未达门禁阈值时阻止合入
 - 已完成项（生产配置基线、权限矩阵、异步治理、状态机、依赖健康、可观测性、MDC 传播、userId 授权切换）在基座/知识库迁移阶段承接，不重复建设。
 - 动态配置（`dynamic-config` 能力域）的变更审计复用本域“审计与治理可观测性”，配置变更事件纳入统一审计流。
 - 治理基础设施沉淀在 `com.slz.crm.platform.*`，为 CRM 业务、AI 助手与知识库共享。
+- **记忆旁路执行器**（意图/摘要，pool=2/有界队列/AbortPolicy + CAS 单飞 + 拒绝降级）为本域提供的共享基础设施，ai-assistant 复用而非自建。
+- **Token 计量补盲点**：RAG 意图/摘要原用 `chat(String)` 重载漏计 token，本域统一计量口径须覆盖（chat/embedding/OCR/vision/摘要/意图）。
+- **Actuator**：移除 Spring Security 后由 CRM 拦截器保护（见 platform-fusion），本域负责健康 indicator 移植、健康分组与指标合并。
