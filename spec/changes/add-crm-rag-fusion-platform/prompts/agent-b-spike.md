@@ -4,14 +4,14 @@
 > 源项目只读参考：RAG `D:\code\rag\back\RAG`（重点 `chat/config/ChatConfig.java`、`rag/service/rag/RagStreamSessionManager.java`、`rag/common/ThinkingRequestParams.java`、`config/QdrantInitializer.java`）。
 
 ## 角色与目标
-你是**技术验证 agent**。目标：判定 Spring AI 能否等价承接 RAG 现有 LangChain4j 的关键能力，产出 go/no-go 结论与降级策略。**只验证，不做业务迁移。** 你的结论决定 B-ai 的深度，并影响 C 的 SSE `thinking` 契约。
+你是**技术验证 agent**。目标：判定 Spring AI 能否等价承接 RAG 现有 LangChain4j 的关键能力（思考块流式/自定义思考参数/Qdrant 过滤/视觉理解/维度），产出 go/no-go 结论与降级策略。**只验证，不做业务迁移。** 你的结论决定 B-ai(检索/嵌入/视觉) 与 C(助手思考流式，对话层已从 B 移到 C) 的深度，并影响 SSE `thinking` 契约。
 
 ## 负责范围
 migration-subtasks.md 的 **B0**（仅此）。
 
 ## worktree / 分支
-- worktree：`d:\code\crmAndRag\.worktrees\lane-b-rag`（与 B-persist/B-ai 共用，你是第一个进的）
-- 分支：`feature/lane-b-rag`
+- worktree：`d:\code\crmAndRag\.worktrees\lane-b-knowledge`（与 B-persist/B-ai 共用，你是第一个进的）
+- 分支：`feature/lane-b-knowledge`
 - 禁止提交 master、禁止 push。
 
 ## 入口条件

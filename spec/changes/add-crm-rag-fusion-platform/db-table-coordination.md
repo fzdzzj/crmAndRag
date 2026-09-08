@@ -1,6 +1,7 @@
 # 数据库表协调方案（CRM × RAG）
 
-> 回应评审问题"两套系统的表是否做好协调"。结论：**此前只做了地基（统一 MyBatis-Plus / Flyway / 归属边界 / userId 映射），表级约定未协调**。本文件基于对两边实体的代码核实，给出协调决策与归属矩阵，作为 Flyway `V1__baseline.sql` 与后续迁移的依据。
+> 回应评审问题"两套系统的表是否做好协调"。本文件基于对两边实体的代码核实，给出协调决策与归属矩阵，作为 Flyway `V1__baseline.sql` 与后续迁移的依据。
+> **★架构重定位（D11）后**：RAG 独立对话层丢弃——`chat_conversation`/`chat_message`/`teacher_account` **不迁**，对话统一用 CRM `ai_session`/`ai_message`；知识库仅**保留 7 表新建**；助手记忆加工品新增 `ai_conversation_memory`（D14）。
 > 图例：✅ 已定 · 🔧 需适配 · ❓ 待用户确认
 
 ## 一、现状差异（代码证据）
@@ -19,7 +20,7 @@
 ## 二、协调决策（C1–C10）
 
 ### C1 表命名：统一到单数 snake_case（✅ 已确认，对齐 CRM 基座）
-- **统一约定**：全部表单数 snake_case（对齐 CRM 基座，改动面最小——只改 RAG 约 9 张表）。
+- **统一约定**：全部表单数 snake_case（对齐 CRM 基座，改动面最小——只改 RAG 保留的 7 张表；chat_*/teacher_account 已丢弃不涉及）。
 - **RAG 复数表重命名**：`chat_messages→chat_message`、`chat_conversations→chat_conversation`、`uploaded_files→uploaded_file`、`document_vector_chunks→document_vector_chunk`、`chunk_upload_sessions→chunk_upload_session`、`batch_tasks→batch_task`、`batch_file_results→batch_file_result`、`knowledge_bases→knowledge_base`、`knowledge_base_members→knowledge_base_member`。
 - 实体 `@TableName` 用新单数名；Flyway `V1__baseline.sql` 直接以统一名建表。
 - 存量数据：融合为新平台，若需保留 RAG 存量数据，追加 `ALTER TABLE ... RENAME` 迁移（并入 V3x）。
@@ -47,11 +48,11 @@
 - RAG：Long 自增代理 PK + String 业务键（documentId/conversationId/taskId）。
 - 迁移到 MyBatis-Plus 后主键策略统一 `IdType.AUTO`；业务键唯一约束在 Flyway DDL 显式声明。
 
-### C6 会话/消息语义重叠：保留两套（✅ 已确认，不合并）
-- CRM `ai_session`/`ai_message` = 助手业务会话（工具调用、草稿确认、references）。
-- RAG `chat_conversation`/`chat_message`（表名已按 C1 单数化）= 知识库问答会话（检索、思考模式、来源引用）。
-- **不合并表**（字段/语义/生命周期不同），但**统一 Token 计量口径与 SSE 事件契约**（已在 ai-assistant / platform-governance 约定）。
-- 若未来要"一个助手统一历史"，在应用层聚合两套会话，而非合表。
+### C6 会话/消息：RAG 对话层丢弃，统一到 ai_*（✅ 已确认，随 D11 更新）
+- CRM `ai_session`/`ai_message` = **唯一对话真相源**（工具调用、草稿确认、references、KB 来源 sources/citations、思考剥离后正文）。
+- RAG `chat_conversation`/`chat_message` **丢弃不迁**（D11：独立对话层移除，对话能力被助手吸收）；`teacher_account` 丢弃（→ `sys_user`）。
+- 助手记忆加工品 `summary/facts/intent` **新增 `ai_conversation_memory`**（1:1 `ai_session`，D14）；`recentMessages` 为 `ai_message` 内存投影，不落表。
+- 统一 Token 计量口径与 SSE 事件契约（见 ai-assistant / platform-governance）。
 
 ### C7 时间类型：新代码统一 `LocalDateTime`（🔧 低优先）
 - 存量不强改；新表/新字段统一 `LocalDateTime`。
@@ -62,7 +63,7 @@
 - **本期并存**（CRM 本地 + RAG MinIO），**不迁** CRM 附件；登记为技术债，后续独立提案再统一到 MinIO（避免本期范围膨胀）。
 
 ### C9 数据权限 vs 知识库授权（表级）：双轨并行（🔧 明确边界）
-- **CRM 业务表**：走 `MyDataPermissionHandler`（owner_id/creator_id + 部门 DEPT/DEPT_AND_CHILD 数据范围）。
+- **CRM 业务表**：走 `DataScopeServiceImpl.addDataScopeCondition`（经 `QueryWrapperAspect` 注入；**`MyDataPermissionHandler` 不存在**）——按每表归属字段(`ResourceTypeConstant.TABLE_USER_FIELDS`) + 部门 DEPT/DEPT_AND_CHILD 数据范围。
 - **RAG 知识库表**：走 KB 授权（`owner_user_id` + `knowledge_base_member`），**不叠加部门数据范围**（知识库按成员制，不按部门树）。
 - **AI 工具查询**：业务数据按 `DataScope`，知识库按 KB 授权，二者**同时生效、各自独立**（对齐 org-data-scope 与 knowledge-rag 规范）。
 
@@ -78,7 +79,7 @@
 |------|----|
 | 业务 | customer_company, customer_contact, customer_contact_remark, customer_company_log, customer_merge_log, sales_opportunity, contract, contract_order_item, invoice_info, payment_record, business_activity, business_activity_contact, business_activity_user, contact_task, sales_stage_approval, project_file, approval_attachment |
 | 组织/权限 | user, role, permissions, role_permissions, sys_dept(+leader_id), company_dept, company_group, data_share, tage_role_binding, tage_resource_binding, user_handover |
-| AI 助手 | ai_session, ai_message, ai_pending_action, ai_tool_call_log, ai_insight(新, V4x) |
+| AI 助手 | ai_session, ai_message, ai_pending_action, ai_tool_call_log, ai_conversation_memory(新, V4x, 记忆加工品), ai_insight(新, V4x) |
 
 ### 知识库域（`com.slz.crm.knowledge`，**统一后单数名** / **统一后 `create_time,update_time`** / **统一后 `is_deleted`**+`deleted_by` / Long PK + String 业务键 + String userId）
 | 分组 | 表（统一后单数） | 协调动作 |
@@ -86,8 +87,8 @@
 | 知识库 | knowledge_base, knowledge_base_member | 表名单数化；deleted→is_deleted；owner_user_id/member.user_id → String(100) `user:<id>` |
 | 文档/向量 | uploaded_file, document_vector_chunk, chunk_upload_session | 表名单数化；deleted→is_deleted；deleted_by username→userId；user_id 长度统一 100 |
 | 批量任务 | batch_task, batch_file_result | 表名单数化；user_id 长度统一 100 |
-| 问答会话 | chat_conversation, chat_message | 表名单数化；username→user_id（V3x）；保留，不与 ai_* 合并 |
-| 认证（弃用） | teacher_account | 映射到 CRM user 后停用 |
+| 问答会话（丢弃） | chat_conversation, chat_message | **D11 丢弃不迁**：对话统一用 CRM ai_session/ai_message |
+| 认证（丢弃） | teacher_account | **D3/D11 丢弃**：由 CRM sys_user 取代 |
 
 ### 平台治理/配置域（新增，`com.slz.crm.platform`，单数名 / `create_time,update_time` / Long PK）
 | 表 | 号段 | 用途 |
@@ -99,10 +100,10 @@
 1. **C1 表名**：统一单数 snake_case（RAG 复数表重命名）。✅
 2. **C2 审计列**：统一 `create_time`/`update_time`（RAG `created_time` 重命名）。✅
 3. **C3 软删除**：字段名统一 `is_deleted`（RAG `deleted` 重命名）+ 类型 Boolean + `@TableLogic`；`deleted_by`→userId。✅
-4. **C6 会话表**：不合并，保留 CRM `ai_*` 与 RAG `chat_*` 两套，统一 Token/SSE 契约。✅
+4. **C6 会话表**：RAG `chat_*`/`teacher_account` 丢弃，对话统一 CRM `ai_*`；新增 `ai_conversation_memory`（记忆加工品）。✅
 5. **C8 附件存储**：本期并存（CRM 本地 + RAG MinIO），不迁，登记技术债。✅
 
 ## 五、落地挂钩
 - 规范：`specs/platform-fusion/spec-delta.md` 新增"数据库表协调统一约定"需求。
-- 任务：`tasks.json` 任务 4 增补"表协调矩阵 + 约定统一"步骤；具体迁移并入 A 线（A1/A5）与 V3x。
-- 迁移：C1(表名单数化 RENAME)、C2(审计列 RENAME COLUMN)、C3(deleted→is_deleted RENAME + 类型校正 + deleted_by→userId)、C4(user_id 长度)、C6(chat username→user_id) 并入 Flyway（新平台直接用统一名建 V1 基线；保留存量则 V3x 追加 RENAME）；新表约定从 V4x/V5x/V6x 起生效。
+- 任务：`tasks.json` 任务 4（表协调）+ 任务 7（知识库 7 表新建，Lane B）；具体建表/移植见 migration-subtasks.md。
+- 迁移：C1(表名单数化)、C2(审计列)、C3(deleted→is_deleted + 类型校正 + deleted_by→userId)、C4(user_id 长度统一 100) 并入 Flyway（新平台直接用统一名建 V1/V3 基线；保留 RAG 存量则 V3x 追加 RENAME）；C6 无迁移（chat_*/teacher_account 直接丢弃）；新表 ai_conversation_memory(V4x)/治理(V5x)/配置(V6x) 从对应号段生效。

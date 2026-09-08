@@ -1,8 +1,8 @@
-# D2 & D4 细化迁移子任务
+# D2 & D4 细化子任务（知识库能力移植）
 
-> 本文件把工作量最大的两项拆到可执行粒度，对应 `tasks.json` 的**任务 4（持久化归一）**与**任务 7（RAG AI 栈迁移）**。
+> 本文件把工作量最大的两项拆到可执行粒度。**★架构重定位（D11）后**：这不是"全量迁移一个在跑的 RAG"，而是**移植知识库能力**——Part A（持久化）= 知识库 **7 表新建 + 移植仓储逻辑**（tasks 7/8）；Part B（LangChain4j→Spring AI）= 知识库**模型/检索/嵌入/视觉层**（tasks 7/9）+ 助手**吸收的流式/思考**（task 10，归 Lane C）。RAG 独立对话层（chat_*/RagChatPipeline）丢弃，不在本清单。
 > 规模图例：S=小(≤0.5天) · M=中(0.5–2天) · L=大(2–5天) · XL=特大(>5天，需再拆)
-> 全部基于对 RAG 源码的实际盘点（`ChatConfig`、9 个 Repository、9 个 Entity、LangChain4j 触点）。
+> 基于对 RAG 源码的实际盘点（`ChatConfig`、Repository、Entity、LangChain4j 触点）；下文"9 个"为 RAG 原始数量，其中 7 表保留、chat_*/teacher_account 丢弃。
 
 ---
 
@@ -67,7 +67,7 @@
 - [ ] `@Transactional` 保留；跨域（CRM↔知识库）通过服务编排，不用分布式事务
 
 ## A4. Flyway 基线：RAG 表 DDL 固化（M）
-- [ ] 从 Hibernate 生成物导出 RAG 9 张表 DDL，并入 `V1__baseline.sql`
+- [ ] 知识库 7 表在 `V3__knowledge.sql` 新建（借鉴 RAG schema、用统一约定；非从 Hibernate 导出并入 V1——V1 仅 CRM 表）
 - [ ] `@Table` 的索引/唯一约束显式写入 DDL（如 knowledge_bases 名称唯一）
 - [ ] 字符集/排序规则/时区与 CRM 表对齐（utf8mb4、Asia/Shanghai）
 

@@ -5,10 +5,11 @@
 
 ## 0. 项目背景
 
-- 目标仓库：`d:\code\crmAndRag`（CRM×RAG 融合平台，**以 CRM 为基座**）。
+- 目标仓库：`d:\code\crmAndRag`。**架构重定位（D11）**：以 CRM 为基座的**单体**，AI 助手**吸收 RAG 对话能力**（思考/记忆/图文/接管），知识库能力**移植**为 `com.slz.crm.knowledge`；RAG 独立对话层（`chat_*`/`RagChatPipeline`/匿名）**丢弃**。整合≈只动 AI/知识库模块 + 横切治理，业务模块原样搬入。
 - 提案文档（按需阅读，均在 `spec/changes/add-crm-rag-fusion-platform/`）：
-  - `proposal.md`（Why/What/Impact）、`design-decisions.md`（D1–D10 已确认决策）
-  - `tasks.json`（17 任务）、`agent-execution-plan.md`（波次/契约/归属/冲突/worktree）
+  - `proposal.md`（Why/What/Impact）、`design-decisions.md`（D1–D17 已确认决策）
+  - `tasks.json`（18 任务/6 lane）、`agent-execution-plan.md`（波次/契约/归属/冲突/worktree）
+  - `assistant-decision-tree.md`（助手行为树：请求/记忆/图片/高亮/payload）、`db-table-coordination.md`（表协调 C1–C10）
   - `migration-inventory.md`（迁移清单）、`migration-subtasks.md`（D2/D4 方法级子任务）
   - `specs/*/spec-delta.md`（6 能力域 EARS 规范）
 - 源项目（**只读参考**，迁移来源，禁止修改）：
@@ -59,7 +60,7 @@
 
 ## 3. 冻结契约（只实现/消费，不改签名；详见 agent-execution-plan.md §2）
 
-`UserContext`（身份+异步快照传播）· `Result`+错误码（含 RATE_LIMITED/QUOTA/UNAUTHORIZED/CONTENT_RISK）· `ModelProvider`（chat/stream/embedding/vision；dashscope 默认）· `VectorStore` 抽象（Qdrant+内存回退）· `DataScope` 接口 · SSE 事件契约（message/stopped/references/error/thinking）· Token 计量 `record(...)` · `DynamicConfigService.get(...)`。
+`UserContext`（身份 userId+deptId+异步快照传播）· `Result`+错误码（RATE_LIMITED/QUOTA_EXCEEDED/UNAUTHORIZED/CONTENT_RISK）· `ModelProvider`（chat/stream/embedding/vision；dashscope 默认；**须返回带 usage 的响应**）· `VectorStore` 抽象（Qdrant+内存回退）· `DataScope` 接口（落点 `DataScopeServiceImpl`+`QueryWrapperAspect`，非 MyDataPermissionHandler）· **助手请求契约**（`sessionId/message/useKnowledgeBase/thinking/imageRef`）· **SSE 事件契约**（`start/meta/sources/thinking/delta/references/done/cancelled/stopped/error` + `ping` 心跳）· **来源引用契约** `SourceReference`（含 `chunkIndex/pageNo/chunkId`，档 B 高亮）· Token 计量 `record(...)`（含 summary/intent）· `DynamicConfigService.get(...)`。
 
 ## 4. Flyway 号段（防撞号；详见 agent-execution-plan.md §5）
 
@@ -67,5 +68,5 @@
 
 ## 5. 出口与产出（通用）
 
-- **出口**：专属提示词的验收测试全绿 + 可编译 + 相关基线测试重建（CRM 原 306 / RAG 原 491：485 通过+6 跳过）。
+- **出口**：专属提示词的验收测试全绿 + 可编译 + 相关基线测试重建。★基线要拆：CRM 原 306 全量重建；RAG 原 491 = **知识库能力测试子集**（Lane B 重建）+ **对话层测试**（随 `chat_*`/`RagChatPipeline` 丢弃，其能力在 Lane C 以助手测试重建）——**不是** 491 原样重建。
 - **产出**：变更摘要 + 测试结果 + 依赖/契约变更申请（如有）+ 本 lane 出口验收证据。

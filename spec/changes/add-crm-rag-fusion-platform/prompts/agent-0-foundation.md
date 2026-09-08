@@ -22,23 +22,24 @@ tasks.json 任务 1、2、3、4 + agent-execution-plan.md §2 契约冻结 + Fly
 
 ## 要做
 1. Maven 骨架：spring-boot-starter-parent **3.5.x** / Java 21；包边界 `com.slz.crm.*`（业务+助手）、`com.slz.crm.knowledge.*`（知识库，暂空）、`com.slz.crm.platform.*`（治理+契约）。
-2. `pom.xml`：MyBatis-Plus（唯一持久化，**不引 JPA/Hibernate**）、Spring AI（spring-ai-alibaba/dashscope）、Qdrant VectorStore、MinIO、jjwt 0.12.5、springdoc、actuator、testcontainers。
+2. `pom.xml`：MyBatis-Plus（唯一持久化，**不引 JPA/Hibernate**）、Spring AI（spring-ai-alibaba/dashscope）、Qdrant VectorStore、MinIO、jjwt 0.12.5、springdoc、actuator、micrometer-prometheus、testcontainers；**不引 Spring Security、不引 LangChain4j**。
 3. 并入 CRM 全量业务域 + AI 助手运行时 + 认证权限（JWTInterceptor/PermissionsInterceptor/@RequirePermission/DataScope*）+ 通用件（Result/异常/工具/枚举/GlobalExceptionHandler）。
 4. 统一配置：合并 `application.yml`；敏感项环境变量外置；dev/test/prod profile；生产 `auto-table.mode=none`；接入 `ProductionConfigurationGuard`。
-5. Flyway `V1__baseline.sql`：CRM 现有表 + RAG 9 张表（RAG 表 DDL 从 Hibernate 生成物固化）。
-6. **冻结并广播契约**（放 `com.slz.crm.platform.contract`）：UserContext、Result+错误码、ModelProvider、VectorStore 抽象、DataScope 接口、SSE 事件契约、Token 计量、DynamicConfigService（清单见 _common-rules §3）。
+5. **Actuator 保护**（移除 Security 后不留裸奔）：`/actuator/**` 挂 JWT+权限拦截器，`publicPaths` 仅放行 `health/liveness`、`health/readiness`；敏感端点需超管；`show-details=when_authorized`；暴露 `health,info,metrics,prometheus,loggers`。
+6. Flyway `V1__baseline.sql`：**仅 CRM 现有表**（真实名 sys_user/sys_role/sys_dept… 共 36 张）；知识库 7 表由 Lane B 在 `V3x` 新建（不在 V1）。
+7. **冻结并广播契约**（放 `com.slz.crm.platform.contract`）：UserContext(带 userId+deptId)、Result+错误码、ModelProvider(返回带 usage)、VectorStore 抽象、DataScope 接口、**助手请求契约(useKnowledgeBase/thinking/imageRef)**、**SSE 事件契约(start/meta/sources/thinking/delta/references/done/cancelled/stopped/error+ping)**、**来源引用契约 SourceReference(chunkIndex/pageNo/chunkId)**、Token 计量、DynamicConfigService（清单见 _common-rules §3）。
 
 ## 关键坑
-- Boot 3.5.x（不是 4）；持久化只留 MyBatis-Plus；AI 用 Spring AI 不用 LangChain4j。
+- Boot 3.5.x（不是 4）；持久化只留 MyBatis-Plus；AI 用 Spring AI 不用 LangChain4j；**移除 Spring Security**（认证统一 CRM 拦截器）；**Actuator 必须挂拦截器保护**（移除 Security 后否则裸奔）。
 - 契约是后续所有 lane 的编程基线，**签名要一次想清楚**；冻结后改动需你或 integrator 批准。
 
 ## 注释重点（本 lane）
 - **契约接口必须写详尽中文 Javadoc**（职责、参数、返回、线程安全、异步传播语义）——所有 lane 靠它编程。
 - `application.yml` 每个键加中文注释（对齐 RAG 风格）；`pom.xml` 关键依赖注明用途。
-- Flyway `V1` 头部注释写明"基线来源：CRM 现有表 + RAG Hibernate 固化 DDL"。
+- Flyway `V1` 头部注释写明"基线来源：CRM 现有表（36 张，真实名 sys_user/sys_role/sys_dept…）；知识库 7 表由 Lane B 在 V3x 新建"。
 
 ## 出口条件
-骨架可编译启动 + CRM 回归基线（原 306 测试）在新仓重建通过 + 契约冻结并广播。
+骨架可编译启动 + CRM 回归基线（原 306 测试）在新仓重建通过 + 契约冻结并广播 + Actuator 受拦截器保护（探针放行、其余需鉴权）。
 
 ## 产出
 变更摘要 + 测试结果 + **契约清单（接口签名）** + base 提交（供各 lane worktree 派生）。

@@ -1,5 +1,6 @@
 # 迁移清单与接入分析（CRM AI + RAG → crmAndRag）
 
+> **★架构重定位（D11）**：以 CRM 为基座的单体，AI 助手吸收 RAG 对话能力，知识库能力移植为 `com.slz.crm.knowledge`。下文"RAG 迁入"均指**知识库能力移植**；RAG 独立对话层（chat_*/RagChatPipeline/匿名/独立登录）**丢弃不迁**。表取舍见 `db-table-coordination.md`（保留 7 表、丢 3 表）。
 > 本文件同时回应两份交接要求：
 > - CRM：迁移文件/依赖/数据表/配置/API 清单、需重写的边界、认证权限适配、SSE 适配、DB 迁移、回归方案。
 > - RAG：可复用模块清单、需适配差异点、迁移顺序、风险与回归点。
