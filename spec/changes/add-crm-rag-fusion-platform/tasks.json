@@ -1,0 +1,222 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：融合基座",
+    "task": "项目骨架与技术栈统一（Boot 3.5.x 基线）",
+    "steps": [
+      { "step": "在 d:\\code\\crmAndRag 初始化 Maven 项目，parent=spring-boot-starter-parent 3.5.x，Java 21", "completed": false },
+      { "step": "确定包边界：com.slz.crm.*（业务/助手基座）、com.slz.crm.knowledge.*（知识库）、com.slz.crm.platform.*（平台治理）", "completed": false },
+      { "step": "合并 pom 依赖：MyBatis-Plus（唯一持久化，不引 JPA/Hibernate）、Spring AI(spring-ai-alibaba/dashscope)、Qdrant VectorStore、MinIO、jjwt 归一 0.12.5、springdoc、actuator、testcontainers", "completed": false },
+      { "step": "验证最小可编译骨架：Spring AI(dashscope) + Qdrant + MinIO + MyBatis-Plus 在 Boot 3.5.x 下启动", "completed": false },
+      { "step": "建立 .gitignore、.env.example、独立开发分支（禁止直接提交 master、禁止推送远程）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "阶段 1：融合基座",
+    "task": "CRM 业务域与 AI 助手基座并入",
+    "steps": [
+      { "step": "迁入 CRM 全量业务域（客户/联系人/商机/合同/订单/回款/发票/审批/协助/报表/统计/项目文件）", "completed": false },
+      { "step": "迁入 AI 助手运行时（AiChatServiceImpl/AiChatStreamLifecycle/AiStreamRegistry/心跳/SSE 写出/指标/PendingAction/AiMessage/AiSession）", "completed": false },
+      { "step": "迁入认证与权限（JWTInterceptor/PermissionsInterceptor/@RequirePermission/PermissionOperates/DataScope*）", "completed": false },
+      { "step": "迁入通用件（Result/异常/工具/枚举/GlobalExceptionHandler）与 AiProperties/application.yml", "completed": false },
+      { "step": "运行 CRM 回归基线（原 306 测试）并在新仓重建通过", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "阶段 1：融合基座",
+    "task": "统一 Result / 异常 / 配置 / profile",
+    "steps": [
+      { "step": "确立 com.slz.crm.common.result.Result 为唯一响应封装，定义错误码规范", "completed": false },
+      { "step": "合并 application.yml：CRM(spring.ai/crm.ai/slz.*/mybatis-plus/auto-table) + RAG(llm/qdrant/rag/storage.minio/app.async/app.dependency)", "completed": false },
+      { "step": "敏感项全部环境变量外置（JWT 密钥、DB、MinIO、LLM API Key），移除 RAG app.users/app.jwt 静态账号", "completed": false },
+      { "step": "区分 dev/test/prod profile，接入 ProductionConfigurationGuard（生产禁弱密钥/默认值）", "completed": false },
+      { "step": "统一 LLM 配置命名空间与 ModelProvider 抽象（dashscope 默认，可切 openai 兼容/vllm）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 4,
+    "category": "阶段 1：融合基座",
+    "task": "Flyway 迁移基线与持久化统一到 MyBatis-Plus",
+    "steps": [
+      { "step": "引入 Flyway，以 CRM 现有表 + RAG 现有表（原 Hibernate 自动建表，需显式 DDL）生成基线脚本 V1__baseline.sql", "completed": false },
+      { "step": "生产 profile 关闭 auto-table.mode，移除 JPA/Hibernate 与 ddl-auto（改由 Flyway 管理）", "completed": false },
+      { "step": "明确表归属边界（CRM 域 vs 知识库域），禁止跨域直接写对方表", "completed": false },
+      { "step": "确立 MyBatis-Plus 为唯一持久化，输出 RAG JPA Repository→Mapper 迁移清单（阶段3执行）", "completed": false },
+      { "step": "编写迁移/备份/验证/回退步骤文档", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 5,
+    "category": "阶段 2：部门与上下级数据权限",
+    "task": "DataScopeLevel 扩展与部门树/负责人建模",
+    "steps": [
+      { "step": "DataScopeLevel 新增 DEPT(本部门) 与 DEPT_AND_CHILD(本部门及以下)，保留 fromCode 兼容", "completed": false },
+      { "step": "SysDeptEntity 新增 leaderId(部门负责人)；确认 parentId 部门树与 idx_dept_parent 可用", "completed": false },
+      { "step": "PermissionOperates 为受控表补 _DEPT / _DEPT_AND_SUB 权限项，并同步权限种子", "completed": false },
+      { "step": "编写 V2__org_data_scope.sql（leaderId 列 + 权限项种子），默认不授予新权限", "completed": false },
+      { "step": "补充部门树构建与循环引用防御（parentId 不成环）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 6,
+    "category": "阶段 2：部门与上下级数据权限",
+    "task": "下属集合解析、SQL 注入与贯通测试",
+    "steps": [
+      { "step": "DataScopeResolver 新增：按部门树解析子部门集合、按 deptId 解析下属用户集合", "completed": false },
+      { "step": "MyDataPermissionHandler 支持 DEPT/DEPT_AND_CHILD：按记录归属人(owner_id/creator_id) ∈ 下属集合过滤", "completed": false },
+      { "step": "getHighestDataScopeLevel 纳入 DEPT/DEPT_AND_CHILD 判定（负责人默认 DEPT_AND_CHILD）", "completed": false },
+      { "step": "数据权限贯通 AI 工具查询（工具查询遵循同一数据范围口径）", "completed": false },
+      { "step": "补测试：本人/本部门/本部门及以下/全部 四级可见性 + 负责人跨子部门 + 越权拦截", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 7,
+    "category": "阶段 3：知识库/RAG 迁移",
+    "task": "RAG 重打包、持久化/AI 栈迁移与基础设施接入",
+    "steps": [
+      { "step": "com.mark.knowledge.* 重打包为 com.slz.crm.knowledge.*，Jackson 3(tools.jackson)→Jackson 2，starter webmvc→web、Security 7→6，控制器改返回 CRM Result", "completed": false },
+      { "step": "持久化迁移：RAG JPA Repository→MyBatis-Plus Mapper，实体注解改写，移除 Hibernate（D2）", "completed": false },
+      { "step": "AI 栈迁移：LangChain4j chat/embedding/vision→Spring AI ChatModel/EmbeddingModel，统一 ModelProvider 抽象（默认 dashscope）（D4）", "completed": false },
+      { "step": "引入平台 VectorStore 抽象：QdrantVectorStore（默认）+ InMemoryVectorStore（dev/test 回退，可选文件持久化）（D9）", "completed": false },
+      { "step": "接入 Qdrant（QdrantInitializer + 健康检查 + 集合/维度）与 MinIO（健康检查 + 内存/文件回退），提供 docker-compose", "completed": false },
+      { "step": "RAG 配置命名空间并入统一配置，验证 dashscope 嵌入/向量模型连通", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 8,
+    "category": "阶段 3：知识库/RAG 迁移",
+    "task": "身份缝合与知识库授权 userId 化",
+    "steps": [
+      { "step": "RAG 授权入参改为消费 CRM UserContext 稳定 userId(user:<id>)，停用 RAG 独立登录/SecurityConfig 过滤链", "completed": false },
+      { "step": "移除匿名态：删除 AnonymousRagChatService 及匿名分流，问答统一走已认证路径；公开知识库改为所有已登录用户可见（D8）", "completed": false },
+      { "step": "UserIdentityVerifier/KnowledgeBaseAuthorizationService/ResourceAccessPolicy 保留判定逻辑、替换身份来源", "completed": false },
+      { "step": "KnowledgeBaseMember owner/member 由 teacher:<id>/config:<username> 迁移到 CRM userId（编写 V3 映射脚本）", "completed": false },
+      { "step": "检索授权过滤改为按 documentId 集合/知识库范围查询，消除 findAllByDeletedFalse 全表扫描", "completed": false },
+      { "step": "补测试：匿名/成员/负责人/管理员/越权访问矩阵 + userId 映射正确性", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 9,
+    "category": "阶段 3：知识库/RAG 迁移",
+    "task": "文档处理、检索与流式问答迁入冒烟",
+    "steps": [
+      { "step": "迁入文档处理链（多格式解析/PDF/Excel/OCR/视觉抽取/批量/分片上传/向量快照）", "completed": false },
+      { "step": "迁入检索与问答（EmbeddingService/Bm25Scorer/混合检索/图片检索/RagChatPipeline/UnifiedRagService/会话记忆）", "completed": false },
+      { "step": "统一 SSE 口径：超时/心跳/取消接管/traceId/指标与 CRM 助手一致", "completed": false },
+      { "step": "冒烟：上传→解析→向量化→检索→流式问答 全链路（含思考透传与 prompt 预算闸门）", "completed": false },
+      { "step": "重建 RAG 回归基线（原 456 测试，Docker 集成测试可跳过）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 10,
+    "category": "阶段 4：AI 助手统一与精进",
+    "task": "知识库检索工具与 Token 计量统一",
+    "steps": [
+      { "step": "新增只读工具 queryKnowledgeBase，接入 AI 工具注册表与描述（先查后答、来源引用）", "completed": false },
+      { "step": "工具查询同时受 CRM 数据权限 + 知识库授权约束（缝合线校验）", "completed": false },
+      { "step": "统一 Token 计量：CRM AiMessage.tokenCount + RAG AiUsageInfo → 平台计量口径", "completed": false },
+      { "step": "补测试：工具选择/参数提取、越权知识库不可检索、Token 计量落库", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 11,
+    "category": "阶段 4：AI 助手统一与精进",
+    "task": "限流落地、引用跳转、主动洞察与评测机制",
+    "steps": [
+      { "step": "POST /ai/chat/stream 落地按用户滑动窗口限流（内存实现），超限返回 error 事件 code=RATE_LIMITED 且不消耗 LLM", "completed": false },
+      { "step": "只读工具结果实体汇总为 references，经 SSE references 事件结构化下发", "completed": false },
+      { "step": "新增 ai_insight 表 + 定时任务（基于统计/待办生成个人周报洞察，同周期幂等）+ GET /ai/insights（编写 V4 脚本）", "completed": false },
+      { "step": "确定 AI 评测执行机制（真实调用/离线回放）并接入黄金用例集回归", "completed": false },
+      { "step": "补齐确定性层单元测试（Validator/EntityResolver/PendingAction 状态机/限流器）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 12,
+    "category": "阶段 5：平台治理与硬化",
+    "task": "traceId/MDC 传播、线程池与依赖韧性",
+    "steps": [
+      { "step": "统一 RequestTraceFilter 写入 traceId，异步/流式/延迟任务经 MdcTaskDecorator.wrap 传播并清理 MDC", "completed": false },
+      { "step": "分任务类型线程池（批量上传/聊天记录/流式问答/记忆旁路/嵌入/解析）独立配置队列/拒绝/超时 + 指标", "completed": false },
+      { "step": "修复 DependencyResilienceExecutor 熔断开路直接拒绝缺少 cause，保证判为可重试", "completed": false },
+      { "step": "依赖不可用时批量文件恢复为 PENDING 而非 FAILED；评估 OCR/chat/vision/Qdrant 读取接入范围", "completed": false },
+      { "step": "补测试：跨线程 traceId、线程池拒绝降级、熔断开路/重试边界/批量恢复", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 13,
+    "category": "阶段 5：平台治理与硬化",
+    "task": "请求配额、AI Token 预算与内容安全",
+    "steps": [
+      { "step": "定义身份/IP/知识库/全局四层配额模型，实现限流 + 上传容量 + 活跃流式会话上限", "completed": false },
+      { "step": "超限返回机器可读原因/重试间隔 + 审计指标", "completed": false },
+      { "step": "基于 AiUsageInfo 持久化 token 消耗，实现请求前预算检查 + 请求后计量落库（chat/embedding/ocr/vision 分策略）", "completed": false },
+      { "step": "不可信文档/检索片段/用户输入安全分级 + 提示注入检测 + 上下文包装 + 高风险内容降级", "completed": false },
+      { "step": "补测试：并发触发/窗口边界/配额拒绝、预算边界/部分失败/计量补偿、注入样本/误报/降级", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 14,
+    "category": "阶段 5：平台治理与硬化",
+    "task": "生命周期事件、跨存储对账、审计与可观测性",
+    "steps": [
+      { "step": "定义文档入库/处理/删除/归档/重建/恢复事件 + 幂等生命周期事件表（编写 V5 脚本）", "completed": false },
+      { "step": "MinIO/MySQL/Qdrant/向量快照写入统一账本，实现跨存储对账扫描（缺失/孤儿向量/孤儿对象/失效快照）", "completed": false },
+      { "step": "对账提供 dry-run/管理员确认/保留窗口清理 + 补偿任务 + 清理审计日志", "completed": false },
+      { "step": "记录授权变更/配额调整/清理/重建审计事件，治理指标看板 + 告警阈值 + 管理端查询接口", "completed": false },
+      { "step": "补测试：事件崩溃恢复/重复消费、对账识别/清理、审计可追溯", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 15,
+    "category": "阶段 5：平台治理与硬化",
+    "task": "超级管理员动态配置中心（含提示词）",
+    "steps": [
+      { "step": "设计动态配置项模型（DB 存储 + 命名空间 ai.prompt/ai.model/rag.retrieval/business）与 V6__dynamic_config.sql", "completed": false },
+      { "step": "实现超管可写（roleId=1）、类型/范围/枚举校验护栏、敏感值掩码", "completed": false },
+      { "step": "实现热生效（缓存 + 有界刷新）与版本历史/回滚", "completed": false },
+      { "step": "接入 AI 提示词/模型 Provider/限流配额阈值/检索分块参数的动态读取", "completed": false },
+      { "step": "配置变更审计复用平台治理审计流；补测试（越权写拒绝/非法值拒绝/热生效/回滚）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 16,
+    "category": "阶段 6：质量基准与验证门禁",
+    "task": "RAG 质量基准与检索性能优化",
+    "steps": [
+      { "step": "构建覆盖文本/表格/图片/边界问题的基准集，实现召回率/命中率/引用正确性/答案一致性评估", "completed": false },
+      { "step": "记录首字延迟/总延迟/token 消耗/失败率，输出可比较的 JSON/HTML 报告", "completed": false },
+      { "step": "评估分块长度/重叠/元数据/查询改写，压测向量+BM25+混合融合链路", "completed": false },
+      { "step": "引入 embedding/查询结果/短周期上下文缓存，按基准调 Qdrant 索引/topK/重排，保留实验开关与回退", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 17,
+    "category": "阶段 6：质量基准与验证门禁",
+    "task": "契约/性能测试、CI 门禁与灰度回退",
+    "steps": [
+      { "step": "为关键 API（业务/知识库/AI/SSE）建立请求/响应契约测试", "completed": false },
+      { "step": "将安全/数据权限/状态机/依赖韧性/RAG 评估纳入 CI，定义性能预算与回归阈值", "completed": false },
+      { "step": "核心服务拆分（先补契约测试，再从超大服务提取解析/分块/向量化/检索/记忆协作组件，保持接口不变）", "completed": false },
+      { "step": "编写发布前检查、灰度开关、默认策略与回退步骤；更新部署/运维手册与权限矩阵", "completed": false }
+    ],
+    "passes": false
+  }
+]
