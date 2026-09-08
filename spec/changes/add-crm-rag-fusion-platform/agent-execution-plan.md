@@ -15,7 +15,7 @@
 **不足以支撑多 agent 并行的缺口（本文件补齐）**
 1. **无依赖图**：17 任务是线性编号，未标明谁阻塞谁。
 2. **无契约冻结**：多处"缝合线"（身份、Result、ModelProvider、VectorStore、DataScope、SSE、Token 计量）被多个 lane 共用，若不先冻结接口，并行必然互相返工。
-3. **无文件归属**：`pom.xml`、`application.yml`、`Flyway 脚本`、SSE/流式、`DataScopeResolver` 是**多 lane 争用的冲突热点**，未指定 owner。
+3. **无文件归属**：`pom.xml`、`application.yml`、`Flyway 脚本`、SSE/流式、`DataScopeService` 是**多 lane 争用的冲突热点**，未指定 owner。
 4. **无集成时序与 integrator**：并行 lane 收敛时谁合并、按什么顺序合并未定义。
 5. **规模不均**：任务 7（含 B3 流式，XL）远大于任务 15（S），单个 agent 会话装不下 XL，需要再切。
 
@@ -60,7 +60,7 @@ Wave 3  [集成·integrator]       任务 17 契约/性能测试 + CI 门禁 + �
 | `Result` + 错误码 | 统一响应封装、错误码枚举（含 RATE_LIMITED/QUOTA/UNAUTHORIZED/CONTENT_RISK） | 全部 |
 | `ModelProvider` | `chatModel()/streamingChatModel()/embeddingModel()/visionModel()`；provider=dashscope(默认)/openai/vllm | B/C/E |
 | `VectorStore` 抽象 | `QdrantVectorStore`(默认) + `InMemoryVectorStore`(回退)；统一 search/filter 接口 | B/D |
-| `DataScope` 接口 | `getHighestDataScopeLevel/getSubordinateUserIds/…`（含 DEPT/DEPT_AND_CHILD） | A/C |
+| `DataScope` 接口 | 数据范围解析（含 DEPT/DEPT_AND_CHILD）；**入参必须带 userId+deptId**（现 `RoleAO` 无 deptId）；落点 `DataScopeServiceImpl`+`QueryWrapperAspect`，**非 MyDataPermissionHandler（不存在）** | A/C |
 | SSE 事件契约 | 事件类型 `message/stopped/references/error/thinking` + 字段结构 + 超时/心跳口径 | B/C/D |
 | Token 计量接口 | `record(model,user,session,kb,usage)`；B/C 产数，D 聚合预算 | B/C/D |
 | 动态配置读取接口 | `DynamicConfigService.get(key, type, default)`（E 实现，B/C/D 消费） | B/C/D/E |
@@ -75,8 +75,8 @@ Wave 3  [集成·integrator]       任务 17 契约/性能测试 + CI 门禁 + �
 | Lane | 负责 tasks | **独占**的包/文件（owner） | 依赖契约 | 入口条件 | 出口条件 | 规模 |
 |------|-----------|--------------------------|----------|----------|----------|------|
 | **基座** | 1,2,3,4 | 项目骨架、`pom.xml`、`application.yml`、`com.slz.crm.common.*`、`com.slz.crm.platform.contract.*`、Flyway `V1` | — | 空仓 | 骨架可编译启动 + CRM 306 测试重建通过 + 契约冻结 | L |
-| **A 组织数据权限** | 5,6 | `common.enumeration.DataScopeLevel`/`PermissionOperates`、`server.service.impl.DataScopeResolverImpl`、`MyDataPermissionHandler`、`pojo.entity.SysDeptEntity`、Flyway `V2x` | UserContext, DataScope | Wave0 完成 | 四级可见性 + 负责人跨子部门 + 越权测试通过 | M |
-| **B RAG 迁移**（关键路径） | 7,8,9 + 子任务 A0–A7 / B0–B10 | `com.slz.crm.knowledge.**`（实体/mapper/服务/控制器）、Flyway `V3x`、`docker-compose` | UserContext, Result, ModelProvider, VectorStore, SSE | Wave0 + 契约 | 登录态下 上传→检索→流式问答 冒烟 + RAG 456 测试重建 | XL（建议再拆 B-持久化 / B-AI 两个子 agent，见 §6） |
+| **A 组织数据权限** | 5,6 | `DataScopeLevel`/`PermissionOperates`、`DataScopeService(Impl)`、`ResourceTypeConstant`、`QueryWrapperAspect`、`RoleAO`(加deptId)、`SysDeptEntity`(加leaderId)、Flyway `V2x`；删除死代码 `DataScopeResolver(Impl)` | UserContext, DataScope | Wave0 完成 | 四级可见性 + 负责人跨子部门 + 越权 + 两 switch 生效 | M |
+| **B RAG 迁移**（关键路径） | 7,8,9 + 子任务 A0–A7 / B0–B10 | `com.slz.crm.knowledge.**`（实体/mapper/服务/控制器）、Flyway `V3x`、`docker-compose` | UserContext, Result, ModelProvider, VectorStore, SSE | Wave0 + 契约 | 登录态下 上传→检索→流式问答 冒烟 + RAG 491 测试重建 | XL（建议再拆 B-持久化 / B-AI 两个子 agent，见 §6） |
 | **C AI 助手** | 11（先行）,10（依赖 B） | `server.ai.**`、`AiChatServiceImpl`、`AiToolRegistry`、`ai_insight`、Flyway `V4x` | UserContext, ModelProvider, SSE, DataScope, Token | Wave0；任务10 另需 B 的检索契约 | 限流/references/洞察/评测通过；queryKnowledgeBase 越权不可检索 | L |
 | **D 平台治理** | 12（骨架先行）,13,14 | `com.slz.crm.platform.**`（trace/async/resilience/quota/token/lifecycle/reconcile/audit）、Flyway `V5x` | UserContext, SSE, Token, VectorStore | Wave0 | 跨线程 traceId、配额拒绝、韧性、对账、审计测试通过 | L |
 | **E 动态配置** | 15 | `com.slz.crm.platform.config.**`（dynamic-config）、Flyway `V6x` | DynamicConfig 接口, 审计(D) | Wave0 + D 审计骨架 + B/C 配置读取点 | 越权写拒绝/非法值拒绝/热生效/回滚测试通过 | M |
@@ -94,7 +94,7 @@ Wave 3  [集成·integrator]       任务 17 契约/性能测试 + CI 门禁 + �
 | SSE / 流式 | B(RAG 流) / C(AI SSE) / D(traceId) | 冻结 **SSE 事件契约**；RAG 流 owner=B，AI SSE owner=C，D 只加 traceId 装饰不改事件结构 |
 | ModelProvider / VectorStore | B 建 / C·D·E 用 | Wave0 冻结接口；B 提供实现，C/D/E 面向接口编程 |
 | Token 计量 | B/C 产 / D 聚合 | Wave0 冻结 `record(...)` 接口；D 只消费不落各自实现 |
-| `DataScopeResolver` | A 建 / C 用 | A 拥有；C 的 AI 工具查询面向 `DataScope` 接口 |
+| `DataScopeService(Impl)` | A 建 / C 用 | A 拥有；C 的 AI 工具查询面向 `DataScope` 接口 |
 
 ---
 
@@ -129,7 +129,7 @@ Lane B 是关键路径且 XL，建议拆 2 个子 agent + 1 个前置 spike：
 按"低风险先行、关键路径居中、横切最后"合并，每次合并后必须**编译 + 冒烟**再合下一个：
 
 1. **Lane A**（数据权限，纯 CRM 内，最低风险）→ 合并、跑四级可见性测试。
-2. **Lane B**（RAG，关键路径）→ 合并、跑 RAG 冒烟 + 456 测试。
+2. **Lane B**（RAG，关键路径）→ 合并、跑 RAG 冒烟 + 491 测试。
 3. **Lane C**（AI 助手）→ 合并、跑 queryKnowledgeBase 缝合 + 限流/references/洞察。
 4. **Lane D**（治理）→ 合并、跑 traceId/配额/韧性/对账/审计。
 5. **Lane E**（动态配置）→ 合并、跑热生效/回滚/越权。
@@ -160,7 +160,7 @@ Lane B 是关键路径且 XL，建议拆 2 个子 agent + 1 个前置 spike：
 2. **B-spike 失败**：若 Spring AI 无法等价思考流式，Lane B 的 B3/B4 需降级（仅快速模式或自定义解析），**会影响 C 的 SSE 契约**——所以 spike 结论要在 Wave 1 开工前广播。
 3. **契约漂移**：任何 lane 想改 §2 契约，必须走 integrator 批准，否则并行成果无法合并。
 4. **关键路径盯 Lane B**：整体工期由 B 决定；A/C/D/E 即使提前完成也要等 B 才能全链路集成。
-5. **测试基线重建**：CRM 306 / RAG 456 测试迁移后必须重建，作为各 lane 出口的硬门禁（沿用源项目 JaCoCo 与 Testcontainers 约定）。
+5. **测试基线重建**：CRM 306 / RAG **491（485 通过 + 6 跳过）** 测试迁移后必须重建，作为各 lane 出口的硬门禁（沿用源项目 JaCoCo 与 Testcontainers 约定）。
 
 ---
 

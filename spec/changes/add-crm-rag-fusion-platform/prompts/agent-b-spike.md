@@ -24,7 +24,7 @@ Agent-0 完成；`ModelProvider`/`VectorStore` 契约已冻结。
 1. **思考块流式透传**：LangChain4j 现用 `.returnThinking(true)` + `PartialThinking/PartialThinkingContext` 下发 `reasoning_content`；Spring AI DashScope 流式是否有等价思考增量？
 2. **自定义思考参数**：vLLM 的 `chat_template_kwargs.enable_thinking`、openai/百炼顶层 `enable_thinking`，能否经 Spring AI `ChatOptions` 按 provider 下发？
 3. **Qdrant 过滤语义**：Spring AI `QdrantVectorStore` 的 metadata filter 是否等价 LangChain4j `EmbeddingStore` filter（影响检索授权一致性）？
-4. **向量维度**：现状默认值三处不一致（`ChatConfig` 2056 / `QdrantInitializer` 2560 / `application.yaml` 1024），确认实际嵌入模型维度并给出统一值。
+4. **向量维度**：`ChatConfig` 默认 2056 / `QdrantInitializer`·`DocumentAdminService` 默认 2560 / `application.yaml` 实配 `${QDRANT_VECTOR_SIZE:1024}`；运行时 yml 覆盖、正常不踩，仅属性缺失才分裂（优先级低于思考流式）。确认实际嵌入模型维度并给出统一值。
 
 ## 注释重点（本 lane）
 - 验证样例代码同样遵循中文注释规范；每个样例类/方法注释写明"验证哪个能力、判定标准、结论"。

@@ -22,7 +22,7 @@
 | `@Enumerated(STRING)` | `@EnumValue`/`IEnum`/TypeHandler | 枚举存字符串保持一致 |
 | `@OneToMany` 等关联 | 无（本项目**实体全扁平**，无关联） | ✅ 无关联拆解成本 |
 
-## A1. 实体注解迁移（9 个实体）（M）
+## A1. 实体注解迁移（10 个实体）（M）
 注解映射：`@Entity`+`@Table(name=...)` → `@TableName(...)`；`@Id`+`@GeneratedValue(IDENTITY)` → `@TableId(type=IdType.AUTO)`；`@Column` → `@TableField`；`@Enumerated(STRING)` → `@EnumValue` 或 `IEnum`；`@Table(indexes/uniqueConstraints)` → 移到 Flyway DDL（A4）。
 
 | 实体 | 表名 | 关键点 |
@@ -41,8 +41,9 @@
 - [ ] **表名统一单数**（chat_messages→chat_message 等 9 张）、**审计列统一** created_time/updated_time→create_time/update_time、**软删除列统一** deleted→is_deleted（+类型 Boolean、@TableLogic）；@TableName/@TableField 同步
 - [ ] 枚举字段确认存储形态（STRING）与 MyBatis-Plus 处理一致
 - [ ] `@Table` 内索引/唯一约束登记到 A4 的 DDL 清单
+- [ ] **第 10 个实体 `TeacherAccountEntity`（auth 包）**：按 D3 停用——映射到 CRM user 后删除实体/表，或保留只读映射；显式给出处置，不遗漏
 
-## A2. Repository → Mapper（9 个，逐方法）（L）
+## A2. Repository → Mapper（10 个，逐方法）（L）
 | 仓储 | 代表方法 | 迁移方式 |
 |------|----------|----------|
 | `BatchTaskRepository` | `findByTaskId` / `findAllByStatusInAndUpdatedTimeBefore` / `existsByStatusIn` / `@Modifying @Query updateStatusIfMatch(int)` | Wrapper + `@Update`（保留状态条件乐观更新，用于崩溃恢复扫描） |
@@ -53,7 +54,7 @@
 | `KnowledgeBaseMemberRepository` | `existsByKnowledgeBaseIdAndUserId` / `existsByKnowledgeBaseIdAndUserIdAndMemberRole` | Wrapper（`selectCount>0`）；`userId` String |
 | `KnowledgeBaseRepository` | 派生查询（按 owner/name/可见性） | Wrapper |
 | `DocumentVectorChunkRepository` | `deleteByDocumentId(void)` | `@Delete`/Wrapper |
-| `UploadedFileRepository` | `findAllByDeletedFalseOrderByUploadTimeDesc`（**待优化**）/ 按 knowledgeBase、documentId 查询 | 改为**按需查询**（documentId 集合/知识库范围），消除全表扫描（对齐 knowledge-rag 规范） |
+| `UploadedFileRepository` | **6 个 `findAllBy*`**（`findAllByDeletedFalseOrderByUploadTimeDesc` 等，其中无界全表扫描的须优化）/ 按 knowledgeBase、documentId、userId 查询 | 无界的改**按需查询**（documentId 集合/知识库范围）消除全表扫描；已按 userId/batchTaskId 收窄的可保留 |
 
 - [ ] 每个方法改写并保留原语义与返回基数
 - [ ] `@Modifying` 的 `clearAutomatically/flushAutomatically` 语义确认（原生 SQL 更新无一级缓存问题）
@@ -95,7 +96,7 @@
 - [ ] **思考块流式透传**：`ChatConfig` 现用 `.returnThinking(true)` + `PartialThinking/PartialThinkingContext`（`RagStreamSessionManager`）下发 `reasoning_content`。验证 Spring AI DashScope 流式是否支持思考增量；若不可等价 → 记录降级方案（仅快速模式，思考块剥离）。
 - [ ] **自定义思考参数**：vLLM 走 `chat_template_kwargs.enable_thinking`、openai/百炼走顶层 `enable_thinking`（`ThinkingRequestParams`）。验证 Spring AI `ChatOptions`/DashScope options 能否按 provider 下发。
 - [ ] **Qdrant 过滤语义**：Spring AI `QdrantVectorStore` 的 metadata filter 是否等价 LangChain4j `EmbeddingStore` filter（影响检索授权过滤一致性）。
-- [ ] **向量维度默认值统一**：现状不一致——`ChatConfig` 默认 2056、`QdrantInitializer` 默认 2560、`application.yaml` 为 1024；迁移时统一为单一来源（按实际嵌入模型维度）。
+- [ ] **向量维度默认值统一**：`ChatConfig` 默认 2056、`QdrantInitializer`/`DocumentAdminService` 默认 2560、`application.yaml` 实配 `${QDRANT_VECTOR_SIZE:1024}`。**运行时 yml 覆盖、正常不踩**，仅属性缺失时才分裂——优先级低于思考流式，但迁移时统一为单一来源（按实际嵌入模型维度）。
 - [ ] 产出：`B0-spike-结论.md`（可行性 + 风险 + 降级策略），作为 B1–B10 的前提。
 
 ## B1. ModelProvider 抽象 + ChatConfig 重写（L）
@@ -155,7 +156,7 @@
 
 ## B10. 移除 LangChain4j + 回归（L）
 - [ ] pom 移除 `langchain4j`、`langchain4j-open-ai`、`langchain4j-qdrant`
-- [ ] 全量编译；重建原 456 测试（`MockWebServer` 思考参数序列化实测改为 Spring AI 等价断言）
+- [ ] 全量编译；重建原 491 测试（485 通过+6 跳过；`MockWebServer` 思考参数序列化实测改为 Spring AI 等价断言）
 - [ ] 冒烟全链路：上传→解析→嵌入→检索→流式问答（快速/思考两模式）
 
 ## B 风险清单（按严重度）

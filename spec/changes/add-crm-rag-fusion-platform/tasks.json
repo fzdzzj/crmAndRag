@@ -58,23 +58,23 @@
     "task": "DataScopeLevel 扩展与部门树/负责人建模",
     "steps": [
       { "step": "DataScopeLevel 新增 DEPT(本部门) 与 DEPT_AND_CHILD(本部门及以下)，保留 fromCode 兼容", "completed": false },
-      { "step": "SysDeptEntity 新增 leaderId(部门负责人)；确认 parentId 部门树与 idx_dept_parent 可用", "completed": false },
-      { "step": "PermissionOperates 为受控表补 _DEPT / _DEPT_AND_SUB 权限项，并同步权限种子", "completed": false },
-      { "step": "编写 V2__org_data_scope.sql（leaderId 列 + 权限项种子），默认不授予新权限", "completed": false },
-      { "step": "补充部门树构建与循环引用防御（parentId 不成环）", "completed": false }
+      { "step": "SysDeptEntity 新增 leaderId；RoleAO 新增 deptId(PermissionsInterceptor 填充)——现 RoleAO 无 deptId 无法解析 DEPT", "completed": false },
+      { "step": "PermissionOperates 为受控表补 _DEPT/_DEPT_AND_SUB；DataScopeServiceImpl.TABLE_PERMISSIONS 三元组扩展容纳 DEPT 权限槽", "completed": false },
+      { "step": "删除死代码 DataScopeResolver/DataScopeResolverImpl（无调用方、逻辑与 DataScopeServiceImpl 重复）", "completed": false },
+      { "step": "编写 V2__org_data_scope.sql（leader_id 列 + 权限种子，默认不授予）；部门树 N 级递归 + 成环防御", "completed": false }
     ],
     "passes": false
   },
   {
     "number": 6,
     "category": "阶段 2：部门与上下级数据权限",
-    "task": "下属集合解析、SQL 注入与贯通测试",
+    "task": "下属集合解析、条件注入与贯通测试",
     "steps": [
-      { "step": "DataScopeResolver 新增：按部门树解析子部门集合、按 deptId 解析下属用户集合", "completed": false },
-      { "step": "MyDataPermissionHandler 支持 DEPT/DEPT_AND_CHILD：按记录归属人(owner_id/creator_id) ∈ 下属集合过滤", "completed": false },
-      { "step": "getHighestDataScopeLevel 纳入 DEPT/DEPT_AND_CHILD 判定（负责人默认 DEPT_AND_CHILD）", "completed": false },
-      { "step": "数据权限贯通 AI 工具查询（工具查询遵循同一数据范围口径）", "completed": false },
-      { "step": "补测试：本人/本部门/本部门及以下/全部 四级可见性 + 负责人跨子部门 + 越权拦截", "completed": false }
+      { "step": "DataScopeServiceImpl.getHighestDataScopeLevel 纳入 DEPT/DEPT_AND_CHILD（负责人默认 DEPT_AND_CHILD，超管 ALL）；按 parentId 递归子树 + deptId 解析下属用户集合", "completed": false },
+      { "step": "addDataScopeCondition 两个重载(QueryWrapper+LambdaQueryWrapper)的 switch 都加 case DEPT/DEPT_AND_CHILD（现 default 落 SELF，漏改静默降级）；按 ResourceTypeConstant.TABLE_USER_FIELDS 每表归属字段 ∈ 下属集合过滤", "completed": false },
+      { "step": "受控表对齐 MANAGED_TABLES(10) 与 TABLE_PERMISSIONS(9，customer_contact 无三元组恒 SELF)", "completed": false },
+      { "step": "数据权限贯通 AI 工具查询（面向 DataScope 契约）", "completed": false },
+      { "step": "补测试：本人/本部门/本部门及以下/全部 四级可见性 + 负责人跨子部门 + 越权拦截 + 两个 switch 重载均生效", "completed": false }
     ],
     "passes": false
   },
@@ -115,7 +115,7 @@
       { "step": "迁入检索与问答（EmbeddingService/Bm25Scorer/混合检索/图片检索/RagChatPipeline/UnifiedRagService/会话记忆）", "completed": false },
       { "step": "统一 SSE 口径：超时/心跳/取消接管/traceId/指标与 CRM 助手一致", "completed": false },
       { "step": "冒烟：上传→解析→向量化→检索→流式问答 全链路（含思考透传与 prompt 预算闸门）", "completed": false },
-      { "step": "重建 RAG 回归基线（原 456 测试，Docker 集成测试可跳过）", "completed": false }
+      { "step": "重建 RAG 回归基线（原 491 测试：485 通过 + 6 Docker 集成跳过）", "completed": false }
     ],
     "passes": false
   },

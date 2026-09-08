@@ -107,7 +107,15 @@ AND 拒绝其获取他人或他部门数据
 ## 备注
 
 - 本能力域对应决策 D6（上司下属建模：部门树 + 负责人字段）。
-- **现状（代码证据）**：`sys_dept` 仅有 `id`/`dept_name`/`parent_id`/`sort`/`status`，`parent_id` 注释标注“支持两级”，**无 `leader_id`**；`user.dept_id` 已存在；`DataInitializer` 仅创建一个“默认部门”根节点，无种子部门树。
-- **落地**：新增 `sys_dept.leader_id`（部门负责人）；将“支持两级”扩展为按 `parent_id` 递归的 N 级子树解析（带成环防御）；下属用户集合 = `dept_id ∈ 子树部门` 的用户。
-- **数据过滤**：受控表按归属人（`owner_id`/`creator_id` 等）∈ 下属用户集合过滤，经 `MyDataPermissionHandler` 注入 SQL；具体列映射按表确认。
+- **现状（源码核实）**：
+  - `sys_dept` 仅有 `id`/`dept_name`/`parent_id`/`sort`/`status`（`parent_id` 注“支持两级”），**无 `leader_id`**；`user.dept_id` 已存在；`DataInitializer` 仅建一个“默认部门”，无种子部门树。
+  - **真实数据权限机制**：`QueryWrapperAspect`（AOP 切面）拦截带 Wrapper 的查询 → `DataScopeServiceImpl.addDataScopeCondition(QueryWrapper/LambdaQueryWrapper, RoleAO, resourceType)`（**两个重载**）；归属字段由 `ResourceTypeConstant.getUserFieldsByTableName(表名)` 给出。**`MyDataPermissionHandler` 不存在**（仅见于 Javadoc 文字）。
+  - **`DataScopeResolver`/`DataScopeResolverImpl` 是死代码**（无调用方、逻辑与 `DataScopeServiceImpl.getHighestDataScopeLevel` 重复、表清单陈旧缺 `project_file`）→ **迁移时删除，不带入新仓**（决策 A）。
+- **落地要点**：
+  1. `DataScopeLevel` 加 `DEPT`/`DEPT_AND_CHILD`；`SysDeptEntity` 加 `leader_id`；`parent_id` 递归 N 级子树 + 成环防御。
+  2. **`RoleAO` 现仅 `id/roleId/permissions`，无 `deptId`** → DataScope/UserContext 契约必须补 `deptId`（或由 userId 反查部门），`PermissionsInterceptor` 填充；否则无法解析 DEPT 级别。
+  3. `getHighestDataScopeLevel` 增加 DEPT/DEPT_AND_CHILD 判定；`TABLE_PERMISSIONS` 的 `[ONLY_MY,TAGE,ALL]` 三元组扩展以容纳 DEPT 权限槽；`PermissionOperates` 补 `_DEPT`/`_DEPT_AND_SUB`。
+  4. **`addDataScopeCondition` 两个重载的 `switch` `default` 都落 SELF** → 必须给**两个 switch 都加** `case DEPT/DEPT_AND_CHILD`，否则新级别被静默降级为 SELF。
+  5. 下属集合过滤按 `ResourceTypeConstant.TABLE_USER_FIELDS` 的**每表归属字段**（`sales_opportunity=[creator_id,owner_id]`、`contact_task=[creator_id,assignee_id,assigner_id]`、`sales_stage_approval=[applicant_id,approver_id]`、`project_file=[uploader_id]`）∈ 下属用户集合。
+  6. 受控表范围：`MANAGED_TABLES`（**10** 张，含 `customer_contact`）；其中 `TABLE_PERMISSIONS` 配了权限三元组的是 **9** 张（`customer_contact` 无三元组、恒走 SELF）——DEPT 权限项按此对齐。
 - 可选增强 `user.managerId`（跨部门汇报线）留待后续，不在本期强制范围。

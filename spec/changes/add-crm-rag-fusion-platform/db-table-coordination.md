@@ -9,7 +9,7 @@
 |------|-----|-----|------|
 | 表名 | 单数（`contract`/`project_file`/`ai_message`/`sys_dept`/`user`） | 复数（`chat_messages`/`chat_conversations`/`uploaded_files`/`batch_tasks`/`batch_file_results`/`chunk_upload_sessions`/`document_vector_chunks`） | `@TableName` vs `@Table(name=...)` |
 | 审计列 | `create_time`/`update_time` | `created_time`/`updated_time` | 实体字段 |
-| 软删除 | `is_deleted`，类型**不统一**（`CustomerCompanyEntity` Boolean / `ContractOrderItemEntity` Integer），无 `@TableLogic`（`DataScopeResolverImpl` 手写 `is_deleted = false`） | `deleted`(boolean) + `deleted_by`(String，**存 username**) | `KnowledgeBaseEntity.deleted` / `UploadedFileEntity.deletedBy` |
+| 软删除 | `is_deleted`，类型**不统一**（`CustomerCompanyEntity` Boolean / `ContractOrderItemEntity` Integer），无 `@TableLogic`（多处手写 `is_deleted = false` 过滤） | `deleted`(boolean) + `deleted_by`(String，**存 username**) | `KnowledgeBaseEntity.deleted` / `UploadedFileEntity.deletedBy` |
 | 用户引用 | `user.id` = Long(bigint) | `owner_user_id`/`user_id` = String，长度**不一致**（`BatchTask`/`ChunkUploadSession` 64 vs `KnowledgeBase`/`Member` 100） | 实体 `@Column(length=...)` |
 | 主键 | `@TableId(IdType.AUTO)` Long + Long 外键 | `@GeneratedValue(IDENTITY)` Long 代理键 + String 业务键（documentId/conversationId/taskId/upload_session_id） | 实体注解 |
 | 时间类型 | 多 `LocalDateTime`，`ContactTaskEntity` 用 `java.util.Date` | timestamp | 实体字段 |

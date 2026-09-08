@@ -9,6 +9,10 @@
 ## 负责范围
 tasks.json 任务 1、2、3、4 + agent-execution-plan.md §2 契约冻结 + Flyway V1 基线。
 
+## 入口条件（当前仓库状态）
+- 仓库 `d:\code\crmAndRag` 当前在分支 `spec/add-crm-rag-fusion-platform`，已有多个 docs 提交（仅 `spec/` 提案文档），**尚无代码**。你从该分支继续（或按调度者建 `develop`），产出首个代码基线提交。
+- 开工前先 `git log --oneline` / `git status` 确认实际状态，勿假设“空仓 master 无提交”。
+
 ## worktree / 分支
 - 在主树 `d:\code\crmAndRag` 工作；base 分支 `spec/add-crm-rag-fusion-platform`（或按调度者指定的 `develop`）。
 - 禁止提交 master、禁止 push。

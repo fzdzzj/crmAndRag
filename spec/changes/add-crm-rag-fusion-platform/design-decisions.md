@@ -51,7 +51,7 @@
 |------|---------------------------|-------------------------------|
 | 与“CRM 为基座”一致性 | 高 | 低（需改造 CRM 全量鉴权） |
 | RAG 改造点 | 授权判定保留，身份来源改为 CRM `UserContext`/稳定 userId | CRM 需接入 Security 过滤链与方法级鉴权 |
-| 数据权限协同 | 天然复用 CRM `DataScopeResolver`（含 D6 部门维度） | 需把数据权限桥接进 Security |
+| 数据权限协同 | 天然复用 CRM `DataScopeServiceImpl`（含 D6 部门维度） | 需把数据权限桥接进 Security |
 | 风险 | 中（RAG 匿名/登录分流需重接） | 高 |
 
 **推荐 A**：
@@ -146,7 +146,7 @@
 **背景（回应 #9）**：RAG 的 `QdrantInitializer` 仅通过 REST 检查/创建集合，失败时“应用继续启动”，但**运行期检索仍需真实 Qdrant**——不同于 MinIO 有 `InMemoryFileStorageServiceImpl` 回退，Qdrant **没有本地回退**。
 
 **✅ 已确认 A+B（组合方案）**：
-- **A 本地真 Qdrant**：提供 `docker-compose`（qdrant + minio + mysql），开发/测试一键起真实依赖；配合 `QdrantInitializer` 自动建集合。
+- **A 本地真 Qdrant**：提供 `docker-compose`（qdrant + minio + mysql），开发/测试一键起真实依赖；配合 `QdrantInitializer` 自动建集合。（净新增交付：RAG 源仓无 docker-compose，不是迁移项）
 - **B VectorStore 抽象 + 内存回退**：引入平台级 `VectorStore` 抽象（对齐 Spring AI `VectorStore`），两种实现：
   - `QdrantVectorStore`（默认/生产）
   - `InMemoryVectorStore`（dev/test 回退，基于内存向量 + 余弦相似度，可选文件持久化到本地，重启可加载）

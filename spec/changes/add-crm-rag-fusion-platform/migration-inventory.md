@@ -41,7 +41,7 @@
 ### 2.2 必须适配（🔧）
 - `common/enumeration/DataScopeLevel`：新增 `DEPT`、`DEPT_AND_CHILD`（D6）。
 - `common/enumeration/PermissionOperates`：为受控表补 `_DEPT` / `_DEPT_AND_SUB` 权限项。
-- `service/impl/DataScopeResolverImpl` + `MyDataPermissionHandler`：新增“下属用户集合解析 + 归属人过滤”。
+- `service/impl/DataScopeServiceImpl` + `aspect/QueryWrapperAspect` + `constant/ResourceTypeConstant`：新增“下属用户集合解析 + 每表归属字段过滤”（真实机制，**非 MyDataPermissionHandler——该类不存在**）；`pojo/ao/RoleAO` 加 `deptId`（现无）；**删除死代码 `DataScopeResolver`/`DataScopeResolverImpl`**。
 - `pojo/entity/SysDeptEntity`：新增 `leaderId`（部门负责人）；`pojo/entity/UserEntity`：复用 `deptId`（可选 `managerId`）。
 - `application.yml`：合并 RAG 配置命名空间；`auto-table.mode` 生产改 `none`（改走 Flyway）。
 - AI 工具注册表：新增只读工具 `queryKnowledgeBase`（调用迁入的 RAG 检索）。
@@ -54,7 +54,7 @@
 - 业务：`customer_company`、`customer_contact`、`sales_opportunity`、`contract`、`contract_order_item`、`invoice_info`、`payment_record`、`business_activity`、`contact_task`、`sales_stage_approval`、`project_file`。
 - 权限/组织：`user`、`role`、`permissions`、`role_permissions`、`sys_dept`、`company_dept`、`company_group`、`tage_role_binding`、`tage_resource_binding`、`data_share`、`user_handover`。
 - AI：`ai_session`、`ai_message`、`ai_pending_action`、`ai_tool_call_log`；（新增）`ai_insight`。
-- 数据权限受控表（`DataScopeResolverImpl.TABLE_PERMISSIONS`）：`customer_company`、`sales_opportunity`、`contract_order_item`、`contract`、`business_activity`、`contact_task`、`sales_stage_approval`、`payment_record`。
+- 数据权限受控表：`ResourceTypeConstant.MANAGED_TABLES`（**10** 张，含 `customer_contact`）；`DataScopeServiceImpl.TABLE_PERMISSIONS` 配权限三元组的 **9** 张（`customer_company`、`sales_opportunity`、`contract_order_item`、`contract`、`business_activity`、`contact_task`、`sales_stage_approval`、`payment_record`、`project_file`）；每表归属字段见 `TABLE_USER_FIELDS`。
 
 ### 2.5 CRM 配置项（需并入统一配置）
 - `spring.ai.dashscope.*`、`spring.ai.chat.options.*`
@@ -118,7 +118,7 @@
 1. **身份缝合**：CRM `UserContext`（ThreadLocal）→ RAG 授权入参（stable userId）。异步/流式线程需通过 `MdcTaskDecorator` + 安全上下文/用户上下文快照传播。
 2. **Result 缝合**：RAG 控制器返回 CRM `Result`；SSE 错误事件沿用 RAG `StreamErrorClassifier` + CRM 脱敏策略。
 3. **SSE 缝合**：CRM 助手 SSE（`AiChatSseEventWriter` + 心跳 + 接管）与 RAG 流式问答 SSE（`RagStreamSessionManager` + `rag.stream-timeout-ms`）**统一心跳/超时/取消/指标口径**，共用线程池治理与 traceId。
-4. **数据权限缝合**：CRM `DataScopeResolver`（含部门维度）作为业务数据可见性唯一口径；RAG 知识库可见性 = 知识库授权 ∩（可选）数据范围。AI 工具查询同时受两者约束。
+4. **数据权限缝合**：CRM `DataScopeServiceImpl`（经 `QueryWrapperAspect` 注入，含部门维度）作为业务数据可见性唯一口径；RAG 知识库可见性 = 知识库授权 ∩（可选）数据范围。AI 工具查询同时受两者约束。
 5. **Token 计量缝合**：CRM `AiMessage.tokenCount` + RAG `AiUsageInfo` → 平台统一计量表与预算执行器。
 6. **建表缝合**：`auto-table`（CRM）与 `ddl-auto`（RAG）→ 统一 Flyway 基线 + 版本化迁移（RAG 原由 Hibernate 自动建表，现需将表 DDL 显式写入基线脚本）。
 7. **模型 Provider 缝合**：CRM `spring.ai.dashscope` 与 RAG `llm.*`（vllm/openai）→ 平台统一 `ModelProvider` 抽象（默认 dashscope，可切换），chat/embedding/vision 统一入口。
@@ -155,7 +155,7 @@
 ## 七、建议迁移顺序（分阶段，与 tasks.json 对齐）
 
 1. **基座**：建空项目骨架（Boot 3.5.x）→ 并入 CRM 全量（可编译可跑）→ 建立统一 `Result`/异常/配置/profile → 引入 Flyway 基线。
-2. **部门数据权限**：`DataScopeLevel` 扩展 + 部门树/负责人 + `DataScopeResolver`/`MyDataPermissionHandler` + 测试（纯 CRM 内，风险低，先做）。
+2. **部门数据权限**：`DataScopeLevel` 扩展 + 部门树/负责人 + `DataScopeServiceImpl`/`QueryWrapperAspect`（删除死代码 `DataScopeResolver`）+ 测试（纯 CRM 内，风险低，先做）。
 3. **RAG 迁入**：重打包 `com.slz.crm.knowledge.*` → 引 Qdrant/MinIO → 身份缝合（CRM userId）→ 检索授权过滤优化 → 文档/检索/流式问答冒烟。
 4. **AI 助手统一**：`queryKnowledgeBase` 工具 + 限流落地 + references + 洞察 + Token 计量统一。
 5. **平台治理**：MDC/线程池/韧性/配额/预算/生命周期/对账/内容安全/审计/可观测性。
@@ -175,7 +175,7 @@
 
 ### 8.2 源项目测试基线（迁移后须重建）
 - CRM：`mvn -B -ntp "-Djacoco.skip=true" test`（原 306 通过，JaCoCo 80%）。
-- RAG：`mvnw test`（原 456 通过，6 个 Docker 集成测试跳过）。
+- RAG：`mvnw test`（surefire 实测 491：485 通过 + 6 个 Docker 集成测试跳过）。
 - 融合后：建立统一回归门禁（契约测试 + 数据权限测试 + 流式/检索冒烟 + 迁移演练）。
 
 ### 8.3 硬性协作规则（沿用两源项目）

@@ -16,10 +16,10 @@
 - 两个源项目各自都有**未完成提案**，需要在融合时一并中和，避免重复建设与语义漂移：
   - CRM：`add-ai-assistant`（安全/配额/预算/语义缓存等后续迭代项）、`enhance-ai-assistant`（限流落地、引用跳转、主动洞察、评测机制）。
   - RAG：`add-backend-governance-hardening`（请求配额、依赖韧性修复、AI Token 预算、版本化迁移、生命周期事件、跨存储对账、内容安全、审计门禁）、`update-backend-optimization-roadmap`（RAG 质量基准、检索性能优化、核心服务拆分、验证门禁）。
-- CRM 现有数据权限**缺少部门/上下级维度**：`DataScopeLevel` 只有 `NONE/SELF/TAGE/ALL`，`DataScopeResolverImpl` 只按“本人+共享 / 标签 / 全部”解析；`SysDeptEntity` 已有 `parentId` 部门树、`UserEntity` 已有 `deptId`，但**没有“本部门 / 本部门及以下（上司查看下属）”**的数据范围，也没有部门负责人字段。
+- CRM 现有数据权限**缺少部门/上下级维度**：`DataScopeLevel` 只有 `NONE/SELF/TAGE/ALL`，`DataScopeServiceImpl` 只按“本人+共享 / 标签 / 全部”解析（`DataScopeResolver` 为无调用方的死代码）；`SysDeptEntity` 已有 `parentId` 部门树、`UserEntity` 已有 `deptId`，但**没有“本部门 / 本部门及以下（上司查看下属）”**的数据范围，也没有部门负责人字段。
 - 两套认证（CRM 的 JWT 拦截器 + `@RequirePermission` vs RAG 的 Spring Security 过滤链 + 静态账号/teacher 账号）、两套持久化（MyBatis-Plus vs JPA）、两套 AI 栈（dashscope vs LangChain4j）、两套 `Result`、两个 Spring Boot 大版本（3.5.5 vs 4.0.2）必须在融合时统一或明确共存边界。
 
-**当前状态**：`crmAndRag` 为空仓；CRM 与 RAG 分别独立可用、各自回归通过（CRM 306 测试、RAG 456 测试），但无法协同——AI 助手只能查结构化业务数据，知识库只能独立问答，两者不共享身份、权限、治理与成本口径。
+**当前状态**：`crmAndRag` 仅有提案文档、尚无代码；CRM 与 RAG 分别独立可用、各自回归通过（CRM 306 测试、RAG 491 测试：485 通过+6 跳过），但无法协同——AI 助手只能查结构化业务数据，知识库只能独立问答，两者不共享身份、权限、治理与成本口径。
 
 **期望状态**：一个以 CRM 为基座的统一后端平台——
 - 单一身份与权限主体：CRM 的用户/角色/数据权限作为唯一认证源，RAG 的知识库授权绑定 CRM 稳定 userId。
@@ -40,7 +40,7 @@
 ### 组 2：部门架构与上下级数据权限（org-data-scope）
 - 扩展 `DataScopeLevel`：新增 `DEPT`（本部门）与 `DEPT_AND_CHILD`（本部门及以下/含下属）。
 - 基于 `sys_dept.parentId` 构建部门树，结合 `user.deptId` 解析“下属用户集合”，为负责人（上司）提供跨下级部门的数据可见性。
-- 为受控业务表补充 `_DEPT` / `_DEPT_AND_SUB` 权限项（`PermissionOperates`）并接入 `DataScopeResolver` 与 `MyDataPermissionHandler`。
+- 为受控业务表补充 `_DEPT` / `_DEPT_AND_SUB` 权限项（`PermissionOperates`）并接入 `DataScopeServiceImpl.addDataScopeCondition`（经 `QueryWrapperAspect` 注入；删除死代码 `DataScopeResolver`）。
 - 数据权限贯通 AI 工具查询与知识库可见范围（同一 userId + 数据范围口径）。
 
 ### 组 3：知识库/RAG 能力扩展（knowledge-rag）
@@ -95,7 +95,7 @@
 - `com.slz.crm.common` / `com.slz.crm.server.*` — CRM 业务与 AI 助手基座（沿用）。
 - `com.slz.crm.pojo.entity`（`SysDeptEntity`/`UserEntity` 等） — 部门树与上下级字段扩展。
 - `com.slz.crm.common.enumeration.DataScopeLevel` / `PermissionOperates` — 新增 DEPT/DEPT_AND_CHILD 及对应权限项。
-- `com.slz.crm.server.service.impl.DataScopeResolverImpl` + `MyDataPermissionHandler` — 下属集合解析与 SQL 注入。
+- `com.slz.crm.server.service.impl.DataScopeServiceImpl` + `server.aspect.QueryWrapperAspect` + `server.constant.ResourceTypeConstant` — 下属集合解析与条件注入（删除死代码 `DataScopeResolver(Impl)`）。
 - `com.slz.crm.knowledge.*`（由 `com.mark.knowledge.*` 重打包，JPA→MyBatis-Plus、LangChain4j→Spring AI） — 知识库/RAG 能力。
 - `com.slz.crm.platform.*` — 治理基础设施（trace/async/resilience/quota/token/migration/observability/audit）与动态配置（dynamic-config）、模型 Provider 抽象、VectorStore 抽象。
 
