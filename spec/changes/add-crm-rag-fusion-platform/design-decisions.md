@@ -16,7 +16,7 @@
 | 改造对象 | RAG（较小、较新，回填成本可控） | CRM（业务域庞大、依赖多） |
 | Jackson | RAG 从 Jackson 3（`tools.jackson`）回到 Jackson 2 | CRM 需迁移到 Jackson 3 |
 | Starter 命名 | RAG `spring-boot-starter-webmvc` → `spring-boot-starter-web` | CRM 需适配 Boot 4 命名/自动配置变化 |
-| Security | RAG Security 7 → 6（配合 D3 认证统一，实际会弱化 RAG Security） | CRM 需引入并适配 Security 7 |
+| Security | 移除 RAG Spring Security（D3：认证统一由 CRM 拦截器承担，此项已 moot） | CRM 需引入并适配 Security 7 |
 | MyBatis-Plus | 3.5.6 在 Boot 3.5.x 稳定 | 需验证 MyBatis-Plus 3.5.6 与 Boot 4 兼容性（风险高） |
 | spring-ai-alibaba | 1.0.0.4 基于 Boot 3 | 需验证 Boot 4 兼容性（风险高） |
 | LangChain4j | 1.12.2 支持 Boot 3 | 原生支持 Boot 4 |
