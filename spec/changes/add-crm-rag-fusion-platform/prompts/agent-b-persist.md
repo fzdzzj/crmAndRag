@@ -24,7 +24,7 @@ Agent-0 完成；`UserContext`/`Result` 契约已冻结；B-spike 已给出向�
 
 ## 要做
 1. `com.mark.knowledge.*` 重打包为 `com.slz.crm.knowledge.*`；Jackson3(`tools.jackson`)→Jackson2；starter `webmvc`→`web`；控制器返回 CRM `Result`。
-2. 9 个实体 JPA 注解→MyBatis-Plus（`@TableName`/`@TableId(AUTO)`/`@TableField`/`@EnumValue`）；实体全扁平无关联。
+2. 9 个实体 JPA 注解→MyBatis-Plus（`@TableName`/`@TableId(AUTO)`/`@TableField`/`@EnumValue`/`@TableLogic`）；**表名统一单数（chat_messages→chat_message 等 9 张）、审计列 created_time/updated_time→create_time/update_time、软删除 deleted→is_deleted（Boolean）**；实体全扁平无关联。
 3. 9 个 Repository→Mapper：派生查询→`LambdaQueryWrapper`；`@Query` JPQL→XML/`@Select`；`@Modifying`(`updateStatusIfMatch`/`markFailed`)→`@Update` 保留状态条件；`deleteByX` 返回 `long`→`int` 适配调用方。
 4. 服务层：`save()`→按 id 分流 `insert`/`updateById`；移除脏检查隐式依赖；`@Transactional` 保留。
 5. 身份缝合：RAG 授权入参消费 CRM `UserContext` 稳定 userId(`user:<id>`)；停用 RAG 独立登录/`SecurityConfig`；`UserIdentityVerifier`/`KnowledgeBaseAuthorizationService`/`ResourceAccessPolicy` 保留判定、换身份来源。

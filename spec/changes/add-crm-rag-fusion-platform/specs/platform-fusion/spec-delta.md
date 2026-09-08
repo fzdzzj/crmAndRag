@@ -67,6 +67,35 @@ GIVEN 每张表明确归属 CRM 域或知识库域
 WHEN 某域代码尝试直接写入对方域的表
 THEN 系统拒绝该设计并要求改为服务接口协作
 
+### Requirement: 数据库表协调统一约定
+系统 SHALL 在融合两套表结构时统一表命名与审计列约定（表名单数 snake_case、审计列 `create_time`/`update_time`），并协调软删除、用户引用与授权机制差异，MUST 以归属矩阵登记每张表的域与约定。
+
+#### Scenario: 表名与审计列统一
+GIVEN CRM 用单数表名与 create_time/update_time、RAG 用复数表名与 created_time/updated_time
+WHEN 融合迁移
+THEN 系统将 RAG 表重命名为单数、审计列重命名为 create_time/update_time
+AND 实体 @TableName/@TableField 与 Flyway 基线同步使用统一名
+AND 需保留存量数据时以 RENAME 迁移脚本处理
+
+#### Scenario: 软删除统一到逻辑删除
+GIVEN CRM 用 is_deleted（类型不一致）、RAG 用 deleted + deleted_by（存 username）
+WHEN 迁移到统一持久化
+THEN 系统将软删除列统一为 is_deleted（RAG deleted 重命名）、类型统一 Boolean
+AND 改用 MyBatis-Plus @TableLogic 管理软删除（替换手写过滤）
+AND deleted_by 由 username 迁移为稳定 userId
+
+#### Scenario: 跨域用户引用
+GIVEN 知识库表以字符串引用用户、CRM user.id 为 Long
+WHEN 建立跨域引用
+THEN 系统统一以 user:<id> 字符串（长度一致）作为逻辑引用
+AND 不建立跨域数据库外键，用户删除/交接以逻辑策略处理归属
+
+#### Scenario: 双轨授权边界
+GIVEN CRM 业务表按数据权限（owner/部门）过滤、知识库表按成员授权过滤
+WHEN 查询两类表
+THEN 业务表走数据权限处理器、知识库表走知识库授权，互不叠加
+AND AI 工具查询同时受两套机制各自约束
+
 ### Requirement: 统一配置与生产配置保护
 系统 SHALL 合并两套配置为单一配置体系，敏感项 MUST 通过环境变量注入，并按 dev/test/prod 分离 profile。
 

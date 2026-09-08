@@ -46,6 +46,7 @@
       { "step": "引入 Flyway，以 CRM 现有表 + RAG 现有表（原 Hibernate 自动建表，需显式 DDL）生成基线脚本 V1__baseline.sql", "completed": false },
       { "step": "生产 profile 关闭 auto-table.mode，移除 JPA/Hibernate 与 ddl-auto（改由 Flyway 管理）", "completed": false },
       { "step": "明确表归属边界（CRM 域 vs 知识库域），禁止跨域直接写对方表", "completed": false },
+      { "step": "按 db-table-coordination.md 落实表协调：表名统一单数(RAG 复数表 RENAME)、审计列统一 create_time/update_time、软删除列统一 is_deleted(RAG deleted RENAME)+类型 Boolean+@TableLogic、跨域 userId 引用统一 String(100)、双轨授权边界", "completed": false },
       { "step": "确立 MyBatis-Plus 为唯一持久化，输出 RAG JPA Repository→Mapper 迁移清单（阶段3执行）", "completed": false },
       { "step": "编写迁移/备份/验证/回退步骤文档", "completed": false }
     ],

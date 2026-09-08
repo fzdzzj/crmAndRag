@@ -38,6 +38,7 @@
 | `UploadedFileEntity` | uploaded_files | `knowledge_base` 归属字段、软删除标志 |
 
 - [ ] 逐实体替换注解，保留中文 Javadoc 注释风格
+- [ ] **表名统一单数**（chat_messages→chat_message 等 9 张）、**审计列统一** created_time/updated_time→create_time/update_time、**软删除列统一** deleted→is_deleted（+类型 Boolean、@TableLogic）；@TableName/@TableField 同步
 - [ ] 枚举字段确认存储形态（STRING）与 MyBatis-Plus 处理一致
 - [ ] `@Table` 内索引/唯一约束登记到 A4 的 DDL 清单
 
