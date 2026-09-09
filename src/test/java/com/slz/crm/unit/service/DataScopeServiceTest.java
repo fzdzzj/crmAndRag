@@ -59,7 +59,7 @@ class DataScopeServiceTest {
 
         assertTrue(service.canReadResource(current, "sales_opportunity", 99L, 7L, 8L));
 
-        when(dataShareMapper.selectSharedResourceIds(7L, null, "sales_opportunity"))
+        when(dataShareMapper.selectSharedResourceIds(7L, 4L, "sales_opportunity"))
                 .thenReturn(List.of(99L));
         assertTrue(service.canReadResource(current, "sales_opportunity", 99L, 8L, 9L));
     }
@@ -71,7 +71,7 @@ class DataScopeServiceTest {
         RolePermissionsEntity tagePermission = new RolePermissionsEntity();
         tagePermission.setPermissionsId(PermissionOperates.CUSTOMER_VIEW_COMPANY_TAGE.getId());
         when(rolePermissionsMapper.selectList(any())).thenReturn(List.of(tagePermission));
-        when(dataShareMapper.selectSharedResourceIds(7L, null, "customer_company"))
+        when(dataShareMapper.selectSharedResourceIds(7L, 3L, "customer_company"))
                 .thenReturn(Collections.emptyList());
         when(tageRoleBindingMapper.selectTageIdsByRoleId(3L)).thenReturn(List.of(11L));
         when(tageResourceBindingMapper.selectResourceIdsByTageIds(
@@ -85,7 +85,7 @@ class DataScopeServiceTest {
     void unrelatedResourceIsDenied() {
         RoleAO current = role(7L, 4L);
         when(rolePermissionsMapper.selectList(any())).thenReturn(Collections.emptyList());
-        when(dataShareMapper.selectSharedResourceIds(7L, null, "sales_opportunity"))
+        when(dataShareMapper.selectSharedResourceIds(7L, 4L, "sales_opportunity"))
                 .thenReturn(Collections.emptyList());
 
         assertFalse(service.canReadResource(current, "sales_opportunity", 99L, 8L, 9L));
