@@ -8,6 +8,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -47,6 +49,10 @@ public class AiChatStreamLifecycle {
     /** ModelProvider 实现归 base；缺失时保留 CRM 原有 ChatClient 兼容路径。 */
     @Autowired(required = false)
     private ObjectProvider<ModelProvider> modelProviderProvider;
+
+    /** 记忆加工是可选增强；测试或旁路组件缺失时不得影响主答。 */
+    @Autowired(required = false)
+    private AiMemoryOrchestrator memoryOrchestrator;
 
     public AiChatStreamLifecycle(ChatClient.Builder chatClientBuilder,
                                  AiProperties aiProperties,
@@ -132,6 +138,11 @@ public class AiChatStreamLifecycle {
                                 System.currentTimeMillis() - context.roundStart(), usage, references);
                         String content = activeStream.getPartialAnswer().toString();
                         persistAssistantMessage(activeStream, content, auditPayload, usage, false);
+                        if (memoryOrchestrator != null && !content.isBlank()) {
+                            memoryOrchestrator.onRoundCompleted(sessionId,
+                                    context.currentUser() == null ? null : context.currentUser().getId(),
+                                    lastUserMessage(context.messages()), content);
+                        }
                         if (sendBufferedEvent(activeStream, "done", eventWriter.toDoneJson(
                                 String.valueOf(sessionId), usage))) {
                             metrics.recordCompleted(activeStream, effectiveModel, context.fallback());
@@ -152,6 +163,16 @@ public class AiChatStreamLifecycle {
                 .subscribe();
         activeStream.setSubscription(subscription);
         heartbeat.start(activeStream, () -> sendHeartbeat(activeStream));
+    }
+
+    private String lastUserMessage(List<Message> messages) {
+        for (int index = messages.size() - 1; index >= 0; index--) {
+            Message message = messages.get(index);
+            if (message instanceof UserMessage userMessage && userMessage.getText() != null) {
+                return userMessage.getText();
+            }
+        }
+        return "";
     }
 
     /**

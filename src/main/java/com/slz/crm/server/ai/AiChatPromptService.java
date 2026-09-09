@@ -1,8 +1,10 @@
 package com.slz.crm.server.ai;
 
 import com.slz.crm.pojo.entity.AiMessageEntity;
+import com.slz.crm.pojo.entity.AiConversationMemoryEntity;
 import com.slz.crm.server.properties.AiProperties;
 import com.slz.crm.server.service.AiMessageService;
+import com.slz.crm.server.service.AiConversationMemoryService;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -21,6 +23,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 @Slf4j
@@ -35,6 +38,10 @@ public class AiChatPromptService {
 
     @Autowired
     private AiMessageService aiMessageService;
+
+    /** 记忆服务生产可用；部分单测只装配消息服务，因此保持可选。 */
+    @Autowired(required = false)
+    private AiConversationMemoryService conversationMemoryService;
 
     /** 提示词总字符闸门；历史超限时按最旧优先丢弃，必要 system/user 不裁剪。 */
     @Value("${ai.prompt-max-chars:3400}")
@@ -59,10 +66,33 @@ public class AiChatPromptService {
 
     public List<Message> buildMessages(Long sessionId, String message) {
         List<Message> messages = new ArrayList<>();
-        messages.add(new SystemMessage(systemPrompt));
+        AiConversationMemoryEntity memory = conversationMemoryService == null
+                ? null : conversationMemoryService.findBySessionId(sessionId);
+        messages.add(new SystemMessage(buildSystemPrompt(memory)));
         messages.addAll(loadHistory(sessionId));
         messages.add(new UserMessage(message));
         return applyPromptBudget(messages);
+    }
+
+    /**
+     * 将持久记忆注入系统提示词；加工品缺失时不改变原 system prompt。
+     */
+    private String buildSystemPrompt(AiConversationMemoryEntity memory) {
+        if (memory == null) {
+            return systemPrompt;
+        }
+        StringBuilder memoryBlock = new StringBuilder(systemPrompt);
+        if (memory.getIntent() != null && !memory.getIntent().isBlank()) {
+            memoryBlock.append("\n\n【当前意图】").append(memory.getIntent().trim());
+        }
+        if (memory.getFacts() != null && !memory.getFacts().isBlank()
+                && !"[]".equals(memory.getFacts().trim())) {
+            memoryBlock.append("\n\n【已确认事实】").append(memory.getFacts().trim());
+        }
+        if (memory.getSummary() != null && !memory.getSummary().isBlank()) {
+            memoryBlock.append("\n\n【历史摘要】").append(memory.getSummary().trim());
+        }
+        return memoryBlock.toString();
     }
 
     public String generateTitle(ChatClient.Builder chatClientBuilder, String userMessage) {
@@ -85,10 +115,16 @@ public class AiChatPromptService {
 
     private List<Message> loadHistory(Long sessionId) {
         int maxRounds = aiProperties.getMaxHistoryRounds() == null ? 10 : aiProperties.getMaxHistoryRounds();
-        List<AiMessageEntity> recent = aiMessageService.listRecentContextMessages(sessionId, maxRounds * 2);
+        List<AiMessageEntity> recent;
+        if (conversationMemoryService != null) {
+            // recentMessages 是 ai_message 的内存投影；恢复方法返回时间正序。
+            recent = conversationMemoryService.restoreRecentProjection(sessionId, maxRounds * 2);
+        } else {
+            recent = aiMessageService.listRecentContextMessages(sessionId, maxRounds * 2);
+            Collections.reverse(recent);
+        }
         List<Message> history = new ArrayList<>();
-        for (int i = recent.size() - 1; i >= 0; i--) {
-            AiMessageEntity entity = recent.get(i);
+        for (AiMessageEntity entity : recent) {
             String content = entity.getContent() == null ? "" : entity.getContent();
             if ("user".equals(entity.getRole())) {
                 history.add(new UserMessage(content));
