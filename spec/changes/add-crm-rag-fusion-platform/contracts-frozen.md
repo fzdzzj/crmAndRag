@@ -5,8 +5,8 @@
 
 ---
 
-## 0. 契约包现状（base e3f8230，17 个）
-`AssistantChatRequest` `CrmVectorStore` `DataScope` `DynamicConfigService` `ModelCallResult` `ModelProvider` `PlatformErrorCode` `SourceReference` `SseEventName` `TokenUsageRecord` `TokenUsageRecorder` `TokenUsageType` `UserContext` `UserContextHolder` `VectorRecord` `VectorSearchHit` `VectorSearchRequest`
+## 0. 契约包现状（base e3f8230 冻结 17 个 + 修正轮 +3 = 20 个）
+`AssistantChatRequest` `BypassTaskExecutor` `CrmVectorStore` `CrmVectorStoreHealth` `DataScope` `DynamicConfigService` `ModelCallResult` `ModelProvider` `PlatformErrorCode` `SourceReference` `SseEventName` `TokenUsageRecord` `TokenUsageRecorder` `TokenUsageType` `UserContext` `UserContextHolder` `VectorRecord` `VectorSearchHit` `VectorSearchRequest` `ModelProviderImpl`（归 base/platform，非 contract 包）
 
 **已核验为很好、无需改的**：
 - `UserContext(Long userId, Long roleId, Long deptId, DataScopeLevel dataScope, String displayName)` + `userIdRef()="user:<id>"` + `isSuperAdmin()` → **C1/C6 已解决**：CRM 域内引用用 `userId`(Long/BIGINT)，跨域（知识库表）用 `userIdRef()`(String100)。
@@ -121,3 +121,5 @@
 ## 变更日志
 - **2026-09-09 · base e3f8230**：初始 17 契约冻结（Agent-0）。
 - **2026-09-09 · 修正轮（架构批准）**：+`TITLE` 事件；SSE payload 字段级冻结；+断线续传（事件 id/有界缓冲/Last-Event-ID/重放≠重执行/sticky 兜底/RESUME_UNAVAILABLE）；+`CrmVectorStoreHealth`(B实现/D消费)；+`BypassTaskExecutor`(D实现/C消费)；+`KnowledgeRetrievalPort`(C定义/B实现,lane-local)；`ModelProviderImpl` 归 base（C2）；`imageRef` 语义澄清（=C聊天图域）；`TokenUsageType` 含 SUMMARY/INTENT；Qdrant metadata 类型约定（B4）；DataScope 超集不变量（A3）；确认 C1(sessionId String)/C6(user_id BIGINT，userIdRef 跨域)/D15(锚点已在契约)。
+- **2026-09-09 · 修正轮落地（Agent-0 重开）**：20 契约全部已实现；`ModelProviderImpl` chat 走 DashScope 原生 / streamChat 恒走 compatible-mode SSE + streamUsage(true) / embed 走 DashScope 原生 / vision 强制 qwen-vl 走 compatible-mode；真机 IT chat/stream/embed 均验证 usage 正常；`PlatformErrorCode` 10 项全集（§11）；`AssistantChatRequest.imageRef` Javadoc 更新。
+

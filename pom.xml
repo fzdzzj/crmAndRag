@@ -27,6 +27,8 @@
         <java.version>21</java.version>
         <testcontainers.version>1.21.4</testcontainers.version>
         <spring-ai-alibaba.version>1.0.0.4</spring-ai-alibaba.version>
+        <!-- 与 spring-ai-alibaba-core 1.0.0.4 传递的 Spring AI 版本保持一致（勿单独升级） -->
+        <spring-ai.version>1.0.1</spring-ai.version>
         <mybatis-plus.version>3.5.6</mybatis-plus.version>
         <mybatis-plus-ext.version>3.5.9-EXT727</mybatis-plus-ext.version>
         <jjwt.version>0.12.5</jjwt.version>
@@ -137,6 +139,17 @@
         <dependency>
             <groupId>com.alibaba.cloud.ai</groupId>
             <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
+        </dependency>
+        <!--
+          OpenAI 兼容客户端（contracts-frozen.md §1）：作为 DashScope compatible-mode 的 SSE 流式适配器。
+          说明：DashScopeChatModel.stream() 走 DashScope 原生协议，usage 在流中不可靠；
+          compatible-mode 走 OpenAI SSE 协议，可通过 streamUsage(true) 让最后一个 chunk 带 usage。
+          版本必须与 spring-ai-alibaba-core 传递的 Spring AI 版本一致，避免模型类冲突。
+        -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-openai</artifactId>
+            <version>${spring-ai.version}</version>
         </dependency>
 
         <!-- ==================== 平台基础设施（D7：Qdrant + MinIO） ==================== -->
