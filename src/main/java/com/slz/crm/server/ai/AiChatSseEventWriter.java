@@ -14,6 +14,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 助手 SSE 事件写出器。
+ *
+ * <p>负责冻结契约的 payload 序列化、事件 id 分配与断线续传缓冲。</p>
+ */
 @Slf4j
 @Component
 public class AiChatSseEventWriter {
@@ -21,19 +26,59 @@ public class AiChatSseEventWriter {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public boolean sendEvent(SseEmitter emitter, String event, String data) {
+        return sendEvent(emitter, event, data, null);
+    }
+
+    /**
+     * 发送带事件 id 的业务事件，并写入 generation 续传缓冲。
+     *
+     * <p>同一 ActiveStream 的发送串行化，避免新连接替换 emitter 后新旧连接并发写。</p>
+     */
+    public boolean sendBufferedEvent(AiStreamRegistry.ActiveStream activeStream, String event, String data) {
+        synchronized (activeStream) {
+            String eventId = activeStream.getEventBuffer().nextEventId();
+            boolean sent = sendEvent(activeStream.getEmitter(), event, data, eventId);
+            if (sent) {
+                activeStream.getEventBuffer().append(eventId, event, data);
+            }
+            return sent;
+        }
+    }
+
+    /**
+     * 向重连连接重放缓冲事件；只重放，不触发任何业务执行。
+     */
+    public void replay(AiStreamRegistry.ActiveStream activeStream, SseEmitter emitter, String lastEventId) {
+        for (AiSseEventBuffer.BufferedEvent event : activeStream.getEventBuffer().eventsAfter(lastEventId)) {
+            sendEvent(emitter, event.eventName(), event.data(), event.eventId());
+        }
+    }
+
+    private boolean sendEvent(SseEmitter emitter, String event, String data, String eventId) {
         try {
-            emitter.send(SseEmitter.event().name(event).data(data));
+            SseEmitter.SseEventBuilder builder = SseEmitter.event().name(event).data(data);
+            if (eventId != null) {
+                builder.id(eventId);
+            }
+            emitter.send(builder);
             return true;
         } catch (IOException | IllegalStateException e) {
-            log.warn("SSE send failed, event={}", event, e);
+            log.warn("SSE send failed, event={}, eventId={}", event, eventId, e);
             return false;
         }
     }
 
     public boolean sendError(SseEmitter emitter, String code, String message) {
+        return sendError(emitter, code, message, null);
+    }
+
+    public boolean sendError(SseEmitter emitter, String code, String message, Integer retryAfterSeconds) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("code", code);
-        data.put("message", message);
+        data.put("msg", message);
+        if (retryAfterSeconds != null) {
+            data.put("retryAfterSeconds", retryAfterSeconds);
+        }
         return sendEvent(emitter, "error", writeJson(data));
     }
 
@@ -48,36 +93,65 @@ public class AiChatSseEventWriter {
         }
     }
 
-    public String toMetaJson(Long sessionId, Long messageId) {
+    public String toStartJson(String sessionId, Long assistantMessageId, String generationId) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("sessionId", sessionId);
-        data.put("messageId", messageId);
+        data.put("assistantMessageId", assistantMessageId);
+        data.put("generationId", generationId);
         return writeJson(data);
     }
 
-    public String toTextJson(String content) {
+    public String toMetaJson(String provider, String model, boolean useKnowledgeBase, boolean thinking) {
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("content", content);
+        data.put("provider", provider);
+        data.put("model", model);
+        data.put("useKnowledgeBase", useKnowledgeBase);
+        data.put("thinking", thinking);
         return writeJson(data);
     }
 
-    public String toTitleJson(Long sessionId, String title) {
+    public String toThinkingJson(String text, boolean finished) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("text", text == null ? "" : text);
+        data.put("finished", finished);
+        return writeJson(data);
+    }
+
+    public String toDeltaJson(String content) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("content", content == null ? "" : content);
+        return writeJson(data);
+    }
+
+    public String toTitleJson(String text) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("text", text);
+        return writeJson(data);
+    }
+
+    public String toDoneJson(String sessionId, Usage usage) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("sessionId", sessionId);
-        data.put("title", title);
+        data.put("cancelled", false);
+        data.put("usage", usageMap(usage));
         return writeJson(data);
     }
 
-    public String toDoneJson() {
-        return "{}";
+    public String toCancelledJson(String reason) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("reason", reason);
+        return writeJson(data);
+    }
+
+    public String toStoppedJson(String reason) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("reason", reason);
+        return writeJson(data);
     }
 
     public String toStoppedJson(Long sessionId, AiMessageEntity message) {
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("sessionId", sessionId);
-        data.put("messageId", message == null ? null : message.getId());
-        data.put("interrupted", true);
-        return writeJson(data);
+        // 兼容旧取消路径：保存结果只用于日志/指标，冻结 payload 仍只暴露 reason。
+        return toStoppedJson(message == null ? "CANCELLED" : "SUPERSEDED_BY_NEW_REQUEST");
     }
 
     public String toAuditJson(String model, String promptVersion, long costMs, Usage usage,
@@ -98,7 +172,8 @@ public class AiChatSseEventWriter {
 
     public String toReferencesJson(List<AiReferenceCollector.Reference> references) {
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("references", toReferenceItems(references));
+        data.put("citations", List.of());
+        data.put("items", toReferenceItems(references));
         return writeJson(data);
     }
 
@@ -112,6 +187,14 @@ public class AiChatSseEventWriter {
             refs.add(item);
         }
         return refs;
+    }
+
+    private Map<String, Long> usageMap(Usage usage) {
+        Map<String, Long> result = new LinkedHashMap<>();
+        result.put("input", usage == null || usage.getPromptTokens() == null ? 0L : usage.getPromptTokens());
+        result.put("output", usage == null || usage.getCompletionTokens() == null ? 0L : usage.getCompletionTokens());
+        result.put("total", usage == null || usage.getTotalTokens() == null ? 0L : usage.getTotalTokens());
+        return result;
     }
 
     private String writeJson(Object value) {

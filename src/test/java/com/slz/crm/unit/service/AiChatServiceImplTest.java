@@ -13,6 +13,7 @@ import com.slz.crm.pojo.entity.AiMessageEntity;
 import com.slz.crm.pojo.entity.AiSessionEntity;
 import com.slz.crm.server.ai.AiRateLimiter;
 import com.slz.crm.server.ai.AiStreamRegistry;
+import com.slz.crm.server.ai.AiAssistantMessageStore;
 import com.slz.crm.server.ai.AiToolRegistry;
 import com.slz.crm.server.properties.AiProperties;
 import com.slz.crm.server.service.AiMessageService;
@@ -30,6 +31,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.core.env.Environment;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
@@ -54,6 +56,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -93,6 +96,11 @@ class AiChatServiceImplTest {
     @Mock
     private AiRateLimiter aiRateLimiter;
 
+    @Mock
+    private AiAssistantMessageStore assistantMessageStore;
+
+    private Environment environment;
+
     private AiChatPromptService promptService;
 
     private AiChatSseEventWriter eventWriter;
@@ -113,6 +121,13 @@ class AiChatServiceImplTest {
         java.util.concurrent.Executor directExecutor = Runnable::run;
         ReflectionTestUtils.setField(service, "aiChatExecutor", directExecutor);
         ReflectionTestUtils.setField(service, "aiTitleExecutor", directExecutor);
+        AiMessageEntity assistantPlaceholder = new AiMessageEntity();
+        assistantPlaceholder.setId(9999L);
+        lenient().when(assistantMessageStore.createPlaceholder(anyLong())).thenReturn(assistantPlaceholder);
+        environment = mock(Environment.class);
+        lenient().when(environment.getProperty("spring.ai.chat.provider", "dashscope")).thenReturn("dashscope");
+        lenient().when(environment.getProperty("spring.ai.chat.options.model", "qwen-plus")).thenReturn("qwen-plus");
+        ReflectionTestUtils.setField(service, "environment", environment);
         promptService = new AiChatPromptService();
         eventWriter = spy(new AiChatSseEventWriter());
         // 测试中关闭心跳，避免定时任务影响生命周期断言
@@ -122,7 +137,8 @@ class AiChatServiceImplTest {
         streamLifecycle = new AiChatStreamLifecycle(chatClientBuilder, aiProperties, aiMessageService,
                 new AiStreamRegistry(), promptService, eventWriter, heartbeat,
                 // 使用独立内存 MeterRegistry，避免测试间共享指标状态
-                new AiChatMetrics(new SimpleMeterRegistry(), new AiStreamRegistry()), "qwen-plus");
+                new AiChatMetrics(new SimpleMeterRegistry(), new AiStreamRegistry()), assistantMessageStore,
+                "qwen-plus");
         ReflectionTestUtils.setField(promptService, "aiProperties", aiProperties);
         ReflectionTestUtils.setField(promptService, "aiMessageService", aiMessageService);
         ReflectionTestUtils.setField(streamLifecycle, "chatClientBuilder", chatClientBuilder);
@@ -142,7 +158,7 @@ class AiChatServiceImplTest {
         streamLifecycle = new AiChatStreamLifecycle(chatClientBuilder, aiProperties, aiMessageService,
                 registry, promptService, eventWriter, heartbeat,
                 // 指标注册表与当前 AiStreamRegistry 配对，便于读取活跃流 Gauge
-                new AiChatMetrics(new SimpleMeterRegistry(), registry), "qwen-plus");
+                new AiChatMetrics(new SimpleMeterRegistry(), registry), assistantMessageStore, "qwen-plus");
         ReflectionTestUtils.setField(service, "promptService", promptService);
         ReflectionTestUtils.setField(service, "eventWriter", eventWriter);
         ReflectionTestUtils.setField(service, "streamLifecycle", streamLifecycle);
@@ -215,8 +231,6 @@ class AiChatServiceImplTest {
         AiMessageEntity saved = new AiMessageEntity();
         saved.setId(88L);
         when(aiMessageService.saveMessage(9L, "user", "text", "你好", null)).thenReturn(saved);
-        when(aiMessageService.saveMessage(eq(9L), eq("assistant"), eq("text"), eq(""), any(), eq(0)))
-                .thenReturn(saved);
         when(chatClientBuilder.build()).thenReturn(chatClient);
         when(chatClient.prompt()).thenReturn(promptSpec);
         when(promptSpec.messages(anyList())).thenReturn(promptSpec);
@@ -231,7 +245,7 @@ class AiChatServiceImplTest {
     }
 
     @Test
-    void doStreamChat_withActiveStream_stopsOldAndSavesPartialBeforeNewContext() {
+    void doStreamChat_withActiveStream_replacesOldWithoutImmediateDispose() {
         RoleAO currentUser = buildUser(42L);
         BaseUnit.setCurrentRole(currentUser);
         AiSessionEntity session = new AiSessionEntity();
@@ -239,7 +253,6 @@ class AiChatServiceImplTest {
         session.setTitle("已有会话");
         AiStreamRegistry registry = new AiStreamRegistry();
         AiStreamRegistry.ActiveStream oldStream = new AiStreamRegistry.ActiveStream(9L, emitter);
-        oldStream.getPartialAnswer().append("部分回答");
         registry.register(9L, oldStream);
         useRegistry(registry);
 
@@ -250,15 +263,9 @@ class AiChatServiceImplTest {
         AiChatPromptService promptSpy = org.mockito.Mockito.spy(promptService);
         ReflectionTestUtils.setField(service, "promptService", promptSpy);
         doReturn(List.of()).when(promptSpy).buildMessages(9L, "补充说明");
-        AiMessageEntity savedPartial = new AiMessageEntity();
-        savedPartial.setId(88L);
-        when(aiMessageService.saveMessage(eq(9L), eq("assistant"), eq("text"), eq("部分回答"),
-                eq("{\"interrupted\":true}"))).thenReturn(savedPartial);
         AiMessageEntity savedUser = new AiMessageEntity();
         savedUser.setId(89L);
         when(aiMessageService.saveMessage(9L, "user", "text", "补充说明", null)).thenReturn(savedUser);
-        when(aiMessageService.saveMessage(eq(9L), eq("assistant"), eq("text"), eq(""), any(), eq(0)))
-                .thenReturn(savedPartial);
         when(chatClientBuilder.build()).thenReturn(chatClient);
         when(chatClient.prompt()).thenReturn(promptSpec);
         when(promptSpec.messages(anyList())).thenReturn(promptSpec);
@@ -267,17 +274,13 @@ class AiChatServiceImplTest {
 
         ReflectionTestUtils.invokeMethod(service, "doStreamChat", currentUser, 9L, "补充说明", emitter);
 
-        assertThat(oldStream.isFinished()).isTrue();
-        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(aiMessageService, promptSpy);
-        inOrder.verify(aiMessageService).saveMessage(eq(9L), eq("assistant"), eq("text"), eq("部分回答"),
-                eq("{\"interrupted\":true}"));
+        assertThat(oldStream.isFinished()).isFalse();
+        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(promptSpy);
         inOrder.verify(promptSpy).buildMessages(9L, "补充说明");
-        verify(eventWriter).sendEvent(org.mockito.ArgumentMatchers.eq(emitter),
-                org.mockito.ArgumentMatchers.eq("stopped"), org.mockito.ArgumentMatchers.anyString());
     }
 
     @Test
-    void doStreamChat_withActiveStreamWithoutPartial_savesNoEmptyAssistant() {
+    void doStreamChat_withActiveStreamWithoutPartial_keepsOldForCooperativeAbort() {
         RoleAO currentUser = buildUser(42L);
         BaseUnit.setCurrentRole(currentUser);
         AiSessionEntity session = new AiSessionEntity();
@@ -306,14 +309,7 @@ class AiChatServiceImplTest {
 
         ReflectionTestUtils.invokeMethod(service, "doStreamChat", currentUser, 9L, "补充说明", emitter);
 
-        assertThat(oldStream.isFinished()).isTrue();
-        verify(aiMessageService, never()).saveMessage(eq(9L), eq("assistant"), eq("text"), eq(""),
-                eq("{\"interrupted\":true}"));
-        verify(aiMessageService, never()).saveMessage(eq(9L), eq("assistant"), eq("text"), eq(""),
-                eq("{\"interrupted\":true}"), eq(0));
-        verify(eventWriter).sendEvent(org.mockito.ArgumentMatchers.eq(emitter),
-                org.mockito.ArgumentMatchers.eq("stopped"),
-                org.mockito.ArgumentMatchers.eq("{\"sessionId\":9,\"messageId\":null,\"interrupted\":true}"));
+        assertThat(oldStream.isFinished()).isFalse();
     }
 
     @Test
@@ -323,22 +319,20 @@ class AiChatServiceImplTest {
         when(aiSessionService.getOwnedSession(9L, 42L)).thenReturn(session);
         AiStreamRegistry registry = new AiStreamRegistry();
         AiStreamRegistry.ActiveStream activeStream = new AiStreamRegistry.ActiveStream(9L, emitter);
+        activeStream.setAssistantMessageId(88L);
+        registry.register(9L, activeStream);
         activeStream.getPartialAnswer().append("部分内容");
         registry.register(9L, activeStream);
         ReflectionTestUtils.setField(service, "aiStreamRegistry", registry);
         useRegistry(registry);
-        AiMessageEntity saved = new AiMessageEntity();
-        saved.setId(88L);
-        when(aiMessageService.saveMessage(eq(9L), eq("assistant"), eq("text"), eq("部分内容"),
-                eq("{\"interrupted\":true}")))
-                .thenReturn(saved);
+        when(assistantMessageStore.complete(eq(88L), eq("部分内容"), eq("{\"interrupted\":true}"), eq(0)))
+                .thenReturn(true);
 
         boolean cancelled = service.cancelStream(9L, 42L);
 
         assertThat(cancelled).isTrue();
         assertThat(activeStream.isFinished()).isTrue();
-        verify(aiMessageService).saveMessage(eq(9L), eq("assistant"), eq("text"), eq("部分内容"),
-                eq("{\"interrupted\":true}"));
+        verify(assistantMessageStore).complete(eq(88L), eq("部分内容"), eq("{\"interrupted\":true}"), eq(0));
         verify(emitter).complete();
     }
 
@@ -366,14 +360,17 @@ class AiChatServiceImplTest {
         when(aiProperties.getFallbackModel()).thenReturn("qwen-turbo");
         when(aiProperties.getLlmTimeoutSeconds()).thenReturn(1);
         when(aiProperties.getStaticFallbackMessage()).thenReturn("AI 服务暂时不可用");
+        AiStreamRegistry registry = new AiStreamRegistry();
+        useRegistry(registry);
         AiStreamRegistry.ActiveStream activeStream = new AiStreamRegistry.ActiveStream(9L, emitter);
+        activeStream.setAssistantMessageId(88L);
+        registry.register(9L, activeStream);
 
         invokeHandleStreamError(activeStream);
 
         assertThat(activeStream.isFinished()).isTrue();
         verify(chatClientBuilder).build();
-        verify(aiMessageService).saveMessage(eq(9L), eq("assistant"), eq("text"), eq("AI 服务暂时不可用"),
-                eq("{\"fallback\":true}"));
+        verify(assistantMessageStore).complete(eq(88L), eq("AI 服务暂时不可用"), eq("{\"fallback\":true}"), eq(0));
         verify(emitter).complete();
     }
 
@@ -402,6 +399,7 @@ class AiChatServiceImplTest {
         AiStreamRegistry registry = new AiStreamRegistry();
         useRegistry(registry);
         AiStreamRegistry.ActiveStream activeStream = new AiStreamRegistry.ActiveStream(9L, emitter);
+        activeStream.setAssistantMessageId(88L);
         activeStream.getPartialAnswer().append("部分内容");
         activeStream.setContext(AiChatStreamContext.initial(9L, emitter, List.of(), List.of(),
                 System.currentTimeMillis(), null));
@@ -413,8 +411,7 @@ class AiChatServiceImplTest {
         assertThat(activeStream.isFinished()).isTrue();
         assertThat(registry.get(9L)).isNull();
         verify(chatClientBuilder, never()).build();
-        verify(aiMessageService).saveMessage(eq(9L), eq("assistant"), eq("text"), eq("部分内容"),
-                eq("{\"interrupted\":true}"));
+        verify(assistantMessageStore).complete(eq(88L), eq("部分内容"), eq("{\"interrupted\":true}"), eq(0));
         verify(emitter).complete();
     }
 
@@ -423,6 +420,7 @@ class AiChatServiceImplTest {
         AiStreamRegistry registry = new AiStreamRegistry();
         useRegistry(registry);
         AiStreamRegistry.ActiveStream activeStream = new AiStreamRegistry.ActiveStream(9L, emitter);
+        activeStream.setAssistantMessageId(88L);
         activeStream.setContext(AiChatStreamContext.initial(9L, emitter, List.of(), List.of(),
                 System.currentTimeMillis(), null));
         registry.register(9L, activeStream);
@@ -435,7 +433,7 @@ class AiChatServiceImplTest {
         when(promptSpec.stream()).thenReturn(streamSpec);
         when(streamSpec.chatResponse()).thenReturn(Flux.just(response));
         when(response.getResult().getOutput().getText()).thenReturn("chunk");
-        doReturn(false).when(eventWriter).sendEvent(emitter, "text", "{\"content\":\"chunk\"}");
+        doReturn(false).when(eventWriter).sendBufferedEvent(activeStream, "delta", "{\"content\":\"chunk\"}");
 
         streamLifecycle.subscribe(activeStream, activeStream.getContext());
 
@@ -458,6 +456,7 @@ class AiChatServiceImplTest {
     void streamContext_fallbackInheritsSubscriptionState() {
         RoleAO currentUser = buildUser(42L);
         AiStreamRegistry.ActiveStream activeStream = new AiStreamRegistry.ActiveStream(9L, emitter);
+        activeStream.setAssistantMessageId(88L);
         activeStream.setContext(AiChatStreamContext.initial(9L, emitter, List.of(), List.of(),
                 123L, currentUser));
 
@@ -523,6 +522,7 @@ class AiChatServiceImplTest {
         AiStreamRegistry registry = new AiStreamRegistry();
         useRegistry(registry);
         AiStreamRegistry.ActiveStream activeStream = new AiStreamRegistry.ActiveStream(9L, emitter);
+        activeStream.setAssistantMessageId(88L);
         activeStream.setContext(AiChatStreamContext.initial(9L, emitter, List.of(), List.of(),
                 System.currentTimeMillis(), null));
         registry.register(9L, activeStream);
@@ -531,14 +531,14 @@ class AiChatServiceImplTest {
         when(promptSpec.messages(anyList())).thenReturn(promptSpec);
         when(promptSpec.stream()).thenReturn(streamSpec);
         when(streamSpec.chatResponse()).thenReturn(Flux.empty());
-        when(aiMessageService.saveMessage(eq(9L), eq("assistant"), eq("text"), eq(""), any(), eq(0)))
-                .thenThrow(new IllegalStateException("db unavailable"));
+        when(assistantMessageStore.complete(eq(88L), eq(""), any(), eq(0))).thenReturn(false);
 
         streamLifecycle.subscribe(activeStream, activeStream.getContext());
 
         assertThat(activeStream.isFinished()).isTrue();
         assertThat(registry.get(9L)).isNull();
-        verify(eventWriter).sendEvent(emitter, "done", "{}");
+        verify(eventWriter).sendBufferedEvent(org.mockito.ArgumentMatchers.eq(activeStream),
+                org.mockito.ArgumentMatchers.eq("done"), org.mockito.ArgumentMatchers.anyString());
         verify(emitter).complete();
     }
 
@@ -547,20 +547,20 @@ class AiChatServiceImplTest {
         AiStreamRegistry registry = new AiStreamRegistry();
         useRegistry(registry);
         AiStreamRegistry.ActiveStream activeStream = new AiStreamRegistry.ActiveStream(9L, emitter);
+        activeStream.setAssistantMessageId(88L);
         activeStream.getPartialAnswer().append("部分内容");
         activeStream.setContext(AiChatStreamContext.initial(9L, emitter, List.of(), List.of(),
                 System.currentTimeMillis(), null));
         registry.register(9L, activeStream);
-        when(aiMessageService.saveMessage(eq(9L), eq("assistant"), eq("text"), eq("部分内容"),
-                eq("{\"interrupted\":true}")))
-                .thenThrow(new IllegalStateException("db unavailable"));
+        when(assistantMessageStore.complete(eq(88L), eq("部分内容"), eq("{\"interrupted\":true}"), eq(0)))
+                .thenReturn(false);
 
         boolean cancelled = streamLifecycle.cancel(activeStream, 9L);
 
         assertThat(cancelled).isTrue();
         assertThat(activeStream.isFinished()).isTrue();
         assertThat(registry.get(9L)).isNull();
-        verify(eventWriter).sendEvent(emitter, "stopped", "{\"sessionId\":9,\"messageId\":null,\"interrupted\":true}");
+        verify(eventWriter).sendBufferedEvent(activeStream, "stopped", "{\"reason\":\"CANCELLED\"}");
         verify(emitter).complete();
     }
 
@@ -569,6 +569,7 @@ class AiChatServiceImplTest {
         AiStreamRegistry registry = new AiStreamRegistry();
         useRegistry(registry);
         AiStreamRegistry.ActiveStream activeStream = new AiStreamRegistry.ActiveStream(9L, emitter);
+        activeStream.setAssistantMessageId(88L);
         activeStream.setContext(AiChatStreamContext.initial(9L, emitter, List.of(), List.of(),
                 System.currentTimeMillis(), null));
         registry.register(9L, activeStream);
@@ -579,12 +580,11 @@ class AiChatServiceImplTest {
         when(aiProperties.getLlmTimeoutSeconds()).thenReturn(1);
         ChatResponse chatResponse = buildChatResponseWithUsage("回答", 128);
         when(streamSpec.chatResponse()).thenReturn(Flux.just(chatResponse));
-        when(aiMessageService.saveMessage(eq(9L), eq("assistant"), eq("text"), eq("回答"), any(), eq(128)))
-                .thenReturn(new AiMessageEntity());
+        when(assistantMessageStore.complete(eq(88L), eq("回答"), any(), eq(128))).thenReturn(true);
 
         streamLifecycle.subscribe(activeStream, activeStream.getContext());
 
-        verify(aiMessageService).saveMessage(eq(9L), eq("assistant"), eq("text"), eq("回答"), any(), eq(128));
+        verify(assistantMessageStore).complete(eq(88L), eq("回答"), any(), eq(128));
     }
 
     private RoleAO buildUser(Long id) {

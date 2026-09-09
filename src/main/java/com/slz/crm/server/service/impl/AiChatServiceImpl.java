@@ -10,6 +10,7 @@ import com.slz.crm.server.ai.AiChatStreamLifecycle;
 import com.slz.crm.server.ai.AiRateLimiter;
 import com.slz.crm.server.ai.AiChatStreamContext;
 import com.slz.crm.server.ai.AiStreamRegistry;
+import com.slz.crm.server.ai.AiAssistantMessageStore;
 import com.slz.crm.server.ai.AiToolRegistry;
 import com.slz.crm.server.service.AiChatService;
 import com.slz.crm.server.service.AiMessageService;
@@ -22,6 +23,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.springframework.core.env.Environment;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
@@ -57,10 +59,16 @@ public class AiChatServiceImpl implements AiChatService {
     private AiToolRegistry aiToolRegistry;
 
     @Autowired
+    private Environment environment;
+
+    @Autowired
     private PermissionService permissionService;
 
     @Autowired
     private AiStreamRegistry aiStreamRegistry;
+
+    @Autowired
+    private AiAssistantMessageStore assistantMessageStore;
 
     @Autowired
     private AiRateLimiter aiRateLimiter;
@@ -113,18 +121,21 @@ public class AiChatServiceImpl implements AiChatService {
             takeoverLock.lock();
             try {
                 AiStreamRegistry.ActiveStream oldStream = aiStreamRegistry.get(finalSessionId);
-                if (oldStream != null) {
-                    // 同步结束旧流：先保存片段，再发 stopped，最后释放注册表位置
-                    streamLifecycle.cancel(oldStream, finalSessionId);
-                }
+                // 接管只顶替注册表；旧流在下一个 shouldAbort 检查点协作退出。
 
                 List<Message> messages = promptService.buildMessages(finalSessionId, message);
                 AiMessageEntity userMessage = aiMessageService.saveMessage(
                         finalSessionId, "user", "text", message, null);
-                eventWriter.sendEvent(emitter, "meta", eventWriter.toMetaJson(finalSessionId, userMessage.getId()));
+                AiMessageEntity assistantMessage = assistantMessageStore.createPlaceholder(finalSessionId);
+                AiStreamRegistry.ActiveStream activeStream = new AiStreamRegistry.ActiveStream(
+                        finalSessionId, emitter, java.util.UUID.randomUUID().toString());
+                activeStream.setAssistantMessageId(assistantMessage.getId());
+                eventWriter.sendBufferedEvent(activeStream, "start", eventWriter.toStartJson(
+                        String.valueOf(finalSessionId), assistantMessage.getId(), activeStream.getGenerationId()));
+                eventWriter.sendBufferedEvent(activeStream, "meta", eventWriter.toMetaJson(
+                        resolveProvider(), resolveModelName(), false, false));
 
                 List<ToolCallback> toolCallbacks = permittedToolCallbacks(currentUser);
-                AiStreamRegistry.ActiveStream activeStream = new AiStreamRegistry.ActiveStream(finalSessionId, emitter);
                 activeStream.setContext(AiChatStreamContext.initial(finalSessionId, emitter, messages, toolCallbacks,
                         System.currentTimeMillis(), currentUser));
                 aiStreamRegistry.register(finalSessionId, activeStream);
@@ -132,6 +143,7 @@ public class AiChatServiceImpl implements AiChatService {
                 emitter.onTimeout(() -> streamLifecycle.cleanup(activeStream, "onTimeout"));
                 generateTitleAsync(finalSessionId, userId, message, needTitle, activeStream);
                 if (activeStream.isFinished()) {
+                    assistantMessageStore.deleteIfEmpty(activeStream.getAssistantMessageId());
                     return;
                 }
 
@@ -155,13 +167,12 @@ public class AiChatServiceImpl implements AiChatService {
         }
         CompletableFuture.runAsync(() -> {
             String title = promptService.generateTitle(chatClientBuilder, message);
-            if (title != null && !title.isBlank()) {
-                aiSessionService.updateTitle(sessionId, userId, title);
-                if (!activeStream.isFinished()) {
-                    eventWriter.sendEvent(activeStream.getEmitter(), "title",
-                            eventWriter.toTitleJson(sessionId, title));
+                if (title != null && !title.isBlank()) {
+                    aiSessionService.updateTitle(sessionId, userId, title);
+                    if (!activeStream.isFinished()) {
+                        eventWriter.sendBufferedEvent(activeStream, "title", eventWriter.toTitleJson(title));
+                    }
                 }
-            }
         }, aiTitleExecutor);
     }
 
@@ -171,6 +182,15 @@ public class AiChatServiceImpl implements AiChatService {
             currentUser.setPermissions(permissionService.getPermissionList(currentUser.getRoleId()));
         }
         return aiToolRegistry.getPermittedToolCallbacks(currentUser);
+    }
+
+    private String resolveProvider() {
+        // DashScope 是当前基线默认 Provider；ModelProvider 接线后由 provider() 统一回传。
+        return environment.getProperty("spring.ai.chat.provider", "dashscope");
+    }
+
+    private String resolveModelName() {
+        return environment.getProperty("spring.ai.chat.options.model", "qwen-plus");
     }
 
     @Override
