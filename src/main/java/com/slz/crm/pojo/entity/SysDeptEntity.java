@@ -32,10 +32,15 @@ public class SysDeptEntity {
     @Column(comment = "部门名称", type = "varchar(50)", notNull = true)
     private String deptName;
     /**
-     * 上级部门ID（可空，支持两级）
+     * 上级部门ID（可空，支持多级部门树）
      */
     @Column(comment = "上级部门ID", type = "bigint")
     private Long parentId;
+    /**
+     * 部门负责人用户ID（可空；用于负责人默认查看本部门及以下数据）
+     */
+    @Column(comment = "部门负责人用户ID", type = "bigint")
+    private Long leaderId;
     /**
      * 排序
      */

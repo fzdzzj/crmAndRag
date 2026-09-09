@@ -23,6 +23,12 @@ public class RoleAO {
     private Long roleId;
 
     /**
+     * 所属部门ID
+     * <p>用于“本部门 / 本部门及以下”数据范围解析；由权限拦截器在请求线程内填充。</p>
+     */
+    private Long deptId;
+
+    /**
      * 角色拥有的��限列表
      * 在权限拦截器中自动加载并填充
      */
