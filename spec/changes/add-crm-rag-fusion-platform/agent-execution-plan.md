@@ -43,7 +43,7 @@ Wave 3  [集成·integrator]        任务 18 契约/性能测试 + CI 门禁 + 
 
 ## 2. Wave 0 必须冻结的"稳定契约"（并行前提）
 
-基座 agent 在 Wave 0 末尾把下列接口**定义并冻结**（放 `com.slz.crm.platform.contract` 或各域 api 包），各 lane 只实现/消费、不改签名：
+基座 agent 在 Wave 0 末尾把下列接口**定义并冻结**（放 `com.slz.crm.platform.contract`），各 lane 只实现/消费、不改签名。**★完整字段级契约、SSE payload、断线续传、后续修正（TITLE/CrmVectorStoreHealth/BypassTaskExecutor/RESUME_UNAVAILABLE/ModelProviderImpl）与“谁实现谁消费”以 `contracts-frozen.md` 为准**；下表为摘要：
 
 | 契约 | 内容 | 消费方 |
 |------|------|--------|
@@ -53,7 +53,7 @@ Wave 3  [集成·integrator]        任务 18 契约/性能测试 + CI 门禁 + 
 | `VectorStore` 抽象 | `QdrantVectorStore`(默认) + `InMemoryVectorStore`(回退)；统一 search/filter | B/D |
 | `DataScope` 接口 | 数据范围解析（含 DEPT/DEPT_AND_CHILD）；**入参带 userId+deptId**（现 `RoleAO` 无 deptId）；落点 `DataScopeServiceImpl`+`QueryWrapperAspect`，**非 MyDataPermissionHandler（不存在）** | A/C |
 | **助手请求契约** | `POST /ai/chat/stream` body：`sessionId/message/useKnowledgeBase/thinking/imageRef/attachments` | C（B 提供检索能力被调） |
-| **SSE 事件契约** | 统一事件名：`start/meta/sources/thinking/delta/references/done/cancelled/stopped/error` + `ping`(心跳注释)；字段结构 + 超时/心跳口径（**修正**：CRM 原用 text/done/stopped/title、RAG 原用 start/sources/delta/complete/cancelled/error，融合统一到此集） | B/C/D |
+| **SSE 事件契约** | 事件名 `start/meta/sources/thinking/delta/references/title/done/cancelled/stopped/error` + `ping`(注释心跳)；**payload 字段级 + 断线续传(事件id/Last-Event-ID/重放≠重执行) 见 `contracts-frozen.md §4/§5`** | C(发送)/B/D |
 | **来源引用契约** | `SourceReference`：`sourceType/route/filename/documentId/chunkId/chunkIndex/pageNo/rowIndex/excerpt/relevanceScore`；`payload.citations`（档 B 高亮） | B/C |
 | Token 计量接口 | `record(model,user,session,kb,type,usage)`；type∈chat/embedding/ocr/vision/summary/intent；B/C 产数，D 聚合预算 | B/C/D |
 | 动态配置读取接口 | `DynamicConfigService.get(key,type,default)`（E 实现，B/C/D 消费；含意图类目/strict-KB/图片缓存上限） | B/C/D/E |
