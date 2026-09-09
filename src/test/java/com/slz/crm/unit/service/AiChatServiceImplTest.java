@@ -2,6 +2,7 @@ package com.slz.crm.unit.service;
 
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.platform.contract.AssistantChatRequest;
+import com.slz.crm.platform.contract.ModelProvider;
 import com.slz.crm.server.ai.AiChatPromptService;
 import com.slz.crm.server.ai.AiChatStreamHeartbeat;
 import com.slz.crm.server.ai.AiChatStreamContext;
@@ -39,6 +40,8 @@ import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -596,6 +599,87 @@ class AiChatServiceImplTest {
         verify(assistantMessageStore).complete(eq(88L), eq("回答"), any(), eq(128));
     }
 
+    @Test
+    void streamThinking_sendsReasoningAndPersistsVisibleContentOnly() {
+        AiStreamRegistry registry = new AiStreamRegistry();
+        useRegistry(registry);
+        AiStreamRegistry.ActiveStream activeStream = new AiStreamRegistry.ActiveStream(9L, emitter);
+        activeStream.setAssistantMessageId(88L);
+        activeStream.setContext(AiChatStreamContext.initial(9L, emitter, List.of(), List.of(),
+                System.currentTimeMillis(), null, true));
+        registry.register(9L, activeStream);
+        when(chatClientBuilder.build()).thenReturn(chatClient);
+        when(chatClient.prompt()).thenReturn(promptSpec);
+        when(promptSpec.messages(anyList())).thenReturn(promptSpec);
+        when(promptSpec.options(any())).thenReturn(promptSpec);
+        when(promptSpec.stream()).thenReturn(streamSpec);
+        ChatResponse thinkingResponse = buildChatResponseWithUsage(
+                "回答", Map.of("reasoningContent", "推理"), null);
+        when(streamSpec.chatResponse()).thenReturn(Flux.just(
+                thinkingResponse));
+        when(assistantMessageStore.complete(eq(88L), eq("回答"), any(), eq(0))).thenReturn(true);
+
+        streamLifecycle.subscribe(activeStream, activeStream.getContext());
+
+        verify(eventWriter).sendBufferedEvent(activeStream, "thinking", "{\"text\":\"推理\",\"finished\":false}");
+        verify(eventWriter).sendBufferedEvent(activeStream, "thinking", "{\"text\":\"\",\"finished\":true}");
+        verify(eventWriter).sendBufferedEvent(activeStream, "delta", "{\"content\":\"回答\"}");
+        verify(assistantMessageStore).complete(eq(88L), eq("回答"), any(), eq(0));
+    }
+
+    @Test
+    void streamContent_stripsThinkTagsBeforePersistAndSse() {
+        AiStreamRegistry registry = new AiStreamRegistry();
+        useRegistry(registry);
+        AiStreamRegistry.ActiveStream activeStream = new AiStreamRegistry.ActiveStream(9L, emitter);
+        activeStream.setAssistantMessageId(88L);
+        activeStream.setContext(AiChatStreamContext.initial(9L, emitter, List.of(), List.of(),
+                System.currentTimeMillis(), null));
+        registry.register(9L, activeStream);
+        when(chatClientBuilder.build()).thenReturn(chatClient);
+        when(chatClient.prompt()).thenReturn(promptSpec);
+        when(promptSpec.messages(anyList())).thenReturn(promptSpec);
+        when(promptSpec.stream()).thenReturn(streamSpec);
+        ChatResponse firstTagChunk = buildChatResponseWithUsage("<thi", null, null);
+        ChatResponse secondTagChunk = buildChatResponseWithUsage("nk>推理</think>答案", null, null);
+        when(streamSpec.chatResponse()).thenReturn(Flux.just(
+                firstTagChunk, secondTagChunk));
+        when(assistantMessageStore.complete(eq(88L), eq("答案"), any(), eq(0))).thenReturn(true);
+
+        streamLifecycle.subscribe(activeStream, activeStream.getContext());
+
+        verify(eventWriter, never()).sendBufferedEvent(org.mockito.ArgumentMatchers.eq(activeStream),
+                org.mockito.ArgumentMatchers.eq("thinking"), org.mockito.ArgumentMatchers.anyString());
+        verify(eventWriter).sendBufferedEvent(activeStream, "delta", "{\"content\":\"答案\"}");
+        verify(assistantMessageStore).complete(eq(88L), eq("答案"), any(), eq(0));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void streamChat_prefersInjectedModelProviderAndAvoidsChatClient() {
+        AiStreamRegistry registry = new AiStreamRegistry();
+        useRegistry(registry);
+        ModelProvider modelProvider = mock(ModelProvider.class);
+        ObjectProvider<ModelProvider> modelProviderProvider = mock(ObjectProvider.class);
+        when(modelProviderProvider.getIfAvailable()).thenReturn(modelProvider);
+        ChatResponse providerResponse = buildChatResponseWithUsage("答案", null, null);
+        when(modelProvider.streamChat(any(Prompt.class)))
+                .thenReturn(Flux.just(providerResponse));
+        ReflectionTestUtils.setField(streamLifecycle, "modelProviderProvider", modelProviderProvider);
+        AiStreamRegistry.ActiveStream activeStream = new AiStreamRegistry.ActiveStream(9L, emitter);
+        activeStream.setAssistantMessageId(88L);
+        activeStream.setContext(AiChatStreamContext.initial(9L, emitter, List.of(), List.of(),
+                System.currentTimeMillis(), null));
+        registry.register(9L, activeStream);
+        when(assistantMessageStore.complete(eq(88L), eq("答案"), any(), eq(0))).thenReturn(true);
+
+        streamLifecycle.subscribe(activeStream, activeStream.getContext());
+
+        verify(modelProvider).streamChat(any(Prompt.class));
+        verify(chatClientBuilder, never()).build();
+        verify(assistantMessageStore).complete(eq(88L), eq("答案"), any(), eq(0));
+    }
+
     private RoleAO buildUser(Long id) {
         RoleAO user = new RoleAO();
         user.setId(id);
@@ -613,6 +697,21 @@ class AiChatServiceImplTest {
         when(response.getMetadata()).thenReturn(metadata);
         when(metadata.getUsage()).thenReturn(usage);
         when(usage.getTotalTokens()).thenReturn(totalTokens);
+        return response;
+    }
+
+    private ChatResponse buildChatResponseWithUsage(String text, Map<String, Object> metadata, Integer totalTokens) {
+        ChatResponse response = mock(ChatResponse.class);
+        Generation generation = mock(Generation.class);
+        when(response.getResult()).thenReturn(generation);
+        when(generation.getOutput()).thenReturn(new AssistantMessage(text, metadata == null ? Map.of() : metadata));
+        if (totalTokens != null) {
+            ChatResponseMetadata responseMetadata = mock(ChatResponseMetadata.class);
+            Usage usage = mock(Usage.class);
+            when(response.getMetadata()).thenReturn(responseMetadata);
+            when(responseMetadata.getUsage()).thenReturn(usage);
+            when(usage.getTotalTokens()).thenReturn(totalTokens);
+        }
         return response;
     }
 }

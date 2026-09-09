@@ -15,6 +15,7 @@ public record AiChatStreamContext(
         List<ToolCallback> toolCallbacks,
         String modelOverride,
         boolean fallback,
+        boolean thinking,
         long roundStart,
         AtomicInteger repairCounter,
         AiReferenceCollector referenceCollector,
@@ -25,12 +26,22 @@ public record AiChatStreamContext(
                                               List<ToolCallback> toolCallbacks, long roundStart,
                                               RoleAO currentUser) {
         return new AiChatStreamContext(sessionId, emitter, messages, toolCallbacks, null, false,
-                roundStart, new AtomicInteger(0), new AiReferenceCollector(), currentUser);
+                false, roundStart, new AtomicInteger(0), new AiReferenceCollector(), currentUser);
+    }
+
+    /**
+     * 创建带思考开关的初始上下文；fallback 会保留原始开关。
+     */
+    public static AiChatStreamContext initial(Long sessionId, SseEmitter emitter, List<Message> messages,
+                                              List<ToolCallback> toolCallbacks, long roundStart,
+                                              RoleAO currentUser, boolean thinking) {
+        return new AiChatStreamContext(sessionId, emitter, messages, toolCallbacks, null, false,
+                thinking, roundStart, new AtomicInteger(0), new AiReferenceCollector(), currentUser);
     }
 
     public AiChatStreamContext forFallback(String fallbackModel) {
         return new AiChatStreamContext(sessionId, emitter, messages, toolCallbacks, fallbackModel, true,
-                roundStart, repairCounter, referenceCollector, currentUser);
+                thinking, roundStart, repairCounter, referenceCollector, currentUser);
     }
 
     public String effectiveModel(String defaultModel) {

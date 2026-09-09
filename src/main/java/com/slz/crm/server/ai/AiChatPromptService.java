@@ -11,6 +11,7 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StreamUtils;
@@ -35,6 +36,10 @@ public class AiChatPromptService {
     @Autowired
     private AiMessageService aiMessageService;
 
+    /** 提示词总字符闸门；历史超限时按最旧优先丢弃，必要 system/user 不裁剪。 */
+    @Value("${ai.prompt-max-chars:3400}")
+    private int promptMaxChars = 3400;
+
     private String systemPrompt;
     private String titlePrompt;
     private String promptVersion;
@@ -57,7 +62,7 @@ public class AiChatPromptService {
         messages.add(new SystemMessage(systemPrompt));
         messages.addAll(loadHistory(sessionId));
         messages.add(new UserMessage(message));
-        return messages;
+        return applyPromptBudget(messages);
     }
 
     public String generateTitle(ChatClient.Builder chatClientBuilder, String userMessage) {
@@ -67,7 +72,7 @@ public class AiChatPromptService {
                     .user(userMessage)
                     .call()
                     .content();
-            return title == null ? null : title.trim();
+            return title == null ? null : AiThinkTagStripper.strip(title).trim();
         } catch (Exception e) {
             log.warn("生成会话标题失败", e);
             return null;
@@ -88,10 +93,24 @@ public class AiChatPromptService {
             if ("user".equals(entity.getRole())) {
                 history.add(new UserMessage(content));
             } else {
-                history.add(new AssistantMessage(content));
+                history.add(new AssistantMessage(AiThinkTagStripper.strip(content)));
             }
         }
         return history;
+    }
+
+    /**
+     * 保障 prompt 总量不超过配置上限；超限只牺牲最旧历史，不破坏本轮必要输入。
+     */
+    private List<Message> applyPromptBudget(List<Message> messages) {
+        int totalLength = messages.stream()
+                .mapToInt(item -> item.getText() == null ? 0 : item.getText().length()).sum();
+        while (totalLength > promptMaxChars && messages.size() > 2) {
+            String removedText = messages.remove(1).getText();
+            totalLength -= removedText == null ? 0 : removedText.length();
+            log.info("Prompt 超出预算，移除最旧历史: promptMaxChars={}, totalLength={}", promptMaxChars, totalLength);
+        }
+        return messages;
     }
 
     private String loadPromptFile(String path) {

@@ -1,6 +1,7 @@
 package com.slz.crm.server.ai;
 
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatOptions;
+import com.slz.crm.platform.contract.ModelProvider;
 import com.slz.crm.server.properties.AiProperties;
 import com.slz.crm.server.service.AiMessageService;
 import lombok.extern.slf4j.Slf4j;
@@ -8,15 +9,20 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.Disposable;
+import reactor.core.publisher.Flux;
 
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * AI 助手 SSE 生命周期。
@@ -37,6 +43,10 @@ public class AiChatStreamLifecycle {
     private final AiChatMetrics metrics;
     private final AiAssistantMessageStore assistantMessageStore;
     private final String modelName;
+
+    /** ModelProvider 实现归 base；缺失时保留 CRM 原有 ChatClient 兼容路径。 */
+    @Autowired(required = false)
+    private ObjectProvider<ModelProvider> modelProviderProvider;
 
     public AiChatStreamLifecycle(ChatClient.Builder chatClientBuilder,
                                  AiProperties aiProperties,
@@ -72,37 +82,46 @@ public class AiChatStreamLifecycle {
         }
         activeStream.setContext(context);
         Long sessionId = context.sessionId();
-        StringBuilder answer = activeStream.getPartialAnswer();
-        ChatClient.ChatClientRequestSpec promptSpec = chatClientBuilder.build()
-                .prompt()
-                .messages(context.messages());
-        if (context.modelOverride() != null) {
-            promptSpec = promptSpec.options(
-                    DashScopeChatOptions.builder().withModel(context.modelOverride()).build());
-        }
-        if (!context.toolCallbacks().isEmpty()) {
-            Map<String, Object> toolContext = new HashMap<>();
-            toolContext.put("sessionId", sessionId);
-            toolContext.put("repairCounter", context.repairCounter());
-            toolContext.put("references", context.referenceCollector());
-            toolContext.put("user", context.currentUser());
-            promptSpec = promptSpec.toolCallbacks(context.toolCallbacks())
-                    .toolContext(toolContext);
-        }
-
         String effectiveModel = context.effectiveModel(modelName);
+        DashScopeChatOptions options = buildOptions(context, sessionId, effectiveModel);
+        AiThinkTagStripper.StreamingStripper thinkStripper = AiThinkTagStripper.streaming();
+        AtomicBoolean thinkingFinished = new AtomicBoolean(false);
         Usage[] usageHolder = new Usage[1];
-        Disposable subscription = promptSpec.stream()
-                .chatResponse()
+        ModelProvider modelProvider = modelProviderProvider == null ? null : modelProviderProvider.getIfAvailable();
+        Flux<ChatResponse> responseFlux;
+        if (modelProvider != null) {
+            responseFlux = modelProvider.streamChat(new Prompt(context.messages(), options));
+        } else {
+            ChatClient.ChatClientRequestSpec requestSpec = chatClientBuilder.build()
+                    .prompt()
+                    .messages(context.messages());
+            // 兼容路径仅在思考或模型覆盖时注入 DashScope 参数，保持旧调用桩的链式行为。
+            if (context.thinking() || context.modelOverride() != null) {
+                requestSpec = requestSpec.options(options);
+            }
+            if (!context.toolCallbacks().isEmpty()) {
+                requestSpec = requestSpec
+                        .toolCallbacks(context.toolCallbacks())
+                        .toolContext(buildToolContext(context, sessionId));
+            }
+            responseFlux = requestSpec.stream().chatResponse();
+        }
+        Disposable subscription = responseFlux
                 .timeout(Duration.ofSeconds(
                         aiProperties.getLlmTimeoutSeconds() == null ? 60 : aiProperties.getLlmTimeoutSeconds()))
-                .doOnNext(response -> handleChatChunk(activeStream, response, usageHolder))
+                .doOnNext(response -> handleChatChunk(activeStream, response, usageHolder, context.thinking(),
+                        thinkStripper, thinkingFinished))
                 .doOnComplete(() -> {
                     if (shouldAbort(activeStream)) {
                         finishSuperseded(activeStream);
                         return;
                     }
                     if (activeStream.tryMarkFinished()) {
+                        if (context.thinking() && thinkingFinished.compareAndSet(false, true)
+                                && !sendBufferedEvent(activeStream, "thinking",
+                                        eventWriter.toThinkingJson("", true))) {
+                            return;
+                        }
                         List<AiReferenceCollector.Reference> references = context.referenceCollector().getReferences();
                         if (!references.isEmpty() && !sendBufferedEvent(activeStream, "references",
                                 eventWriter.toReferencesJson(references))) {
@@ -133,6 +152,29 @@ public class AiChatStreamLifecycle {
                 .subscribe();
         activeStream.setSubscription(subscription);
         heartbeat.start(activeStream, () -> sendHeartbeat(activeStream));
+    }
+
+    /**
+     * 装配 DashScope 请求参数；思考开关是真实请求参数而非 prompt 约束。
+     */
+    private DashScopeChatOptions buildOptions(AiChatStreamContext context, Long sessionId, String effectiveModel) {
+        DashScopeChatOptions.DashscopeChatOptionsBuilder builder = DashScopeChatOptions.builder()
+                .withModel(effectiveModel)
+                .withEnableThinking(context.thinking());
+        if (modelProviderProvider != null && modelProviderProvider.getIfAvailable() != null
+                && !context.toolCallbacks().isEmpty()) {
+            builder.withToolCallbacks(context.toolCallbacks()).withToolContext(buildToolContext(context, sessionId));
+        }
+        return builder.build();
+    }
+
+    private Map<String, Object> buildToolContext(AiChatStreamContext context, Long sessionId) {
+        Map<String, Object> toolContext = new HashMap<>();
+        toolContext.put("sessionId", sessionId);
+        toolContext.put("repairCounter", context.repairCounter());
+        toolContext.put("references", context.referenceCollector());
+        toolContext.put("user", context.currentUser());
+        return toolContext;
     }
 
     /**
@@ -223,7 +265,9 @@ public class AiChatStreamLifecycle {
      * 处理一次模型响应块。
      */
     private void handleChatChunk(AiStreamRegistry.ActiveStream activeStream, ChatResponse chatResponse,
-                                 Usage[] usageHolder) {
+                                 Usage[] usageHolder, boolean thinking,
+                                 AiThinkTagStripper.StreamingStripper thinkStripper,
+                                 AtomicBoolean thinkingFinished) {
         if (shouldAbort(activeStream)) {
             finishSuperseded(activeStream);
             return;
@@ -232,15 +276,32 @@ public class AiChatStreamLifecycle {
             return;
         }
         if (chatResponse.getResult().getOutput() != null) {
-            String text = chatResponse.getResult().getOutput().getText();
-            if (text != null && !text.isEmpty()) {
+            if (thinking) {
+                String reasoningContent = extractThinking(chatResponse.getResult().getOutput().getMetadata());
+                if (reasoningContent != null && !reasoningContent.isBlank()
+                        && !sendBufferedEvent(activeStream, "thinking",
+                                eventWriter.toThinkingJson(reasoningContent, false))) {
+                    return;
+                }
+            }
+            String rawText = chatResponse.getResult().getOutput().getText();
+            String visibleText = rawText == null ? "" : thinkStripper.filter(rawText, thinking
+                    ? piece -> sendBufferedEvent(activeStream, "thinking",
+                            eventWriter.toThinkingJson(piece, false))
+                    : null);
+            if (!visibleText.isEmpty() && thinking && thinkingFinished.compareAndSet(false, true)
+                    && !sendBufferedEvent(activeStream, "thinking",
+                            eventWriter.toThinkingJson("", true))) {
+                return;
+            }
+            if (!visibleText.isEmpty()) {
                 if (activeStream.markFirstToken()) {
                     AiChatStreamContext streamContext = activeStream.getContext();
                     metrics.recordFirstToken(activeStream, streamContext.effectiveModel(modelName),
                             streamContext.fallback());
                 }
-                activeStream.getPartialAnswer().append(text);
-                if (!sendBufferedEvent(activeStream, "delta", eventWriter.toDeltaJson(text))) {
+                activeStream.getPartialAnswer().append(visibleText);
+                if (!sendBufferedEvent(activeStream, "delta", eventWriter.toDeltaJson(visibleText))) {
                     return;
                 }
             }
@@ -249,6 +310,22 @@ public class AiChatStreamLifecycle {
                 && chatResponse.getMetadata().getUsage().getTotalTokens() > 0) {
             usageHolder[0] = chatResponse.getMetadata().getUsage();
         }
+    }
+
+    /**
+     * DashScope 会把 reasoning_content 放入 AssistantMessage metadata；键名做兼容读取。
+     */
+    private String extractThinking(Map<String, Object> metadata) {
+        if (metadata == null || metadata.isEmpty()) {
+            return "";
+        }
+        for (String key : List.of("reasoningContent", "reasoning_content", "thinking")) {
+            Object value = metadata.get(key);
+            if (value instanceof String text && !text.isBlank()) {
+                return text;
+            }
+        }
+        return "";
     }
 
     private void finishSuperseded(AiStreamRegistry.ActiveStream activeStream) {

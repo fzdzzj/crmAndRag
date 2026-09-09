@@ -2,6 +2,7 @@ package com.slz.crm.server.service.impl;
 
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.platform.contract.AssistantChatRequest;
+import com.slz.crm.platform.contract.ModelProvider;
 import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.entity.AiMessageEntity;
 import com.slz.crm.pojo.entity.AiSessionEntity;
@@ -23,6 +24,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.core.env.Environment;
@@ -41,6 +43,10 @@ public class AiChatServiceImpl implements AiChatService {
 
     @Autowired
     private ChatClient.Builder chatClientBuilder;
+
+    /** ModelProvider 实现归 base；就绪后统一 provider 元信息与模型流。 */
+    @Autowired(required = false)
+    private ObjectProvider<ModelProvider> modelProviderProvider;
 
     @Autowired
     private AiSessionService aiSessionService;
@@ -158,7 +164,7 @@ public class AiChatServiceImpl implements AiChatService {
 
                 List<ToolCallback> toolCallbacks = permittedToolCallbacks(currentUser);
                 activeStream.setContext(AiChatStreamContext.initial(finalSessionId, emitter, messages, toolCallbacks,
-                        System.currentTimeMillis(), currentUser));
+                        System.currentTimeMillis(), currentUser, request.thinking()));
                 aiStreamRegistry.register(finalSessionId, activeStream);
                 emitter.onCompletion(() -> streamLifecycle.cleanup(activeStream, "onCompletion"));
                 emitter.onTimeout(() -> streamLifecycle.cleanup(activeStream, "onTimeout"));
@@ -239,7 +245,11 @@ public class AiChatServiceImpl implements AiChatService {
     }
 
     private String resolveProvider() {
-        // DashScope 是当前基线默认 Provider；ModelProvider 接线后由 provider() 统一回传。
+        ModelProvider modelProvider = modelProviderProvider == null ? null : modelProviderProvider.getIfAvailable();
+        if (modelProvider != null) {
+            return modelProvider.provider();
+        }
+        // ModelProvider 缺失时沿用当前 CRM 基线，避免阻塞 base 实现落地。
         return environment.getProperty("spring.ai.chat.provider", "dashscope");
     }
 
