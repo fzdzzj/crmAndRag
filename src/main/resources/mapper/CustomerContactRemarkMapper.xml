@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.slz.crm.server.mapper.CustomerContactRemarkMapper">
+
+    <select id="selectByContactId" resultType="com.slz.crm.pojo.entity.CustomerContactRemarkEntity">
+        SELECT * FROM customer_contact_remark
+        WHERE contact_id = #{contactId}
+        ORDER BY
+            remark_type,
+            create_time
+    </select>
+
+    <select id="selectBirthdayInDays" resultType="com.slz.crm.pojo.entity.CustomerContactRemarkEntity">
+        SELECT * FROM customer_contact_remark
+        WHERE remark_type = #{remarkType}
+          AND remark_date IS NOT NULL
+          AND DATE_FORMAT(remark_date, '%m-%d') = DATE_FORMAT(DATE_ADD(NOW(), INTERVAL #{days} DAY), '%m-%d')
+    </select>
+
+    <insert id="insertBatch">
+        INSERT INTO customer_contact_remark (contact_id, remark_type, remark_content, remark_name, remark_date, creator_id, create_time)
+        VALUES
+        <foreach collection="entities" item="entity" separator=",">
+            (#{entity.contactId}, #{entity.remarkType}, #{entity.remarkContent}, #{entity.remarkName}, #{entity.remarkDate}, #{entity.creatorId}, #{entity.createTime})
+        </foreach>
+    </insert>
+
+</mapper>

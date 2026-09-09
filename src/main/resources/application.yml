@@ -1,0 +1,279 @@
+# ================================================================
+# 融合平台主配置（Agent-0 · Wave 0）
+# 约定（agent-execution-plan.md §4）：本文件只放跨 lane 公共核心；
+#   业务/助手沿用 CRM 原键（crm.* / slz.* / mybatis-plus / auto-table / springdoc）；
+#   知识库域新键统一 rag.* / knowledge.*；平台治理 platform.* / app.*。
+#   各 lane 若需更多键，按 §4 新增 application-<lane>.yml，避免同文件争用。
+#   敏感项（密钥/凭据/本地路径）一律走环境变量或 .env，禁止入库（任务 3）。
+# ================================================================
+spring:
+  application:
+    name: crm-platform
+  profiles:
+    # 未显式指定时按 dev 启动（本地用 auto-table 便捷建表）；生产 MUST 显式 SPRING_PROFILES_ACTIVE=prod
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  # ---------------- AI 模型层（D4：Spring AI + dashscope 默认，可切 openai 兼容/vllm） ----------------
+  ai:
+    dashscope:
+      # 通义千问 API Key，经环境变量 / .env 注入；缺省空串以免密钥入库
+      api-key: ${DASHSCOPE_API_KEY:}
+      # OpenAI 兼容端点：便于用同一 key 走 compatible-mode 调用
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    chat:
+      options:
+        model: qwen-plus
+        temperature: 0.3        # 业务场景偏低，保证参数提取稳定
+        max-tokens: 2048
+  main:
+    allow-circular-references: true
+  # ---------------- 数据源（MySQL；连接参数全部外置） ----------------
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${SLZ_DATASOURCE_HOST}:${SLZ_DATASOURCE_PORT}/${SLZ_DATASOURCE_DATABASE}?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${SLZ_DATASOURCE_USERNAME}
+    password: ${SLZ_DATASOURCE_PASSWORD}
+  # ---------------- Flyway（任务 4：库结构唯一真相源） ----------------
+  # 默认开启；H2 测试 profile 关闭（H2 集成测试沿用 CRM 原 auto-table 便捷建表）
+  flyway:
+    enabled: ${SLZ_FLYWAY_ENABLED:true}
+    locations: classpath:db/migration
+    # 允许在已有 CRM 存量表的库上首次接管（把已存在表认作基线），避免空库建全表/存量库撞表两难
+    baseline-on-migrate: true
+    # 基线版本号：小于该版本的迁移视为已应用（0 = 全新接管，V1 作为基线脚本执行）
+    baseline-version: 0
+    baseline-description: crm-baseline-before-flyway
+    # 校验已应用脚本未被篡改；开发期临时改脚本可置 false（禁止用于生产）
+    validate-on-migrate: true
+    clean-disabled: true
+  cache:
+    type: caffeine
+  servlet:
+    multipart:
+      # 与知识库文档上传上限一致（Lane B 复用；100MB 单文件 / 300MB 单请求）
+      max-file-size: 100MB
+      max-request-size: 300MB
+
+# ---------------- 权限同步 / 数据初始化（CRM 原样保留） ----------------
+permission:
+  sync:
+    # 是否启用权限同步（默认: true）；启动时会自动同步权限数据到数据库
+    enabled: true
+
+data:
+  init:
+    # 是否启用数据初始化（默认: true）；启动时会自动创建管理员角色、管理员账号并分配所有权限
+    enabled: true
+    # 管理员账号邮箱（与远程库实际超管一致）；生产由 SLZ_ADMIN_EMAIL 注入
+    admin:
+      email: ${SLZ_ADMIN_EMAIL:admin@slz.com}
+      # 管理员初始密码（明文，首次登录后建议修改，默认: admin123）
+      # 生产必须经 SLZ_ADMIN_PASSWORD 注入，否则 ProductionConfigurationGuard fail-fast
+      password: ${SLZ_ADMIN_PASSWORD:admin123}
+
+# ---------------- AI 助手域（CRM 原样并入，键与 AiProperties 绑定） ----------------
+crm:
+  ai:
+    max-history-rounds: 10          # 传给 LLM 的历史轮数（滑动窗口）
+    pending-expire-minutes: 30      # 确认卡片超时时间（分钟）
+    rate-limit-per-minute: 10       # 每用户每分钟 AI 请求上限
+    entity-query-page-size: 1000    # 实体解析查询页大小（合同/商机候选列表全量返回）
+    llm-timeout-seconds: 60         # LLM 调用超时（秒）
+    max-fix-rounds: 2               # 工具调用失败修复重试上限（有限次修复）
+    fallback-model: qwen-turbo      # 降级备用模型（主模型失败时切换，留空则不降级）
+    static-fallback-message: AI 服务暂时不可用，请稍后再试
+    heartbeat-enabled: true         # SSE 心跳（长生成或工具调用期间保持连接）
+    heartbeat-interval-seconds: 15  # SSE 心跳间隔（秒）
+    heartbeat-pool-size: 4          # SSE 心跳调度线程池（多会话互不阻塞）
+    sse-timeout-seconds: 300        # SSE 服务端超时（秒）
+    # 线程池配置
+    thread-pool:
+      chat:
+        core-size: 4
+        max-size: 8
+        queue-capacity: 50
+      title:
+        core-size: 2
+        max-size: 4
+        queue-capacity: 100
+      audit:
+        core-size: 2
+        max-size: 4
+        queue-capacity: 200
+
+# ---------------- 平台模型 Provider 抽象（D4；契约见 platform.contract） ----------------
+# 说明：dashscope 走 spring.ai.dashscope.* 自动配置；openai-compatible/vllm 由 ModelProvider 自行构造，
+#       业务代码只依赖契约，不依赖具体 Provider。密钥经环境变量注入，不入库。
+platform:
+  ai:
+    model:
+      # Provider 类型: dashscope(默认) | openai-compatible | vllm
+      provider: ${SLZ_AI_PROVIDER:dashscope}
+      base-url: ${SLZ_AI_BASE_URL:}
+      api-key: ${SLZ_AI_API_KEY:}
+      # 对话/视觉/嵌入默认模型名（可被 Lane E 动态配置覆盖）
+      chat-model: ${SLZ_AI_CHAT_MODEL:qwen-plus}
+      vision-model: ${SLZ_AI_VISION_MODEL:qwen-vl-plus}
+      embedding-model: ${SLZ_AI_EMBEDDING_MODEL:text-embedding-v3}
+      # 单次调用超时（秒）；0 表示不限（不建议）
+      timeout-seconds: 60
+  # ---------------- Actuator 端点保护开关（ActuatorProtectionFilter 读取） ----------------
+  actuator:
+    # 总开关：为 false 时 /actuator/** 全放行——仅允许本地/测试显式关闭，生产 profile 强制 true
+    protected-enabled: ${SLZ_ACTUATOR_PROTECTED:true}
+    # 免鉴权白名单：只放行存活/就绪探针（不泄露组件明细，配合 show-details=when_authorized）
+    public-paths:
+      - /actuator/health/liveness
+      - /actuator/health/readiness
+    # 需要超级管理员（roleId=1）的敏感端点前缀：metrics/prometheus/loggers/info
+    admin-only-paths:
+      - /actuator/metrics
+      - /actuator/prometheus
+      - /actuator/loggers
+      - /actuator/info
+
+# ---------------- 知识库 / 向量检索域（D7/D9；实现属 Lane B，键由基座预留） ----------------
+rag:
+  vector-store:
+    # 向量库Provider: qdrant(默认/生产 MUST) | in-memory(dev/test 回退，严禁生产)
+    provider: ${RAG_VECTOR_PROVIDER:qdrant}
+    # in-memory 回退时是否把向量持久化到本地文件（重启可加载，仅本地调试用）
+    in-memory-persist-path: ${RAG_VECTOR_MEM_PATH:}
+
+knowledge:
+  qdrant:
+    host: ${QDRANT_HOST:localhost}
+    port: ${QDRANT_PORT:6334}
+    # gRPC 通道是否启用 TLS（自建 Qdrant 默认关闭）
+    use-tls: ${QDRANT_TLS:false}
+    api-key: ${QDRANT_API_KEY:}
+    # 向量集合名与维度（须与 embedding-model 输出一致；改维度需重建集合，属破坏性变更）
+    collection: ${QDRANT_COLLECTION:knowledge_chunk}
+    dimensions: ${QDRANT_DIMS:1024}
+    # 启动时检查/自动创建集合；不可达时应用仍继续启动，检索期才报错（与 RAG 原行为一致）
+    initialize-on-startup: true
+  minio:
+    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+    access-key: ${MINIO_ACCESS_KEY:}
+    secret-key: ${MINIO_SECRET_KEY:}
+    # 原始文件桶名（上传件）
+    bucket: ${MINIO_BUCKET:knowledge-files}
+    # 连接超时（毫秒）
+    connect-timeout-ms: 10000
+    # 读取超时（毫秒）
+    read-timeout-ms: 30000
+
+# ---------------- 平台异步 / 依赖韧性（Lane D 实现，基座预留键） ----------------
+app:
+  async:
+    # 记忆加工（意图/摘要）旁路执行器：pool 2 / queue 64，AbortPolicy 满则丢弃并降级（D14）
+    memory-pool-size: 2
+    memory-queue-capacity: 64
+  dependency:
+    # Qdrant / MinIO 健康检查超时（毫秒），用于 /actuator/health 组件健康
+    health-timeout-ms: 2000
+
+# ---------------- com.tangzc 自动建表（仅本地/测试便捷；生产 auto-table.mode=none） ----------------
+auto-table:
+  # 执行模式: create（创建表）, update（更新表结构）, drop（删除并重建）, none（关闭，交由 Flyway）
+  mode: ${SLZ_AUTO_TABLE_MODE:update}
+  # Entity 类所在包
+  model-package: com.slz.crm.pojo.entity
+  # 显示启动横幅
+  show-banner: true
+
+springdoc:
+  api-docs:
+    # 导出 OpenAPI 3.1 规范，与前端 openapi.yaml 现有版本保持一致
+    version: openapi_3_1
+  # 全局拍平 DTO/ModelAttribute 参数（与前端 SDK 现有 flat 参数用法保持一致）
+  default-flat-param-object: true
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.slz.crm.server.entity
+
+slz:
+  jwt:
+    # JWT 签名密钥（HS256 建议 >=32 字节），环境变量注入；生产弱密钥由 ProductionConfigurationGuard 拦截
+    secret-key: ${SLZ_JWT_SECRET_KEY}
+    # Token 有效期（毫秒）
+    ttl: ${SLZ_JWT_TTL}
+    # 前端携带 token 的请求头名
+    token-name: token
+  # 附件下载令牌密钥（AES-256 建议 32 字节），通过环境变量注入，不硬编码在仓库中；
+  # 未配置时应用启动直接失败（fail-fast），本地开发请在 .env 设置 SLZ_ATTACH_TOKEN_KEY
+  attach-token:
+    secret-key: ${SLZ_ATTACH_TOKEN_KEY:}
+  database-field-map: '{
+    "approval_id": "审批ID",
+    "company_id": "客户ID",
+    "dept_id": "部门ID",
+    "role_id": "角色ID",
+    "user_id": "用户ID",
+    "creator_id": "创建者ID",
+    "owner_id": "负责人ID",
+    "operator_id" : "操作者ID",
+    "share_from" : "共享人ID",
+    "permissions_id" : "权限ID",
+    "contact_id": "联系人ID",
+    "opportunity_id": "商机ID",
+    "assigner_id": "分配人ID",
+    "assignee_id": "执行人ID",
+    "contract_id": "合同ID",
+    "order_item_id": "订单商品ID",
+    "payment_id": "回款ID",
+    "applicant_id": "申请人ID",
+    "approver_id": "审批人ID",
+    "task_id": "任务ID"}'
+  composite-unique-index-map: '{
+    "uk_share_unique": "共享",
+    "uk_role_permission": "角色权限",
+    "contract_order_item_pk": "订单"}'
+  file:
+    # 本地附件存储根目录（MinIO 未启用时的回退路径，见 D7）
+    path: ${SLZ_FILE_PATH:./file}
+  # 生日提醒配置
+  birthday:
+    reminder:
+      # 生日提前提醒天数
+      days: 7
+      # 是否启用提醒
+      enabled: true
+
+logging:
+  level:
+    root: info
+
+# ---------------- Actuator（任务 3：移除 Spring Security 后必须自行保护） ----------------
+# 保护落点是 ActuatorProtectionFilter（servlet filter，url-pattern=/actuator/*），原因：
+#   Actuator 端点由独立的 EndpointHandlerMapping 承载，不走 WebMvcConfiguration#addInterceptors 注册的
+#   HandlerInterceptor；若只挂拦截器会形成"看似有保护、实际裸奔"的假安全（本 wave 以 IT 实测确认）。
+management:
+  endpoints:
+    web:
+      exposure:
+        # 仅暴露运维必需端点；loggers 可动态改日志级别，故必须走鉴权（见 filter）
+        include: health,info,metrics,prometheus,loggers
+  endpoint:
+    health:
+      # 未授权主体看不到组件明细（DB/Qdrant/MinIO 拓扑等内部信息），仅返回总体状态
+      show-details: when_authorized
+      # K8s 探针分组：liveness 只看进程存活，readiness 看依赖是否可服务
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+    # db 健康指示器：生产依赖 MySQL；H2 测试期同样可用
+    db:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}

@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.slz.crm.server.mapper.ContractMapper">
+    <select id="selectTotalSignAmount" resultType="java.math.BigDecimal">
+        select sum(total_amount)
+        from contract
+        where sign_date between #{reportStartTime} and #{reportEndTime}
+    </select>
+
+    <select id="selectSignContractNum" resultType="java.lang.Long">
+        select count(*)
+        from contract
+        where sign_date between #{reportStartTime} and #{reportEndTime}
+          and contract_status = #{status}
+    </select>
+
+    <select id="selectNumByPeriod" resultType="com.slz.crm.pojo.dto.ContractChartDTO">
+        SELECT
+        <choose>
+            <when test="timeRange.name() == 'THIS_YEAR'">
+                DATE_FORMAT(sign_date, '%Y-%m') as chartTitle,
+            </when>
+            <otherwise>
+                DATE_FORMAT(sign_date, '%Y-%m-%d') as chartTitle,
+            </otherwise>
+        </choose>
+        COUNT(*) as num
+        FROM contract
+        WHERE sign_date BETWEEN #{startTime} AND #{endTime}
+        <if test="status != null">
+            AND contract_status = #{status}
+        </if>
+        GROUP BY
+        <choose>
+            <when test="timeRange.name() == 'THIS_YEAR'">
+                DATE_FORMAT(sign_date, '%Y-%m')
+            </when>
+            <otherwise>
+                DATE_FORMAT(sign_date, '%Y-%m-%d')
+            </otherwise>
+        </choose>
+        ORDER BY chartTitle
+    </select>
+
+    <select id="selectPerformanceByPeriod" resultType="com.slz.crm.pojo.dto.ContractChartDTO">
+        SELECT
+        <choose>
+            <when test="timeRange.name() == 'THIS_YEAR'">
+                DATE_FORMAT(sign_date, '%Y-%m') as chartTitle,
+            </when>
+            <otherwise>
+                DATE_FORMAT(sign_date, '%Y-%m-%d') as chartTitle,
+            </otherwise>
+        </choose>
+        SUM(total_amount) as performance
+        FROM contract
+        WHERE sign_date BETWEEN #{startTime} AND #{endTime}
+        <if test="status != null">
+            AND contract_status = #{status}
+        </if>
+        GROUP BY
+        <choose>
+            <when test="timeRange.name() == 'THIS_YEAR'">
+                DATE_FORMAT(sign_date, '%Y-%m')
+            </when>
+            <otherwise>
+                DATE_FORMAT(sign_date, '%Y-%m-%d')
+            </otherwise>
+        </choose>
+        ORDER BY chartTitle
+    </select>
+
+    <select id="selectCompanySourceByPeriod" resultType="com.slz.crm.pojo.dto.ContractChartDTO">
+        SELECT
+        c2.source as chartTitle,
+        COUNT(*) as num
+        FROM contract c1
+        LEFT JOIN customer_company c2
+        ON c1.company_id = c2.id
+        WHERE sign_date BETWEEN #{startTime} AND #{endTime}
+        <if test="status != null">
+            AND c1.contract_status = #{status}
+        </if>
+        GROUP BY c2.source
+        ORDER BY num DESC
+    </select>
+
+    <!-- 统计签约合同总数 -->
+    <select id="countSignedContracts" resultType="java.lang.Long">
+        SELECT COUNT(*)
+        FROM contract
+        WHERE sign_date BETWEEN #{startTime} AND #{endTime}
+    </select>
+</mapper>

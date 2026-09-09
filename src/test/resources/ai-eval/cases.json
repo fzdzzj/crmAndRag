@@ -1,0 +1,165 @@
+[
+  {
+    "id": "chart-contract-num-this-month",
+    "utterance": "这个月签约合同数是多少？",
+    "expectedTool": "getChartData",
+    "expectedParams": { "dataType": "CONTRACT_NUM", "timeRange": "THIS_MONTH" },
+    "tags": ["query-tool", "chart"]
+  },
+  {
+    "id": "statistics-summary-explicit-range",
+    "utterance": "统计 2026-01-01 00:00:00 到 2026-01-31 23:59:59 的综合数据汇总",
+    "expectedTool": "getStatisticsSummary",
+    "expectedParams": { "startTime": "2026-01-01 00:00:00", "endTime": "2026-01-31 23:59:59" },
+    "tags": ["query-tool", "statistics"]
+  },
+  {
+    "id": "opportunity-stage-distribution",
+    "utterance": "看一下各阶段商机数量分布",
+    "expectedTool": "getOpportunityStageDistribution",
+    "expectedParams": {},
+    "tags": ["query-tool", "chart"]
+  },
+  {
+    "id": "query-contract-by-name",
+    "utterance": "帮我查一下智能制造平台一期合同",
+    "expectedTool": "queryContract",
+    "expectedParams": { "contractName": "智能制造平台一期" },
+    "tags": ["query-tool", "contract"]
+  },
+  {
+    "id": "query-order-after-contract-lookup",
+    "utterance": "查询合同智能制造平台一期下面的订单",
+    "expectedTool": "queryContract",
+    "expectedParams": { "contractName": "智能制造平台一期" },
+    "tags": ["query-tool", "multi-step", "order"]
+  },
+  {
+    "id": "order-detail-by-id",
+    "utterance": "查一下订单 1001 的详情",
+    "expectedTool": "getOrderDetail",
+    "expectedParams": { "orderId": 1001 },
+    "tags": ["query-tool", "order"]
+  },
+  {
+    "id": "query-customer-company",
+    "utterance": "找一下云创科技有限公司",
+    "expectedTool": "queryCustomerCompany",
+    "expectedParams": { "companyName": "云创科技有限公司" },
+    "tags": ["query-tool", "customer"]
+  },
+  {
+    "id": "query-opportunity-by-company",
+    "utterance": "云创科技有限公司有哪些商机？",
+    "expectedTool": "queryOpportunity",
+    "expectedParams": { "companyName": "云创科技有限公司" },
+    "tags": ["query-tool", "opportunity"]
+  },
+  {
+    "id": "query-payment-after-contract-lookup",
+    "utterance": "智能制造平台一期合同有哪些回款？",
+    "expectedTool": "queryContract",
+    "expectedParams": { "contractName": "智能制造平台一期" },
+    "tags": ["query-tool", "multi-step", "payment"]
+  },
+  {
+    "id": "query-invoice-by-number",
+    "utterance": "查发票号码 INV-2026-001 的记录",
+    "expectedTool": "queryInvoice",
+    "expectedParams": { "invoiceNo": "INV-2026-001" },
+    "tags": ["query-tool", "invoice"]
+  },
+  {
+    "id": "query-company-group",
+    "utterance": "查询启用的云启集团主数据",
+    "expectedTool": "queryCompanyGroup",
+    "expectedParams": { "groupName": "云启集团", "status": 1 },
+    "tags": ["query-tool", "customer"]
+  },
+  {
+    "id": "create-customer-draft",
+    "utterance": "新建一个客户，公司叫云创科技有限公司，行业是制造业，电话 13800000000",
+    "expectedTool": "createCustomerDraft",
+    "expectedParams": {
+      "companyName": "云创科技有限公司",
+      "industry": "制造业",
+      "phone": "13800000000"
+    },
+    "tags": ["draft-tool", "customer"]
+  },
+  {
+    "id": "create-contact-draft",
+    "utterance": "给云创科技有限公司加一个联系人张三，手机号 13900000000",
+    "expectedTool": "createContactDraft",
+    "expectedParams": {
+      "companyName": "云创科技有限公司",
+      "name": "张三",
+      "mobile": "13900000000"
+    },
+    "tags": ["draft-tool", "contact"]
+  },
+  {
+    "id": "create-opportunity-draft",
+    "utterance": "给云创科技有限公司新建商机智能制造 MES 项目，预算 1200000",
+    "expectedTool": "createOpportunityDraft",
+    "expectedParams": {
+      "companyName": "云创科技有限公司",
+      "opportunityName": "智能制造 MES 项目",
+      "amount": 1200000
+    },
+    "tags": ["draft-tool", "opportunity"]
+  },
+  {
+    "id": "create-contract-draft",
+    "utterance": "根据商机智能制造 MES 项目创建合同云创 MES 一期，总金额 1200000，包含 10 台设备工作站，单价 120000",
+    "expectedTool": "createContractDraft",
+    "expectedParams": {
+      "contractName": "云创 MES 一期",
+      "opportunityName": "智能制造 MES 项目",
+      "totalAmount": 1200000,
+      "orders": [{ "productName": "设备工作站", "quantity": 10, "unitPrice": 120000 }]
+    },
+    "tags": ["draft-tool", "contract"]
+  },
+  {
+    "id": "create-payment-draft",
+    "utterance": "给合同智能制造平台一期登记 300000 回款，方式是银行转账",
+    "expectedTool": "createPaymentDraft",
+    "expectedParams": {
+      "contractName": "智能制造平台一期",
+      "paymentAmount": 300000,
+      "paymentMethod": "银行转账"
+    },
+    "tags": ["draft-tool", "payment"]
+  },
+  {
+    "id": "create-invoice-draft",
+    "utterance": "合同智能制造平台一期开一张发票，号码 INV-2026-001，金额 300000",
+    "expectedTool": "createInvoiceDraft",
+    "expectedParams": {
+      "contractName": "智能制造平台一期",
+      "invoiceNo": "INV-2026-001",
+      "invoiceAmount": 300000
+    },
+    "tags": ["draft-tool", "invoice"]
+  },
+  {
+    "id": "create-order-draft",
+    "utterance": "给合同智能制造平台一期追加 5 台数据采集网关，单价 8000",
+    "expectedTool": "createOrderDraft",
+    "expectedParams": {
+      "orders": [{ "contractName": "智能制造平台一期", "productName": "数据采集网关", "quantity": 5, "unitPrice": 8000 }]
+    },
+    "tags": ["draft-tool", "order"]
+  },
+  {
+    "id": "create-order-draft-follow-up",
+    "utterance": "继续补充，pendingId 是 pending-1001，再加 3 台边缘服务器，单价 15000",
+    "expectedTool": "createOrderDraft",
+    "expectedParams": {
+      "pendingId": "pending-1001",
+      "orders": [{ "productName": "边缘服务器", "quantity": 3, "unitPrice": 15000 }]
+    },
+    "tags": ["draft-tool", "order", "follow-up"]
+  }
+]

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.slz.crm.server.mapper.BusinessActivityUserMapper">
+    <select id = "existsByActivityIdAndUserId" resultType="java.lang.Integer">
+        select count(*) from business_activity_user where activity_id = #{activityId} and user_id = #{userId} limit 1
+    </select>
+
+    <delete id="deleteByActivityIdAndUserId">
+        delete from business_activity_user where activity_id = #{activityId} and user_id = #{userId}
+    </delete>
+    <delete id="deleteByActivityId" parameterType="java.lang.Long">
+        delete from business_activity_user where activity_id = #{activityId}
+    </delete>
+    <select id="selectByActivityIds" resultType="com.slz.crm.pojo.entity.BusinessActivityUserEntity">
+        select id, activity_id, user_id, user_role, creator_id, create_time
+        from business_activity_user
+        where activity_id in
+        <foreach collection="activityIds" item="activityId" open="(" separator="," close=")">
+            #{activityId}
+        </foreach>
+    </select>
+</mapper>

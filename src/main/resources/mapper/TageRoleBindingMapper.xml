@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.slz.crm.server.mapper.TageRoleBindingMapper">
+
+    <!-- 查询角色绑定的标签ID列表 -->
+    <select id="selectTageIdsByRoleId" resultType="java.lang.Long">
+        SELECT tage_id
+        FROM tage_role_binding
+        WHERE role_id = #{roleId}
+    </select>
+
+    <!-- 查询角色绑定的唯一标签ID（一对��关系） -->
+    <select id="selectTageIdByRoleId" resultType="java.lang.Long">
+        SELECT tage_id
+        FROM tage_role_binding
+        WHERE role_id = #{roleId}
+        LIMIT 1
+    </select>
+
+</mapper>

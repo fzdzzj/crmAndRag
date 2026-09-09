@@ -1,0 +1,28 @@
+# ---- 构建产物 ----
+target/
+build/
+*.class
+
+# ---- 并行 worktree（agent-execution-plan.md §11） ----
+.worktrees/
+
+# ---- 本地环境 / 密钥（禁止入库） ----
+.env
+.env.*
+!.env.example
+
+# ---- IDE ----
+.idea/
+*.iml
+.vscode/
+
+# ---- 日志 / 临时 ----
+logs/
+*.log
+build-tmp/
+uploads/
+file/
+
+# ---- OS ----
+.DS_Store
+Thumbs.db

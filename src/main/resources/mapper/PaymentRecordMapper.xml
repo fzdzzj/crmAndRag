@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.slz.crm.server.mapper.PaymentRecordMapper">
+    <select id="selectTotalRemittanceAmount" resultType="java.math.BigDecimal">
+        select sum(payment_amount) from payment_record where create_time between #{reportStartTime} and #{reportEndTime}
+    </select>
+
+    <!-- 阶段性查询回款金额 -->
+    <select id="selectPaymentAmountByPeriod" resultType="com.slz.crm.pojo.dto.PaymentChartDTO">
+        SELECT
+        <choose>
+            <when test="timeRange.name() == 'THIS_YEAR'">
+                DATE_FORMAT(create_time, '%Y-%m') as chartTitle,
+            </when>
+            <otherwise>
+                DATE_FORMAT(create_time, '%Y-%m-%d') as chartTitle,
+            </otherwise>
+        </choose>
+        SUM(payment_amount) as paymentAmount
+        FROM payment_record
+        WHERE create_time BETWEEN #{startTime} AND #{endTime}
+        <if test="paymentStatus != null">
+            AND payment_status = #{paymentStatus}
+        </if>
+        AND payment_status != 2
+        GROUP BY
+        <choose>
+            <when test="timeRange.name() == 'THIS_YEAR'">
+                DATE_FORMAT(create_time, '%Y-%m')
+            </when>
+            <otherwise>
+                DATE_FORMAT(create_time, '%Y-%m-%d')
+            </otherwise>
+        </choose>
+        ORDER BY chartTitle
+    </select>
+
+    <!-- 阶段性查询回款笔数 -->
+    <select id="selectPaymentCountByPeriod" resultType="com.slz.crm.pojo.dto.PaymentChartDTO">
+        SELECT
+        <choose>
+            <when test="timeRange.name() == 'THIS_YEAR'">
+                DATE_FORMAT(create_time, '%Y-%m') as chartTitle,
+            </when>
+            <otherwise>
+                DATE_FORMAT(create_time, '%Y-%m-%d') as chartTitle,
+            </otherwise>
+        </choose>
+        COUNT(*) as paymentCount
+        FROM payment_record
+        WHERE create_time BETWEEN #{startTime} AND #{endTime}
+        <if test="paymentStatus != null">
+            AND payment_status = #{paymentStatus}
+        </if>
+        AND payment_status != 2
+        GROUP BY
+        <choose>
+            <when test="timeRange.name() == 'THIS_YEAR'">
+                DATE_FORMAT(create_time, '%Y-%m')
+            </when>
+            <otherwise>
+                DATE_FORMAT(create_time, '%Y-%m-%d')
+            </otherwise>
+        </choose>
+        ORDER BY chartTitle
+    </select>
+
+    <!-- 查询回款状态分布 -->
+    <select id="selectPaymentStatusByPeriod" resultType="com.slz.crm.pojo.dto.PaymentChartDTO">
+        SELECT
+        CASE payment_status
+            WHEN 0 THEN '已确认'
+            WHEN 1 THEN '待确认'
+            WHEN 2 THEN '已作废'
+            ELSE '未知状态'
+        END as chartTitle,
+        COUNT(*) as paymentCount,
+        SUM(payment_amount) as paymentAmount
+        FROM payment_record
+        WHERE create_time BETWEEN #{startTime} AND #{endTime}
+        GROUP BY payment_status
+        ORDER BY payment_status
+    </select>
+</mapper>

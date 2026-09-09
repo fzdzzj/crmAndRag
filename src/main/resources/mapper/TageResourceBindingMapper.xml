@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.slz.crm.server.mapper.TageResourceBindingMapper">
+
+    <!-- 查询标签绑定的资源ID列表 -->
+    <select id="selectResourceIdsByTageIds" resultType="java.lang.Long">
+        SELECT DISTINCT resource_id
+        FROM tage_resource_binding
+        WHERE tage_id IN
+        <foreach collection="tageIds" item="tageId" open="(" separator="," close=")">
+            #{tageId}
+        </foreach>
+        AND resource_type = #{resourceType}
+    </select>
+
+</mapper>

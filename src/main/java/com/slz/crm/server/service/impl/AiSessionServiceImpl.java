@@ -1,0 +1,152 @@
+package com.slz.crm.server.service.impl;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.slz.crm.pojo.entity.AiSessionEntity;
+import com.slz.crm.pojo.vo.AiSessionVO;
+import com.slz.crm.server.mapper.AiSessionMapper;
+import com.slz.crm.server.service.AiSessionService;
+import com.slz.crm.server.service.PendingActionService;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+
+@Slf4j
+
+@Service
+public class AiSessionServiceImpl extends ServiceImpl<AiSessionMapper, AiSessionEntity> implements AiSessionService {
+
+
+    @Autowired
+    @Lazy
+    private PendingActionService pendingActionService;
+
+    @Override
+    public AiSessionEntity createSession(Long userId, String title) {
+        AiSessionEntity session = new AiSessionEntity();
+
+        session.setUserId(userId);
+
+        session.setTitle(title == null || title.isBlank() ? "新对话" : title);
+
+        session.setStatus(1);
+
+        session.setCreatedTime(LocalDateTime.now());
+
+        session.setUpdatedTime(LocalDateTime.now());
+
+        save(session);
+
+        return session;
+
+    }
+
+    @Override
+    public void updateTitle(Long sessionId, Long userId, String title) {
+        if (sessionId == null || userId == null || title == null || title.isBlank()) {
+
+            return;
+
+        }
+        // 仅更新本人会话的标题
+        String safeTitle = title.length() > 100 ? title.substring(0, 100) : title;
+
+        update(new UpdateWrapper<AiSessionEntity>()
+
+                .eq("id", sessionId)
+
+                .eq("user_id", userId)
+
+                .set("title", safeTitle));
+
+    }
+
+
+    @Override
+    public List<AiSessionVO> scrollSessions(Long userId, LocalDateTime cursorTime, Long cursorId, int limit) {
+        LambdaQueryWrapper<AiSessionEntity> wrapper = new LambdaQueryWrapper<AiSessionEntity>()
+
+                .eq(AiSessionEntity::getUserId, userId)
+
+                .orderByDesc(AiSessionEntity::getUpdatedTime)
+
+                .orderByDesc(AiSessionEntity::getId)
+
+                .last("LIMIT " + limit);
+
+        // 游标条件：(updated_time, id) < (cursorTime, cursorId)
+        if (cursorTime != null && cursorId != null) {
+
+            wrapper.and(w -> w
+
+                    .lt(AiSessionEntity::getUpdatedTime, cursorTime)
+
+                    .or(o -> o.eq(AiSessionEntity::getUpdatedTime, cursorTime)
+
+                            .lt(AiSessionEntity::getId, cursorId)));
+
+        }
+        List<AiSessionEntity> entities = list(wrapper);
+
+
+        List<AiSessionVO> result = new ArrayList<>(entities.size());
+
+        for (AiSessionEntity entity : entities) {
+
+            AiSessionVO vo = new AiSessionVO();
+
+            BeanUtils.copyProperties(entity, vo);
+
+            result.add(vo);
+
+        }
+
+        return result;
+
+    }
+
+    @Override
+    @Transactional
+    public void archiveSession(Long sessionId, Long userId) {
+        AiSessionEntity session = getOwnedSession(sessionId, userId);
+
+        if (session == null || session.getStatus() == null || session.getStatus() == 0) {
+
+            return;
+
+        }
+        session.setStatus(0);
+
+        session.setUpdatedTime(LocalDateTime.now());
+
+        updateById(session);
+
+        // 级联取消该会话的 PENDING/DRAFTING 待确认操作
+        pendingActionService.cancelBySessionId(sessionId);
+
+    }
+
+
+    @Override
+    public AiSessionEntity getOwnedSession(Long sessionId, Long userId) {
+        if (sessionId == null || userId == null) {
+
+            return null;
+
+        }
+        return getOne(new LambdaQueryWrapper<AiSessionEntity>()
+
+                .eq(AiSessionEntity::getId, sessionId)
+
+                .eq(AiSessionEntity::getUserId, userId), false);
+
+    }
+}

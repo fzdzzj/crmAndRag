@@ -1,0 +1,26 @@
+# ================================================================
+# prod profile：生产强约束（fail-fast）
+# 任何一项不满足都由 ProductionConfigurationGuard 在启动期直接失败，避免带病上线
+# ================================================================
+spring:
+  flyway:
+    # 生产库结构唯一真相源 = Flyway；auto-table 必须关闭（D2 / 任务 4）
+    enabled: true
+auto-table:
+  mode: none
+  show-banner: false
+
+platform:
+  actuator:
+    # 生产必须保护 /actuator/**（仅探针放行，其余需超管）
+    protected-enabled: true
+
+# 生产关闭 swagger 匿名暴露（WebMvcConfiguration 依 profile 判断 dev/local 才放行 OpenAPI 路径）
+springdoc:
+  api-docs:
+    enabled: false
+
+logging:
+  level:
+    root: info
+    com.slz.crm: info

@@ -1,0 +1,24 @@
+# ================================================================
+# dev profile：本地开发
+# 目标：零外部依赖也能起（auto-table 便捷建表），便于跑单测/契约测试
+# 生产 MUST 使用 prod profile；本文件不承载任何密钥
+# ================================================================
+spring:
+  flyway:
+    # 本地默认也走 Flyway（与生产同构），减少"本地表结构漂移"；
+    # 若本地临时调实体想用 auto-table，可设 SLZ_FLYWAY_ENABLED=false + SLZ_AUTO_TABLE_MODE=update
+    enabled: ${SLZ_FLYWAY_ENABLED:true}
+auto-table:
+  # 本地便捷建表/改表；生产 profile 强制 none（见 application-prod.yml + ProductionConfigurationGuard）
+  mode: ${SLZ_AUTO_TABLE_MODE:none}
+  show-banner: true
+
+# 本地允许关闭 Actuator 保护以便调试；生产强制开启
+platform:
+  actuator:
+    protected-enabled: ${SLZ_ACTUATOR_PROTECTED:true}
+
+logging:
+  level:
+    root: info
+    com.slz.crm: debug

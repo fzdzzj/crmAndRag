@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.slz.crm.server.mapper.ContractOrderItemMapper">
+
+
+    <insert id="insertBatch" useGeneratedKeys="true" keyProperty="id">
+        insert into contract_order_item (contract_id, product_name, quantity, unit_price, amount, remark)
+        values
+        <foreach collection="list" item="item" separator=",">
+            (#{item.contractId}, #{item.productName}, #{item.quantity}, #{item.unitPrice}, #{item.amount},#{item.remark})
+        </foreach>
+    </insert>
+</mapper>
