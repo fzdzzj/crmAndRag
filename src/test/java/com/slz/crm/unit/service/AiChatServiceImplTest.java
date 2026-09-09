@@ -1,6 +1,7 @@
 package com.slz.crm.unit.service;
 
 import com.slz.crm.common.untils.BaseUnit;
+import com.slz.crm.platform.contract.AssistantChatRequest;
 import com.slz.crm.server.ai.AiChatPromptService;
 import com.slz.crm.server.ai.AiChatStreamHeartbeat;
 import com.slz.crm.server.ai.AiChatStreamContext;
@@ -164,6 +165,12 @@ class AiChatServiceImplTest {
         ReflectionTestUtils.setField(service, "streamLifecycle", streamLifecycle);
     }
 
+    private void invokeDoStreamChat(RoleAO currentUser, Long sessionId, String message, SseEmitter emitter) {
+        AssistantChatRequest request = new AssistantChatRequest(
+                sessionId == null ? null : String.valueOf(sessionId), message, false, false, null, List.of());
+        ReflectionTestUtils.invokeMethod(service, "doStreamChat", currentUser, request, emitter, null);
+    }
+
     @AfterEach
     void tearDown() {
         BaseUnit.removeCurrentId();
@@ -207,7 +214,9 @@ class AiChatServiceImplTest {
         RoleAO currentUser = buildUser(42L);
         BaseUnit.setCurrentRole(currentUser);
 
-        ReflectionTestUtils.invokeMethod(service, "doStreamChat", currentUser, 9L, " ", emitter);
+        AssistantChatRequest blankRequest = mock(AssistantChatRequest.class);
+        when(blankRequest.message()).thenReturn(" ");
+        ReflectionTestUtils.invokeMethod(service, "doStreamChat", currentUser, blankRequest, emitter, null);
 
         verify(aiRateLimiter, never()).tryAcquire(anyLong());
         verify(aiSessionService, never()).getOwnedSession(anyLong(), anyLong());
@@ -237,7 +246,7 @@ class AiChatServiceImplTest {
         when(promptSpec.stream()).thenReturn(streamSpec);
         when(streamSpec.chatResponse()).thenReturn(Flux.empty());
 
-        ReflectionTestUtils.invokeMethod(service, "doStreamChat", currentUser, 9L, "你好", emitter);
+        invokeDoStreamChat(currentUser, 9L, "你好", emitter);
 
         org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(promptSpy, aiMessageService);
         inOrder.verify(promptSpy).buildMessages(9L, "你好");
@@ -272,7 +281,7 @@ class AiChatServiceImplTest {
         when(promptSpec.stream()).thenReturn(streamSpec);
         when(streamSpec.chatResponse()).thenReturn(Flux.empty());
 
-        ReflectionTestUtils.invokeMethod(service, "doStreamChat", currentUser, 9L, "补充说明", emitter);
+        invokeDoStreamChat(currentUser, 9L, "补充说明", emitter);
 
         assertThat(oldStream.isFinished()).isFalse();
         org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(promptSpy);
@@ -307,7 +316,7 @@ class AiChatServiceImplTest {
         when(promptSpec.stream()).thenReturn(streamSpec);
         when(streamSpec.chatResponse()).thenReturn(Flux.empty());
 
-        ReflectionTestUtils.invokeMethod(service, "doStreamChat", currentUser, 9L, "补充说明", emitter);
+        invokeDoStreamChat(currentUser, 9L, "补充说明", emitter);
 
         assertThat(oldStream.isFinished()).isFalse();
     }

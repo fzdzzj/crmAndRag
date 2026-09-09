@@ -131,7 +131,7 @@ class AiChatControllerValidationTest {
 
         AiChatRequestDTO dto = new AiChatRequestDTO();
         dto.setMessage("你好");
-        SseEmitter emitter = controller.streamChat(dto);
+        SseEmitter emitter = controller.streamChat(dto, null);
 
         assertThat(emitter.getTimeout()).isEqualTo(45_000L);
     }

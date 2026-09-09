@@ -1,6 +1,7 @@
 package com.slz.crm.server.service.impl;
 
 import com.slz.crm.common.untils.BaseUnit;
+import com.slz.crm.platform.contract.AssistantChatRequest;
 import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.entity.AiMessageEntity;
 import com.slz.crm.pojo.entity.AiSessionEntity;
@@ -11,6 +12,7 @@ import com.slz.crm.server.ai.AiRateLimiter;
 import com.slz.crm.server.ai.AiChatStreamContext;
 import com.slz.crm.server.ai.AiStreamRegistry;
 import com.slz.crm.server.ai.AiAssistantMessageStore;
+import com.slz.crm.server.ai.AiChatResume;
 import com.slz.crm.server.ai.AiToolRegistry;
 import com.slz.crm.server.service.AiChatService;
 import com.slz.crm.server.service.AiMessageService;
@@ -82,19 +84,36 @@ public class AiChatServiceImpl implements AiChatService {
     private Executor aiTitleExecutor;
 
     @Override
-    public void streamChat(Long sessionId, String message, SseEmitter emitter) {
+    public void streamChat(AssistantChatRequest request, SseEmitter emitter, AiChatResume resume) {
         RoleAO currentUser = BaseUnit.getCurrentRole();
-        CompletableFuture.runAsync(() -> doStreamChat(currentUser, sessionId, message, emitter), aiChatExecutor);
+        CompletableFuture.runAsync(() -> doStreamChat(currentUser, request, emitter, resume), aiChatExecutor);
     }
 
-    private void doStreamChat(RoleAO currentUser, Long sessionId, String message, SseEmitter emitter) {
+    @Override
+    public void streamChat(Long sessionId, String message, SseEmitter emitter) {
+        AssistantChatRequest request = new AssistantChatRequest(
+                sessionId == null ? null : String.valueOf(sessionId), message, false, false, null, List.of());
+        streamChat(request, emitter, null);
+    }
+
+    private void doStreamChat(RoleAO currentUser, AssistantChatRequest request, SseEmitter emitter,
+                              AiChatResume resume) {
         BaseUnit.setCurrentRole(currentUser);
         Long userId = currentUser == null ? null : currentUser.getId();
 
         try {
-            if (message == null || message.isBlank()) {
+            if (request.message() == null || request.message().isBlank()) {
                 eventWriter.sendError(emitter, "PARAM_INVALID", "消息内容不能为空");
                 emitter.complete();
+                return;
+            }
+
+            Long requestedSessionId = parseSessionId(request.sessionId(), emitter);
+            if (requestedSessionId == null && request.sessionId() != null && !request.sessionId().isBlank()) {
+                return;
+            }
+            if (resume != null && resume.generationId() != null && !resume.generationId().isBlank()
+                    && tryResume(currentUser, requestedSessionId, emitter, resume)) {
                 return;
             }
 
@@ -104,7 +123,8 @@ public class AiChatServiceImpl implements AiChatService {
                 return;
             }
 
-            AiSessionEntity session = aiSessionService.getOwnedSession(sessionId, userId);
+            AiSessionEntity session = requestedSessionId == null
+                    ? null : aiSessionService.getOwnedSession(requestedSessionId, userId);
             boolean isNewSession = false;
             if (session == null) {
                 session = aiSessionService.createSession(userId, null);
@@ -123,6 +143,7 @@ public class AiChatServiceImpl implements AiChatService {
                 AiStreamRegistry.ActiveStream oldStream = aiStreamRegistry.get(finalSessionId);
                 // 接管只顶替注册表；旧流在下一个 shouldAbort 检查点协作退出。
 
+                String message = request.message();
                 List<Message> messages = promptService.buildMessages(finalSessionId, message);
                 AiMessageEntity userMessage = aiMessageService.saveMessage(
                         finalSessionId, "user", "text", message, null);
@@ -133,7 +154,7 @@ public class AiChatServiceImpl implements AiChatService {
                 eventWriter.sendBufferedEvent(activeStream, "start", eventWriter.toStartJson(
                         String.valueOf(finalSessionId), assistantMessage.getId(), activeStream.getGenerationId()));
                 eventWriter.sendBufferedEvent(activeStream, "meta", eventWriter.toMetaJson(
-                        resolveProvider(), resolveModelName(), false, false));
+                        resolveProvider(), resolveModelName(), request.useKnowledgeBase(), request.thinking()));
 
                 List<ToolCallback> toolCallbacks = permittedToolCallbacks(currentUser);
                 activeStream.setContext(AiChatStreamContext.initial(finalSessionId, emitter, messages, toolCallbacks,
@@ -152,11 +173,44 @@ public class AiChatServiceImpl implements AiChatService {
                 takeoverLock.unlock();
             }
         } catch (Exception exception) {
-            log.error("AI chat failed, sessionId={}", sessionId, exception);
+            log.error("AI chat failed, sessionId={}", request.sessionId(), exception);
             eventWriter.sendError(emitter, "LLM_ERROR", "模型调用失败，请稍后重试");
             emitter.complete();
         } finally {
             BaseUnit.removeCurrentId();
+        }
+    }
+
+    private boolean tryResume(RoleAO currentUser, Long sessionId, SseEmitter emitter, AiChatResume resume) {
+        Long userId = currentUser == null ? null : currentUser.getId();
+        if (sessionId == null || aiSessionService.getOwnedSession(sessionId, userId) == null) {
+            eventWriter.sendError(emitter, "UNAUTHORIZED", "会话不存在或无权访问");
+            emitter.complete();
+            return true;
+        }
+        AiStreamRegistry.ActiveStream activeStream = aiStreamRegistry.getByGenerationId(resume.generationId());
+        if (activeStream == null || !sessionId.equals(activeStream.getSessionId())) {
+            eventWriter.sendError(emitter, "RESUME_UNAVAILABLE", "会话输出已不在缓冲区，请查看已生成的回答");
+            emitter.complete();
+            return true;
+        }
+        if (!eventWriter.resume(activeStream, emitter, resume.lastEventId())) {
+            eventWriter.sendError(emitter, "RESUME_UNAVAILABLE", "会话输出已不在缓冲区，请查看已生成的回答");
+            emitter.complete();
+        }
+        return true;
+    }
+
+    private Long parseSessionId(String sessionId, SseEmitter emitter) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.valueOf(sessionId);
+        } catch (NumberFormatException ignored) {
+            eventWriter.sendError(emitter, "PARAM_INVALID", "sessionId 必须是数字");
+            emitter.complete();
+            return null;
         }
     }
 

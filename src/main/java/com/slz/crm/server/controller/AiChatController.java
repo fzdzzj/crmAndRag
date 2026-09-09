@@ -3,6 +3,8 @@ package com.slz.crm.server.controller;
 import com.slz.crm.common.result.Result;
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.common.enumeration.ErrorCode;
+import com.slz.crm.platform.contract.AssistantChatRequest;
+import com.slz.crm.server.ai.AiChatResume;
 import com.slz.crm.pojo.dto.AiChatRequestDTO;
 import com.slz.crm.pojo.entity.AiSessionEntity;
 import com.slz.crm.pojo.vo.AiMessageVO;
@@ -52,10 +54,19 @@ public class AiChatController {
      * 核心对话接口（SSE 流式）
      */
     @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter streamChat(@Valid @RequestBody AiChatRequestDTO dto) {
+    public SseEmitter streamChat(@Valid @RequestBody AiChatRequestDTO dto,
+                                 @RequestHeader(value = "Last-Event-ID", required = false) String lastEventId) {
         SseEmitter emitter = new SseEmitter(resolveSseTimeoutMillis());
 
-        aiChatService.streamChat(dto.getSessionId(), dto.getMessage(), emitter);
+        AssistantChatRequest request = new AssistantChatRequest(
+                dto.getSessionId(), dto.getMessage(), dto.getUseKnowledgeBase(), dto.getThinking(),
+                dto.getImageRef(), dto.getAttachments());
+        AiChatResume resume = lastEventId != null && !lastEventId.isBlank()
+                ? new AiChatResume(lastEventId.contains(":")
+                        ? lastEventId.substring(0, lastEventId.indexOf(':')) : null, lastEventId)
+                : dto.getResume() == null ? null
+                        : new AiChatResume(dto.getResume().getGenerationId(), dto.getResume().getLastEventId());
+        aiChatService.streamChat(request, emitter, resume);
 
         return emitter;
 

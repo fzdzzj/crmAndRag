@@ -54,6 +54,39 @@ public class AiChatSseEventWriter {
         }
     }
 
+    /**
+     * 先重放缓冲，再把仍活跃的生成切到新连接；终态流只重放并关闭。
+     *
+     * @return true 表示续传成功
+     */
+    public boolean resume(AiStreamRegistry.ActiveStream activeStream, SseEmitter emitter, String lastEventId) {
+        synchronized (activeStream) {
+            for (AiSseEventBuffer.BufferedEvent event : activeStream.getEventBuffer().eventsAfter(lastEventId)) {
+                if (!sendEvent(emitter, event.eventName(), event.data(), event.eventId())) {
+                    return false;
+                }
+            }
+            if (activeStream.isFinished()) {
+                completeQuietly(emitter);
+            } else {
+                SseEmitter previous = activeStream.attachResumeEmitter(emitter);
+                completeQuietly(previous);
+            }
+            return true;
+        }
+    }
+
+    private void completeQuietly(SseEmitter emitter) {
+        if (emitter == null) {
+            return;
+        }
+        try {
+            emitter.complete();
+        } catch (RuntimeException ignored) {
+            // 旧连接通常已断开；续传连接才是后续唯一写出目标。
+        }
+    }
+
     private boolean sendEvent(SseEmitter emitter, String event, String data, String eventId) {
         try {
             SseEmitter.SseEventBuilder builder = SseEmitter.event().name(event).data(data);
