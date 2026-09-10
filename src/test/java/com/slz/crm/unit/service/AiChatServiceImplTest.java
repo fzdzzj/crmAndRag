@@ -2,6 +2,7 @@ package com.slz.crm.unit.service;
 
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.platform.contract.AssistantChatRequest;
+import com.slz.crm.platform.contract.ModelCallOptions;
 import com.slz.crm.platform.contract.ModelProvider;
 import com.slz.crm.server.ai.AiChatPromptService;
 import com.slz.crm.server.ai.AiChatStreamHeartbeat;
@@ -669,7 +670,7 @@ class AiChatServiceImplTest {
         ObjectProvider<ModelProvider> modelProviderProvider = mock(ObjectProvider.class);
         when(modelProviderProvider.getIfAvailable()).thenReturn(modelProvider);
         ChatResponse providerResponse = buildChatResponseWithUsage("答案", null, null);
-        when(modelProvider.streamChat(any(Prompt.class)))
+        when(modelProvider.streamChat(any(Prompt.class), any(ModelCallOptions.class)))
                 .thenReturn(Flux.just(providerResponse));
         ReflectionTestUtils.setField(streamLifecycle, "modelProviderProvider", modelProviderProvider);
         AiStreamRegistry.ActiveStream activeStream = new AiStreamRegistry.ActiveStream(9L, emitter);
@@ -681,7 +682,7 @@ class AiChatServiceImplTest {
 
         streamLifecycle.subscribe(activeStream, activeStream.getContext());
 
-        verify(modelProvider).streamChat(any(Prompt.class));
+        verify(modelProvider).streamChat(any(Prompt.class), any(ModelCallOptions.class));
         verify(chatClientBuilder, never()).build();
         verify(assistantMessageStore).complete(eq(88L), eq("答案"), any(), eq(0));
     }
@@ -701,7 +702,7 @@ class AiChatServiceImplTest {
         AtomicInteger attempts = new AtomicInteger();
         CountDownLatch retried = new CountDownLatch(1);
         CountDownLatch saved = new CountDownLatch(1);
-        when(modelProvider.streamChat(any(Prompt.class))).thenAnswer(invocation -> {
+        when(modelProvider.streamChat(any(Prompt.class), any(ModelCallOptions.class))).thenAnswer(invocation -> {
             if (attempts.incrementAndGet() == 1) {
                 return Flux.error(new IOException("connection reset"));
             }
@@ -722,7 +723,7 @@ class AiChatServiceImplTest {
 
         assertThat(retried.await(1, TimeUnit.SECONDS)).isTrue();
         assertThat(saved.await(1, TimeUnit.SECONDS)).isTrue();
-        verify(modelProvider, org.mockito.Mockito.times(2)).streamChat(any(Prompt.class));
+        verify(modelProvider, org.mockito.Mockito.times(2)).streamChat(any(Prompt.class), any(ModelCallOptions.class));
         assertThat(activeStream.getContext().connectionRetry()).isEqualTo(1);
         verify(assistantMessageStore).complete(eq(88L), eq("答案"), any(), eq(0));
     }

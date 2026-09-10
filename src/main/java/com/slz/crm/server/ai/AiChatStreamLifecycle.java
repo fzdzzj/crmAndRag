@@ -1,11 +1,12 @@
 package com.slz.crm.server.ai;
 
-import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatOptions;
 import com.slz.crm.platform.contract.ModelProvider;
+import com.slz.crm.platform.contract.ModelCallOptions;
 import com.slz.crm.server.properties.AiProperties;
 import com.slz.crm.server.service.AiMessageService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.model.tool.DefaultToolCallingChatOptions;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.messages.Message;
@@ -93,21 +94,23 @@ public class AiChatStreamLifecycle {
         activeStream.setContext(context);
         Long sessionId = context.sessionId();
         String effectiveModel = context.effectiveModel(modelName);
-        DashScopeChatOptions options = buildOptions(context, sessionId, effectiveModel);
+        ModelCallOptions callOptions = buildModelCallOptions(context, sessionId, effectiveModel);
         AiThinkTagStripper.StreamingStripper thinkStripper = AiThinkTagStripper.streaming();
         AtomicBoolean thinkingFinished = new AtomicBoolean(false);
         Usage[] usageHolder = new Usage[1];
         ModelProvider modelProvider = modelProviderProvider == null ? null : modelProviderProvider.getIfAvailable();
         Flux<ChatResponse> responseFlux;
-        if (modelProvider != null) {
-            responseFlux = modelProvider.streamChat(new Prompt(context.messages(), options));
+        // Provider 工具承载契约尚未确认；有工具时走 ChatClient 通用路径，避免静默丢工具。
+        if (modelProvider != null && context.toolCallbacks().isEmpty()) {
+            responseFlux = modelProvider.streamChat(new Prompt(context.messages()), callOptions);
         } else {
             ChatClient.ChatClientRequestSpec requestSpec = chatClientBuilder.build()
                     .prompt()
                     .messages(context.messages());
-            // 兼容路径仅在思考或模型覆盖时注入 DashScope 参数，保持旧调用桩的链式行为。
+            // 兼容路径只注入 Spring AI 通用 options，不在业务层承载 Provider 协议差异。
             if (context.thinking() || context.modelOverride() != null) {
-                requestSpec = requestSpec.options(options);
+                // 兼容路径使用 Spring AI 通用 options；Provider 差异不再由业务层承载。
+                requestSpec = requestSpec.options(buildFallbackOptions(context, sessionId, effectiveModel));
             }
             if (!context.toolCallbacks().isEmpty()) {
                 requestSpec = requestSpec
@@ -180,17 +183,11 @@ public class AiChatStreamLifecycle {
     }
 
     /**
-     * 装配 DashScope 请求参数；思考开关是真实请求参数而非 prompt 约束。
+     * 装配中立模型调用参数；思考开关是真实请求参数而非 prompt 约束。
      */
-    private DashScopeChatOptions buildOptions(AiChatStreamContext context, Long sessionId, String effectiveModel) {
-        DashScopeChatOptions.DashscopeChatOptionsBuilder builder = DashScopeChatOptions.builder()
-                .withModel(effectiveModel)
-                .withEnableThinking(context.thinking());
-        if (modelProviderProvider != null && modelProviderProvider.getIfAvailable() != null
-                && !context.toolCallbacks().isEmpty()) {
-            builder.withToolCallbacks(context.toolCallbacks()).withToolContext(buildToolContext(context, sessionId));
-        }
-        return builder.build();
+    private ModelCallOptions buildModelCallOptions(AiChatStreamContext context, Long sessionId,
+                                                   String effectiveModel) {
+        return new ModelCallOptions(effectiveModel, context.thinking(), null, null, Map.of());
     }
 
     private Map<String, Object> buildToolContext(AiChatStreamContext context, Long sessionId) {
@@ -200,6 +197,16 @@ public class AiChatStreamLifecycle {
         toolContext.put("references", context.referenceCollector());
         toolContext.put("user", context.currentUser());
         return toolContext;
+    }
+
+    private DefaultToolCallingChatOptions buildFallbackOptions(AiChatStreamContext context,
+                                                              Long sessionId,
+                                                              String effectiveModel) {
+        DefaultToolCallingChatOptions options = new DefaultToolCallingChatOptions();
+        options.setModel(effectiveModel);
+        options.setToolCallbacks(context.toolCallbacks());
+        options.setToolContext(buildToolContext(context, sessionId));
+        return options;
     }
 
     /**
