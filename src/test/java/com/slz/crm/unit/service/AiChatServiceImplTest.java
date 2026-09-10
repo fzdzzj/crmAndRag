@@ -48,9 +48,13 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
 import reactor.core.Disposable;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -677,6 +681,47 @@ class AiChatServiceImplTest {
 
         verify(modelProvider).streamChat(any(Prompt.class));
         verify(chatClientBuilder, never()).build();
+        verify(assistantMessageStore).complete(eq(88L), eq("答案"), any(), eq(0));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void zeroOutputConnectionError_retriesSameModelThenCompletes() throws Exception {
+        AiStreamRegistry registry = new AiStreamRegistry();
+        useRegistry(registry);
+        ModelProvider modelProvider = mock(ModelProvider.class);
+        ObjectProvider<ModelProvider> modelProviderProvider = mock(ObjectProvider.class);
+        when(modelProviderProvider.getIfAvailable()).thenReturn(modelProvider);
+        ReflectionTestUtils.setField(streamLifecycle, "modelProviderProvider", modelProviderProvider);
+        when(aiProperties.getLlmTimeoutSeconds()).thenReturn(1);
+        when(aiProperties.getConnectionRetryBaseDelayMillis()).thenReturn(1L);
+        ChatResponse providerResponse = buildChatResponseWithUsage("答案", null, null);
+        AtomicInteger attempts = new AtomicInteger();
+        CountDownLatch retried = new CountDownLatch(1);
+        CountDownLatch saved = new CountDownLatch(1);
+        when(modelProvider.streamChat(any(Prompt.class))).thenAnswer(invocation -> {
+            if (attempts.incrementAndGet() == 1) {
+                return Flux.error(new IOException("connection reset"));
+            }
+            retried.countDown();
+            return Flux.just(providerResponse);
+        });
+        AiStreamRegistry.ActiveStream activeStream = new AiStreamRegistry.ActiveStream(9L, emitter);
+        activeStream.setAssistantMessageId(88L);
+        activeStream.setContext(AiChatStreamContext.initial(9L, emitter, List.of(), List.of(),
+                System.currentTimeMillis(), null));
+        registry.register(9L, activeStream);
+        when(assistantMessageStore.complete(eq(88L), eq("答案"), any(), eq(0))).thenAnswer(invocation -> {
+            saved.countDown();
+            return true;
+        });
+
+        streamLifecycle.subscribe(activeStream, activeStream.getContext());
+
+        assertThat(retried.await(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(saved.await(1, TimeUnit.SECONDS)).isTrue();
+        verify(modelProvider, org.mockito.Mockito.times(2)).streamChat(any(Prompt.class));
+        assertThat(activeStream.getContext().connectionRetry()).isEqualTo(1);
         verify(assistantMessageStore).complete(eq(88L), eq("答案"), any(), eq(0));
     }
 

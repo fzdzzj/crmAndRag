@@ -16,6 +16,7 @@ public record AiChatStreamContext(
         String modelOverride,
         boolean fallback,
         boolean thinking,
+        int connectionRetry,
         long roundStart,
         AtomicInteger repairCounter,
         AiReferenceCollector referenceCollector,
@@ -26,7 +27,7 @@ public record AiChatStreamContext(
                                               List<ToolCallback> toolCallbacks, long roundStart,
                                               RoleAO currentUser) {
         return new AiChatStreamContext(sessionId, emitter, messages, toolCallbacks, null, false,
-                false, roundStart, new AtomicInteger(0), new AiReferenceCollector(), currentUser);
+                false, 0, roundStart, new AtomicInteger(0), new AiReferenceCollector(), currentUser);
     }
 
     /**
@@ -36,12 +37,20 @@ public record AiChatStreamContext(
                                               List<ToolCallback> toolCallbacks, long roundStart,
                                               RoleAO currentUser, boolean thinking) {
         return new AiChatStreamContext(sessionId, emitter, messages, toolCallbacks, null, false,
-                thinking, roundStart, new AtomicInteger(0), new AiReferenceCollector(), currentUser);
+                thinking, 0, roundStart, new AtomicInteger(0), new AiReferenceCollector(), currentUser);
+    }
+
+    /**
+     * 零输出连接型错误重试；保持同一模型与思考开关，仅递增重试次数。
+     */
+    public AiChatStreamContext forConnectionRetry() {
+        return new AiChatStreamContext(sessionId, emitter, messages, toolCallbacks, modelOverride, fallback,
+                thinking, connectionRetry + 1, roundStart, repairCounter, referenceCollector, currentUser);
     }
 
     public AiChatStreamContext forFallback(String fallbackModel) {
         return new AiChatStreamContext(sessionId, emitter, messages, toolCallbacks, fallbackModel, true,
-                thinking, roundStart, repairCounter, referenceCollector, currentUser);
+                thinking, 0, roundStart, repairCounter, referenceCollector, currentUser);
     }
 
     public String effectiveModel(String defaultModel) {

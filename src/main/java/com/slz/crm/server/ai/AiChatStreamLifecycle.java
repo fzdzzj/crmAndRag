@@ -19,12 +19,16 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * AI 助手 SSE 生命周期。
@@ -210,6 +214,9 @@ public class AiChatStreamLifecycle {
             finishSuperseded(activeStream);
             return;
         }
+        if (scheduleConnectionRetry(activeStream, error)) {
+            return;
+        }
         if (!activeStream.isFinished()
                 && !activeStream.getContext().fallback()
                 && activeStream.getContext().modelOverride() == null
@@ -238,6 +245,54 @@ public class AiChatStreamLifecycle {
             completeEmitter(activeStream);
         }
         aiStreamRegistry.remove(sessionId, activeStream);
+    }
+
+    /**
+     * 零输出且连接型异常时同模型重试，最多 2 次；有部分内容后不再重试，避免重复回答。
+     */
+    private boolean scheduleConnectionRetry(AiStreamRegistry.ActiveStream activeStream, Throwable error) {
+        AiChatStreamContext context = activeStream.getContext();
+        if (activeStream.isFinished()
+                || activeStream.getPartialAnswer().length() > 0
+                || context == null
+                || context.connectionRetry() >= 2
+                || !isRetryableConnectionError(error)) {
+            return false;
+        }
+        long baseDelay = aiProperties.getConnectionRetryBaseDelayMillis() == null
+                ? 500L : aiProperties.getConnectionRetryBaseDelayMillis();
+        // 第一次重试 500ms，第二次 1000ms；使用共享调度器，不新建业务线程池。
+        long delayMillis = baseDelay * (1L << context.connectionRetry());
+        log.warn("模型零输出且连接型失败，安排同模型重试: sessionId={}, retry={}, delayMs={}",
+                activeStream.getSessionId(), context.connectionRetry() + 1, delayMillis);
+        Schedulers.parallel().schedule(() -> {
+            if (shouldAbort(activeStream)) {
+                finishSuperseded(activeStream);
+                return;
+            }
+            subscribe(activeStream, activeStream.getContext().forConnectionRetry());
+        }, delayMillis, TimeUnit.MILLISECONDS);
+        return true;
+    }
+
+    private boolean isRetryableConnectionError(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof IOException || current instanceof TimeoutException) {
+                return true;
+            }
+            String className = current.getClass().getName();
+            if (className.contains("WebClientRequestException") || className.contains("ConnectException")) {
+                return true;
+            }
+            String message = current.getMessage() == null ? "" : current.getMessage().toLowerCase();
+            if (message.contains("connection reset") || message.contains("connection refused")
+                    || message.contains("read timed out") || message.contains("connection prematurely closed")) {
+                return true;
+            }
+            current = current.getCause() == current ? null : current.getCause();
+        }
+        return false;
     }
 
     /**
