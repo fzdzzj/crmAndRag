@@ -10,12 +10,14 @@
 tasks.json 任务 16。
 
 ## worktree / 分支
-- worktree：`d:\code\crmAndRag\.worktrees\lane-e-dynamic-config`
+- 从 `spec/add-crm-rag-fusion-platform` 最新（含全部冻结契约 + 修正轮1/2/3 + PDFBox `090f9c5`）建 worktree：
+  `git worktree add D:\code\crmAndRag.worktrees\lane-e-dynamic-config -b feature/lane-e-dynamic-config spec/add-crm-rag-fusion-platform`
+- worktree：`D:\code\crmAndRag.worktrees\lane-e-dynamic-config`（与 A/B/C/D 同父目录 `crmAndRag.worktrees`，**不是**仓库内 `.worktrees`）
 - 分支：`feature/lane-e-dynamic-config`
-- 禁止提交 master、禁止 push。
+- 禁止提交 master、禁止 push。**报“完成”必须附 commit hash + `git status` 干净证据**（只说“完成/测试通过”但工作树有 ?? = 未完成）。
 
 ## 入口条件
-Agent-0 完成；`DynamicConfigService` 契约已冻结；D 的审计骨架就绪；B/C 的配置读取点已明确。
+Agent-0 完成；`DynamicConfigService` 契约已冻结；D 的审计骨架就绪；B/C 的配置读取点已明确。**（现全部就绪：base `090f9c5`；A/B/C/D Wave 1 已完成并提交验证。）**
 
 ## 独占可改
 `com.slz.crm.platform.config.**`（dynamic-config）、Flyway `V6x__*`。
@@ -32,6 +34,7 @@ Agent-0 完成；`DynamicConfigService` 契约已冻结；D 的审计骨架就�
 ## 关键坑
 - 动态配置**不替代**启动期生产配置保护——密钥/凭据仍走环境变量（静态），你只管运行期可调的策略参数。
 - 读取接口要已被 B/C/D 消费，**别改他们调用点的签名**（面向契约）。
+- “配置变更审计复用 D 的治理审计流”：D 的审计实现还在 `feature/lane-d-governance`（未进 spec）。你面向冻结契约编程；若无冻结审计接口，用 `ObjectProvider` 可选依赖 + 无操作兜底，集成时接 D 真实现（同 C 对 B 检索 / C 对 D 执行器的模式）。
 
 ## 注释重点（本 lane）
 - **热生效机制**（缓存刷新间隔、陈旧窗口上界、失效信号）与**校验护栏**（各类型取值范围）必须行内注释解释。
