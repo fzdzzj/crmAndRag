@@ -9,6 +9,8 @@ import com.slz.crm.platform.contract.TokenUsageRecord;
 import com.slz.crm.platform.contract.TokenUsageRecorder;
 import com.slz.crm.platform.contract.TokenUsageType;
 import com.slz.crm.pojo.entity.AiChatImageEntity;
+import org.springframework.ai.embedding.EmbeddingRequest;
+import org.springframework.ai.embedding.EmbeddingOptionsBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -68,30 +70,48 @@ public class AiChatImageUnderstandingService {
             float[] imageVector) {
     }
 
-    public Optional<UnderstandingContext> understand(AiChatImageEntity image, String question) {
+    public Optional<UnderstandingContext> understand(AiChatImageEntity image,
+                                                     String question,
+                                                     boolean generateImageVector) {
         if (image == null || image.getSessionId() == null || image.getImageHash() == null) {
             return Optional.empty();
         }
-        Optional<AiChatImageContextCache.CachedImageContext> cached =
-                contextCache.get(image.getSessionId(), image.getImageHash(), question);
-        if (cached.isPresent()) {
-            return Optional.of(toContext(image, cached.get()));
-        }
-
         ModelProvider provider = modelProviderProvider == null ? null : modelProviderProvider.getIfAvailable();
         if (provider == null) {
             log.warn("ModelProvider 未就绪，仅返回图片已持久化理解: imageId={}", image.getId());
             return Optional.of(toContext(image, null));
+        }
+        Optional<AiChatImageContextCache.CachedImageContext> cached =
+                contextCache.get(image.getSessionId(), image.getImageHash(), question);
+        if (cached.isPresent()) {
+            UnderstandingContext context = toContext(image, cached.get());
+            if (!generateImageVector || context.imageVector() != null) {
+                return Optional.of(context);
+            }
+            float[] vector = generateImageVector(image, question, context, provider);
+            if (vector != null) {
+                contextCache.put(image.getSessionId(), image.getImageHash(), question,
+                        context.focusedSummary(), vector);
+                return Optional.of(new UnderstandingContext(context.ocrText(), context.imageSummary(),
+                        context.keyEntities(), context.focusedSummary(), vector));
+            }
+            return Optional.of(context);
         }
 
         String generated = callVision(image, question, provider);
         Understanding parsed = parse(generated);
         imageService.completeUnderstanding(image.getId(), parsed.ocrText(), parsed.imageSummary(),
                 parsed.keyEntities());
+        float[] imageVector = null;
+        if (generateImageVector) {
+            imageVector = generateImageVector(image, question,
+                    new UnderstandingContext(parsed.ocrText(), parsed.imageSummary(), parsed.keyEntities(),
+                            parsed.focusedSummary(), null), provider);
+        }
         contextCache.put(image.getSessionId(), image.getImageHash(), question,
-                parsed.focusedSummary(), null);
+                parsed.focusedSummary(), imageVector);
         return Optional.of(new UnderstandingContext(parsed.ocrText(), parsed.imageSummary(),
-                parsed.keyEntities(), parsed.focusedSummary(), null));
+                parsed.keyEntities(), parsed.focusedSummary(), imageVector));
     }
 
     private String callVision(AiChatImageEntity image, String question, ModelProvider provider) {
@@ -105,11 +125,42 @@ public class AiChatImageUnderstandingService {
                             .media(List.of(new Media(mimeType, new ByteArrayResource(content))))
                             .build());
             ModelCallResult<String> result = provider.vision(new Prompt(messages), ModelCallOptions.defaults());
-            recordUsage(image, result);
+            recordUsage(image, result, TokenUsageType.VISION);
             return AiThinkTagStripper.strip(result.content());
         } catch (Exception exception) {
             log.warn("聊天图片理解失败，降级为无图片上下文: imageId={}", image.getId(), exception);
             return "";
+        }
+    }
+
+    private float[] generateImageVector(AiChatImageEntity image,
+                                        String question,
+                                        UnderstandingContext context,
+                                        ModelProvider provider) {
+        try {
+            StringBuilder text = new StringBuilder("图片理解：");
+            if (context.imageSummary() != null && !context.imageSummary().isBlank()) {
+                text.append(context.imageSummary().trim());
+            }
+            if (context.ocrText() != null && !context.ocrText().isBlank()) {
+                text.append("\nOCR：").append(context.ocrText().trim());
+            }
+            if (!context.keyEntities().isEmpty()) {
+                text.append("\n实体：").append(String.join("、", context.keyEntities()));
+            }
+            if (context.focusedSummary() != null && !context.focusedSummary().isBlank()) {
+                text.append("\n聚焦：").append(context.focusedSummary().trim());
+            }
+            if (question != null && !question.isBlank()) {
+                text.append("\n问题：").append(question.trim());
+            }
+            ModelCallResult<float[]> result = provider.embed(new EmbeddingRequest(
+                    List.of(text.toString()), EmbeddingOptionsBuilder.builder().build()));
+            recordUsage(image, result, TokenUsageType.EMBEDDING);
+            return result.vector();
+        } catch (Exception exception) {
+            log.warn("聊天图片向量懒生成失败，降级为纯文本检索: imageId={}", image.getId(), exception);
+            return null;
         }
     }
 
@@ -180,7 +231,7 @@ public class AiChatImageUnderstandingService {
         return MimeType.valueOf("image/png");
     }
 
-    private void recordUsage(AiChatImageEntity image, ModelCallResult<String> result) {
+    private void recordUsage(AiChatImageEntity image, ModelCallResult<?> result, TokenUsageType type) {
         TokenUsageRecorder recorder = tokenUsageRecorderProvider == null
                 ? null : tokenUsageRecorderProvider.getIfAvailable();
         if (recorder == null || !result.hasUsage()) {
@@ -188,7 +239,7 @@ public class AiChatImageUnderstandingService {
         }
         recorder.record(new TokenUsageRecord(result.model(),
                 image.getUserId() == null ? "user:system" : "user:" + image.getUserId(),
-                String.valueOf(image.getSessionId()), null, TokenUsageType.VISION,
+                String.valueOf(image.getSessionId()), null, type,
                 result.promptTokens(), result.completionTokens(), result.totalTokens(), true));
     }
 

@@ -14,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.beans.factory.ObjectProvider;
 
@@ -59,7 +60,7 @@ class AiChatImageUnderstandingServiceTest {
                         "keyEntities":["客户A","120万"],"focusedSummary":"发票A金额"}""",
                         "qwen-vl", 10L, 5L, 15L));
 
-        var context = service.understand(image, "发票金额是多少").orElseThrow();
+        var context = service.understand(image, "发票金额是多少", false).orElseThrow();
 
         assertThat(context.ocrText()).isEqualTo("发票A");
         assertThat(context.imageSummary()).isEqualTo("一张发票");
@@ -73,14 +74,40 @@ class AiChatImageUnderstandingServiceTest {
     }
 
     @Test
+    void understand_kbOnGeneratesImageVectorAndRecordsEmbeddingUsage() {
+        AiChatImageEntity image = image();
+        when(imageService.readBytes(image)).thenReturn("image".getBytes());
+        when(modelProvider.vision(any(Prompt.class), any(ModelCallOptions.class))).thenReturn(
+                ModelCallResult.ofText(
+                        "{\"ocrText\":\"发票A\",\"imageSummary\":\"一张发票\",\"keyEntities\":[\"客户A\"]," +
+                                "\"focusedSummary\":\"发票A金额\"}",
+                        "qwen-vl", 10L, 5L, 15L));
+        when(modelProvider.embed(any(EmbeddingRequest.class))).thenReturn(
+                ModelCallResult.ofVector(new float[]{0.1F, 0.2F}, "text-embedding", 5L, 5L));
+
+        var context = service.understand(image, "发票金额是多少", true).orElseThrow();
+
+        assertThat(context.imageVector()).containsExactly(0.1F, 0.2F);
+        ArgumentCaptor<EmbeddingRequest> embeddingCaptor = ArgumentCaptor.forClass(EmbeddingRequest.class);
+        verify(modelProvider).embed(embeddingCaptor.capture());
+        assertThat(embeddingCaptor.getValue().getInstructions().get(0))
+                .contains("一张发票").contains("发票A金额").contains("发票金额是多少");
+
+        ArgumentCaptor<TokenUsageRecord> usageCaptor = ArgumentCaptor.forClass(TokenUsageRecord.class);
+        verify(tokenUsageRecorder, org.mockito.Mockito.times(2)).record(usageCaptor.capture());
+        assertThat(usageCaptor.getAllValues()).extracting(TokenUsageRecord::type)
+                .containsExactly(TokenUsageType.VISION, TokenUsageType.EMBEDDING);
+    }
+
+    @Test
     void understand_reusesQuestionFocusedCache() {
         AiChatImageEntity image = image();
         when(imageService.readBytes(image)).thenReturn("image".getBytes());
         when(modelProvider.vision(any(Prompt.class), any(ModelCallOptions.class))).thenReturn(
                 ModelCallResult.ofText("{\"focusedSummary\":\"缓存摘要\"}", "qwen-vl", 1L, 1L, 2L));
 
-        assertThat(service.understand(image, "同一问题")).isPresent();
-        assertThat(service.understand(image, "同一问题")).isPresent();
+        assertThat(service.understand(image, "同一问题", false)).isPresent();
+        assertThat(service.understand(image, "同一问题", false)).isPresent();
 
         verify(modelProvider, org.mockito.Mockito.times(1)).vision(any(Prompt.class), any(ModelCallOptions.class));
     }
@@ -93,7 +120,7 @@ class AiChatImageUnderstandingServiceTest {
         image.setOcrText("OCR");
         image.setImageSummary("摘要");
 
-        var context = noProviderService.understand(image, "问题").orElseThrow();
+        var context = noProviderService.understand(image, "问题", false).orElseThrow();
 
         assertThat(context.ocrText()).isEqualTo("OCR");
         assertThat(context.focusedSummary()).isEmpty();

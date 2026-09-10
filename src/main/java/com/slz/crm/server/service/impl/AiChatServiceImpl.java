@@ -168,7 +168,8 @@ public class AiChatServiceImpl implements AiChatService {
                     emitter.complete();
                     return;
                 }
-                imageContext = aiChatImageUnderstandingService.understand(image.get(), request.message());
+                imageContext = aiChatImageUnderstandingService.understand(
+                        image.get(), request.message(), request.useKnowledgeBase());
             }
             Lock takeoverLock = aiStreamRegistry.takeoverLock(finalSessionId);
             takeoverLock.lock();
