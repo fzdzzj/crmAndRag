@@ -115,11 +115,11 @@
 ## 13. base 契约修正轮（重开 Agent-0 或 integrator 批量做，避免多 lane 并发改契约包）
 ### 修正轮 1（✅ 已落地，commit `9f6658e`/`905f11d`）
 1. `SseEventName` += `TITLE` ✓　2. `PlatformErrorCode` += `RESUME_UNAVAILABLE` ✓　3. `CrmVectorStoreHealth` ✓　4. `BypassTaskExecutor` ✓　5. `ModelProviderImpl` ✓　6. `imageRef` Javadoc ✓
-### 修正轮 2（🔴 待做，解 C 的 thinking 丢失）
-7. 新增 `ModelCallOptions`(record){model,thinking,temperature,maxTokens,extra}。
-8. `ModelProvider` 加 `streamChat/chat/vision(Prompt, ModelCallOptions)` 重载。
-9. `ModelProviderImpl` 翻译 `ModelCallOptions`→provider（DashScope compatible-mode `enable_thinking` 双写）；修 `withStreamUsage/withModel` 不再丢非 OpenAi options。
-10. 测试：thinking 经 streamChat 确带 `enable_thinking`；非 OpenAi 入参不丢。
+### 修正轮 2（✅ 已落地，base 实现）
+7. `ModelCallOptions`(record){model,thinking,temperature,maxTokens,extra} ✓
+8. `ModelProvider` 加 `streamChat/chat/vision(Prompt, ModelCallOptions)` 重载 ✓
+9. `ModelProviderImpl` 翻译 + `overlayFrom`（sync RestClient 拦截器注入 / stream 手工 JSON + WebClient SSE）✓
+10. 测试：311 全绿，`ModelProviderThinkingTest` 3 条（stream/chat thinking + 非 thinking 无注入）✓
 
 ---
 
@@ -129,3 +129,4 @@
 - **2026-09-09 · 修正轮落地（Agent-0 重开）**：20 契约全部已实现；`ModelProviderImpl` chat 走 DashScope 原生 / streamChat 恒走 compatible-mode SSE + streamUsage(true) / embed 走 DashScope 原生 / vision 强制 qwen-vl 走 compatible-mode；真机 IT chat/stream/embed 均验证 usage 正常；`PlatformErrorCode` 10 项全集（§11）；`AssistantChatRequest.imageRef` Javadoc 更新。
 - **2026-09-10 · 修正轮2（架构批准，base 待实现）**：C 核实 `ModelProviderImpl.withStreamUsage/withModel` else 分支丢弃非 `OpenAiChatOptions`（thinking/temperature）+ compatible-mode `enable_thinking` 无承载位 → 新增中立 `ModelCallOptions` + `streamChat/chat/vision` 重载 + 翻译到 DashScope `enable_thinking` + 修 `with*` 不丢参；C 改用 `ModelCallOptions`、勿传 provider 专有 options。
 
+- **2026-09-10 · 修正轮2落地（base）**：+`ModelCallOptions`(record)；+`ModelProvider` 3 个重载（chat/streamChat/vision + ModelCallOptions）；`ModelProviderImpl` `overlayFrom` 修 with* 不丢非 OpenAi 入参；thinking=true sync 走 RestClient 拦截器注入 enable_thinking 双写、stream 走手工 JSON + 独立 WebClient SSE；311 测试全绿。
