@@ -121,9 +121,9 @@
 8. `ModelProvider` 加 `streamChat/chat/vision(Prompt, ModelCallOptions)` 重载。
 9. `ModelProviderImpl` 翻译 `ModelCallOptions`→provider（DashScope compatible-mode `enable_thinking` 双写）；修 `withStreamUsage/withModel` 不再丢非 OpenAi options。
 10. 测试：thinking 经 streamChat 确带 `enable_thinking`；非 OpenAi 入参不丢。
-### 修正轮 3（🔴 待做，工具调用走 ModelProvider）
-11. `ModelCallOptions` 承载工具回调/上下文（`extra` 或专用字段 toolCallbacks/toolContext）。
-12. `ModelProviderImpl` 有工具时走 Spring AI 工具执行环（sync/stream 自带 tool loop），`enable_thinking` 可注入则注入、流式带工具时 thinking 尽力而为（工具优先）。
+### 修正轮 3（✅ 已落地，base 实现）
+11. `ModelCallOptions` 承载工具回调/上下文（专用字段 toolCallbacks/toolContext + hasTools()）✓
+12. `ModelProviderImpl` `applyOptions` 设 toolCallbacks/toolContext → Spring AI tool loop；stream+tools 跳过 thinking 手工 JSON（工具优先）✓
 13. C 收回“工具请求走 Spring AI 通用路径”的权宜，全部经 ModelProvider；usage 不漏计。
 
 ---
@@ -135,3 +135,4 @@
 - **2026-09-10 · 修正轮2（✅ 已落地 545220b，311 测试绿）**：C 核实 `ModelProviderImpl.withStreamUsage/withModel` else 分支丢弃非 `OpenAiChatOptions`（thinking/temperature）+ compatible-mode `enable_thinking` 无承载位 → 新增中立 `ModelCallOptions` + `streamChat/chat/vision` 重载 + 翻译到 DashScope `enable_thinking` + 修 `with*` 不丢参；C 改用 `ModelCallOptions`、勿传 provider 专有 options。
 - **2026-09-10 · 修正轮3（架构批准，base 待实现）**：C 报工具回调请求仍走 Spring AI 通用路径（`ModelCallOptions` 未定义 tools 翻译）→ `ModelCallOptions` 承载 toolCallbacks/toolContext；`ModelProviderImpl` 有工具走 Spring AI 工具执行环、`enable_thinking` 尽力而为（工具优先）；C 收回权宜、工具请求全经 ModelProvider 且 usage 不漏计。
 
+- **2026-09-10 · 修正轮3落地（base）**：+`ModelCallOptions.toolCallbacks/toolContext`（Spring AI ToolCallback）+`hasTools()`；`applyOptions` 设 toolCallbacks→Spring AI tool loop 自动触发；stream+tools 走 Spring AI path（thinking 尽力而为，不为 thinking 破坏 tool loop）；314 测试全绿。
