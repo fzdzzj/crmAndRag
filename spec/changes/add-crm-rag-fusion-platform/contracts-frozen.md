@@ -15,10 +15,14 @@
 
 ---
 
-## 1. 模型 ModelProvider（🔴 base 待补实现）
-- 接口已冻；**实现 `ModelProviderImpl` 缺失 = C2 阻塞项**，**归 base/platform**（不是 B、不是 C）。
-- 要求：Spring AI DashScope 的 chat/streaming/embedding/**vision**；**流式用 compatible-mode SSE 适配器**（B1，勿只依赖 `DashScopeChatModel.stream()`）；**所有调用返回 `ModelCallResult` 且带 usage**（修 RAG `chat(String)` 漏计 token 盲点）。
-- 消费：C（chat/stream/vision）、B（embedding/vision/vector）。C/B 在实现就绪前用 `ObjectProvider` 可选依赖 + 测试桩，**不自建实现**。
+## 1. 模型 ModelProvider（✅ impl 已落地；🔴 修正轮2 待补 ModelCallOptions）
+- 接口已冻；`ModelProviderImpl`（`com.slz.crm.platform.model`，`@Component`）**已由 base 实现并验证**（chat→DashScope 原生 / streamChat→恒 compatible-mode SSE + streamUsage(true) / embed→DashScope 原生 / vision→强制 qwen-vl compatible-mode；真机 IT usage 正常；Bean 发现测试 `905f11d`；308 测试绿）。
+- **🔴 修正轮2（解 C 报的 thinking 丢失 bug，base 待做）**：`ModelProviderImpl.withStreamUsage/withModel` 的 **else 分支对非 `OpenAiChatOptions` 入参只保留 model、丢弃其余**（thinking/temperature/自定义参数），且 compatible-mode 的 `enable_thinking` 无承载位 → C 的 DashScope thinking 参数经 Provider 失效；违背“provider 差异封在实现里、业务不传 provider 专有 options”初衷。**需补**：
+  1. 契约包新增中立载体 **`ModelCallOptions`(record)**：`{ String model; boolean thinking; Double temperature; Integer maxTokens; Map<String,Object> extra }`。
+  2. `ModelProvider` 加重载：`streamChat(Prompt, ModelCallOptions)`、`chat(Prompt, ModelCallOptions)`、`vision(Prompt, ModelCallOptions)`（保留无 options 版走默认）。
+  3. `ModelProviderImpl` 把 `ModelCallOptions` 翻译到当前 provider：DashScope compatible-mode `thinking=true`→`enable_thinking`（B1：`chat_template_kwargs.enable_thinking` + 顶层 `enable_thinking` 双写）；model/temperature/maxTokens 映射进 `OpenAiChatOptions`；**修 `withStreamUsage/withModel` 改为在既有 options 上叠加、不再 else 全新建（不丢调用方参数）**。
+  4. 测试：`thinking=true` 经 streamChat 请求体确带 `enable_thinking`（MockWebServer 断言）；非 OpenAi 入参不被丢。
+- 消费：C（chat/stream/vision，**改用 `ModelCallOptions`、勿传 provider 专有 options**）、B（embedding/vision/vector）。实现就绪前用 `ObjectProvider` 可选依赖 + 测试桩，**不自建实现**。
 
 ## 2. 向量库 VectorStore + 健康（base 加接口 / B 实现 / D 消费）
 - `CrmVectorStore`(upsert/search/delete) 已冻，**不动**。
@@ -95,7 +99,7 @@
 | 契约 | 实现方 | 消费方 | 状态 |
 |---|---|---|---|
 | UserContext(+Holder) | base | A/B/C/D/E | ✅ 已冻 |
-| ModelProvider / ModelCallResult | **base（ModelProviderImpl 待补）** | C/B | 🔴 接口冻、实现缺 |
+| ModelProvider / ModelCallResult / ModelProviderImpl | base | C/B | ✅ impl 已落地；🔴 修正轮2 加 `ModelCallOptions` |
 | CrmVectorStore | B | B/C | ✅ 接口冻 |
 | **CrmVectorStoreHealth** | **B** | D | 🆕 base 加接口 |
 | DataScope | A | C | ✅ 接口冻（补超集不变量） |
@@ -108,13 +112,14 @@
 | DynamicConfigService | E | B/C/D | ✅ 接口冻 |
 | PlatformErrorCode(+RESUME_UNAVAILABLE) | base | 全部 | 🆕 补码 |
 
-## 13. base 契约修正轮（需重开 Agent-0 或由 integrator 批量做，避免多 lane 并发改契约包）
-1. `SseEventName` += `TITLE("title")`。
-2. `PlatformErrorCode` += `RESUME_UNAVAILABLE`（并核对现有码）。
-3. 新增 `CrmVectorStoreHealth` 接口。
-4. 新增 `BypassTaskExecutor` 接口。
-5. 实现 `ModelProviderImpl`（Spring AI DashScope，compatible-mode 流式，返回 usage）——**C2 阻塞项，最高优先**。
-6. 更新 `AssistantChatRequest.imageRef` Javadoc（=C 聊天图域）。
+## 13. base 契约修正轮（重开 Agent-0 或 integrator 批量做，避免多 lane 并发改契约包）
+### 修正轮 1（✅ 已落地，commit `9f6658e`/`905f11d`）
+1. `SseEventName` += `TITLE` ✓　2. `PlatformErrorCode` += `RESUME_UNAVAILABLE` ✓　3. `CrmVectorStoreHealth` ✓　4. `BypassTaskExecutor` ✓　5. `ModelProviderImpl` ✓　6. `imageRef` Javadoc ✓
+### 修正轮 2（✅ 已落地，base 实现）
+7. `ModelCallOptions`(record){model,thinking,temperature,maxTokens,extra} ✓
+8. `ModelProvider` 加 `streamChat/chat/vision(Prompt, ModelCallOptions)` 重载 ✓
+9. `ModelProviderImpl` 翻译 + `overlayFrom`（sync RestClient 拦截器注入 / stream 手工 JSON + WebClient SSE）✓
+10. 测试：311 全绿，`ModelProviderThinkingTest` 3 条（stream/chat thinking + 非 thinking 无注入）✓
 
 ---
 
@@ -122,4 +127,6 @@
 - **2026-09-09 · base e3f8230**：初始 17 契约冻结（Agent-0）。
 - **2026-09-09 · 修正轮（架构批准）**：+`TITLE` 事件；SSE payload 字段级冻结；+断线续传（事件 id/有界缓冲/Last-Event-ID/重放≠重执行/sticky 兜底/RESUME_UNAVAILABLE）；+`CrmVectorStoreHealth`(B实现/D消费)；+`BypassTaskExecutor`(D实现/C消费)；+`KnowledgeRetrievalPort`(C定义/B实现,lane-local)；`ModelProviderImpl` 归 base（C2）；`imageRef` 语义澄清（=C聊天图域）；`TokenUsageType` 含 SUMMARY/INTENT；Qdrant metadata 类型约定（B4）；DataScope 超集不变量（A3）；确认 C1(sessionId String)/C6(user_id BIGINT，userIdRef 跨域)/D15(锚点已在契约)。
 - **2026-09-09 · 修正轮落地（Agent-0 重开）**：20 契约全部已实现；`ModelProviderImpl` chat 走 DashScope 原生 / streamChat 恒走 compatible-mode SSE + streamUsage(true) / embed 走 DashScope 原生 / vision 强制 qwen-vl 走 compatible-mode；真机 IT chat/stream/embed 均验证 usage 正常；`PlatformErrorCode` 10 项全集（§11）；`AssistantChatRequest.imageRef` Javadoc 更新。
+- **2026-09-10 · 修正轮2（架构批准，base 待实现）**：C 核实 `ModelProviderImpl.withStreamUsage/withModel` else 分支丢弃非 `OpenAiChatOptions`（thinking/temperature）+ compatible-mode `enable_thinking` 无承载位 → 新增中立 `ModelCallOptions` + `streamChat/chat/vision` 重载 + 翻译到 DashScope `enable_thinking` + 修 `with*` 不丢参；C 改用 `ModelCallOptions`、勿传 provider 专有 options。
 
+- **2026-09-10 · 修正轮2落地（base）**：+`ModelCallOptions`(record)；+`ModelProvider` 3 个重载（chat/streamChat/vision + ModelCallOptions）；`ModelProviderImpl` `overlayFrom` 修 with* 不丢非 OpenAi 入参；thinking=true sync 走 RestClient 拦截器注入 enable_thinking 双写、stream 走手工 JSON + 独立 WebClient SSE；311 测试全绿。

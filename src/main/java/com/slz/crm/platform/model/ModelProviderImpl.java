@@ -1,14 +1,26 @@
 package com.slz.crm.platform.model;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.slz.crm.platform.contract.ModelCallOptions;
 import com.slz.crm.platform.contract.ModelCallResult;
 import com.slz.crm.platform.contract.ModelProvider;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.embedding.EmbeddingRequest;
@@ -17,60 +29,46 @@ import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.env.Environment;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.ClientHttpRequestInterceptor;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 
 /**
- * {@link ModelProvider} 的 Spring AI DashScope 实现（contracts-frozen.md §1，base 归属）。
+ * {@link ModelProvider} 的 Spring AI DashScope 实现（contracts-frozen.md SS1, base）。
  *
  * <p>路由策略：</p>
  * <ul>
- *   <li><b>非流式对话 {@link #chat(Prompt)}</b>：优先 DashScope 原生协议
- *       （{@code DashScopeChatModel}，usage 在非流式响应里稳定）；未装配时回退 compatible-mode；</li>
- *   <li><b>流式 {@link #streamChat(Prompt)}</b>：<b>恒走 compatible-mode SSE 适配器</b>
- *       （{@code OpenAiChatModel} + {@code streamUsage(true)}）。原因：DashScope 原生流式协议
- *       的 usage 在 chunk 里不可靠，而 compatible-mode 是 OpenAI SSE 语义，
- *       可用 {@code stream_usage} 让最后一个 chunk 携带 usage——这正是 §1 要求
- *       “勿只依赖 {@code DashScopeChatModel.stream()}”的原因；</li>
- *   <li><b>向量 {@link #embed(EmbeddingRequest)}</b>：DashScope EmbeddingModel（必填，缺失即失败）；</li>
- *   <li><b>视觉 {@link #vision(Prompt)}</b>：compatible-mode + 强制 vision 模型
- *       （qwen-vl 系列在 compatible-mode 走 OpenAI 多模态 content，最稳定）。</li>
+ *   <li><b>非流式 {@link #chat(Prompt)}</b>：优先 DashScope 原生（usage 稳定）；缺失回退 compatible-mode；</li>
+ *   <li><b>流式 {@link #streamChat(Prompt)}</b>：恒走 compatible-mode SSE + streamUsage(true)；</li>
+ *   <li><b>向量 {@link #embed(EmbeddingRequest)}</b>：DashScope EmbeddingModel；</li>
+ *   <li><b>视觉 {@link #vision(Prompt)}</b>：compatible-mode + 强制 vision 模型。</li>
  * </ul>
  *
- * <p>usage 硬约束：三个非流式入口都必须返回 {@link ModelCallResult}；
- * 流式入口由实现强制 {@code streamUsage(true)}，调用方仍须在流结束时上报
- * {@code TokenUsageRecorder}（Lane D 聚合）。</p>
- *
- * <p>线程安全：本类无可变状态（compatible 客户端在构造期建好且线程安全），可单例并发使用。</p>
+ * <p>修正轮2：新增 {@link ModelCallOptions} 重载，thinking=true 时
+ * sync 走 RestClient 拦截器注入 enable_thinking，
+ * stream 走独立 JSON + WebClient（确保 body 带 enable_thinking 双写）。</p>
  */
 @Component
 public class ModelProviderImpl implements ModelProvider {
 
     private static final Logger log = LoggerFactory.getLogger(ModelProviderImpl.class);
-
-    /**
-     * OpenAI 兼容端点的 completions 路径。
-     * DashScope compatible-mode 的 base-url 已含 {@code /compatible-mode/v1}，
-     * 因此这里必须去掉 Spring AI 默认的 {@code /v1} 前缀，否则会拼出错误 URL。
-     */
     private static final String COMPATIBLE_COMPLETIONS_PATH = "/chat/completions";
+    private static final String THINKING_HEADER = "X-Enable-Thinking";
 
     private final ObjectProvider<ChatModel> dashScopeChatModel;
     private final ObjectProvider<EmbeddingModel> dashScopeEmbeddingModel;
     private final ModelProviderProperties properties;
     private final Environment environment;
     private final OpenAiChatModel compatibleChatModel;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final WebClient streamWebClient = WebClient.builder().build();
 
-    /**
-     * 构造并预建 compatible-mode 客户端（SSE 适配器）。
-     *
-     * @param dashScopeChatModel      DashScope 原生对话模型（starter 自动装配，允许缺失）
-     * @param dashScopeEmbeddingModel DashScope 嵌入模型（缺失时 embed 调用期失败）
-     * @param properties              provider/模型名/端点配置
-     * @param environment             用于读取 {@code spring.ai.dashscope.*} 兜底 key/base-url
-     */
     public ModelProviderImpl(ObjectProvider<ChatModel> dashScopeChatModel,
                              ObjectProvider<EmbeddingModel> dashScopeEmbeddingModel,
                              ModelProviderProperties properties,
@@ -99,7 +97,6 @@ public class ModelProviderImpl implements ModelProvider {
 
     @Override
     public Flux<ChatResponse> streamChat(Prompt prompt) {
-        // 强制 streamUsage=true：调用方自带 options 时也不能丢 usage（§1 的核心诉求）
         Prompt forced = withStreamUsage(prompt);
         return compatibleChatModel.stream(forced);
     }
@@ -122,23 +119,198 @@ public class ModelProviderImpl implements ModelProvider {
 
     @Override
     public ModelCallResult<String> vision(Prompt prompt) {
-        // vision 恒走 compatible-mode：qwen-vl 在 OpenAI 多模态 content 下行为最稳定，
-        // 且不需要复制 DashScope 原生 options（避免丢温度/长度等参数时语义含糊）
         Prompt forced = withModel(prompt, properties.getVisionModel());
         return toTextResult(compatibleChatModel.call(forced), properties.getVisionModel());
     }
 
+    // ==================== 修正轮2 ====================
+
+    @Override
+    public ModelCallResult<String> chat(Prompt prompt, ModelCallOptions options) {
+        return chat(applyOptions(prompt, options));
+    }
+
+    @Override
+    public Flux<ChatResponse> streamChat(Prompt prompt, ModelCallOptions options) {
+        Prompt translated = applyOptions(prompt, options);
+        if (translated.getOptions() instanceof OpenAiChatOptions opts
+                && opts.getHttpHeaders() != null
+                && "true".equals(opts.getHttpHeaders().get(THINKING_HEADER))) {
+            return streamWithThinking(translated, options);
+        }
+        return streamChat(translated);
+    }
+
+    @Override
+    public ModelCallResult<String> vision(Prompt prompt, ModelCallOptions options) {
+        if (options == null) return vision(prompt);
+        Prompt translated = applyOptions(prompt, options);
+        String model = StringUtils.hasText(options.model()) ? options.model() : properties.getVisionModel();
+        return toTextResult(compatibleChatModel.call(withModel(translated, model)), model);
+    }
+
     /**
-     * 构建 compatible-mode（OpenAI 协议）SSE 客户端。
-     *
-     * @return 预配置好的 OpenAI 兼容对话模型
+     * 翻译 ModelCallOptions 到 OpenAiChatOptions（修正轮2：thinking 头标记）。
      */
+    private Prompt applyOptions(Prompt prompt, ModelCallOptions options) {
+        if (options == null) return prompt;
+        OpenAiChatOptions opts = overlayFrom(prompt.getOptions());
+        if (StringUtils.hasText(options.model())) opts.setModel(options.model());
+        if (options.temperature() != null) opts.setTemperature(options.temperature());
+        if (options.maxTokens() != null) opts.setMaxTokens(options.maxTokens());
+        if (options.thinking()) {
+            Map<String, String> headers = opts.getHttpHeaders() != null
+                    ? new LinkedHashMap<>(opts.getHttpHeaders()) : new LinkedHashMap<>();
+            headers.put(THINKING_HEADER, "true");
+            opts.setHttpHeaders(headers);
+        }
+        return new Prompt(prompt.getInstructions(), opts);
+    }
+
+    /**
+     * 从调用方 options 构建 OpenAiChatOptions（修正轮2：非 OpenAi 入参不丢参）。
+     */
+    private OpenAiChatOptions overlayFrom(ChatOptions source) {
+        if (source instanceof OpenAiChatOptions openAi) {
+            return OpenAiChatOptions.fromOptions(openAi);
+        }
+        OpenAiChatOptions result = new OpenAiChatOptions();
+        if (source != null) {
+            if (source.getModel() != null) result.setModel(source.getModel());
+            if (source.getTemperature() != null) result.setTemperature(source.getTemperature());
+            if (source.getMaxTokens() != null) result.setMaxTokens(source.getMaxTokens());
+        }
+        return result;
+    }
+
+    private Prompt withStreamUsage(Prompt prompt) {
+        OpenAiChatOptions options = overlayFrom(prompt.getOptions());
+        if (!StringUtils.hasText(options.getModel())) {
+            options.setModel(properties.getChatModel());
+        }
+        options.setStreamUsage(true);
+        return new Prompt(prompt.getInstructions(), options);
+    }
+
+    private Prompt withModel(Prompt prompt, String model) {
+        OpenAiChatOptions options = overlayFrom(prompt.getOptions());
+        options.setModel(model);
+        return new Prompt(prompt.getInstructions(), options);
+    }
+
+    /**
+     * 将 enable_thinking 双写注入 JSON body（sync 经 RestClient 拦截器调用）。
+     */
+    private byte[] injectThinkingIntoBody(byte[] body) {
+        try {
+            JsonNode root = objectMapper.readTree(body);
+            if (root instanceof ObjectNode obj) {
+                obj.put("enable_thinking", true);
+                ObjectNode kwargs;
+                if (obj.has("chat_template_kwargs") && obj.get("chat_template_kwargs").isObject()) {
+                    kwargs = (ObjectNode) obj.get("chat_template_kwargs");
+                } else {
+                    kwargs = obj.putObject("chat_template_kwargs");
+                }
+                kwargs.put("enable_thinking", true);
+                return objectMapper.writeValueAsBytes(obj);
+            }
+        } catch (Exception e) {
+            log.warn("enable_thinking body 注入失败", e);
+        }
+        return body;
+    }
+
+    /**
+     * thinking=true 流式：手工 JSON + WebClient SSE。
+     */
+    private Flux<ChatResponse> streamWithThinking(Prompt prompt, ModelCallOptions options) {
+        String jsonBody = buildChatJsonBody(prompt, options, true);
+        String url = resolveBaseUrl() + COMPATIBLE_COMPLETIONS_PATH;
+        return streamWebClient.post()
+                .uri(url)
+                .header("Authorization", "Bearer " + resolveApiKey())
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.TEXT_EVENT_STREAM)
+                .bodyValue(jsonBody)
+                .retrieve()
+                .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() { })
+                .filter(sse -> sse.data() != null && !"[DONE]".equals(sse.data().trim()))
+                .map(sse -> chunkToChatResponse(sse.data()));
+    }
+
+    /**
+     * 构建 OpenAI chat completion JSON（thinking 路径）。
+     */
+    private String buildChatJsonBody(Prompt prompt, ModelCallOptions options, boolean stream) {
+        try {
+            ObjectNode root = objectMapper.createObjectNode();
+            String model = StringUtils.hasText(options.model()) ? options.model() : properties.getChatModel();
+            root.put("model", model);
+            if (stream) {
+                root.put("stream", true);
+                root.putObject("stream_options").put("include_usage", true);
+            }
+            if (options.temperature() != null) root.put("temperature", options.temperature());
+            if (options.maxTokens() != null) root.put("max_tokens", options.maxTokens());
+
+            ArrayNode messages = root.putArray("messages");
+            for (Message msg : prompt.getInstructions()) {
+                ObjectNode m = messages.addObject();
+                m.put("role", msg.getMessageType().getValue());
+                m.put("content", msg.getText() != null ? msg.getText() : "");
+            }
+
+            root.put("enable_thinking", true);
+            root.putObject("chat_template_kwargs").put("enable_thinking", true);
+            return objectMapper.writeValueAsString(root);
+        } catch (Exception e) {
+            throw new IllegalStateException("构建 thinking JSON 失败", e);
+        }
+    }
+
+    /**
+     * SSE data JSON 转 ChatResponse。
+     */
+    private ChatResponse chunkToChatResponse(String json) {
+        try {
+            JsonNode root = objectMapper.readTree(json);
+            List<Generation> generations = new ArrayList<>();
+            JsonNode choices = root.get("choices");
+            if (choices != null && choices.isArray()) {
+                for (JsonNode choice : choices) {
+                    JsonNode delta = choice.get("delta");
+                    if (delta != null && delta.has("content")) {
+                        String text = delta.get("content").asText("");
+                        if (!text.isEmpty()) {
+                            generations.add(new Generation(new AssistantMessage(text)));
+                        }
+                    }
+                }
+            }
+            return new ChatResponse(generations);
+        } catch (Exception e) {
+            log.warn("SSE chunk 解析失败: {}", json, e);
+            return new ChatResponse(List.of());
+        }
+    }
+
     private OpenAiChatModel buildCompatibleChatModel() {
+        ClientHttpRequestInterceptor thinkingInterceptor = (request, body, execution) -> {
+            String thinking = request.getHeaders().getFirst(THINKING_HEADER);
+            if ("true".equals(thinking)) {
+                request.getHeaders().remove(THINKING_HEADER);
+                return execution.execute(request, injectThinkingIntoBody(body));
+            }
+            return execution.execute(request, body);
+        };
+
         OpenAiApi api = OpenAiApi.builder()
                 .baseUrl(resolveBaseUrl())
                 .apiKey(resolveApiKey())
-                // base-url 已含 /compatible-mode/v1，故必须去掉 Spring AI 默认的 /v1 前缀
                 .completionsPath(COMPATIBLE_COMPLETIONS_PATH)
+                .restClientBuilder(org.springframework.web.client.RestClient.builder()
+                        .requestInterceptor(thinkingInterceptor))
                 .build();
         OpenAiChatOptions defaultOptions = OpenAiChatOptions.builder()
                 .model(properties.getChatModel())
@@ -150,42 +322,6 @@ public class ModelProviderImpl implements ModelProvider {
                 .build();
     }
 
-    /**
-     * 复制 Prompt 并强制 {@code streamUsage=true}。
-     *
-     * @param prompt 调用方原始 Prompt
-     * @return 带流式 usage 开关的 Prompt
-     */
-    private Prompt withStreamUsage(Prompt prompt) {
-        OpenAiChatOptions options = prompt.getOptions() instanceof OpenAiChatOptions existing
-                ? OpenAiChatOptions.fromOptions(existing)
-                : OpenAiChatOptions.builder().model(properties.getChatModel()).build();
-        options.setStreamUsage(true);
-        return new Prompt(prompt.getInstructions(), options);
-    }
-
-    /**
-     * 复制 Prompt 并强制使用指定模型（vision 场景防误用纯文本模型）。
-     *
-     * @param prompt 调用方原始 Prompt
-     * @param model  必须使用的模型名
-     * @return 指定模型后的 Prompt
-     */
-    private Prompt withModel(Prompt prompt, String model) {
-        OpenAiChatOptions options = prompt.getOptions() instanceof OpenAiChatOptions existing
-                ? OpenAiChatOptions.fromOptions(existing)
-                : OpenAiChatOptions.builder().build();
-        options.setModel(model);
-        return new Prompt(prompt.getInstructions(), options);
-    }
-
-    /**
-     * 统一抽取文本与 usage（不允许任何入口漏掉计量）。
-     *
-     * @param response       模型响应
-     * @param fallbackModel  响应里没带模型名时使用的兜底模型名
-     * @return 携带 usage 的结果
-     */
     private ModelCallResult<String> toTextResult(ChatResponse response, String fallbackModel) {
         String text = extractText(response);
         ChatResponseMetadata metadata = response.getMetadata();
@@ -198,10 +334,6 @@ public class ModelProviderImpl implements ModelProvider {
                 toLong(usage == null ? null : usage.getTotalTokens()));
     }
 
-    /**
-     * @param response 模型响应
-     * @return 首个候选输出文本；空响应返回空串（不返回 null，方便上层拼接）
-     */
     private String extractText(ChatResponse response) {
         if (response.getResult() == null || response.getResult().getOutput() == null) {
             return "";
@@ -210,24 +342,13 @@ public class ModelProviderImpl implements ModelProvider {
         return output.getText() == null ? "" : output.getText();
     }
 
-    /**
-     * Integer → Long 的安全转换（Spring AI Usage 用 Integer，计量记录用 Long）。
-     *
-     * @param value 可能为 null 的 token 数
-     * @return Long 表示；null 透传
-     */
     private Long toLong(Integer value) {
         return value == null ? null : value.longValue();
     }
 
-    /**
-     * @return compatible-mode 端点 base-url；未配置时回退 spring.ai.dashscope.base-url
-     */
     private String resolveBaseUrl() {
         String configured = properties.getBaseUrl();
-        if (StringUtils.hasText(configured)) {
-            return configured;
-        }
+        if (StringUtils.hasText(configured)) return configured;
         String dashscope = environment.getProperty("spring.ai.dashscope.base-url", "");
         if (!StringUtils.hasText(dashscope)) {
             throw new IllegalStateException(
@@ -236,18 +357,12 @@ public class ModelProviderImpl implements ModelProvider {
         return dashscope;
     }
 
-    /**
-     * @return compatible-mode 端点 api-key；未配置时回退 spring.ai.dashscope.api-key
-     */
     private String resolveApiKey() {
         String configured = properties.getApiKey();
-        if (StringUtils.hasText(configured)) {
-            return configured;
-        }
+        if (StringUtils.hasText(configured)) return configured;
         String dashscope = environment.getProperty("spring.ai.dashscope.api-key", "");
         if (!StringUtils.hasText(dashscope)) {
-            // 启动不失败（保持“无 key 也能起服务”的现状），调用期才失败并给出明确指引
-            log.warn("compatible-mode api-key 未配置：chat/stream/vision 调用将在运行期失败");
+            log.warn("compatible-mode api-key 未配置：调用将在运行期失败");
             return "missing-api-key";
         }
         return dashscope;
