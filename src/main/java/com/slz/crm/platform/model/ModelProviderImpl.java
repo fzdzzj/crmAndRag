@@ -133,6 +133,11 @@ public class ModelProviderImpl implements ModelProvider {
     @Override
     public Flux<ChatResponse> streamChat(Prompt prompt, ModelCallOptions options) {
         Prompt translated = applyOptions(prompt, options);
+        if (options != null && options.hasTools()) {
+            // 修正轮3：工具优先——走 Spring AI tool loop（enable_thinking 尽力而为，
+            // 手工 JSON 路径不支持工具，不能为 thinking 破坏 tool loop）
+            return streamChat(translated);
+        }
         if (translated.getOptions() instanceof OpenAiChatOptions opts
                 && opts.getHttpHeaders() != null
                 && "true".equals(opts.getHttpHeaders().get(THINKING_HEADER))) {
@@ -158,6 +163,10 @@ public class ModelProviderImpl implements ModelProvider {
         if (StringUtils.hasText(options.model())) opts.setModel(options.model());
         if (options.temperature() != null) opts.setTemperature(options.temperature());
         if (options.maxTokens() != null) opts.setMaxTokens(options.maxTokens());
+        if (options.hasTools()) {
+            opts.setToolCallbacks(options.toolCallbacks());
+            if (options.toolContext() != null) opts.setToolContext(options.toolContext());
+        }
         if (options.thinking()) {
             Map<String, String> headers = opts.getHttpHeaders() != null
                     ? new LinkedHashMap<>(opts.getHttpHeaders()) : new LinkedHashMap<>();

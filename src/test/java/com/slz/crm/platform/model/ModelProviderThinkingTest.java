@@ -72,7 +72,7 @@ class ModelProviderThinkingTest {
     void streamChatWithThinkingSendsEnableThinking() {
         new Prompt(new UserMessage("hello"));
         provider.streamChat(new Prompt(new UserMessage("hello")),
-                new ModelCallOptions(null, true, null, null, Map.of())).blockLast();
+                new ModelCallOptions(null, true, null, null, null, null, Map.of())).blockLast();
         assertThat(capturedBody.get()).contains("enable_thinking").contains("chat_template_kwargs").contains("stream");
     }
 
@@ -86,7 +86,7 @@ class ModelProviderThinkingTest {
     void chatWithThinkingSendsEnableThinking() {
         responseMode.set("json");
         provider.chat(new Prompt(new UserMessage("hello")),
-                new ModelCallOptions(null, true, null, null, Map.of()));
+                new ModelCallOptions(null, true, null, null, null, null, Map.of()));
         assertThat(capturedBody.get()).contains("enable_thinking").contains("chat_template_kwargs");
     }
 }
