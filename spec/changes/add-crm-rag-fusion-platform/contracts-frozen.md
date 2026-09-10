@@ -15,13 +15,14 @@
 
 ---
 
-## 1. 模型 ModelProvider（✅ impl 已落地；🔴 修正轮2 待补 ModelCallOptions）
+## 1. 模型 ModelProvider（✅ impl + 修正轮2 已落地 545220b；🔴 修正轮3 待补 tools）
 - 接口已冻；`ModelProviderImpl`（`com.slz.crm.platform.model`，`@Component`）**已由 base 实现并验证**（chat→DashScope 原生 / streamChat→恒 compatible-mode SSE + streamUsage(true) / embed→DashScope 原生 / vision→强制 qwen-vl compatible-mode；真机 IT usage 正常；Bean 发现测试 `905f11d`；308 测试绿）。
 - **🔴 修正轮2（解 C 报的 thinking 丢失 bug，base 待做）**：`ModelProviderImpl.withStreamUsage/withModel` 的 **else 分支对非 `OpenAiChatOptions` 入参只保留 model、丢弃其余**（thinking/temperature/自定义参数），且 compatible-mode 的 `enable_thinking` 无承载位 → C 的 DashScope thinking 参数经 Provider 失效；违背“provider 差异封在实现里、业务不传 provider 专有 options”初衷。**需补**：
   1. 契约包新增中立载体 **`ModelCallOptions`(record)**：`{ String model; boolean thinking; Double temperature; Integer maxTokens; Map<String,Object> extra }`。
   2. `ModelProvider` 加重载：`streamChat(Prompt, ModelCallOptions)`、`chat(Prompt, ModelCallOptions)`、`vision(Prompt, ModelCallOptions)`（保留无 options 版走默认）。
   3. `ModelProviderImpl` 把 `ModelCallOptions` 翻译到当前 provider：DashScope compatible-mode `thinking=true`→`enable_thinking`（B1：`chat_template_kwargs.enable_thinking` + 顶层 `enable_thinking` 双写）；model/temperature/maxTokens 映射进 `OpenAiChatOptions`；**修 `withStreamUsage/withModel` 改为在既有 options 上叠加、不再 else 全新建（不丢调用方参数）**。
   4. 测试：`thinking=true` 经 streamChat 请求体确带 `enable_thinking`（MockWebServer 断言）；非 OpenAi 入参不被丢。
+- **🔴 修正轮3（工具调用必须走 ModelProvider，base 待做）**：C 报“有工具回调的请求仍走 Spring AI 通用路径”——`ModelCallOptions` 未定义 toolCallbacks/toolContext 翻译。工具调用是助手**核心能力**，不得长期绕过 ModelProvider（否则丢 provider 抽象 + 统一 usage）。需补：`ModelCallOptions` 承载工具（`extra` 或专用字段 toolCallbacks/toolContext）；`ModelProviderImpl` 有工具时走 Spring AI 工具执行环（sync `ChatModel.call` / stream `ChatModel.stream` 自带 tool loop），`enable_thinking` 可注入则注入、流式带工具时 thinking 尽力而为（**工具优先**）；无工具请求保留现有手工 thinking 路径。C 的工具请求临时走 Spring AI 通用路径是**权宜**（须仍计 usage），修正轮3 落地后收回。
 - 消费：C（chat/stream/vision，**改用 `ModelCallOptions`、勿传 provider 专有 options**）、B（embedding/vision/vector）。实现就绪前用 `ObjectProvider` 可选依赖 + 测试桩，**不自建实现**。
 
 ## 2. 向量库 VectorStore + 健康（base 加接口 / B 实现 / D 消费）
@@ -115,11 +116,15 @@
 ## 13. base 契约修正轮（重开 Agent-0 或 integrator 批量做，避免多 lane 并发改契约包）
 ### 修正轮 1（✅ 已落地，commit `9f6658e`/`905f11d`）
 1. `SseEventName` += `TITLE` ✓　2. `PlatformErrorCode` += `RESUME_UNAVAILABLE` ✓　3. `CrmVectorStoreHealth` ✓　4. `BypassTaskExecutor` ✓　5. `ModelProviderImpl` ✓　6. `imageRef` Javadoc ✓
-### 修正轮 2（✅ 已落地，base 实现）
-7. `ModelCallOptions`(record){model,thinking,temperature,maxTokens,extra} ✓
-8. `ModelProvider` 加 `streamChat/chat/vision(Prompt, ModelCallOptions)` 重载 ✓
-9. `ModelProviderImpl` 翻译 + `overlayFrom`（sync RestClient 拦截器注入 / stream 手工 JSON + WebClient SSE）✓
-10. 测试：311 全绿，`ModelProviderThinkingTest` 3 条（stream/chat thinking + 非 thinking 无注入）✓
+### 修正轮 2（✅ 已落地 545220b，解 C 的 thinking 丢失）
+7. 新增 `ModelCallOptions`(record){model,thinking,temperature,maxTokens,extra}。
+8. `ModelProvider` 加 `streamChat/chat/vision(Prompt, ModelCallOptions)` 重载。
+9. `ModelProviderImpl` 翻译 `ModelCallOptions`→provider（DashScope compatible-mode `enable_thinking` 双写）；修 `withStreamUsage/withModel` 不再丢非 OpenAi options。
+10. 测试：thinking 经 streamChat 确带 `enable_thinking`；非 OpenAi 入参不丢。
+### 修正轮 3（🔴 待做，工具调用走 ModelProvider）
+11. `ModelCallOptions` 承载工具回调/上下文（`extra` 或专用字段 toolCallbacks/toolContext）。
+12. `ModelProviderImpl` 有工具时走 Spring AI 工具执行环（sync/stream 自带 tool loop），`enable_thinking` 可注入则注入、流式带工具时 thinking 尽力而为（工具优先）。
+13. C 收回“工具请求走 Spring AI 通用路径”的权宜，全部经 ModelProvider；usage 不漏计。
 
 ---
 
@@ -127,6 +132,6 @@
 - **2026-09-09 · base e3f8230**：初始 17 契约冻结（Agent-0）。
 - **2026-09-09 · 修正轮（架构批准）**：+`TITLE` 事件；SSE payload 字段级冻结；+断线续传（事件 id/有界缓冲/Last-Event-ID/重放≠重执行/sticky 兜底/RESUME_UNAVAILABLE）；+`CrmVectorStoreHealth`(B实现/D消费)；+`BypassTaskExecutor`(D实现/C消费)；+`KnowledgeRetrievalPort`(C定义/B实现,lane-local)；`ModelProviderImpl` 归 base（C2）；`imageRef` 语义澄清（=C聊天图域）；`TokenUsageType` 含 SUMMARY/INTENT；Qdrant metadata 类型约定（B4）；DataScope 超集不变量（A3）；确认 C1(sessionId String)/C6(user_id BIGINT，userIdRef 跨域)/D15(锚点已在契约)。
 - **2026-09-09 · 修正轮落地（Agent-0 重开）**：20 契约全部已实现；`ModelProviderImpl` chat 走 DashScope 原生 / streamChat 恒走 compatible-mode SSE + streamUsage(true) / embed 走 DashScope 原生 / vision 强制 qwen-vl 走 compatible-mode；真机 IT chat/stream/embed 均验证 usage 正常；`PlatformErrorCode` 10 项全集（§11）；`AssistantChatRequest.imageRef` Javadoc 更新。
-- **2026-09-10 · 修正轮2（架构批准，base 待实现）**：C 核实 `ModelProviderImpl.withStreamUsage/withModel` else 分支丢弃非 `OpenAiChatOptions`（thinking/temperature）+ compatible-mode `enable_thinking` 无承载位 → 新增中立 `ModelCallOptions` + `streamChat/chat/vision` 重载 + 翻译到 DashScope `enable_thinking` + 修 `with*` 不丢参；C 改用 `ModelCallOptions`、勿传 provider 专有 options。
+- **2026-09-10 · 修正轮2（✅ 已落地 545220b，311 测试绿）**：C 核实 `ModelProviderImpl.withStreamUsage/withModel` else 分支丢弃非 `OpenAiChatOptions`（thinking/temperature）+ compatible-mode `enable_thinking` 无承载位 → 新增中立 `ModelCallOptions` + `streamChat/chat/vision` 重载 + 翻译到 DashScope `enable_thinking` + 修 `with*` 不丢参；C 改用 `ModelCallOptions`、勿传 provider 专有 options。
+- **2026-09-10 · 修正轮3（架构批准，base 待实现）**：C 报工具回调请求仍走 Spring AI 通用路径（`ModelCallOptions` 未定义 tools 翻译）→ `ModelCallOptions` 承载 toolCallbacks/toolContext；`ModelProviderImpl` 有工具走 Spring AI 工具执行环、`enable_thinking` 尽力而为（工具优先）；C 收回权宜、工具请求全经 ModelProvider 且 usage 不漏计。
 
-- **2026-09-10 · 修正轮2落地（base）**：+`ModelCallOptions`(record)；+`ModelProvider` 3 个重载（chat/streamChat/vision + ModelCallOptions）；`ModelProviderImpl` `overlayFrom` 修 with* 不丢非 OpenAi 入参；thinking=true sync 走 RestClient 拦截器注入 enable_thinking 双写、stream 走手工 JSON + 独立 WebClient SSE；311 测试全绿。
