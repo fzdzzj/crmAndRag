@@ -107,14 +107,14 @@ public class AiChatStreamLifecycle {
         Usage[] usageHolder = new Usage[1];
         ModelProvider modelProvider = modelProviderProvider == null ? null : modelProviderProvider.getIfAvailable();
         Flux<ChatResponse> responseFlux;
-        // Provider 工具承载契约尚未确认；有工具时走 ChatClient 通用路径，避免静默丢工具。
-        if (modelProvider != null && context.toolCallbacks().isEmpty()) {
+        // 修正轮3后工具环由 ModelProvider 承载；Spring AI 仅保留 Provider 缺失时的兼容路径。
+        if (modelProvider != null) {
             responseFlux = modelProvider.streamChat(new Prompt(context.messages()), callOptions);
         } else {
             ChatClient.ChatClientRequestSpec requestSpec = chatClientBuilder.build()
                     .prompt()
                     .messages(context.messages());
-            // 兼容路径只注入 Spring AI 通用 options，不在业务层承载 Provider 协议差异。
+            // 兼容路径只供测试/Provider 未装配时兜底；不承载生产工具调用。
             if (context.thinking() || context.modelOverride() != null) {
                 // 兼容路径使用 Spring AI 通用 options；Provider 差异不再由业务层承载。
                 requestSpec = requestSpec.options(buildFallbackOptions(context, sessionId, effectiveModel));
@@ -195,7 +195,14 @@ public class AiChatStreamLifecycle {
      */
     private ModelCallOptions buildModelCallOptions(AiChatStreamContext context, Long sessionId,
                                                    String effectiveModel) {
-        return new ModelCallOptions(effectiveModel, context.thinking(), null, null, Map.of());
+        return new ModelCallOptions(
+                effectiveModel,
+                context.thinking(),
+                null,
+                null,
+                List.copyOf(context.toolCallbacks()),
+                buildToolContext(context, sessionId),
+                Map.of());
     }
 
     private Map<String, Object> buildToolContext(AiChatStreamContext context, Long sessionId) {
@@ -207,8 +214,18 @@ public class AiChatStreamLifecycle {
         return toolContext;
     }
 
+    private DefaultToolCallingChatOptions buildFallbackOptions(AiChatStreamContext context,
+                                                              Long sessionId,
+                                                              String effectiveModel) {
+        DefaultToolCallingChatOptions options = new DefaultToolCallingChatOptions();
+        options.setModel(effectiveModel);
+        options.setToolCallbacks(context.toolCallbacks());
+        options.setToolContext(buildToolContext(context, sessionId));
+        return options;
+    }
+
     /**
-     * 上报流式对话 usage；Spring AI 工具路径与 Provider 路径共用同一口径。
+     * 上报流式对话 usage；工具环与普通对话共用同一口径。
      */
     private void recordTokenUsage(AiStreamRegistry.ActiveStream activeStream, String model, Usage usage) {
         TokenUsageRecorder recorder = tokenUsageRecorderProvider == null
@@ -229,16 +246,6 @@ public class AiChatStreamLifecycle {
                 userId == null ? "user:system" : "user:" + userId,
                 String.valueOf(activeStream.getSessionId()), null, TokenUsageType.CHAT,
                 promptTokens, completionTokens, totalTokens, true));
-    }
-
-    private DefaultToolCallingChatOptions buildFallbackOptions(AiChatStreamContext context,
-                                                              Long sessionId,
-                                                              String effectiveModel) {
-        DefaultToolCallingChatOptions options = new DefaultToolCallingChatOptions();
-        options.setModel(effectiveModel);
-        options.setToolCallbacks(context.toolCallbacks());
-        options.setToolContext(buildToolContext(context, sessionId));
-        return options;
     }
 
     /**

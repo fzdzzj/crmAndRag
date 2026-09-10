@@ -48,8 +48,8 @@ import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
@@ -705,6 +705,41 @@ class AiChatServiceImplTest {
         assertThat(usageCaptor.getValue().sessionId()).isEqualTo("9");
         assertThat(usageCaptor.getValue().userIdRef()).isEqualTo("user:42");
         verify(assistantMessageStore).complete(eq(88L), eq("答案"), any(), eq(123));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void streamChat_sendsToolCallbacksThroughModelProvider() {
+        AiStreamRegistry registry = new AiStreamRegistry();
+        useRegistry(registry);
+        ModelProvider modelProvider = mock(ModelProvider.class);
+        TokenUsageRecorder tokenUsageRecorder = mock(TokenUsageRecorder.class);
+        ObjectProvider<TokenUsageRecorder> tokenUsageRecorderProvider = mock(ObjectProvider.class);
+        when(tokenUsageRecorderProvider.getIfAvailable()).thenReturn(tokenUsageRecorder);
+        ObjectProvider<ModelProvider> modelProviderProvider = mock(ObjectProvider.class);
+        when(modelProviderProvider.getIfAvailable()).thenReturn(modelProvider);
+        ChatResponse providerResponse = buildChatResponseWithUsage("答案", 123);
+        when(modelProvider.streamChat(any(Prompt.class), any(ModelCallOptions.class)))
+                .thenReturn(Flux.just(providerResponse));
+        ReflectionTestUtils.setField(streamLifecycle, "modelProviderProvider", modelProviderProvider);
+        ReflectionTestUtils.setField(streamLifecycle, "tokenUsageRecorderProvider", tokenUsageRecorderProvider);
+        ToolCallback toolCallback = mock(ToolCallback.class);
+        AiStreamRegistry.ActiveStream activeStream = new AiStreamRegistry.ActiveStream(9L, emitter);
+        activeStream.setAssistantMessageId(88L);
+        activeStream.setContext(AiChatStreamContext.initial(9L, emitter, List.of(), List.of(toolCallback),
+                System.currentTimeMillis(), buildUser(42L)));
+        registry.register(9L, activeStream);
+        when(assistantMessageStore.complete(eq(88L), eq("答案"), any(), eq(123))).thenReturn(true);
+
+        streamLifecycle.subscribe(activeStream, activeStream.getContext());
+
+        org.mockito.ArgumentCaptor<ModelCallOptions> optionsCaptor =
+                org.mockito.ArgumentCaptor.forClass(ModelCallOptions.class);
+        verify(modelProvider).streamChat(any(Prompt.class), optionsCaptor.capture());
+        assertThat(optionsCaptor.getValue().hasTools()).isTrue();
+        assertThat(optionsCaptor.getValue().toolCallbacks()).containsExactly(toolCallback);
+        assertThat(optionsCaptor.getValue().toolContext()).containsEntry("sessionId", 9L);
+        verify(chatClientBuilder, never()).build();
     }
 
     @Test
