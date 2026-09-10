@@ -5,7 +5,10 @@ import com.slz.crm.platform.contract.AssistantChatRequest;
 import com.slz.crm.platform.contract.ModelProvider;
 import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.entity.AiMessageEntity;
+import com.slz.crm.pojo.entity.AiChatImageEntity;
 import com.slz.crm.pojo.entity.AiSessionEntity;
+import com.slz.crm.server.ai.AiChatImageService;
+import com.slz.crm.server.ai.AiChatImageUnderstandingService;
 import com.slz.crm.server.ai.AiChatPromptService;
 import com.slz.crm.server.ai.AiChatSseEventWriter;
 import com.slz.crm.server.ai.AiChatStreamLifecycle;
@@ -22,6 +25,7 @@ import com.slz.crm.server.service.PermissionService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
@@ -80,6 +84,12 @@ public class AiChatServiceImpl implements AiChatService {
 
     @Autowired
     private AiRateLimiter aiRateLimiter;
+
+    @Autowired(required = false)
+    private AiChatImageService aiChatImageService;
+
+    @Autowired(required = false)
+    private AiChatImageUnderstandingService aiChatImageUnderstandingService;
 
     @Autowired
     @Qualifier("aiChatExecutor")
@@ -143,6 +153,23 @@ public class AiChatServiceImpl implements AiChatService {
 
             Long finalSessionId = session.getId();
             boolean needTitle = isNewSession || DEFAULT_TITLE.equals(session.getTitle());
+            java.util.Optional<AiChatImageUnderstandingService.UnderstandingContext> imageContext =
+                    java.util.Optional.empty();
+            if (request.imageRef() != null && !request.imageRef().isBlank()) {
+                if (aiChatImageService == null || aiChatImageUnderstandingService == null) {
+                    eventWriter.sendError(emitter, "DEPENDENCY_UNAVAILABLE", "图片服务未就绪");
+                    emitter.complete();
+                    return;
+                }
+                java.util.Optional<AiChatImageEntity> image = aiChatImageService.findByRef(
+                        finalSessionId, request.imageRef());
+                if (image.isEmpty()) {
+                    eventWriter.sendError(emitter, "PARAM_INVALID", "图片引用无效或无权访问");
+                    emitter.complete();
+                    return;
+                }
+                imageContext = aiChatImageUnderstandingService.understand(image.get(), request.message());
+            }
             Lock takeoverLock = aiStreamRegistry.takeoverLock(finalSessionId);
             takeoverLock.lock();
             try {
@@ -151,6 +178,7 @@ public class AiChatServiceImpl implements AiChatService {
 
                 String message = request.message();
                 List<Message> messages = promptService.buildMessages(finalSessionId, message);
+                imageContext.ifPresent(context -> messages.add(1, new SystemMessage(toImageContextPrompt(context))));
                 AiMessageEntity userMessage = aiMessageService.saveMessage(
                         finalSessionId, "user", "text", message, null);
                 AiMessageEntity assistantMessage = assistantMessageStore.createPlaceholder(finalSessionId);
@@ -207,6 +235,7 @@ public class AiChatServiceImpl implements AiChatService {
         return true;
     }
 
+
     private Long parseSessionId(String sessionId, SseEmitter emitter) {
         if (sessionId == null || sessionId.isBlank()) {
             return null;
@@ -218,6 +247,26 @@ public class AiChatServiceImpl implements AiChatService {
             emitter.complete();
             return null;
         }
+    }
+
+    /**
+     * 图片资料块恒定注入；KB 开关不影响图片理解。
+     */
+    private String toImageContextPrompt(AiChatImageUnderstandingService.UnderstandingContext context) {
+        StringBuilder prompt = new StringBuilder("【图片资料】");
+        if (context.ocrText() != null && !context.ocrText().isBlank()) {
+            prompt.append("\nOCR：").append(context.ocrText().trim());
+        }
+        if (context.imageSummary() != null && !context.imageSummary().isBlank()) {
+            prompt.append("\n图片摘要：").append(context.imageSummary().trim());
+        }
+        if (context.keyEntities() != null && !context.keyEntities().isEmpty()) {
+            prompt.append("\n关键实体：").append(String.join("、", context.keyEntities()));
+        }
+        if (context.focusedSummary() != null && !context.focusedSummary().isBlank()) {
+            prompt.append("\n问题聚焦：").append(context.focusedSummary().trim());
+        }
+        return prompt.toString();
     }
 
     private void generateTitleAsync(Long sessionId, Long userId, String message, boolean needTitle,

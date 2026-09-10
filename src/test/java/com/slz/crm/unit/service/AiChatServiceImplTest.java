@@ -13,8 +13,11 @@ import com.slz.crm.server.ai.AiChatSseEventWriter;
 import com.slz.crm.server.ai.AiChatStreamLifecycle;
 import com.slz.crm.server.ai.AiChatMetrics;
 import com.slz.crm.server.ai.AiReferenceCollector;
+import com.slz.crm.server.ai.AiChatImageService;
+import com.slz.crm.server.ai.AiChatImageUnderstandingService;
 import com.slz.crm.server.ai.AiShortQuestionRewriter;
 import com.slz.crm.pojo.ao.RoleAO;
+import com.slz.crm.pojo.entity.AiChatImageEntity;
 import com.slz.crm.pojo.entity.AiMessageEntity;
 import com.slz.crm.pojo.entity.AiSessionEntity;
 import com.slz.crm.server.ai.AiRateLimiter;
@@ -104,6 +107,12 @@ class AiChatServiceImplTest {
 
     @Mock
     private AiToolRegistry aiToolRegistry;
+
+    @Mock
+    private AiChatImageService aiChatImageService;
+
+    @Mock
+    private AiChatImageUnderstandingService aiChatImageUnderstandingService;
 
     @Mock
     private AiRateLimiter aiRateLimiter;
@@ -696,6 +705,23 @@ class AiChatServiceImplTest {
         assertThat(usageCaptor.getValue().sessionId()).isEqualTo("9");
         assertThat(usageCaptor.getValue().userIdRef()).isEqualTo("user:42");
         verify(assistantMessageStore).complete(eq(88L), eq("答案"), any(), eq(123));
+    }
+
+    @Test
+    void imageRef_invalidReferenceDoesNotStartGeneration() {
+        RoleAO currentUser = buildUser(42L);
+        AiSessionEntity session = new AiSessionEntity();
+        session.setId(9L);
+        session.setTitle("已有会话");
+        when(aiSessionService.getOwnedSession(9L, 42L)).thenReturn(session);
+        when(aiRateLimiter.tryAcquire(42L)).thenReturn(true);
+        when(aiChatImageService.findByRef(9L, "999")).thenReturn(java.util.Optional.empty());
+        AssistantChatRequest request = new AssistantChatRequest("9", "看图说明", false, false, "999", List.of());
+
+        ReflectionTestUtils.invokeMethod(service, "doStreamChat", currentUser, request, emitter, null);
+
+        verify(eventWriter).sendError(emitter, "PARAM_INVALID", "图片引用无效或无权访问");
+        verify(assistantMessageStore, never()).createPlaceholder(org.mockito.ArgumentMatchers.anyLong());
     }
 
     @Test
