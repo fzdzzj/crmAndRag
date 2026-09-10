@@ -58,8 +58,9 @@
 - 敏感信息（密钥 / 本地路径 / 测试数据）**不入库**。
 - 用户或交接文档的解释视为**待验证假设**，用代码/测试/日志验证后再当事实。
 
-## 3. 冻结契约（只实现/消费，不改签名；详见 agent-execution-plan.md §2）
+## 3. 冻结契约（只实现/消费，不改签名；★权威登记册：`contracts-frozen.md`）
 
+**以 `contracts-frozen.md` 为准**（含 SSE payload 字段级、断线续传、`CrmVectorStoreHealth`/`BypassTaskExecutor`/`TITLE`/`RESUME_UNAVAILABLE` 等修正、谁实现谁消费）。摘要：
 `UserContext`（身份 userId+deptId+异步快照传播）· `Result`+错误码（RATE_LIMITED/QUOTA_EXCEEDED/UNAUTHORIZED/CONTENT_RISK）· `ModelProvider`（chat/stream/embedding/vision；dashscope 默认；**须返回带 usage 的响应**）· `VectorStore` 抽象（Qdrant+内存回退）· `DataScope` 接口（落点 `DataScopeServiceImpl`+`QueryWrapperAspect`，非 MyDataPermissionHandler）· **助手请求契约**（`sessionId/message/useKnowledgeBase/thinking/imageRef`）· **SSE 事件契约**（`start/meta/sources/thinking/delta/references/done/cancelled/stopped/error` + `ping` 心跳）· **来源引用契约** `SourceReference`（含 `chunkIndex/pageNo/chunkId`，档 B 高亮）· Token 计量 `record(...)`（含 summary/intent）· `DynamicConfigService.get(...)`。
 
 ## 4. Flyway 号段（防撞号；详见 agent-execution-plan.md §5）
