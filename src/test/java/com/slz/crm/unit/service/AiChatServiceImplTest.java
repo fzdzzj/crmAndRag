@@ -10,6 +10,7 @@ import com.slz.crm.server.ai.AiChatSseEventWriter;
 import com.slz.crm.server.ai.AiChatStreamLifecycle;
 import com.slz.crm.server.ai.AiChatMetrics;
 import com.slz.crm.server.ai.AiReferenceCollector;
+import com.slz.crm.server.ai.AiShortQuestionRewriter;
 import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.entity.AiMessageEntity;
 import com.slz.crm.pojo.entity.AiSessionEntity;
@@ -149,6 +150,7 @@ class AiChatServiceImplTest {
                 "qwen-plus");
         ReflectionTestUtils.setField(promptService, "aiProperties", aiProperties);
         ReflectionTestUtils.setField(promptService, "aiMessageService", aiMessageService);
+        ReflectionTestUtils.setField(promptService, "shortQuestionRewriter", new AiShortQuestionRewriter());
         ReflectionTestUtils.setField(streamLifecycle, "chatClientBuilder", chatClientBuilder);
         ReflectionTestUtils.setField(streamLifecycle, "aiProperties", aiProperties);
         ReflectionTestUtils.setField(streamLifecycle, "aiMessageService", aiMessageService);

@@ -43,6 +43,10 @@ public class AiChatPromptService {
     @Autowired(required = false)
     private AiConversationMemoryService conversationMemoryService;
 
+    /** 短问改写只影响检索/模型输入，不改变 ai_message 中的用户原文。 */
+    @Autowired
+    private AiShortQuestionRewriter shortQuestionRewriter;
+
     /** 提示词总字符闸门；历史超限时按最旧优先丢弃，必要 system/user 不裁剪。 */
     @Value("${ai.prompt-max-chars:3400}")
     private int promptMaxChars = 3400;
@@ -68,18 +72,20 @@ public class AiChatPromptService {
         List<Message> messages = new ArrayList<>();
         AiConversationMemoryEntity memory = conversationMemoryService == null
                 ? null : conversationMemoryService.findBySessionId(sessionId);
-        messages.add(new SystemMessage(buildSystemPrompt(memory)));
+        AiShortQuestionRewriter.RewrittenQuestion rewritten = shortQuestionRewriter.rewrite(
+                message, memory, findLastUserQuestion(sessionId));
+        messages.add(new SystemMessage(buildSystemPrompt(memory, rewritten.clarifyRequired())));
         messages.addAll(loadHistory(sessionId));
-        messages.add(new UserMessage(message));
+        messages.add(new UserMessage(rewritten.query()));
         return applyPromptBudget(messages);
     }
 
     /**
      * 将持久记忆注入系统提示词；加工品缺失时不改变原 system prompt。
      */
-    private String buildSystemPrompt(AiConversationMemoryEntity memory) {
+    private String buildSystemPrompt(AiConversationMemoryEntity memory, boolean clarifyRequired) {
         if (memory == null) {
-            return systemPrompt;
+            return clarifyRequired ? systemPrompt + shortQuestionRewriter.clarifyPrompt() : systemPrompt;
         }
         StringBuilder memoryBlock = new StringBuilder(systemPrompt);
         if (memory.getIntent() != null && !memory.getIntent().isBlank()) {
@@ -92,7 +98,18 @@ public class AiChatPromptService {
         if (memory.getSummary() != null && !memory.getSummary().isBlank()) {
             memoryBlock.append("\n\n【历史摘要】").append(memory.getSummary().trim());
         }
+        if (clarifyRequired) {
+            memoryBlock.append(shortQuestionRewriter.clarifyPrompt());
+        }
         return memoryBlock.toString();
+    }
+
+    private AiMessageEntity findLastUserQuestion(Long sessionId) {
+        // listRecentContextMessages 返回 id 倒序，因此第一条用户消息就是最近用户问。
+        return aiMessageService.listRecentContextMessages(sessionId, 2).stream()
+                .filter(item -> "user".equals(item.getRole()))
+                .findFirst()
+                .orElse(null);
     }
 
     public String generateTitle(ChatClient.Builder chatClientBuilder, String userMessage) {
