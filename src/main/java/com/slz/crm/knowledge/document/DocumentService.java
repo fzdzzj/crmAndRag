@@ -1,6 +1,9 @@
 package com.slz.crm.knowledge.document;
 
 import com.alibaba.excel.EasyExcel;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
@@ -87,31 +90,20 @@ public class DocumentService {
         };
     }
 
-    /** PDFBox 通过反射适配；依赖缺失时给出可执行的变更申请提示。 */
+    /** PDFBox 直连解析；按页抽取并保留 pageNo，供页级来源引用使用。 */
     private ParsedDocument parsePdf(InputStream content) throws Exception {
         byte[] bytes = content.readAllBytes();
-        try {
-            Class<?> loaderClass = Class.forName("org.apache.pdfbox.Loader");
-            Class<?> documentClass = Class.forName("org.apache.pdfbox.pdmodel.PDDocument");
-            Class<?> stripperClass = Class.forName("org.apache.pdfbox.text.PDFTextStripper");
-            Object document = loaderClass.getMethod("loadPDF", byte[].class).invoke(null, bytes);
-            try {
-                int pageCount = (Integer) documentClass.getMethod("getNumberOfPages").invoke(document);
-                Object stripper = stripperClass.getDeclaredConstructor().newInstance();
-                List<DocumentPage> pages = new ArrayList<>(pageCount);
-                for (int page = 1; page <= pageCount; page++) {
-                    stripperClass.getMethod("setStartPage", int.class).invoke(stripper, page);
-                    stripperClass.getMethod("setEndPage", int.class).invoke(stripper, page);
-                    String text = (String) stripperClass.getMethod("getText", documentClass)
-                            .invoke(stripper, document);
-                    pages.add(new DocumentPage(page, null, text));
-                }
-                return new ParsedDocument("pdf", pages);
-            } finally {
-                documentClass.getMethod("close").invoke(document);
+        try (PDDocument document = Loader.loadPDF(bytes)) {
+            PDFTextStripper stripper = new PDFTextStripper();
+            int pageCount = document.getNumberOfPages();
+            List<DocumentPage> pages = new ArrayList<>(pageCount);
+            for (int page = 1; page <= pageCount; page++) {
+                stripper.setStartPage(page);
+                stripper.setEndPage(page);
+                String text = stripper.getText(document);
+                pages.add(new DocumentPage(page, null, text));
             }
-        } catch (ClassNotFoundException exception) {
-            throw new IllegalStateException("PDF 解析需要 PDFBox；当前 POM 未声明该依赖，请走依赖变更申请", exception);
+            return new ParsedDocument("pdf", pages);
         }
     }
 
