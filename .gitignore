@@ -23,6 +23,9 @@ build-tmp/
 uploads/
 file/
 
+# ---- 本地 spike 构建辅助 ----
+spike/classpath.txt
+
 # ---- OS ----
 .DS_Store
 Thumbs.db
