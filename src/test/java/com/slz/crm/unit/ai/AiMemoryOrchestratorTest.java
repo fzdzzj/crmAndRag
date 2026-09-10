@@ -104,4 +104,40 @@ class AiMemoryOrchestratorTest {
 
         verify(memoryService, org.mockito.Mockito.never()).updateMemory(any());
     }
+
+    @Test
+    void topMatch_extractsDeduplicatedFactsUpToLimit() {
+        AiConversationMemoryEntity memory = new AiConversationMemoryEntity();
+        memory.setId(1L);
+        memory.setVersion(1);
+        memory.setFacts("[\"客户A采购ERP\"]");
+        when(memoryService.ensureMemory(9L, 42L)).thenReturn(memory);
+        when(memoryService.findBySessionId(9L)).thenReturn(memory);
+        when(memoryService.updateMemory(memory)).thenReturn(true);
+
+        orchestrator.updateFactsFromTopMatch(9L, 42L,
+                "客户A采购ERP\n合同金额120万\n交付时间为Q4\n第四行", 0.82);
+
+        assertThat(memory.getFacts())
+                .contains("客户A采购ERP")
+                .contains("合同金额120万")
+                .contains("交付时间为Q4");
+        verify(memoryService).updateMemory(memory);
+    }
+
+    @Test
+    void topMatch_belowScoreThresholdDoesNotTouchMemory() {
+        orchestrator.updateFactsFromTopMatch(9L, 42L, "低相关片段", 0.10);
+
+        verify(memoryService, org.mockito.Mockito.never()).ensureMemory(any(), any());
+        verify(memoryService, org.mockito.Mockito.never()).updateMemory(any());
+    }
+
+    @Test
+    void cleanupExpiredMemories_deletesMemoryOlderThanTtl() {
+        orchestrator.cleanupExpiredMemories();
+
+        verify(memoryService).deleteExpiredBefore(org.mockito.ArgumentMatchers.argThat(
+                threshold -> threshold.isBefore(java.time.LocalDateTime.now())));
+    }
 }

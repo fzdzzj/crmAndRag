@@ -10,14 +10,19 @@ import com.slz.crm.pojo.entity.AiConversationMemoryEntity;
 import com.slz.crm.pojo.entity.AiMessageEntity;
 import com.slz.crm.server.service.AiConversationMemoryService;
 import lombok.extern.slf4j.Slf4j;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -36,6 +41,9 @@ public class AiMemoryOrchestrator {
     private static final int SUMMARY_SOURCE_MESSAGE_COUNT = 12;
     private static final int SUMMARY_MAX_CHARS = 2000;
     private static final int INTENT_MAX_CHARS = 200;
+    private static final int MAX_FACTS = 8;
+    private static final int MAX_FACTS_PER_UPDATE = 3;
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Autowired
     private AiConversationMemoryService memoryService;
@@ -48,6 +56,12 @@ public class AiMemoryOrchestrator {
 
     @Autowired(required = false)
     private ObjectProvider<TokenUsageRecorder> tokenUsageRecorderProvider;
+
+    @Value("${crm.ai.memory-ttl-seconds:1800}")
+    private long memoryTtlSeconds = 1800;
+
+    @Value("${crm.ai.memory-fact-score-threshold:0.75}")
+    private double memoryFactScoreThreshold = 0.75;
 
     /** 会话级摘要 CAS；value 语义便于任务未入队/结束时精准清理。 */
     private final Map<Long, AtomicBoolean> summaryInFlight = new ConcurrentHashMap<>();
@@ -66,6 +80,67 @@ public class AiMemoryOrchestrator {
         memoryService.ensureMemory(sessionId, userId);
         triggerSummary(sessionId, userId);
         triggerIntent(sessionId, userId, userMessage);
+    }
+
+    /**
+     * 从检索 top1 片段提取原文事实；低于阈值的片段不污染长期记忆。
+     */
+    public void updateFactsFromTopMatch(Long sessionId, Long userId, String excerpt, Double relevanceScore) {
+        if (sessionId == null || relevanceScore == null
+                || relevanceScore < memoryFactScoreThreshold || excerpt == null || excerpt.isBlank()) {
+            return;
+        }
+        List<String> extracted = excerpt.lines()
+                .map(String::trim)
+                .filter(line -> !line.isBlank())
+                .limit(MAX_FACTS_PER_UPDATE)
+                .toList();
+        if (extracted.isEmpty()) {
+            return;
+        }
+        memoryService.ensureMemory(sessionId, userId);
+        AiConversationMemoryEntity memory = memoryService.findBySessionId(sessionId);
+        if (memory == null) {
+            return;
+        }
+        List<String> facts = parseFacts(memory.getFacts());
+        for (String fact : extracted) {
+            if (!facts.contains(fact)) {
+                facts.add(fact);
+            }
+        }
+        // 超上限按插入序淘汰，保证旧事实不会无限累积。
+        while (facts.size() > MAX_FACTS) {
+            facts.remove(0);
+        }
+        try {
+            memory.setFacts(OBJECT_MAPPER.writeValueAsString(facts));
+        } catch (Exception exception) {
+            log.warn("AI 会话事实序列化失败，跳过更新: sessionId={}", sessionId, exception);
+            return;
+        }
+        memoryService.updateMemory(memory);
+    }
+
+    /**
+     * 清理长期未更新的记忆加工品；ai_message 原文保留，不影响历史查看。
+     */
+    @Scheduled(fixedDelayString = "${crm.ai.memory-cleanup-interval-ms:300000}")
+    public void cleanupExpiredMemories() {
+        memoryService.deleteExpiredBefore(LocalDateTime.now().minusSeconds(memoryTtlSeconds));
+    }
+
+    private List<String> parseFacts(String factsJson) {
+        if (factsJson == null || factsJson.isBlank()) {
+            return new java.util.ArrayList<>();
+        }
+        try {
+            List<String> facts = OBJECT_MAPPER.readValue(factsJson, new TypeReference<List<String>>() {});
+            return new java.util.ArrayList<>(facts == null ? List.of() : facts);
+        } catch (Exception exception) {
+            log.warn("AI 会话事实 JSON 解析失败，按空列表处理", exception);
+            return new java.util.ArrayList<>();
+        }
     }
 
     private void triggerSummary(Long sessionId, Long userId) {

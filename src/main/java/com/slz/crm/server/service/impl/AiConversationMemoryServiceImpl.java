@@ -80,4 +80,13 @@ public class AiConversationMemoryServiceImpl
         Collections.reverse(recent);
         return recent;
     }
+
+    @Override
+    public boolean deleteExpiredBefore(LocalDateTime threshold) {
+        if (threshold == null) {
+            return false;
+        }
+        return remove(new LambdaQueryWrapper<AiConversationMemoryEntity>()
+                .lt(AiConversationMemoryEntity::getUpdatedTime, threshold));
+    }
 }
