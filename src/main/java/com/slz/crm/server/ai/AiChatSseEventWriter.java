@@ -3,6 +3,7 @@ package com.slz.crm.server.ai;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.slz.crm.pojo.entity.AiMessageEntity;
+import com.slz.crm.platform.contract.SourceReference;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.stereotype.Component;
@@ -189,6 +190,13 @@ public class AiChatSseEventWriter {
 
     public String toAuditJson(String model, String promptVersion, long costMs, Usage usage,
                               List<AiReferenceCollector.Reference> references) {
+        return toAuditJson(model, promptVersion, costMs, usage, references, List.of(), List.of());
+    }
+
+    public String toAuditJson(String model, String promptVersion, long costMs, Usage usage,
+                              List<AiReferenceCollector.Reference> references,
+                              List<SourceReference> sources,
+                              List<Integer> citations) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("model", model);
         data.put("promptVersion", promptVersion);
@@ -200,14 +208,47 @@ public class AiChatSseEventWriter {
         if (references != null && !references.isEmpty()) {
             data.put("references", toReferenceItems(references));
         }
+        if (sources != null && !sources.isEmpty()) {
+            data.put("sources", toSourceItems(sources));
+        }
+        if (citations != null && !citations.isEmpty()) {
+            data.put("citations", citations);
+        }
         return writeJson(data);
     }
 
     public String toReferencesJson(List<AiReferenceCollector.Reference> references) {
+        return toReferencesJson(references, List.of());
+    }
+
+    public String toReferencesJson(List<AiReferenceCollector.Reference> references, List<Integer> citations) {
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("citations", List.of());
+        data.put("citations", citations == null ? List.of() : citations);
         data.put("items", toReferenceItems(references));
         return writeJson(data);
+    }
+
+    public String toSourcesJson(List<SourceReference> sources) {
+        return writeJson(toSourceItems(sources));
+    }
+
+    private List<Map<String, Object>> toSourceItems(List<SourceReference> sources) {
+        List<Map<String, Object>> payload = new ArrayList<>();
+        for (SourceReference source : sources == null ? List.<SourceReference>of() : sources) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("sourceType", source.sourceType());
+            item.put("route", source.route());
+            item.put("filename", source.filename());
+            item.put("documentId", source.documentId());
+            item.put("chunkId", source.chunkId());
+            item.put("chunkIndex", source.chunkIndex());
+            item.put("pageNo", source.pageNo());
+            item.put("rowIndex", source.rowIndex());
+            item.put("excerpt", source.excerpt());
+            item.put("relevanceScore", source.relevanceScore());
+            payload.add(item);
+        }
+        return payload;
     }
 
     private List<Map<String, Object>> toReferenceItems(List<AiReferenceCollector.Reference> references) {

@@ -1,5 +1,6 @@
 package com.slz.crm.server.ai;
 
+import com.slz.crm.platform.contract.SourceReference;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -11,6 +12,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.List;
 
 /**
  * AI 活跃流注册表（每会话同时只有一个活跃流）
@@ -151,6 +153,9 @@ public class AiStreamRegistry {
         /** start 事件已回传的助手占位消息 ID。 */
         private volatile Long assistantMessageId;
 
+        /** 本轮检索来源；供答案完成后提取实际 citations。 */
+        private volatile List<SourceReference> sources = List.of();
+
 
         public ActiveStream(Long sessionId, SseEmitter emitter) {
             this(sessionId, emitter, java.util.UUID.randomUUID().toString());
@@ -214,6 +219,15 @@ public class AiStreamRegistry {
 
         public Long getAssistantMessageId() {
             return assistantMessageId;
+        }
+
+        public List<SourceReference> getSources() {
+            return sources;
+        }
+
+        public void setSources(List<SourceReference> sources) {
+            this.sources = sources == null || sources.isEmpty()
+                    ? List.of() : List.copyOf(sources);
         }
 
 

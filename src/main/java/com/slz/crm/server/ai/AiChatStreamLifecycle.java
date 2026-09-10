@@ -2,6 +2,7 @@ package com.slz.crm.server.ai;
 
 import com.slz.crm.platform.contract.ModelProvider;
 import com.slz.crm.platform.contract.ModelCallOptions;
+import com.slz.crm.platform.contract.SourceReference;
 import com.slz.crm.platform.contract.TokenUsageRecord;
 import com.slz.crm.platform.contract.TokenUsageRecorder;
 import com.slz.crm.platform.contract.TokenUsageType;
@@ -33,6 +34,8 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * AI 助手 SSE 生命周期。
@@ -42,6 +45,8 @@ import java.util.concurrent.TimeoutException;
 @Slf4j
 @Component
 public class AiChatStreamLifecycle {
+
+    private static final Pattern CITATION_PATTERN = Pattern.compile("\\[(\\d{1,3})]");
 
     private final ChatClient.Builder chatClientBuilder;
     private final AiProperties aiProperties;
@@ -143,14 +148,17 @@ public class AiChatStreamLifecycle {
                             return;
                         }
                         List<AiReferenceCollector.Reference> references = context.referenceCollector().getReferences();
+                        Usage usage = usageHolder[0];
+                        String content = activeStream.getPartialAnswer().toString();
+                        List<SourceReference> sources = activeStream.getSources();
+                        List<Integer> citations = extractCitations(content, sources);
                         if (!references.isEmpty() && !sendBufferedEvent(activeStream, "references",
-                                eventWriter.toReferencesJson(references))) {
+                                eventWriter.toReferencesJson(references, citations))) {
                             return;
                         }
-                        Usage usage = usageHolder[0];
                         String auditPayload = eventWriter.toAuditJson(effectiveModel, promptService.getPromptVersion(),
-                                System.currentTimeMillis() - context.roundStart(), usage, references);
-                        String content = activeStream.getPartialAnswer().toString();
+                                System.currentTimeMillis() - context.roundStart(), usage, references,
+                                sources, citations);
                         persistAssistantMessage(activeStream, content, auditPayload, usage, false);
                         recordTokenUsage(activeStream, effectiveModel, usage);
                         if (memoryOrchestrator != null && !content.isBlank()) {
@@ -485,6 +493,21 @@ public class AiChatStreamLifecycle {
         return activeStream.isCancelled()
                 || activeStream.isFinished()
                 || aiStreamRegistry.get(activeStream.getSessionId()) != activeStream;
+    }
+
+    private List<Integer> extractCitations(String content, List<SourceReference> sources) {
+        if (content == null || content.isBlank() || sources == null || sources.isEmpty()) {
+            return List.of();
+        }
+        java.util.Set<Integer> citations = new java.util.LinkedHashSet<>();
+        Matcher matcher = CITATION_PATTERN.matcher(content);
+        while (matcher.find()) {
+            int citation = Integer.parseInt(matcher.group(1));
+            if (citation >= 1 && citation <= sources.size()) {
+                citations.add(citation);
+            }
+        }
+        return List.copyOf(citations);
     }
 
     private boolean sendBufferedEvent(AiStreamRegistry.ActiveStream activeStream, String event, String data) {

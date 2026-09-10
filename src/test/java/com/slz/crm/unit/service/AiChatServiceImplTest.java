@@ -4,6 +4,7 @@ import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.platform.contract.AssistantChatRequest;
 import com.slz.crm.platform.contract.ModelCallOptions;
 import com.slz.crm.platform.contract.ModelProvider;
+import com.slz.crm.platform.contract.SourceReference;
 import com.slz.crm.platform.contract.TokenUsageRecord;
 import com.slz.crm.platform.contract.TokenUsageRecorder;
 import com.slz.crm.server.ai.AiChatPromptService;
@@ -705,6 +706,43 @@ class AiChatServiceImplTest {
         assertThat(usageCaptor.getValue().sessionId()).isEqualTo("9");
         assertThat(usageCaptor.getValue().userIdRef()).isEqualTo("user:42");
         verify(assistantMessageStore).complete(eq(88L), eq("答案"), any(), eq(123));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void streamChat_persistsSourceCitationsFromAnswer() {
+        AiStreamRegistry registry = new AiStreamRegistry();
+        useRegistry(registry);
+        ModelProvider modelProvider = mock(ModelProvider.class);
+        TokenUsageRecorder tokenUsageRecorder = mock(TokenUsageRecorder.class);
+        ObjectProvider<TokenUsageRecorder> tokenUsageRecorderProvider = mock(ObjectProvider.class);
+        when(tokenUsageRecorderProvider.getIfAvailable()).thenReturn(tokenUsageRecorder);
+        ObjectProvider<ModelProvider> modelProviderProvider = mock(ObjectProvider.class);
+        when(modelProviderProvider.getIfAvailable()).thenReturn(modelProvider);
+        ChatResponse providerResponse = buildChatResponseWithUsage("依据[2]结论", 123);
+        when(modelProvider.streamChat(any(Prompt.class), any(ModelCallOptions.class)))
+                .thenReturn(Flux.just(providerResponse));
+        ReflectionTestUtils.setField(streamLifecycle, "modelProviderProvider", modelProviderProvider);
+        ReflectionTestUtils.setField(streamLifecycle, "tokenUsageRecorderProvider", tokenUsageRecorderProvider);
+        AiStreamRegistry.ActiveStream activeStream = new AiStreamRegistry.ActiveStream(9L, emitter);
+        activeStream.setAssistantMessageId(88L);
+        activeStream.setContext(AiChatStreamContext.initial(9L, emitter, List.of(), List.of(),
+                System.currentTimeMillis(), buildUser(42L)));
+        activeStream.setSources(List.of(
+                new SourceReference("pdf", "hybrid", "A.pdf", "doc-a", "chunk-a", 1, 1, null, "A", 0.9D),
+                new SourceReference("pdf", "vector", "B.pdf", "doc-b", "chunk-b", 4, 2, null, "B", 0.8D)));
+        registry.register(9L, activeStream);
+        when(assistantMessageStore.complete(eq(88L), eq("依据[2]结论"), any(), eq(123))).thenReturn(true);
+
+        streamLifecycle.subscribe(activeStream, activeStream.getContext());
+
+        org.mockito.ArgumentCaptor<String> payloadCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(assistantMessageStore).complete(eq(88L), eq("依据[2]结论"), payloadCaptor.capture(), eq(123));
+        assertThat(payloadCaptor.getValue())
+                .contains("\"citations\":[2]")
+                .contains("\"sourceType\":\"pdf\"")
+                .contains("\"pageNo\":2")
+                .contains("\"chunkIndex\":4");
     }
 
     @Test

@@ -10,6 +10,7 @@ import com.slz.crm.pojo.entity.AiSessionEntity;
 import com.slz.crm.server.ai.AiChatImageService;
 import com.slz.crm.server.ai.AiChatImageUnderstandingService;
 import com.slz.crm.server.ai.AiChatPromptService;
+import com.slz.crm.server.ai.AiChatKnowledgeRetrievalService;
 import com.slz.crm.server.ai.AiChatSseEventWriter;
 import com.slz.crm.server.ai.AiChatStreamLifecycle;
 import com.slz.crm.server.ai.AiRateLimiter;
@@ -91,6 +92,10 @@ public class AiChatServiceImpl implements AiChatService {
     @Autowired(required = false)
     private AiChatImageUnderstandingService aiChatImageUnderstandingService;
 
+    /** 检索消费属 C；B 生产实现未合入时由 mock/端口缺失的零命中路径承接。 */
+    @Autowired(required = false)
+    private AiChatKnowledgeRetrievalService knowledgeRetrievalService;
+
     @Autowired
     @Qualifier("aiChatExecutor")
     private Executor aiChatExecutor;
@@ -171,6 +176,9 @@ public class AiChatServiceImpl implements AiChatService {
                 imageContext = aiChatImageUnderstandingService.understand(
                         image.get(), request.message(), request.useKnowledgeBase());
             }
+            float[] imageVector = imageContext
+                    .map(AiChatImageUnderstandingService.UnderstandingContext::imageVector)
+                    .orElse(null);
             Lock takeoverLock = aiStreamRegistry.takeoverLock(finalSessionId);
             takeoverLock.lock();
             try {
@@ -180,6 +188,13 @@ public class AiChatServiceImpl implements AiChatService {
                 String message = request.message();
                 List<Message> messages = promptService.buildMessages(finalSessionId, message);
                 imageContext.ifPresent(context -> messages.add(1, new SystemMessage(toImageContextPrompt(context))));
+                AiChatKnowledgeRetrievalService.RetrievalOutcome retrieval = knowledgeRetrievalService == null
+                        ? AiChatKnowledgeRetrievalService.RetrievalOutcome.empty()
+                        : knowledgeRetrievalService.retrieve(lastUserMessage(messages), userId, imageVector,
+                                request.useKnowledgeBase());
+                if (retrieval.context() != null && !retrieval.context().isBlank()) {
+                    messages.add(imageContext.isPresent() ? 2 : 1, new SystemMessage(retrieval.context()));
+                }
                 AiMessageEntity userMessage = aiMessageService.saveMessage(
                         finalSessionId, "user", "text", message, null);
                 AiMessageEntity assistantMessage = assistantMessageStore.createPlaceholder(finalSessionId);
@@ -190,10 +205,15 @@ public class AiChatServiceImpl implements AiChatService {
                         String.valueOf(finalSessionId), assistantMessage.getId(), activeStream.getGenerationId()));
                 eventWriter.sendBufferedEvent(activeStream, "meta", eventWriter.toMetaJson(
                         resolveProvider(), resolveModelName(), request.useKnowledgeBase(), request.thinking()));
+                if (retrieval.hasSources()) {
+                    eventWriter.sendBufferedEvent(activeStream, "sources",
+                            eventWriter.toSourcesJson(retrieval.sources()));
+                }
 
                 List<ToolCallback> toolCallbacks = permittedToolCallbacks(currentUser);
                 activeStream.setContext(AiChatStreamContext.initial(finalSessionId, emitter, messages, toolCallbacks,
                         System.currentTimeMillis(), currentUser, request.thinking()));
+                activeStream.setSources(retrieval.sources());
                 aiStreamRegistry.register(finalSessionId, activeStream);
                 emitter.onCompletion(() -> streamLifecycle.cleanup(activeStream, "onCompletion"));
                 emitter.onTimeout(() -> streamLifecycle.cleanup(activeStream, "onTimeout"));
@@ -214,6 +234,17 @@ public class AiChatServiceImpl implements AiChatService {
         } finally {
             BaseUnit.removeCurrentId();
         }
+    }
+
+    private String lastUserMessage(List<Message> messages) {
+        for (int index = messages.size() - 1; index >= 0; index--) {
+            Message message = messages.get(index);
+            if (message instanceof org.springframework.ai.chat.messages.UserMessage userMessage
+                    && userMessage.getText() != null) {
+                return userMessage.getText();
+            }
+        }
+        return "";
     }
 
     private boolean tryResume(RoleAO currentUser, Long sessionId, SseEmitter emitter, AiChatResume resume) {
