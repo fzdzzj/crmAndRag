@@ -200,6 +200,12 @@
             <version>1.18.38</version>
         </dependency>
 
+        <!-- B 知识库 PDF 解析（依赖变更申请：PDFBox 3.0.x，Loader.loadPDF API 为 3.x 专属） -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.3</version>
+        </dependency>
         <!-- ==================== 测试 ==================== -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
