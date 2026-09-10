@@ -265,7 +265,7 @@ management:
         liveness:
           include: livenessState
         readiness:
-          include: readinessState,db
+          include: readinessState,db,vectorStore,minio
   health:
     livenessstate:
       enabled: true
