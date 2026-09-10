@@ -2,6 +2,9 @@ package com.slz.crm.server.ai;
 
 import com.slz.crm.platform.contract.ModelProvider;
 import com.slz.crm.platform.contract.ModelCallOptions;
+import com.slz.crm.platform.contract.TokenUsageRecord;
+import com.slz.crm.platform.contract.TokenUsageRecorder;
+import com.slz.crm.platform.contract.TokenUsageType;
 import com.slz.crm.server.properties.AiProperties;
 import com.slz.crm.server.service.AiMessageService;
 import lombok.extern.slf4j.Slf4j;
@@ -58,6 +61,10 @@ public class AiChatStreamLifecycle {
     /** 记忆加工是可选增强；测试或旁路组件缺失时不得影响主答。 */
     @Autowired(required = false)
     private AiMemoryOrchestrator memoryOrchestrator;
+
+    /** Spring AI 兼容路径（含工具循环）也必须上报 usage，避免模型计量盲区。 */
+    @Autowired(required = false)
+    private ObjectProvider<TokenUsageRecorder> tokenUsageRecorderProvider;
 
     public AiChatStreamLifecycle(ChatClient.Builder chatClientBuilder,
                                  AiProperties aiProperties,
@@ -145,6 +152,7 @@ public class AiChatStreamLifecycle {
                                 System.currentTimeMillis() - context.roundStart(), usage, references);
                         String content = activeStream.getPartialAnswer().toString();
                         persistAssistantMessage(activeStream, content, auditPayload, usage, false);
+                        recordTokenUsage(activeStream, effectiveModel, usage);
                         if (memoryOrchestrator != null && !content.isBlank()) {
                             memoryOrchestrator.onRoundCompleted(sessionId,
                                     context.currentUser() == null ? null : context.currentUser().getId(),
@@ -197,6 +205,30 @@ public class AiChatStreamLifecycle {
         toolContext.put("references", context.referenceCollector());
         toolContext.put("user", context.currentUser());
         return toolContext;
+    }
+
+    /**
+     * 上报流式对话 usage；Spring AI 工具路径与 Provider 路径共用同一口径。
+     */
+    private void recordTokenUsage(AiStreamRegistry.ActiveStream activeStream, String model, Usage usage) {
+        TokenUsageRecorder recorder = tokenUsageRecorderProvider == null
+                ? null : tokenUsageRecorderProvider.getIfAvailable();
+        if (recorder == null || usage == null) {
+            return;
+        }
+        AiChatStreamContext context = activeStream.getContext();
+        Long userId = context.currentUser() == null ? null : context.currentUser().getId();
+        long promptTokens = usage.getPromptTokens() == null ? 0 : usage.getPromptTokens();
+        long completionTokens = usage.getCompletionTokens() == null ? 0 : usage.getCompletionTokens();
+        long totalTokens = usage.getTotalTokens() == null
+                ? promptTokens + completionTokens : usage.getTotalTokens();
+        if (promptTokens <= 0 && completionTokens <= 0 && totalTokens <= 0) {
+            return;
+        }
+        recorder.record(new TokenUsageRecord(model,
+                userId == null ? "user:system" : "user:" + userId,
+                String.valueOf(activeStream.getSessionId()), null, TokenUsageType.CHAT,
+                promptTokens, completionTokens, totalTokens, true));
     }
 
     private DefaultToolCallingChatOptions buildFallbackOptions(AiChatStreamContext context,

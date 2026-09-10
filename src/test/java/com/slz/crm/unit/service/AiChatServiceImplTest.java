@@ -4,6 +4,8 @@ import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.platform.contract.AssistantChatRequest;
 import com.slz.crm.platform.contract.ModelCallOptions;
 import com.slz.crm.platform.contract.ModelProvider;
+import com.slz.crm.platform.contract.TokenUsageRecord;
+import com.slz.crm.platform.contract.TokenUsageRecorder;
 import com.slz.crm.server.ai.AiChatPromptService;
 import com.slz.crm.server.ai.AiChatStreamHeartbeat;
 import com.slz.crm.server.ai.AiChatStreamContext;
@@ -641,7 +643,7 @@ class AiChatServiceImplTest {
         AiStreamRegistry.ActiveStream activeStream = new AiStreamRegistry.ActiveStream(9L, emitter);
         activeStream.setAssistantMessageId(88L);
         activeStream.setContext(AiChatStreamContext.initial(9L, emitter, List.of(), List.of(),
-                System.currentTimeMillis(), null));
+                System.currentTimeMillis(), buildUser(42L)));
         registry.register(9L, activeStream);
         when(chatClientBuilder.build()).thenReturn(chatClient);
         when(chatClient.prompt()).thenReturn(promptSpec);
@@ -651,7 +653,7 @@ class AiChatServiceImplTest {
         ChatResponse secondTagChunk = buildChatResponseWithUsage("nk>推理</think>答案", null, null);
         when(streamSpec.chatResponse()).thenReturn(Flux.just(
                 firstTagChunk, secondTagChunk));
-        when(assistantMessageStore.complete(eq(88L), eq("答案"), any(), eq(0))).thenReturn(true);
+        when(assistantMessageStore.complete(eq(88L), eq("答案"), any(), eq(123))).thenReturn(true);
 
         streamLifecycle.subscribe(activeStream, activeStream.getContext());
 
@@ -667,24 +669,33 @@ class AiChatServiceImplTest {
         AiStreamRegistry registry = new AiStreamRegistry();
         useRegistry(registry);
         ModelProvider modelProvider = mock(ModelProvider.class);
+        TokenUsageRecorder tokenUsageRecorder = mock(TokenUsageRecorder.class);
+        ObjectProvider<TokenUsageRecorder> tokenUsageRecorderProvider = mock(ObjectProvider.class);
+        when(tokenUsageRecorderProvider.getIfAvailable()).thenReturn(tokenUsageRecorder);
         ObjectProvider<ModelProvider> modelProviderProvider = mock(ObjectProvider.class);
         when(modelProviderProvider.getIfAvailable()).thenReturn(modelProvider);
-        ChatResponse providerResponse = buildChatResponseWithUsage("答案", null, null);
+        ChatResponse providerResponse = buildChatResponseWithUsage("答案", 123);
         when(modelProvider.streamChat(any(Prompt.class), any(ModelCallOptions.class)))
                 .thenReturn(Flux.just(providerResponse));
         ReflectionTestUtils.setField(streamLifecycle, "modelProviderProvider", modelProviderProvider);
+        ReflectionTestUtils.setField(streamLifecycle, "tokenUsageRecorderProvider", tokenUsageRecorderProvider);
         AiStreamRegistry.ActiveStream activeStream = new AiStreamRegistry.ActiveStream(9L, emitter);
         activeStream.setAssistantMessageId(88L);
         activeStream.setContext(AiChatStreamContext.initial(9L, emitter, List.of(), List.of(),
-                System.currentTimeMillis(), null));
+                System.currentTimeMillis(), buildUser(42L)));
         registry.register(9L, activeStream);
-        when(assistantMessageStore.complete(eq(88L), eq("答案"), any(), eq(0))).thenReturn(true);
+        when(assistantMessageStore.complete(eq(88L), eq("答案"), any(), eq(123))).thenReturn(true);
 
         streamLifecycle.subscribe(activeStream, activeStream.getContext());
 
         verify(modelProvider).streamChat(any(Prompt.class), any(ModelCallOptions.class));
         verify(chatClientBuilder, never()).build();
-        verify(assistantMessageStore).complete(eq(88L), eq("答案"), any(), eq(0));
+        org.mockito.ArgumentCaptor<TokenUsageRecord> usageCaptor =
+                org.mockito.ArgumentCaptor.forClass(TokenUsageRecord.class);
+        verify(tokenUsageRecorder).record(usageCaptor.capture());
+        assertThat(usageCaptor.getValue().sessionId()).isEqualTo("9");
+        assertThat(usageCaptor.getValue().userIdRef()).isEqualTo("user:42");
+        verify(assistantMessageStore).complete(eq(88L), eq("答案"), any(), eq(123));
     }
 
     @Test
