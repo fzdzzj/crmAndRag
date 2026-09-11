@@ -22,6 +22,15 @@ public class PermissionsInterceptor implements HandlerInterceptor {
     @Resource
     private PermissionService permissionService;
 
+    /**
+     * 校验接口权限，并把当前用户的部门 ID 填充进请求级角色对象。
+     *
+     * @param request  当前 HTTP 请求
+     * @param response 当前 HTTP 响应
+     * @param handler  Spring MVC 处理器
+     * @return true 表示继续执行后续拦截器与处理器
+     * @throws Exception 用户状态异常、无权限或查询用户失败时抛出
+     */
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
 
@@ -34,13 +43,20 @@ public class PermissionsInterceptor implements HandlerInterceptor {
             return true;
         }
 
+        Long currentId = BaseUnit.getCurrentId();
+        UserVO user = userService.getById(currentId);
+
+        // DEPT/DEPT_AND_CHILD 依赖部门维度；在权限注解判断前填充，
+        // 保证未加 @RequirePermission 的查询接口也能获得完整数据权限上下文。
+        com.slz.crm.pojo.ao.RoleAO roleAO = BaseUnit.getCurrentRole();
+        if (roleAO != null) {
+            roleAO.setDeptId(user.getDeptId());
+        }
+
         RequirePermission requirePermission = handlerMethod.getMethodAnnotation(RequirePermission.class);
         if (requirePermission == null) {
             return true;
         }
-
-        Long currentId = BaseUnit.getCurrentId();
-        UserVO user = userService.getById(currentId);
 
         if (user.getStatus() != 1) {
             if (user.getRoleId() == 0) {
@@ -58,8 +74,8 @@ public class PermissionsInterceptor implements HandlerInterceptor {
             return true;
         }
 
-        // 获取当前角色的RoleAO
-        com.slz.crm.pojo.ao.RoleAO roleAO = BaseUnit.getCurrentRole();
+        // 重新读取当前角色的 RoleAO，避免误用局部空引用
+        roleAO = BaseUnit.getCurrentRole();
 
         // 如果RoleAO中没有权限列表,则加载并填充
         if (roleAO.getPermissions() == null || roleAO.getPermissions().isEmpty()) {

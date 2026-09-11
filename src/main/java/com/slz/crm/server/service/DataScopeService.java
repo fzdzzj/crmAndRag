@@ -9,17 +9,18 @@ import java.util.List;
 
 /**
  * 数据权限服务
- * <p>三级数据权限系统的核心服务接口</p>
+ * <p>多级数据权限系统的核心服务接口；部门范围优先级为
+ * ALL &gt; DEPT_AND_CHILD &gt; DEPT &gt; TAGE &gt; SELF。</p>
  */
 public interface DataScopeService {
 
     /**
      * 获取用户在指定资源类型上的最高数据权限级别
-     * <p>权限级别: 查看全部(3) > 查看标签(2) > 仅查看自己的(1)</p>
+     * <p>权限级别: 查看全部 > 本部门及以下 > 本部门 > 查看标签 > 仅查看自己的</p>
      *
      * @param user         当前用户
      * @param resourceType 资源类型(表名)
-     * @return 权限级别: 1-仅查看自己的, 2-查看标签的, 3-查看全部的
+     * @return 权限级别，对应 {@link com.slz.crm.common.enumeration.DataScopeLevel}
      */
     Integer getHighestDataScopeLevel(RoleAO user, String resourceType);
 
