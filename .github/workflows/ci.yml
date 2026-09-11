@@ -35,12 +35,12 @@ jobs:
         run: mvn -B -ntp verify
 
       # 阶段3：回归基线阈值——测试总数不得低于基线（防止合并悄悄丢测试）
-      #   基线：integration 全量 452（含 SSE 契约 10 + 上下文冒烟 1）；只增不减。
+      #   基线：integration 全量 467（含 SSE 契约 10 + 上下文冒烟 1 + RAG 质量 5）；只增不减。
       - name: 回归基线阈值校验
         run: |
           TOTAL=$(grep -rhoE "Tests run: [0-9]+" target/surefire-reports/*.txt | awk -F': ' '{s+=$2} END {print s}')
-          echo "surefire 测试总数=$TOTAL（基线 452）"
-          if [ "$TOTAL" -lt 452 ]; then echo "::error::测试数 $TOTAL < 基线 452，疑似丢测试"; exit 1; fi
+          echo "surefire 测试总数=$TOTAL（基线 467）"
+          if [ "$TOTAL" -lt 467 ]; then echo "::error::测试数 $TOTAL < 基线 467，疑似丢测试"; exit 1; fi
 
       - name: 上传覆盖率与测试报告
         if: always()
