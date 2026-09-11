@@ -70,3 +70,26 @@ logging:
     org.springframework.web: WARN
     org.springframework.security: WARN
     com.tangzc: WARN
+
+# ---------------- 集成：测试期离线友好装配（不依赖 MinIO/Qdrant/DashScope 外部服务） ----------------
+# 存储与向量库用内存实现：避免 minioClient 无凭据构建失败、Qdrant 连接失败
+knowledge:
+  storage:
+    provider: in-memory
+rag:
+  vector-store:
+    provider: in-memory
+# B 生产检索实现(KnowledgeRetrievalServiceImpl)已并入，停用 C 的 Mock 端口，避免 KnowledgeRetrievalPort 双 bean
+crm:
+  ai:
+    knowledge-retrieval:
+      mock-enabled: false
+# 测试无 MinIO → 无 'minio' 健康贡献者；readiness 组去掉 minio，否则 actuator 启动校验失败
+management:
+  endpoint:
+    health:
+      group:
+        readiness:
+          include: readinessState,db,vectorStore
+# 占位 key：令 DashScope 自动配置可构造（测试不发起真实调用）
+spring.ai.dashscope.api-key: sk-test-placeholder-not-used

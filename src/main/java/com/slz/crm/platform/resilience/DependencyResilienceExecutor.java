@@ -3,6 +3,7 @@ package com.slz.crm.platform.resilience;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -36,8 +37,13 @@ public class DependencyResilienceExecutor {
     /**
      * 使用默认治理参数构造执行器。
      *
+     * <p>集成修正：本类有两个构造器（此 public + 下方 package-private 可调参版）；
+     * Spring 面对多构造器需显式 {@code @Autowired} 指定注入入口，否则回退去找无参构造器，
+     * 报 "No default constructor found" 致上下文加载失败（D 单测用 new 构造，未暴露此问题）。</p>
+     *
      * @param meterRegistry Micrometer 注册表
      */
+    @Autowired
     public DependencyResilienceExecutor(MeterRegistry meterRegistry) {
         this(meterRegistry, 3, 200, 2.0, 5, 30000);
     }

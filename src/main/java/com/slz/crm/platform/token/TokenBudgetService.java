@@ -3,6 +3,7 @@ package com.slz.crm.platform.token;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.slz.crm.platform.mapper.PlatformTokenUsageMapper;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
@@ -34,6 +35,9 @@ public class TokenBudgetService {
      * @param properties 预算配置
      * @param meterRegistry Micrometer 注册表
      */
+    // 集成修正：多构造器（此 public + 下方 package-private 带 Clock 版）需显式 @Autowired 指定注入入口，
+    // 否则 Spring 回退找无参构造器报 "No default constructor found"、上下文加载失败。
+    @Autowired
     public TokenBudgetService(PlatformTokenUsageMapper tokenUsageMapper,
                               TokenBudgetProperties properties,
                               MeterRegistry meterRegistry) {
