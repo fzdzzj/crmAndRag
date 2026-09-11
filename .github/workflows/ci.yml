@@ -1,0 +1,54 @@
+# ================================================================
+# CI 门禁（task18：契约/安全/数据权限/韧性/RAG 评估纳入 CI + 回归阈值）
+# 触发：推送与 PR。ubuntu-latest 自带 Docker → Testcontainers IT（含 Flyway 真库迁移）可真跑。
+# 门禁语义：任一阶段失败即阻止合入；单元测试(surefire) + 集成测试(failsafe) 分开跑，先快后慢。
+# ================================================================
+name: CI
+
+on:
+  push:
+    branches: [ master, integration, "spec/**", "feature/**" ]
+  pull_request:
+
+jobs:
+  build-and-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出
+        uses: actions/checkout@v4
+
+      - name: 装配 JDK 21 + Maven 缓存
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+
+      # 阶段1：编译 + 单元测试（surefire，*Test.java，含 SSE 契约测试、H2 上下文冒烟）——快，先拦低级错误
+      - name: 单元测试与契约门禁（surefire）
+        run: mvn -B -ntp test
+
+      # 阶段2：集成测试（failsafe，*IT.java，Docker：Testcontainers MySQL）
+      #   - FlywayMigrationIT：七脚本真库按序迁移（本地无 Docker 会 skip，CI 必跑）
+      #   - AbstractMySqlIT 系列：全上下文 + 控制器/数据权限/写链回归
+      - name: 集成测试门禁（failsafe + Testcontainers MySQL）
+        run: mvn -B -ntp verify
+
+      # 阶段3：回归基线阈值——测试总数不得低于基线（防止合并悄悄丢测试）
+      #   基线：integration 全量 452（含 SSE 契约 10 + 上下文冒烟 1）；只增不减。
+      - name: 回归基线阈值校验
+        run: |
+          TOTAL=$(grep -rhoE "Tests run: [0-9]+" target/surefire-reports/*.txt | awk -F': ' '{s+=$2} END {print s}')
+          echo "surefire 测试总数=$TOTAL（基线 452）"
+          if [ "$TOTAL" -lt 452 ]; then echo "::error::测试数 $TOTAL < 基线 452，疑似丢测试"; exit 1; fi
+
+      - name: 上传覆盖率与测试报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            target/site/jacoco/
+            target/surefire-reports/
+            target/failsafe-reports/
+          if-no-files-found: ignore
