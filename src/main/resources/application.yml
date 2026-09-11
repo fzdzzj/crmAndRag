@@ -85,6 +85,9 @@ crm:
     heartbeat-interval-seconds: 15  # SSE 心跳间隔（秒）
     heartbeat-pool-size: 4          # SSE 心跳调度线程池（多会话互不阻塞）
     sse-timeout-seconds: 300        # SSE 服务端超时（秒）
+    # 知识库检索端口：B 生产实现(KnowledgeRetrievalServiceImpl)已并入，关闭 C 的 Mock 端口，避免 KnowledgeRetrievalPort 双 bean
+    knowledge-retrieval:
+      mock-enabled: false
     # 线程池配置
     thread-pool:
       chat:
