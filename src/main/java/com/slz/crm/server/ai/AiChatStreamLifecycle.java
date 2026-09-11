@@ -1,27 +1,52 @@
 package com.slz.crm.server.ai;
 
-import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatOptions;
-import com.slz.crm.pojo.entity.AiMessageEntity;
+import com.slz.crm.platform.contract.ModelProvider;
+import com.slz.crm.platform.contract.ModelCallOptions;
+import com.slz.crm.platform.contract.SourceReference;
+import com.slz.crm.platform.contract.TokenUsageRecord;
+import com.slz.crm.platform.contract.TokenUsageRecorder;
+import com.slz.crm.platform.contract.TokenUsageType;
 import com.slz.crm.server.properties.AiProperties;
 import com.slz.crm.server.service.AiMessageService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.model.tool.DefaultToolCallingChatOptions;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.Disposable;
+import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
+/**
+ * AI 助手 SSE 生命周期。
+ *
+ * <p>负责模型流订阅、事件缓冲、协作式中止与助手消息终态落库。</p>
+ */
 @Slf4j
 @Component
 public class AiChatStreamLifecycle {
+
+    private static final Pattern CITATION_PATTERN = Pattern.compile("\\[(\\d{1,3})]");
 
     private final ChatClient.Builder chatClientBuilder;
     private final AiProperties aiProperties;
@@ -30,10 +55,21 @@ public class AiChatStreamLifecycle {
     private final AiChatPromptService promptService;
     private final AiChatSseEventWriter eventWriter;
     private final AiChatStreamHeartbeat heartbeat;
-
-    /** AI 流式与工具运行指标 */
     private final AiChatMetrics metrics;
+    private final AiAssistantMessageStore assistantMessageStore;
     private final String modelName;
+
+    /** ModelProvider 实现归 base；缺失时保留 CRM 原有 ChatClient 兼容路径。 */
+    @Autowired(required = false)
+    private ObjectProvider<ModelProvider> modelProviderProvider;
+
+    /** 记忆加工是可选增强；测试或旁路组件缺失时不得影响主答。 */
+    @Autowired(required = false)
+    private AiMemoryOrchestrator memoryOrchestrator;
+
+    /** Spring AI 兼容路径（含工具循环）也必须上报 usage，避免模型计量盲区。 */
+    @Autowired(required = false)
+    private ObjectProvider<TokenUsageRecorder> tokenUsageRecorderProvider;
 
     public AiChatStreamLifecycle(ChatClient.Builder chatClientBuilder,
                                  AiProperties aiProperties,
@@ -43,6 +79,7 @@ public class AiChatStreamLifecycle {
                                  AiChatSseEventWriter eventWriter,
                                  AiChatStreamHeartbeat heartbeat,
                                  AiChatMetrics metrics,
+                                 AiAssistantMessageStore assistantMessageStore,
                                  @Value("${spring.ai.chat.options.model:qwen-plus}") String modelName) {
         this.chatClientBuilder = chatClientBuilder;
         this.aiProperties = aiProperties;
@@ -52,73 +89,97 @@ public class AiChatStreamLifecycle {
         this.eventWriter = eventWriter;
         this.heartbeat = heartbeat;
         this.metrics = metrics;
+        this.assistantMessageStore = assistantMessageStore;
         this.modelName = modelName;
     }
 
+    /**
+     * 订阅模型流。
+     *
+     * @param activeStream 当前活跃流
+     * @param context 请求上下文
+     */
     public void subscribe(AiStreamRegistry.ActiveStream activeStream, AiChatStreamContext context) {
         if (activeStream.isFinished()) {
             return;
         }
         activeStream.setContext(context);
         Long sessionId = context.sessionId();
-        SseEmitter emitter = context.emitter();
-        StringBuilder answer = activeStream.getPartialAnswer();
-        ChatClient.ChatClientRequestSpec promptSpec = chatClientBuilder.build()
-                .prompt()
-                .messages(context.messages());
-        if (context.modelOverride() != null) {
-            promptSpec = promptSpec.options(
-                    DashScopeChatOptions.builder().withModel(context.modelOverride()).build());
-        }
-        if (!context.toolCallbacks().isEmpty()) {
-            Map<String, Object> toolContext = new HashMap<>();
-            toolContext.put("sessionId", sessionId);
-            toolContext.put("repairCounter", context.repairCounter());
-            toolContext.put("references", context.referenceCollector());
-            toolContext.put("user", context.currentUser());
-            promptSpec = promptSpec.toolCallbacks(context.toolCallbacks())
-                    .toolContext(toolContext);
-        }
-
         String effectiveModel = context.effectiveModel(modelName);
+        ModelCallOptions callOptions = buildModelCallOptions(context, sessionId, effectiveModel);
+        AiThinkTagStripper.StreamingStripper thinkStripper = AiThinkTagStripper.streaming();
+        AtomicBoolean thinkingFinished = new AtomicBoolean(false);
         Usage[] usageHolder = new Usage[1];
-        Disposable subscription = promptSpec.stream()
-                .chatResponse()
+        ModelProvider modelProvider = modelProviderProvider == null ? null : modelProviderProvider.getIfAvailable();
+        Flux<ChatResponse> responseFlux;
+        // 修正轮3后工具环由 ModelProvider 承载；Spring AI 仅保留 Provider 缺失时的兼容路径。
+        if (modelProvider != null) {
+            responseFlux = modelProvider.streamChat(new Prompt(context.messages()), callOptions);
+        } else {
+            ChatClient.ChatClientRequestSpec requestSpec = chatClientBuilder.build()
+                    .prompt()
+                    .messages(context.messages());
+            // 兼容路径只供测试/Provider 未装配时兜底；不承载生产工具调用。
+            if (context.thinking() || context.modelOverride() != null) {
+                // 兼容路径使用 Spring AI 通用 options；Provider 差异不再由业务层承载。
+                requestSpec = requestSpec.options(buildFallbackOptions(context, sessionId, effectiveModel));
+            }
+            if (!context.toolCallbacks().isEmpty()) {
+                requestSpec = requestSpec
+                        .toolCallbacks(context.toolCallbacks())
+                        .toolContext(buildToolContext(context, sessionId));
+            }
+            responseFlux = requestSpec.stream().chatResponse();
+        }
+        Disposable subscription = responseFlux
                 .timeout(Duration.ofSeconds(
                         aiProperties.getLlmTimeoutSeconds() == null ? 60 : aiProperties.getLlmTimeoutSeconds()))
-                .doOnNext(response -> handleChatChunk(activeStream, response, usageHolder))
+                .doOnNext(response -> handleChatChunk(activeStream, response, usageHolder, context.thinking(),
+                        thinkStripper, thinkingFinished))
                 .doOnComplete(() -> {
+                    if (shouldAbort(activeStream)) {
+                        finishSuperseded(activeStream);
+                        return;
+                    }
                     if (activeStream.tryMarkFinished()) {
+                        if (context.thinking() && thinkingFinished.compareAndSet(false, true)
+                                && !sendBufferedEvent(activeStream, "thinking",
+                                        eventWriter.toThinkingJson("", true))) {
+                            return;
+                        }
                         List<AiReferenceCollector.Reference> references = context.referenceCollector().getReferences();
-                        if (!references.isEmpty()) {
-                            if (!sendEvent(activeStream, "references", eventWriter.toReferencesJson(references))) {
-                                return;
-                            }
+                        Usage usage = usageHolder[0];
+                        String content = activeStream.getPartialAnswer().toString();
+                        List<SourceReference> sources = activeStream.getSources();
+                        List<Integer> citations = extractCitations(content, sources);
+                        if (!references.isEmpty() && !sendBufferedEvent(activeStream, "references",
+                                eventWriter.toReferencesJson(references, citations))) {
+                            return;
                         }
                         String auditPayload = eventWriter.toAuditJson(effectiveModel, promptService.getPromptVersion(),
-                                System.currentTimeMillis() - context.roundStart(), usageHolder[0], references);
-                        saveAssistantMessage(sessionId, answer.toString(), auditPayload, usageHolder[0]);
-                        if (sendEvent(activeStream, "done", eventWriter.toDoneJson())) {
-                            // done 事件写入成功才计为完成；写入失败由 cleanupSendFailure 计 failed
+                                System.currentTimeMillis() - context.roundStart(), usage, references,
+                                sources, citations);
+                        persistAssistantMessage(activeStream, content, auditPayload, usage, false);
+                        recordTokenUsage(activeStream, effectiveModel, usage);
+                        if (memoryOrchestrator != null && !content.isBlank()) {
+                            memoryOrchestrator.onRoundCompleted(sessionId,
+                                    context.currentUser() == null ? null : context.currentUser().getId(),
+                                    lastUserMessage(context.messages()), content);
+                        }
+                        if (sendBufferedEvent(activeStream, "done", eventWriter.toDoneJson(
+                                String.valueOf(sessionId), usage))) {
                             metrics.recordCompleted(activeStream, effectiveModel, context.fallback());
-                            try {
-                                emitter.complete();
-                            } catch (RuntimeException exception) {
-                                log.warn("SSE complete failed, sessionId={}", sessionId, exception);
-                            }
+                            completeEmitter(activeStream);
                         }
                     }
                     aiStreamRegistry.remove(sessionId, activeStream);
                 })
-                .doOnError(e -> handleStreamError(activeStream, effectiveModel, e))
+                .doOnError(error -> handleStreamError(activeStream, effectiveModel, error))
                 .doOnCancel(() -> {
                     if (activeStream.tryMarkFinished()) {
-                        // 停止或生成中发新消息会 dispose 订阅；已有部分回答需要保留到会话
                         metrics.recordCancelled(activeStream, streamModel(activeStream), streamFallback(activeStream));
-                        String partial = answer.toString();
-                        if (!partial.isEmpty()) {
-                            saveAssistantMessage(sessionId, partial, "{\"interrupted\":true}");
-                        }
+                        persistAssistantMessage(activeStream, activeStream.getPartialAnswer().toString(),
+                                "{\"interrupted\":true}", null, true);
                     }
                     aiStreamRegistry.remove(sessionId, activeStream);
                 })
@@ -127,13 +188,87 @@ public class AiChatStreamLifecycle {
         heartbeat.start(activeStream, () -> sendHeartbeat(activeStream));
     }
 
+    private String lastUserMessage(List<Message> messages) {
+        for (int index = messages.size() - 1; index >= 0; index--) {
+            Message message = messages.get(index);
+            if (message instanceof UserMessage userMessage && userMessage.getText() != null) {
+                return userMessage.getText();
+            }
+        }
+        return "";
+    }
+
+    /**
+     * 装配中立模型调用参数；思考开关是真实请求参数而非 prompt 约束。
+     */
+    private ModelCallOptions buildModelCallOptions(AiChatStreamContext context, Long sessionId,
+                                                   String effectiveModel) {
+        return new ModelCallOptions(
+                effectiveModel,
+                context.thinking(),
+                null,
+                null,
+                List.copyOf(context.toolCallbacks()),
+                buildToolContext(context, sessionId),
+                Map.of());
+    }
+
+    private Map<String, Object> buildToolContext(AiChatStreamContext context, Long sessionId) {
+        Map<String, Object> toolContext = new HashMap<>();
+        toolContext.put("sessionId", sessionId);
+        toolContext.put("repairCounter", context.repairCounter());
+        toolContext.put("references", context.referenceCollector());
+        toolContext.put("user", context.currentUser());
+        return toolContext;
+    }
+
+    private DefaultToolCallingChatOptions buildFallbackOptions(AiChatStreamContext context,
+                                                              Long sessionId,
+                                                              String effectiveModel) {
+        DefaultToolCallingChatOptions options = new DefaultToolCallingChatOptions();
+        options.setModel(effectiveModel);
+        options.setToolCallbacks(context.toolCallbacks());
+        options.setToolContext(buildToolContext(context, sessionId));
+        return options;
+    }
+
+    /**
+     * 上报流式对话 usage；工具环与普通对话共用同一口径。
+     */
+    private void recordTokenUsage(AiStreamRegistry.ActiveStream activeStream, String model, Usage usage) {
+        TokenUsageRecorder recorder = tokenUsageRecorderProvider == null
+                ? null : tokenUsageRecorderProvider.getIfAvailable();
+        if (recorder == null || usage == null) {
+            return;
+        }
+        AiChatStreamContext context = activeStream.getContext();
+        Long userId = context.currentUser() == null ? null : context.currentUser().getId();
+        long promptTokens = usage.getPromptTokens() == null ? 0 : usage.getPromptTokens();
+        long completionTokens = usage.getCompletionTokens() == null ? 0 : usage.getCompletionTokens();
+        long totalTokens = usage.getTotalTokens() == null
+                ? promptTokens + completionTokens : usage.getTotalTokens();
+        if (promptTokens <= 0 && completionTokens <= 0 && totalTokens <= 0) {
+            return;
+        }
+        recorder.record(new TokenUsageRecord(model,
+                userId == null ? "user:system" : "user:" + userId,
+                String.valueOf(activeStream.getSessionId()), null, TokenUsageType.CHAT,
+                promptTokens, completionTokens, totalTokens, true));
+    }
+
+    /**
+     * 处理模型流错误，必要时降级备用模型。
+     */
     public void handleStreamError(AiStreamRegistry.ActiveStream activeStream, String effectiveModel,
                                   Throwable error) {
         Long sessionId = activeStream.getSessionId();
         log.error("AI chat stream error, sessionId={}, model={}", sessionId, effectiveModel, error);
         String fallbackModel = aiProperties.getFallbackModel();
-        if (activeStream.isFinished()) {
-            aiStreamRegistry.remove(sessionId, activeStream);
+        if (shouldAbort(activeStream)) {
+            finishSuperseded(activeStream);
+            return;
+        }
+        if (scheduleConnectionRetry(activeStream, error)) {
             return;
         }
         if (!activeStream.isFinished()
@@ -148,91 +283,155 @@ public class AiChatStreamLifecycle {
         }
 
         if (activeStream.tryMarkFinished()) {
-            // 主备模型最终失败时进入这里；备用模型切换路径不计 failed
             metrics.recordFailed(activeStream, effectiveModel, activeStream.getContext().fallback());
-            StringBuilder answer = activeStream.getPartialAnswer();
-            if (answer.length() > 0) {
-                saveAssistantMessage(sessionId, answer.toString(), "{\"interrupted\":true}");
-                sendEvent(activeStream, "done", eventWriter.toDoneJson());
+            String answer = activeStream.getPartialAnswer().toString();
+            if (!answer.isBlank()) {
+                persistAssistantMessage(activeStream, answer, "{\"interrupted\":true}", null, true);
+                sendBufferedEvent(activeStream, "done", eventWriter.toDoneJson(String.valueOf(sessionId), null));
             } else {
                 String staticMessage = aiProperties.getStaticFallbackMessage() == null
                         ? "AI 服务暂时不可用，请稍后再试" : aiProperties.getStaticFallbackMessage();
-                saveAssistantMessage(sessionId, staticMessage, "{\"fallback\":true}");
-                if (sendEvent(activeStream, "text", eventWriter.toTextJson(staticMessage))) {
-                    sendEvent(activeStream, "done", eventWriter.toDoneJson());
+                persistAssistantMessage(activeStream, staticMessage, "{\"fallback\":true}", null, false);
+                if (sendBufferedEvent(activeStream, "delta", eventWriter.toDeltaJson(staticMessage))) {
+                    sendBufferedEvent(activeStream, "done", eventWriter.toDoneJson(String.valueOf(sessionId), null));
                 }
             }
-            try {
-                activeStream.getEmitter().complete();
-            } catch (RuntimeException exception) {
-                log.warn("SSE complete failed, sessionId={}", sessionId, exception);
-            }
+            completeEmitter(activeStream);
         }
         aiStreamRegistry.remove(sessionId, activeStream);
     }
 
+    /**
+     * 零输出且连接型异常时同模型重试，最多 2 次；有部分内容后不再重试，避免重复回答。
+     */
+    private boolean scheduleConnectionRetry(AiStreamRegistry.ActiveStream activeStream, Throwable error) {
+        AiChatStreamContext context = activeStream.getContext();
+        if (activeStream.isFinished()
+                || activeStream.getPartialAnswer().length() > 0
+                || context == null
+                || context.connectionRetry() >= 2
+                || !isRetryableConnectionError(error)) {
+            return false;
+        }
+        long baseDelay = aiProperties.getConnectionRetryBaseDelayMillis() == null
+                ? 500L : aiProperties.getConnectionRetryBaseDelayMillis();
+        // 第一次重试 500ms，第二次 1000ms；使用共享调度器，不新建业务线程池。
+        long delayMillis = baseDelay * (1L << context.connectionRetry());
+        log.warn("模型零输出且连接型失败，安排同模型重试: sessionId={}, retry={}, delayMs={}",
+                activeStream.getSessionId(), context.connectionRetry() + 1, delayMillis);
+        Schedulers.parallel().schedule(() -> {
+            if (shouldAbort(activeStream)) {
+                finishSuperseded(activeStream);
+                return;
+            }
+            subscribe(activeStream, activeStream.getContext().forConnectionRetry());
+        }, delayMillis, TimeUnit.MILLISECONDS);
+        return true;
+    }
+
+    private boolean isRetryableConnectionError(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof IOException || current instanceof TimeoutException) {
+                return true;
+            }
+            String className = current.getClass().getName();
+            if (className.contains("WebClientRequestException") || className.contains("ConnectException")) {
+                return true;
+            }
+            String message = current.getMessage() == null ? "" : current.getMessage().toLowerCase();
+            if (message.contains("connection reset") || message.contains("connection refused")
+                    || message.contains("read timed out") || message.contains("connection prematurely closed")) {
+                return true;
+            }
+            current = current.getCause() == current ? null : current.getCause();
+        }
+        return false;
+    }
+
+    /**
+     * 用户取消或接管旧流。
+     *
+     * @return 是否执行了取消
+     */
     public boolean cancel(AiStreamRegistry.ActiveStream activeStream, Long sessionId) {
         if (activeStream == null || activeStream.isFinished()) {
             return false;
         }
-        AiMessageEntity saved = null;
         if (activeStream.tryMarkFinished()) {
-            // 用户停止时已看到部分回答，保存避免上下文丢失
             metrics.recordCancelled(activeStream, streamModel(activeStream), streamFallback(activeStream));
             String partial = activeStream.getPartialAnswer().toString();
-            if (!partial.isEmpty()) {
-                saved = saveAssistantMessage(sessionId, partial, "{\"interrupted\":true}");
-            }
+            persistAssistantMessage(activeStream, partial, "{\"interrupted\":true}", null, true);
         }
         Disposable subscription = activeStream.getSubscription();
         if (subscription != null && !subscription.isDisposed()) {
-            // 终态 CAS 已占位，dispose 触发的 doOnCancel 不会重复保存或计数
+            // 终态 CAS 已占位，dispose 触发的 doOnCancel 不会重复保存。
             subscription.dispose();
         }
-        sendEvent(activeStream, "stopped", eventWriter.toStoppedJson(sessionId, saved));
-        try {
-            activeStream.getEmitter().complete();
-        } catch (RuntimeException exception) {
-            log.warn("SSE complete failed, sessionId={}", sessionId, exception);
-        }
+        sendBufferedEvent(activeStream, "stopped", eventWriter.toStoppedJson("CANCELLED"));
+        completeEmitter(activeStream);
         aiStreamRegistry.remove(sessionId, activeStream);
         return true;
     }
 
+    /**
+     * 客户端断开或超时兜底清理。
+     */
     public void cleanup(AiStreamRegistry.ActiveStream activeStream, String reason) {
-        Long sessionId = activeStream.getSessionId();
         Disposable subscription = activeStream.getSubscription();
         if (subscription != null && !subscription.isDisposed()) {
             subscription.dispose();
         }
         if (activeStream.tryMarkFinished()) {
-            // 客户端断开兜底：先保存可见的部分回答，再退出注册表
             metrics.recordCancelled(activeStream, streamModel(activeStream), streamFallback(activeStream));
             String partial = activeStream.getPartialAnswer().toString();
-            if (!partial.isEmpty()) {
-                saveAssistantMessage(sessionId, partial, "{\"interrupted\":true}");
-            }
-            log.info("SSE 连接断开兜底清理, sessionId={}, reason={}", sessionId, reason);
+            persistAssistantMessage(activeStream, partial, "{\"interrupted\":true}", null, true);
+            log.info("SSE 连接断开兜底清理, sessionId={}, reason={}", activeStream.getSessionId(), reason);
         }
-        aiStreamRegistry.remove(sessionId, activeStream);
+        aiStreamRegistry.remove(activeStream.getSessionId(), activeStream);
     }
 
+    /**
+     * 处理一次模型响应块。
+     */
     private void handleChatChunk(AiStreamRegistry.ActiveStream activeStream, ChatResponse chatResponse,
-                                 Usage[] usageHolder) {
+                                 Usage[] usageHolder, boolean thinking,
+                                 AiThinkTagStripper.StreamingStripper thinkStripper,
+                                 AtomicBoolean thinkingFinished) {
+        if (shouldAbort(activeStream)) {
+            finishSuperseded(activeStream);
+            return;
+        }
         if (chatResponse == null || chatResponse.getResult() == null) {
             return;
         }
         if (chatResponse.getResult().getOutput() != null) {
-            String text = chatResponse.getResult().getOutput().getText();
-            if (text != null && !text.isEmpty()) {
-                // CAS 保证降级或多 chunk 并发下只记录首个有效 token
+            if (thinking) {
+                String reasoningContent = extractThinking(chatResponse.getResult().getOutput().getMetadata());
+                if (reasoningContent != null && !reasoningContent.isBlank()
+                        && !sendBufferedEvent(activeStream, "thinking",
+                                eventWriter.toThinkingJson(reasoningContent, false))) {
+                    return;
+                }
+            }
+            String rawText = chatResponse.getResult().getOutput().getText();
+            String visibleText = rawText == null ? "" : thinkStripper.filter(rawText, thinking
+                    ? piece -> sendBufferedEvent(activeStream, "thinking",
+                            eventWriter.toThinkingJson(piece, false))
+                    : null);
+            if (!visibleText.isEmpty() && thinking && thinkingFinished.compareAndSet(false, true)
+                    && !sendBufferedEvent(activeStream, "thinking",
+                            eventWriter.toThinkingJson("", true))) {
+                return;
+            }
+            if (!visibleText.isEmpty()) {
                 if (activeStream.markFirstToken()) {
                     AiChatStreamContext streamContext = activeStream.getContext();
                     metrics.recordFirstToken(activeStream, streamContext.effectiveModel(modelName),
                             streamContext.fallback());
                 }
-                activeStream.getPartialAnswer().append(text);
-                if (!sendEvent(activeStream, "text", eventWriter.toTextJson(text))) {
+                activeStream.getPartialAnswer().append(visibleText);
+                if (!sendBufferedEvent(activeStream, "delta", eventWriter.toDeltaJson(visibleText))) {
                     return;
                 }
             }
@@ -243,27 +442,76 @@ public class AiChatStreamLifecycle {
         }
     }
 
-    private AiMessageEntity saveAssistantMessage(Long sessionId, String content, String payload) {
-        try {
-            return aiMessageService.saveMessage(sessionId, "assistant", "text", content, payload);
-        } catch (RuntimeException exception) {
-            log.error("AI assistant message save failed, sessionId={}", sessionId, exception);
-            return null;
+    /**
+     * DashScope 会把 reasoning_content 放入 AssistantMessage metadata；键名做兼容读取。
+     */
+    private String extractThinking(Map<String, Object> metadata) {
+        if (metadata == null || metadata.isEmpty()) {
+            return "";
+        }
+        for (String key : List.of("reasoningContent", "reasoning_content", "thinking")) {
+            Object value = metadata.get(key);
+            if (value instanceof String text && !text.isBlank()) {
+                return text;
+            }
+        }
+        return "";
+    }
+
+    private void finishSuperseded(AiStreamRegistry.ActiveStream activeStream) {
+        if (activeStream.tryMarkFinished()) {
+            metrics.recordCancelled(activeStream, streamModel(activeStream), streamFallback(activeStream));
+            String partial = activeStream.getPartialAnswer().toString();
+            persistAssistantMessage(activeStream, partial, "{\"interrupted\":true}", null, true);
+            Disposable subscription = activeStream.getSubscription();
+            if (subscription != null && !subscription.isDisposed()) {
+                subscription.dispose();
+            }
+            sendBufferedEvent(activeStream, "stopped",
+                    eventWriter.toStoppedJson("SUPERSEDED_BY_NEW_REQUEST"));
+            completeEmitter(activeStream);
+        }
+        aiStreamRegistry.remove(activeStream.getSessionId(), activeStream);
+    }
+
+    private void persistAssistantMessage(AiStreamRegistry.ActiveStream activeStream, String content,
+                                         String payload, Usage usage, boolean deleteIfEmpty) {
+        Long messageId = activeStream.getAssistantMessageId();
+        boolean updated = assistantMessageStore.complete(messageId, content, payload,
+                usage == null || usage.getTotalTokens() == null ? 0 : usage.getTotalTokens());
+        if (!updated) {
+            log.error("AI assistant message save failed, sessionId={}, messageId={}",
+                    activeStream.getSessionId(), messageId);
+            return;
+        }
+        if (deleteIfEmpty && (content == null || content.isBlank())) {
+            assistantMessageStore.deleteIfEmpty(messageId);
         }
     }
 
-    private AiMessageEntity saveAssistantMessage(Long sessionId, String content, String payload, Usage usage) {
-        int tokenCount = usage == null || usage.getTotalTokens() == null ? 0 : usage.getTotalTokens();
-        try {
-            return aiMessageService.saveMessage(sessionId, "assistant", "text", content, payload, tokenCount);
-        } catch (RuntimeException exception) {
-            log.error("AI assistant message save failed, sessionId={}", sessionId, exception);
-            return null;
-        }
+    private boolean shouldAbort(AiStreamRegistry.ActiveStream activeStream) {
+        return activeStream.isCancelled()
+                || activeStream.isFinished()
+                || aiStreamRegistry.get(activeStream.getSessionId()) != activeStream;
     }
 
-    private boolean sendEvent(AiStreamRegistry.ActiveStream activeStream, String event, String data) {
-        boolean sent = eventWriter.sendEvent(activeStream.getEmitter(), event, data);
+    private List<Integer> extractCitations(String content, List<SourceReference> sources) {
+        if (content == null || content.isBlank() || sources == null || sources.isEmpty()) {
+            return List.of();
+        }
+        java.util.Set<Integer> citations = new java.util.LinkedHashSet<>();
+        Matcher matcher = CITATION_PATTERN.matcher(content);
+        while (matcher.find()) {
+            int citation = Integer.parseInt(matcher.group(1));
+            if (citation >= 1 && citation <= sources.size()) {
+                citations.add(citation);
+            }
+        }
+        return List.copyOf(citations);
+    }
+
+    private boolean sendBufferedEvent(AiStreamRegistry.ActiveStream activeStream, String event, String data) {
+        boolean sent = eventWriter.sendBufferedEvent(activeStream, event, data);
         if (!sent) {
             cleanupSendFailure(activeStream);
         }
@@ -274,7 +522,6 @@ public class AiChatStreamLifecycle {
         if (activeStream.isFinished()) {
             return;
         }
-        // 先计数再发送；发送失败会由 cleanupSendFailure 单独计为 failed
         metrics.recordHeartbeat();
         if (!eventWriter.sendHeartbeat(activeStream.getEmitter())) {
             cleanupSendFailure(activeStream);
@@ -283,7 +530,6 @@ public class AiChatStreamLifecycle {
 
     private void cleanupSendFailure(AiStreamRegistry.ActiveStream activeStream) {
         if (activeStream.tryMarkFinished()) {
-            // 客户端未看到内容，不保存 partialAnswer；先标记终态避免 dispose 回调重复保存
             metrics.recordFailed(activeStream, streamModel(activeStream), streamFallback(activeStream));
             log.info("SSE 发送失败，停止模型流, sessionId={}", activeStream.getSessionId());
         }
@@ -294,13 +540,19 @@ public class AiChatStreamLifecycle {
         aiStreamRegistry.remove(activeStream.getSessionId(), activeStream);
     }
 
-    /** 读取当前流的有效模型名，用于指标低基数标签 */
+    private void completeEmitter(AiStreamRegistry.ActiveStream activeStream) {
+        try {
+            activeStream.getEmitter().complete();
+        } catch (RuntimeException exception) {
+            log.warn("SSE complete failed, sessionId={}", activeStream.getSessionId(), exception);
+        }
+    }
+
     private String streamModel(AiStreamRegistry.ActiveStream activeStream) {
         AiChatStreamContext context = activeStream.getContext();
         return context == null ? modelName : context.effectiveModel(modelName);
     }
 
-    /** 读取当前流是否处于备用模型降级路径 */
     private boolean streamFallback(AiStreamRegistry.ActiveStream activeStream) {
         AiChatStreamContext context = activeStream.getContext();
         return context != null && context.fallback();

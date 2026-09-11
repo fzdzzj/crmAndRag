@@ -50,8 +50,9 @@ class AiChatStreamLifecycleHeartbeatTest {
         heartbeatProperties.setHeartbeatEnabled(false);
         AiChatStreamHeartbeat heartbeat = new AiChatStreamHeartbeat(
                 heartbeatProperties, mock(ScheduledExecutorService.class));
+        AiAssistantMessageStore assistantMessageStore = mock(AiAssistantMessageStore.class);
         lifecycle = new AiChatStreamLifecycle(chatClientBuilder, new AiProperties(), aiMessageService,
-                registry, promptService, eventWriter, heartbeat, metrics, "qwen-plus");
+                registry, promptService, eventWriter, heartbeat, metrics, assistantMessageStore, "qwen-plus");
     }
 
     @Test

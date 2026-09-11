@@ -1,5 +1,6 @@
 package com.slz.crm.server.ai;
 
+import com.slz.crm.platform.contract.SourceReference;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -11,6 +12,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.List;
 
 /**
  * AI 活跃流注册表（每会话同时只有一个活跃流）
@@ -23,6 +25,9 @@ public class AiStreamRegistry {
 
 
     private final ConcurrentHashMap<Long, ActiveStream> streams = new ConcurrentHashMap<>();
+
+    /** generationId 到活跃/最近终态流的索引，用于按 Last-Event-ID 续传。 */
+    private final ConcurrentHashMap<String, ActiveStream> generations = new ConcurrentHashMap<>();
 
     /** 固定数量的会话接管锁；避免为每个会话保留锁对象 */
     private final ReentrantLock[] takeoverLocks = new ReentrantLock[64];
@@ -42,20 +47,26 @@ public class AiStreamRegistry {
 
         if (old != null) {
             old.stopHeartbeat();
-            if (old.getSubscription() != null && !old.getSubscription().isDisposed()) {
-
-            log.info("会话 {} 存在旧的活跃流，先终止", sessionId);
-
-                old.getSubscription().dispose();
-            }
-
+            // 接管不硬中断旧模型调用；旧流在下一个 shouldAbort 检查点协作退出。
+            log.info("会话 {} 存在旧的活跃流，等待其协作式退出", sessionId);
         }
+        generations.put(stream.getGenerationId(), stream);
     }
 
 
     public ActiveStream get(Long sessionId) {
         return streams.get(sessionId);
 
+    }
+
+    /**
+     * 按 generationId 查找可续传流。
+     *
+     * @param generationId start 事件下发的生成标识
+     * @return 流状态；缓冲淘汰或重启后返回 null
+     */
+    public ActiveStream getByGenerationId(String generationId) {
+        return generationId == null ? null : generations.get(generationId);
     }
 
     /**
@@ -86,7 +97,12 @@ public class AiStreamRegistry {
      * （用户取消后立即重发消息的场景）
      */
     public boolean remove(Long sessionId, ActiveStream expected) {
-        return streams.remove(sessionId, expected);
+        boolean removed = streams.remove(sessionId, expected);
+        if (removed) {
+            // 终态流保留在 generation 缓冲索引中，供断线重连重放终态与答案。
+            expected.markCompleted();
+        }
+        return removed;
 
     }
 
@@ -103,9 +119,21 @@ public class AiStreamRegistry {
         /** 已输出的部分内容 */
         private final StringBuilder partialAnswer = new StringBuilder();
 
+        /** 当前生成标识，同时是 SSE 事件 id 的根。 */
+        private final String generationId;
 
-        /** SSE 发射器 */
-        private final SseEmitter emitter;
+        /** 断线续传事件缓冲。 */
+        private final AiSseEventBuffer eventBuffer;
+
+        /** 用户/接管取消标记；与终态 CAS 分离，便于区分保存路径。 */
+        private final AtomicBoolean cancelled = new AtomicBoolean(false);
+
+        /** registry 终态完成标记，用于重连后判断是否只重放。 */
+        private volatile boolean completed;
+
+
+        /** SSE 发射器；断线重连时可替换到新连接。 */
+        private volatile SseEmitter emitter;
 
         /** 会话ID */
         private final Long sessionId;
@@ -122,12 +150,25 @@ public class AiStreamRegistry {
         /** 当前订阅上下文，供错误路径继承并降级 */
         private volatile AiChatStreamContext context;
 
+        /** start 事件已回传的助手占位消息 ID。 */
+        private volatile Long assistantMessageId;
+
+        /** 本轮检索来源；供答案完成后提取实际 citations。 */
+        private volatile List<SourceReference> sources = List.of();
+
 
         public ActiveStream(Long sessionId, SseEmitter emitter) {
+            this(sessionId, emitter, java.util.UUID.randomUUID().toString());
+        }
+
+        public ActiveStream(Long sessionId, SseEmitter emitter, String generationId) {
 
             this.sessionId = sessionId;
 
             this.emitter = emitter;
+            this.generationId = generationId == null || generationId.isBlank()
+                    ? java.util.UUID.randomUUID().toString() : generationId;
+            this.eventBuffer = new AiSseEventBuffer(this.generationId);
 
         }
 
@@ -172,10 +213,68 @@ public class AiStreamRegistry {
             this.context = context;
         }
 
+        public void setAssistantMessageId(Long assistantMessageId) {
+            this.assistantMessageId = assistantMessageId;
+        }
+
+        public Long getAssistantMessageId() {
+            return assistantMessageId;
+        }
+
+        public List<SourceReference> getSources() {
+            return sources;
+        }
+
+        public void setSources(List<SourceReference> sources) {
+            this.sources = sources == null || sources.isEmpty()
+                    ? List.of() : List.copyOf(sources);
+        }
+
 
         public StringBuilder getPartialAnswer() {
             return partialAnswer;
 
+        }
+
+        public String getGenerationId() {
+            return generationId;
+        }
+
+        public AiSseEventBuffer getEventBuffer() {
+            return eventBuffer;
+        }
+
+        /**
+         * 标记用户取消；接管场景由 shouldAbort 根据注册表当前流判断。
+         *
+         * @return 首次标记返回 true
+         */
+        public boolean markCancelled() {
+            return cancelled.compareAndSet(false, true);
+        }
+
+        public boolean isCancelled() {
+            return cancelled.get();
+        }
+
+        void markCompleted() {
+            this.completed = true;
+        }
+
+        public boolean isCompleted() {
+            return completed;
+        }
+
+        /**
+         * 续传时替换到新 SSE 连接；调用方负责先重放缓冲。
+         *
+         * @param newEmitter 新连接
+         * @return 旧连接，便于关闭；无旧连接返回 null
+         */
+        public synchronized SseEmitter attachResumeEmitter(SseEmitter newEmitter) {
+            SseEmitter previous = this.emitter;
+            this.emitter = newEmitter;
+            return previous;
         }
 
         public SseEmitter getEmitter() {

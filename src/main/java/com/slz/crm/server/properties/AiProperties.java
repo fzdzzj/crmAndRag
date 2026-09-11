@@ -37,6 +37,11 @@ public class AiProperties {
     private Integer llmTimeoutSeconds = 60;
 
     /**
+     * 零输出连接型错误的同模型重试基础退避；第 n 次重试延迟 base * 2^n。
+     */
+    private Long connectionRetryBaseDelayMillis = 500L;
+
+    /**
      * 工具调用失败修复重试上限（有限次修复）
      */
     private Integer maxFixRounds = 2;

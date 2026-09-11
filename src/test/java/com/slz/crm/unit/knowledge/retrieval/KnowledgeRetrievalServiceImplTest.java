@@ -13,8 +13,7 @@ import com.slz.crm.platform.contract.UserContext;
 import com.slz.crm.platform.contract.UserContextHolder;
 import com.slz.crm.platform.contract.VectorSearchHit;
 import com.slz.crm.platform.contract.VectorSearchRequest;
-import com.slz.crm.server.ai.port.KnowledgeRetrievalQuery;
-import com.slz.crm.server.ai.port.KnowledgeRetrievalResult;
+import com.slz.crm.server.ai.port.KnowledgeRetrievalPort;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -77,7 +76,7 @@ class KnowledgeRetrievalServiceImplTest {
                 "10", "doc-1", 0.8d, "销售流程片段", Map.of("chunkIndex", 0, "filename", "sales.txt"))));
         lenient().when(dynamicConfigProvider.getIfAvailable()).thenReturn(null);
 
-        KnowledgeRetrievalResult result = service.retrieve(new KnowledgeRetrievalQuery(
+        KnowledgeRetrievalPort.RetrievalResult result = service.retrieve(new KnowledgeRetrievalPort.RetrievalQuery(
                 "销售流程", 1L, List.of("1"), 5, null, null));
 
         assertEquals(1, result.hitCount());
@@ -118,7 +117,7 @@ class KnowledgeRetrievalServiceImplTest {
             return List.of();
         });
 
-        KnowledgeRetrievalResult result = service.retrieve(new KnowledgeRetrievalQuery(
+        KnowledgeRetrievalPort.RetrievalResult result = service.retrieve(new KnowledgeRetrievalPort.RetrievalQuery(
                 "回款合同", 1L, List.of("1"), 2, imageVector, null));
 
         assertEquals(2, result.hitCount());

@@ -10,8 +10,6 @@ import com.slz.crm.platform.contract.UserContextHolder;
 import com.slz.crm.platform.contract.VectorSearchHit;
 import com.slz.crm.platform.contract.VectorSearchRequest;
 import com.slz.crm.server.ai.port.KnowledgeRetrievalPort;
-import com.slz.crm.server.ai.port.KnowledgeRetrievalQuery;
-import com.slz.crm.server.ai.port.KnowledgeRetrievalResult;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
@@ -58,7 +56,7 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
     }
 
     @Override
-    public KnowledgeRetrievalResult retrieve(KnowledgeRetrievalQuery query) {
+    public KnowledgeRetrievalPort.RetrievalResult retrieve(KnowledgeRetrievalPort.RetrievalQuery query) {
         UserContext user = UserContextHolder.require();
         if (query.userId() != null && !Objects.equals(query.userId(), user.userId())) {
             throw new SecurityException("检索用户与当前登录用户不一致");
@@ -69,7 +67,7 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
 
         List<Long> knowledgeBaseIds = authorizationService.authorizedKnowledgeBaseIds(user, query.kbScope());
         if (knowledgeBaseIds.isEmpty()) {
-            return KnowledgeRetrievalResult.empty();
+            return KnowledgeRetrievalPort.RetrievalResult.empty();
         }
 
         String retrievalQuery = queryRewriteService.rewrite(query.query());
@@ -88,12 +86,12 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
                 .limit(topK)
                 .toList();
         if (candidates.isEmpty()) {
-            return KnowledgeRetrievalResult.empty();
+            return KnowledgeRetrievalPort.RetrievalResult.empty();
         }
 
         List<SourceReference> sources = candidates.stream()
                 .map(candidate -> toSourceReference(candidate.hit(), candidate.rerankScore())).toList();
-        return new KnowledgeRetrievalResult(buildContext(candidates), sources, candidates.size());
+        return new KnowledgeRetrievalPort.RetrievalResult(buildContext(candidates), sources, candidates.size());
     }
 
     /** 每个知识库单独过滤，保证授权集合不能被伪造 metadata 放大。 */

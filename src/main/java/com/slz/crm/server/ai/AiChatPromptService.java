@@ -1,8 +1,10 @@
 package com.slz.crm.server.ai;
 
 import com.slz.crm.pojo.entity.AiMessageEntity;
+import com.slz.crm.pojo.entity.AiConversationMemoryEntity;
 import com.slz.crm.server.properties.AiProperties;
 import com.slz.crm.server.service.AiMessageService;
+import com.slz.crm.server.service.AiConversationMemoryService;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -11,6 +13,7 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StreamUtils;
@@ -20,6 +23,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 @Slf4j
@@ -34,6 +38,18 @@ public class AiChatPromptService {
 
     @Autowired
     private AiMessageService aiMessageService;
+
+    /** 记忆服务生产可用；部分单测只装配消息服务，因此保持可选。 */
+    @Autowired(required = false)
+    private AiConversationMemoryService conversationMemoryService;
+
+    /** 短问改写只影响检索/模型输入，不改变 ai_message 中的用户原文。 */
+    @Autowired
+    private AiShortQuestionRewriter shortQuestionRewriter;
+
+    /** 提示词总字符闸门；历史超限时按最旧优先丢弃，必要 system/user 不裁剪。 */
+    @Value("${ai.prompt-max-chars:3400}")
+    private int promptMaxChars = 3400;
 
     private String systemPrompt;
     private String titlePrompt;
@@ -54,10 +70,46 @@ public class AiChatPromptService {
 
     public List<Message> buildMessages(Long sessionId, String message) {
         List<Message> messages = new ArrayList<>();
-        messages.add(new SystemMessage(systemPrompt));
+        AiConversationMemoryEntity memory = conversationMemoryService == null
+                ? null : conversationMemoryService.findBySessionId(sessionId);
+        AiShortQuestionRewriter.RewrittenQuestion rewritten = shortQuestionRewriter.rewrite(
+                message, memory, findLastUserQuestion(sessionId));
+        messages.add(new SystemMessage(buildSystemPrompt(memory, rewritten.clarifyRequired())));
         messages.addAll(loadHistory(sessionId));
-        messages.add(new UserMessage(message));
-        return messages;
+        messages.add(new UserMessage(rewritten.query()));
+        return applyPromptBudget(messages);
+    }
+
+    /**
+     * 将持久记忆注入系统提示词；加工品缺失时不改变原 system prompt。
+     */
+    private String buildSystemPrompt(AiConversationMemoryEntity memory, boolean clarifyRequired) {
+        if (memory == null) {
+            return clarifyRequired ? systemPrompt + shortQuestionRewriter.clarifyPrompt() : systemPrompt;
+        }
+        StringBuilder memoryBlock = new StringBuilder(systemPrompt);
+        if (memory.getIntent() != null && !memory.getIntent().isBlank()) {
+            memoryBlock.append("\n\n【当前意图】").append(memory.getIntent().trim());
+        }
+        if (memory.getFacts() != null && !memory.getFacts().isBlank()
+                && !"[]".equals(memory.getFacts().trim())) {
+            memoryBlock.append("\n\n【已确认事实】").append(memory.getFacts().trim());
+        }
+        if (memory.getSummary() != null && !memory.getSummary().isBlank()) {
+            memoryBlock.append("\n\n【历史摘要】").append(memory.getSummary().trim());
+        }
+        if (clarifyRequired) {
+            memoryBlock.append(shortQuestionRewriter.clarifyPrompt());
+        }
+        return memoryBlock.toString();
+    }
+
+    private AiMessageEntity findLastUserQuestion(Long sessionId) {
+        // listRecentContextMessages 返回 id 倒序，因此第一条用户消息就是最近用户问。
+        return aiMessageService.listRecentContextMessages(sessionId, 2).stream()
+                .filter(item -> "user".equals(item.getRole()))
+                .findFirst()
+                .orElse(null);
     }
 
     public String generateTitle(ChatClient.Builder chatClientBuilder, String userMessage) {
@@ -67,7 +119,7 @@ public class AiChatPromptService {
                     .user(userMessage)
                     .call()
                     .content();
-            return title == null ? null : title.trim();
+            return title == null ? null : AiThinkTagStripper.strip(title).trim();
         } catch (Exception e) {
             log.warn("生成会话标题失败", e);
             return null;
@@ -80,18 +132,38 @@ public class AiChatPromptService {
 
     private List<Message> loadHistory(Long sessionId) {
         int maxRounds = aiProperties.getMaxHistoryRounds() == null ? 10 : aiProperties.getMaxHistoryRounds();
-        List<AiMessageEntity> recent = aiMessageService.listRecentContextMessages(sessionId, maxRounds * 2);
+        List<AiMessageEntity> recent;
+        if (conversationMemoryService != null) {
+            // recentMessages 是 ai_message 的内存投影；恢复方法返回时间正序。
+            recent = conversationMemoryService.restoreRecentProjection(sessionId, maxRounds * 2);
+        } else {
+            recent = aiMessageService.listRecentContextMessages(sessionId, maxRounds * 2);
+            Collections.reverse(recent);
+        }
         List<Message> history = new ArrayList<>();
-        for (int i = recent.size() - 1; i >= 0; i--) {
-            AiMessageEntity entity = recent.get(i);
+        for (AiMessageEntity entity : recent) {
             String content = entity.getContent() == null ? "" : entity.getContent();
             if ("user".equals(entity.getRole())) {
                 history.add(new UserMessage(content));
             } else {
-                history.add(new AssistantMessage(content));
+                history.add(new AssistantMessage(AiThinkTagStripper.strip(content)));
             }
         }
         return history;
+    }
+
+    /**
+     * 保障 prompt 总量不超过配置上限；超限只牺牲最旧历史，不破坏本轮必要输入。
+     */
+    private List<Message> applyPromptBudget(List<Message> messages) {
+        int totalLength = messages.stream()
+                .mapToInt(item -> item.getText() == null ? 0 : item.getText().length()).sum();
+        while (totalLength > promptMaxChars && messages.size() > 2) {
+            String removedText = messages.remove(1).getText();
+            totalLength -= removedText == null ? 0 : removedText.length();
+            log.info("Prompt 超出预算，移除最旧历史: promptMaxChars={}, totalLength={}", promptMaxChars, totalLength);
+        }
+        return messages;
     }
 
     private String loadPromptFile(String path) {
