@@ -51,6 +51,21 @@
 
 > 计量口径：LLM 压缩调用 token 挂 `TokenUsageRecorder`（type=SUMMARY，`TokenUsageType` 为冻结契约无压缩枚举值，语义最近者为摘要旁路）。
 
+## rag.chunking.* —— 切分策略（提案4 新增，upgrade-semantic-chunking-and-index）
+
+| 键 | 类型 | 默认值 | 语义与回退 |
+|---|---|---|---|
+| `rag.chunking.strategy` | String | `fixed` | 切分策略：`fixed`（升级前 320/40 滑窗，现行为回退）\| `semantic`（标题/段落/转折词边界，段长受 max-chunk-size 约束）。其他值一律按 fixed 处理。策略只影响新摄取/重建的切片；页锚点（D15）任何策略都按页附加 |
+| `rag.chunking.max-chunk-size` | Integer | 480 | semantic 策略单块字符上限；超上限段落按句界二次切分。&lt;1 回落默认 |
+
+## rag.context.parent-expand —— 双粒度父块展开（提案4 新增，upgrade-semantic-chunking-and-index）
+
+| 键 | 类型 | 默认值 | 语义与回退 |
+|---|---|---|---|
+| `rag.context.parent-expand` | String | `on` | 父块展开开关：`on`（命中挂父块的子块时上下文放父块全文，引用/锚点仍指子块）\| `off`（回退邻居增强模式）。未挂父块的命中（fixed 切分、单片逻辑段、评测占位 id、快照行缺失）逐块回退邻居拼装——fixed 数据下 on 与 off 输出一致 |
+
+> 重建入库（reingest）触发不走动态配置，是运维 runner 环境变量：`RAG_REINGEST_TRIGGER=all|<documentId,...>` + `RAG_REINGEST_OPERATOR_ID=<用户主键>`（提案4 任务 4.3/4.4；全量重嵌入有真实 API 成本，执行前需用户确认）。
+
 ## rag.intent.* —— 意图/类目（D17 既有键）
 
 | 键 | 类型 | 语义 |

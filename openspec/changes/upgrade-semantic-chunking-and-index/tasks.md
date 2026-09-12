@@ -1,5 +1,16 @@
 # Tasks — upgrade-semantic-chunking-and-index
 
+## 0. 验证记录（执行 agent 填写）
+
+- 2026-09-12：任务组1–5 完成，分支 `feature/upgrade-semantic-chunking-and-index`。
+  - surefire 实测 **555 全绿**（527 + 新增28），ci.yml 基线同步 527→555。
+  - `FlywayMigrationIT` 真跑被存量 V6 `sensitive` 保留字缺陷卡链（提案2 §0 已登记、修复待用户授权），
+    本提案 V23 DDL 已按 V22 先例在独立探针容器（mysql:8.0.36）实测通过（ALTER 双列/存量默认 CHILD/CHILD 过滤）。
+  - 任务组4 入口选型：运维 runner（理由见 4.4 注）；本机 `.env` 含 DASHSCOPE_API_KEY，`mvn verify` 期间
+    `ModelProviderImplDashScopeIT` 3 用例按其既有门控真跑外发（runbook §6.3 已知行为），非本提案新增成本项。
+  - 待授权项：4.4 全量 reingest（真实嵌入 API 成本×chunk 总量）、5.1/5.2 真检索基准重跑（真嵌入+真生成+判卷），
+    两者均依赖 RAG_BENCHMARK_REAL=1 / reingest 跑批的显式授权（git-workflow §5 成本闸门）。
+
 ## 1. 语义切分策略（方案 02）
 
 - [x] 1.1 切分器策略抽象：`rag.chunking.strategy = fixed | semantic`（DynamicConfig，默认 fixed）；fixed 路径行为等价单测（同输入同 chunk 序列）
@@ -31,8 +42,15 @@
 
 - [ ] 5.1 重嵌入后重跑真检索基准：recall@k / MRR 较提案 2/3 后基线提升或持平；citationPrecision 不回退（锚点仍准）
 - [ ] 5.2 产出 `baseline-after-chunking.json` 落盘，差异摘要写入本 change 验证记录
-- [ ] 5.3 `mvn -B -ntp test` 绿（surefire 计数只增）；`mvn -B -ntp verify` failsafe 不减
-- [ ] 5.4 回退演练：`rag.chunking.strategy=fixed` + `rag.context.parent-expand=off` 下，检索与上下文行为回到提案 3 完成态（基线用例不回退）
+- [x] 5.3 `mvn -B -ntp test` 绿（surefire 计数只增）；`mvn -B -ntp verify` failsafe 不减
+  - 验证记录（2026-09-12）：surefire 实测 **555 全绿**（基线 527 + 提案4新增28）。verify failsafe 实测 `Tests run: 21` ≥ 基线 12；
+    其中 Failures 2 + Errors 14 **全部来自存量 V6 `sensitive` 保留字缺陷**（提案2 §0 已登记，修复待用户授权，
+    非本提案引入）；`FlywayMigrationIT` 因 V6 卡链无法真跑，本提案的 V23 DDL 已按提案2 V22 同口径在
+    独立探针容器（mysql:8.0.36）实测通过：ALTER 双列成功、存量行默认 CHILD、PARENT 行插入与 CHILD 过滤生效。
+- [x] 5.4 回退演练：`rag.chunking.strategy=fixed` + `rag.context.parent-expand=off` 下，检索与上下文行为回到提案 3 完成态（基线用例不回退）
+  - 验证记录：`ChunkingRollbackDrillTest` 锁定三条等价链——fixed 切分=升级前 320/40 逐字一致且无父块；
+    parent-expand=off 输出=提案3邻居模式；fixed 数据 + parent-expand=on（默认）输出与 off 逐字一致（展开无父块可展，回退能力不受默认值破坏）。
+    真检索基线用例的"不回退"量化部分随 5.1 授权后真跑。
 
 ## 6. Git 操作（按 `openspec/git-workflow.md` 执行）
 
