@@ -5,9 +5,8 @@
 
 ## 状态
 
-- [ ] **基线数字待首跑**：真检索基准需要真实模型调用（约 60–90 次 chat/embed 请求，消耗 DashScope 额度），
-  按仓库约定须先获得授权再执行。基础设施（语料、对齐、runner、门控）已全部就绪并过单测。
-- 首跑完成后：把 JSON 里的 `metrics` 摘要抄到本文件"基线数字"一节，并勾掉状态框。
+- [x] **基线数字已首跑**（run-baseline-ladder 第一跑，授权执行，≈¥0.1）：`docs/rag-quality/baseline-v1.json` 已落盘，
+  metrics 摘要见下文"基线数字"节。本文档作为提案 2–5"不回退/提升"判定的对照锚点。
 
 ## 运行环境与口径
 
@@ -40,8 +39,22 @@ RAG_BENCHMARK_REAL=1 mvn -B -ntp test-compile failsafe:integration-test -Dit.tes
 
 不设 `RAG_BENCHMARK_REAL` 或无 key 时该 IT 按假设跳过，`mvn verify` 不受影响（failsafe 计 skipped，总数不减）。
 
-## 基线数字（待首跑后填写）
+## 基线数字（首跑已回填，generatedAt = 2026-09-12T15:46:47Z）
 
 ```
-（占位：首跑后粘贴 docs/rag-quality/baseline-v1.json 的 metrics 节选，并注明 generatedAt）
+metrics:
+  caseCount 18
+  meanRecallAtK 0.9444
+  meanPrecisionAtK 0.2556
+  mrr 0.8472
+  hitRate 1.0
+  meanCitationPrecision 0.8056
+  meanAnswerConsistency 1.0
+  meanTtftMs 366.9 ms
+  meanTotalLatencyMs 3450.3 ms
+  totalTokens 17032
+  failureRate 0.0
 ```
+
+分类明细（首跑即发现关键信号，供 run5 触发判定）：**TEXT 5 条 recall@k=1.0 / MRR=1.0，LEXICAL 6 条 recall@k=1.0 / MRR=1.0**。
+在纯向量单路基线下 LEXICAL 与 TEXT 均已饱和到满格，**无词汇失配缺口可被稀疏路/查询侧提升**（详见 run-baseline-ladder 验证记录）。

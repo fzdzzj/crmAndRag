@@ -12,9 +12,9 @@
 
 ## 1. 第一跑：baseline-v1（回退态）——解锁提案1 4.1/4.4
 
-- [ ] 1.1 `RAG_BENCHMARK_REAL=1` 用现 runner 原样跑（0.3 已确认口径）→ `docs/rag-quality/baseline-v1.json`
-- [ ] 1.2 断言：18 条全评分、failureRate ≤0.25、hitRate >0（runner 内置）；`baseline.md` 回填 metrics 摘要 + generatedAt，勾提案1 4.1/4.4
-- [ ] 1.3 机械归因留档：从 v1 报告读 LEXICAL 6 条 vs TEXT 类 recall 差，写入验证记录——第五跑触发判定的输入
+- [x] 1.1 `RAG_BENCHMARK_REAL=1` 用现 runner 原样跑（0.3 已确认口径）→ `docs/rag-quality/baseline-v1.json`
+- [x] 1.2 断言：18 条全评分、failureRate ≤0.25、hitRate >0（runner 内置）；`baseline.md` 回填 metrics 摘要 + generatedAt，勾提案1 4.1/4.4
+- [x] 1.3 机械归因留档：从 v1 报告读 LEXICAL 6 条 vs TEXT 类 recall 差，写入验证记录——第五跑触发判定的输入
 
 ## 2. Runner 泛化（测试侧代码，单测可验）
 
@@ -87,5 +87,10 @@
 **0.3 回退态口径 → 确认成立，第一跑零改造。** `RagRealRetrievalBenchmarkIT` 现用 6 参兼容构造（`sparseRecallService=null, rrfFusion=null, contextBuilder=null, multiQuery=null, hyde=null`）：`recallTextRoute` 因稀疏路 null 返回纯向量单路；`useRrfFusion()` 在空 DynamicConfig 下返回 true 但 `rrfFusion==null → multiRouteEnabled=false`（查询侧不启）；`buildContext` 走 `ContextBuilder.plainNumbered` 纯拼接；`activeReranker` 用 `DefaultWeightedReranker`（向量/BM25 加权）。与 `KnowledgeRetrievalServiceImpl` 类注释「未装配（兼容构造）时保持升级前纯拼接」一致，等价单测已由 `NeighborContextPipelineTest` 等覆盖。
 
 **0.4 压缩口径 → rule 无损 iff `estimate(context)<=budget`，默认 budget=4096 下 fixtures 5 块短文基本无损/no-op。** 为使第三跑机械展示「token 下降」，第三跑矩阵在 `compressor=rule` 基础上**注入 `rag.context.token-budget=1024`**（紧于自然上下文，配合 neighbors=1 先把上下文撑大、再被 rule 压缩回收）——这是评测参数化而非默认值翻转，记录在案。
+
+### 任务组 1 第一跑结论（2026-09-12，baseline-v1.json，generatedAt=2026-09-12T15:46:47Z）
+
+- 断言全过：caseCount=18 全评分、suiteVersion=1.0、failureRate=0.0（≤0.25）、hitRate=1.0（>0）。初始锚点：recall@k=0.9444 / MRR=0.8472 / citationPrecision=0.8056 / answerConsistency=1.0 / totalTokens=17032 / totalLatency=3450ms。
+- **1.3 机械归因（run5 触发判定的输入）**：baseline-v1 纯向量单路口径下，**TEXT 5 条 recall@k=1.0 / MRR=1.0，LEXICAL 6 条 recall@k=1.0 / MRR=1.0**——词汇路与文本路均已到顶，**无词汇失配缺口**。「查询-文档词汇失配为主要漏召」在 fixtures 量级**不成立**（触发判定细节见任务组 6）。
 
 （各跑差异摘要、ladder-report 链接在任务组 1–7 执行时回填）
