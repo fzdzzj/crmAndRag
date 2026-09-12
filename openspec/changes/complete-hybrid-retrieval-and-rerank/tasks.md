@@ -43,8 +43,8 @@
 
 ## 5. 基线验收（对照 add-rag-quality-baseline）
 
-- [ ] 5.1 重跑真检索基准：LEXICAL 用例 recall@k / MRR 较 `baseline-v1.json` 提升；全量用例聚合 recall@k / hitRate / citationPrecision 不低于基线
-- [ ] 5.2 产出 `baseline-after-hybrid.json` 落盘同目录，差异摘要写入本 change 的验证记录
+- [ ] 5.1 重跑真检索基准：LEXICAL 用例 recall@k / MRR 较 `baseline-v1.json` 提升；全量用例聚合 recall@k / hitRate / citationPrecision 不低于基线 【待授权：DASHSCOPE_API_KEY 真实外发；且前置依赖提案1任务4.1基线首跑（baseline-v1.json 尚不存在）】
+- [ ] 5.2 产出 `baseline-after-hybrid.json` 落盘同目录，差异摘要写入本 change 的验证记录 【待授权：同 5.1，随任务组7一并执行】
 - [x] 5.3 `mvn -B -ntp test` 绿（surefire ≥473+新增）；`mvn -B -ntp verify` failsafe ≥12+新增（本地无 Docker 按 skip 口径）
 
   > 2026-09-12 实测：surefire **494 全绿**（=473+新增21）。failsafe 部分被 §0 V6 存量缺陷阻塞（本机有 Docker 也无法跑绿），
