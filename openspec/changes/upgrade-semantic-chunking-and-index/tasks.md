@@ -32,3 +32,17 @@
 - [ ] 5.2 产出 `baseline-after-chunking.json` 落盘，差异摘要写入本 change 验证记录
 - [ ] 5.3 `mvn -B -ntp test` 绿（surefire 计数只增）；`mvn -B -ntp verify` failsafe 不减
 - [ ] 5.4 回退演练：`rag.chunking.strategy=fixed` + `rag.context.parent-expand=off` 下，检索与上下文行为回到提案 3 完成态（基线用例不回退）
+
+## 6. Git 操作（按 `openspec/git-workflow.md` 执行）
+
+- 分支：`git checkout -b feature/upgrade-semantic-chunking-and-index`。
+- **前置：提案 2/3 已合入 master**（本提案改嵌入输入，提前做会导致两遍重嵌入）。
+- 提交序（任务组 → 提交）：
+  1. `feat(document)`: 切分策略抽象 + semantic 实现 + 锚点/质量对比断言（1.1–1.4）
+  2. `feat(document)`: 块头注入与展示分离（2.1–2.2）
+  3. `feat(db)`: V23 parent_chunk_id 迁移（3.1）；`feat(retrieval)`: 父块生成与展开（3.2–3.4）——可拆两个提交
+  4. `feat(document)`: reingest runner + 幂等/失败清理/审计单测（4.1–4.3）
+  5. `test(quality)`: 基线对照 + `baseline-after-chunking.json` 入库 + 回退演练（5.1–5.4）
+  6. `chore(ci)`: surefire 基线 bump
+- **成本闸门（本提案特有）**：4.4 存量全量 reingest = 真实嵌入 API 成本 × 现有 chunk 总量，执行前**必须获用户确认**——其余任务可先行，全量重嵌入放最后。
+- 合并：亲验后 `git checkout master; git merge --no-ff feature/upgrade-semantic-chunking-and-index -m "Merge branch '...'：提案4/5 语义切分+块头+双粒度索引"`。

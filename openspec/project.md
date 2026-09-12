@@ -39,6 +39,7 @@
 
 - 不改 `platform/contract/` 冻结接口（`KnowledgeRetrievalPort`/`SourceReference`/`CrmVectorStore`/`ModelProvider`/`DynamicConfigService`/`TokenUsageRecorder`）；改契约走解冻流程。
 - 库结构变更 = 新增 Flyway 迁移（下一个可用号 V22 起），禁改已合入脚本。
-- 验收命令：`mvn -B -ntp test`（surefire 基线 467，只增不减）、`mvn -B -ntp verify`（failsafe 基线 12，无 Docker 下限）。
+- 验收命令：`mvn -B -ntp test`（surefire 基线 473，只增不减；提案 1 前 467）、`mvn -B -ntp verify`（failsafe 基线 12，无 Docker 下限）。
 - 新 LLM 调用一律经 `ModelProvider` + `ModelCallOptions`，key 只走环境变量。
 - rag-kb 知识引用口径：deck（S11）数字属工程经验口径，不作实测基线；实测以本项目基准报告为准。
+- 执行 agent 的分支/提交/合并/CI 基线/成本闸门操作遵循 `openspec/git-workflow.md`（含本机坑：无 `git switch`、PowerShell 无 `&&`、无 remote 禁 push）；各提案 tasks.md 末节"Git 操作"是该提案的专属执行序。

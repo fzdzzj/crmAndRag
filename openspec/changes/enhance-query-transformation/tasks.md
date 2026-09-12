@@ -32,3 +32,16 @@
 ## 5. 待定项台账（不实现，仅记录）
 
 - [ ] 5.1 在本 change 目录 `deferred.md` 记录 11/14 的触发条件与届时落点（内容照 proposal.md §4 表）
+
+## 6. Git 操作（按 `openspec/git-workflow.md` 执行）
+
+- **开分支前置闸门**：先核验 proposal.md 的"立项触发条件"（基线归因显示查询侧是主要漏召原因）——不满足则**不开分支**，产出归因报告即可交差。
+- 分支：`git checkout -b feature/enhance-query-transformation`（前置：提案 4 已合入——衍生问题依赖其 reingest 机制）。
+- 提交序（任务组 → 提交）：
+  1. `feat(retrieval)`: 多查询生成 + RRF 融合 + 降级链/关闭态单测（1.1–1.4）
+  2. `feat(retrieval)`: HyDE 隔离 + 失败回退（2.1–2.3）
+  3. `feat(document)`: 衍生问题旁路 + 计量 + 随 reingest 幂等（3.1–3.5）
+  4. `test(quality)`: 基线对照 + `baseline-after-query.json` 入库（4.1–4.2）——**成本闸门**：真检索基准外发调用需用户授权
+  5. `chore(ci)`: surefire 基线 bump（4.3）；`docs(openspec)`: deferred.md 待定台账（5.1）——可并入同一提交
+- 默认全关验证：合并前确认三个开关均为 false 时检索/入库行为与提案 4 完成态一致。
+- 合并：亲验后 `git checkout master; git merge --no-ff feature/enhance-query-transformation -m "Merge branch '...'：提案5/5 查询侧增强（默认关闭）"`。

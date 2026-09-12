@@ -28,3 +28,16 @@
 - [ ] 5.1 重跑真检索基准：token 用量较 `baseline-v1.json` 下降（或混合检索后最新基线）；答案要点覆盖 / answerConsistency / citationPrecision 不回退
 - [ ] 5.2 产出 `baseline-after-context.json` 落盘同目录，差异摘要写入本 change 验证记录
 - [ ] 5.3 `mvn -B -ntp test` 绿（surefire ≥ 前序变更后的计数）；`mvn -B -ntp verify` failsafe 不减
+
+## 6. Git 操作（按 `openspec/git-workflow.md` 执行）
+
+- 分支：`git checkout -b feature/add-context-compression-and-enrichment`。
+- 时序：**推荐串行**（提案 2 合入后开分支）；若与提案 2 并行，本提案分支须基于提案 2 分支创建（两案都改 `KnowledgeRetrievalServiceImpl` 的 buildContext 区域，合入顺序 2 → 3）。
+- 提交序（任务组 → 提交）：
+  1. `feat(retrieval)`: ContextBuilder 邻居增强 + 不混引用/边界/回退单测（1.1–1.4）
+  2. `feat(retrieval)`: Compressor 规则/LLM 双实现 + token 计量（2.1–2.4）
+  3. `test(retrieval)`: 引用编号完整性 + 既有引用链路回归（3.1–3.2）
+  4. `feat(ai)`: 消费侧 topK 参数化（4.1）
+  5. `test(quality)`: 基线对照 + `baseline-after-context.json` 入库（5.1–5.2）——**成本闸门**：真检索基准外发调用需用户授权
+  6. `chore(ci)`: surefire 基线 bump（5.3）
+- 合并：亲验后 `git checkout master; git merge --no-ff feature/add-context-compression-and-enrichment -m "Merge branch '...'：提案3/5 上下文压缩+邻居增强"`。

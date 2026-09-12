@@ -29,5 +29,19 @@
 
 - [ ] 5.1 重跑真检索基准：LEXICAL 用例 recall@k / MRR 较 `baseline-v1.json` 提升；全量用例聚合 recall@k / hitRate / citationPrecision 不低于基线
 - [ ] 5.2 产出 `baseline-after-hybrid.json` 落盘同目录，差异摘要写入本 change 的验证记录
-- [ ] 5.3 `mvn -B -ntp test` 绿（surefire ≥467+新增）；`mvn -B -ntp verify` failsafe ≥12+新增（本地无 Docker 按 skip 口径）
+- [ ] 5.3 `mvn -B -ntp test` 绿（surefire ≥473+新增）；`mvn -B -ntp verify` failsafe ≥12+新增（本地无 Docker 按 skip 口径）
 - [ ] 5.4 DynamicConfig 键清单更新到 `docs`（键名/默认值/回退语义），新键有默认回退（缺省 = rrf 模式下稀疏路可用、rerank=default）
+
+## 6. Git 操作（按 `openspec/git-workflow.md` 执行）
+
+- 分支：`git checkout -b feature/complete-hybrid-retrieval-and-rerank`（基于提案 1 合入后的 master）。
+- 提交序（任务组 → 提交）：
+  1. `feat(db)`: V22 FULLTEXT ngram 迁移 + FlywayMigrationIT 断言（1.1）
+  2. `test(retrieval)`: ngram 召回质量闸门 IT（1.2）——**决策点**：LEXICAL 黄金不达标 → 切方案 B（内存倒排），结论写入本文件验证记录后再继续 1.3
+  3. `feat(retrieval)`: SparseRecallService + 稀疏路"向量miss/词法hit"与越权单测（1.3–1.5）
+  4. `feat(retrieval)`: 类目过滤两路接入（2.1–2.2）
+  5. `feat(retrieval)`: RrfFusion + 回退开关行为等价（3.1–3.3）
+  6. `feat(retrieval)`: Reranker 抽象 + 默认实现等价搬运 + LLM rerank 三条回退链（4.1–4.3）
+  7. `test(quality)`: 基线对照 + `baseline-after-hybrid.json` 入库（5.1–5.2）——**成本闸门**：依赖提案 1 tasks 4.1 基线首跑（`baseline-v1.json` 实测数字）；未完成则停下向用户要授权
+  8. `chore(ci)`: surefire 基线 bump（473→实测值）+ DynamicConfig 键清单 docs（5.3–5.4）
+- 合并：亲验测试绿 + status 干净后，`git checkout master; git merge --no-ff feature/complete-hybrid-retrieval-and-rerank -m "Merge branch '...'：提案2/5 混合检索补全+重排升级"`。
