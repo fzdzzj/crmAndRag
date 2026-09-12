@@ -1,5 +1,16 @@
 # Tasks — complete-hybrid-retrieval-and-rerank
 
+## 0. 验证记录（执行 agent 填写）
+
+- 2026-09-12（任务组1 执行时）：`FlywayMigrationIT` 在本机首次真跑（Docker mysql:8.0.36），暴露**存量缺陷**：
+  `V6__dynamic_config.sql` 第 50 行列名 `sensitive` 撞 MySQL 8.0 保留字（最小语句复现 + 反引号可解），
+  迁移链在 V6 即失败——V1..V21 从未在任何真 MySQL 上成功应用（此前本地/CI 均未带 Docker 真跑该 IT，
+  H2 测试走 auto-table 不执行 Flyway 脚本）。已对 8 个迁移脚本 259 个列名做保留字全量探针，冲突仅此一处；
+  V22 DDL 已在独立探针容器实测通过（FULLTEXT ngram 建索引成功，LEXICAL 型号整句查询黄金切片 rank 1）。
+  影响：V6 卡死使一切依赖 Flyway 的 IT（含 1.1 断言与 1.2 闸门）无法跑绿；且"改错出 V(n+1)__fix"的
+  补救对本缺陷不可行（V6 失败后后续脚本永不执行）。**待用户授权后就地修复**（`sensitive` 加反引号，
+  结构与 H2 auto-table 产物一致、零 checksum 风险——本机各库均无 flyway_schema_history），修复并真跑后补勾 1.1/1.2。
+
 ## 1. 稀疏召回路（方案 16 补全）
 
 - [ ] 1.1 新增 Flyway `V22__chunk_fulltext_index.sql`：`document_vector_chunk.chunk_text` 加 `FULLTEXT INDEX ft_chunk_text (...) WITH PARSER ngram`；`FlywayMigrationIT` 断言迁移成功且索引存在
