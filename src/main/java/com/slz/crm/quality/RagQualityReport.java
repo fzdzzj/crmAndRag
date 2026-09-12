@@ -73,9 +73,13 @@ public final class RagQualityReport {
     }
 
     /**
-     * 完整报告 = 聚合指标 + 逐条评分。
+     * 完整报告 = 基准集版本 + 生成时间 + 聚合指标 + 逐条评分。
+     *
+     * <p>版本与时间戳是跨变更比较的前提（add-rag-quality-baseline）：
+     * 版本取自 {@code RagBenchmarkSuite.SUITE_VERSION}，比较两份报告前先核对版本一致；
+     * 时间戳为 UTC ISO-8601 串，用于识别模型波动期的历史运行。</p>
      */
-    public record Report(Metrics metrics, List<CaseScore> cases) {
+    public record Report(String suiteVersion, String generatedAt, Metrics metrics, List<CaseScore> cases) {
 
         /**
          * @return 报告的 JSON 串（可归档、可跨次比较）；序列化失败返回 {@code {}}
