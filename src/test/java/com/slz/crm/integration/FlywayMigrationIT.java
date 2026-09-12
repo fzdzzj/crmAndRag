@@ -36,7 +36,7 @@ class FlywayMigrationIT {
 
     /** 迁移脚本全集（版本 → 归属 lane），任何增删都要在此登记，防漏跑/撞号。 */
     private static final Set<String> EXPECTED_VERSIONS =
-            new TreeSet<>(List.of("1", "3", "4", "4.1", "5", "6", "21", "22"));
+            new TreeSet<>(List.of("1", "3", "4", "4.1", "5", "6", "21", "22", "23"));
 
     /** 跨 lane 关键表抽样：确认各号段 DDL 真的建出了表（V1/V3/V4/V5/V6）。 */
     private static final List<String> SPOT_CHECK_TABLES = List.of(
@@ -116,6 +116,26 @@ class FlywayMigrationIT {
                     "V22 应建出 ft_chunk_text 全文索引，实际 DDL：" + ddl);
             assertTrue(ddl.toLowerCase(java.util.Locale.ROOT).contains("with parser ngram"),
                     "全文索引必须使用 ngram parser（中文 bigram），实际 DDL：" + ddl);
+        }
+    }
+
+    /**
+     * V23 断言（upgrade-semantic-chunking-and-index 任务 3.1）：
+     * document_vector_chunk 增出 parent_chunk_id（可空自引用父块列）与 chunk_role（默认 CHILD），
+     * 双粒度索引的库结构载体——缺列会让父块生成与展开在运行期直接 SQL 报错。
+     */
+    @Test
+    void chunkParentLinkColumnsExist() throws Exception {
+        assumeTrue(mysql != null, "Docker 不可用时本用例随类跳过");
+        try (Connection connection = DriverManager.getConnection(
+                mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
+             Statement statement = connection.createStatement();
+             ResultSet rs = statement.executeQuery("SHOW CREATE TABLE document_vector_chunk")) {
+            assertTrue(rs.next(), "document_vector_chunk 表应存在");
+            String ddl = rs.getString(2);
+            assertTrue(ddl.contains("`parent_chunk_id` bigint"), "V23 应增出 parent_chunk_id 列，实际 DDL：" + ddl);
+            assertTrue(ddl.contains("`chunk_role` varchar(16) NOT NULL DEFAULT 'CHILD'"),
+                    "V23 应增出 chunk_role 列且存量行默认 CHILD，实际 DDL：" + ddl);
         }
     }
 

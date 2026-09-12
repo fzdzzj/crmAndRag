@@ -48,6 +48,12 @@ public class DocumentVectorChunkEntity {
     /** Excel 行号。 */
     private Integer rowIndex;
 
+    /** 父块行主键（双粒度索引，提案4）：语义切分逻辑段聚合行；fixed/存量行为 null。 */
+    private Long parentChunkId;
+
+    /** 切片角色：CHILD=检索单元（嵌入与检索），PARENT=生成单元（父块行，不嵌入）。 */
+    private String chunkRole;
+
     /** 创建时间。 */
     private LocalDateTime createTime;
 
