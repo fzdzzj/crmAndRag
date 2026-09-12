@@ -2,10 +2,10 @@
 
 ## 1. 邻居上下文增强（方案 04）
 
-- [ ] 1.1 实现 `ContextBuilder`：命中块按 documentId + chunkIndex 取紧邻邻居（同页优先），拼 `[前置][命中][后置]`；`rag.context.neighbors = 0|1`（默认 1）
-- [ ] 1.2 邻居不产生 SourceReference：单测断言 sources 数 == 命中块数（邻居不混入引用）
-- [ ] 1.3 边界单测：首块无前置、末块无后置、documentId 不同不跨文档取邻居
-- [ ] 1.4 开关回退单测：`rag.context.neighbors=0` 时 buildContext 输出与现行为一致
+- [x] 1.1 实现 `ContextBuilder`：命中块按 documentId + chunkIndex 取紧邻邻居（同页优先），拼 `[前置][命中][后置]`；`rag.context.neighbors = 0|1`（默认 1）
+- [x] 1.2 邻居不产生 SourceReference：单测断言 sources 数 == 命中块数（邻居不混入引用）
+- [x] 1.3 边界单测：首块无前置、末块无后置、documentId 不同不跨文档取邻居
+- [x] 1.4 开关回退单测：`rag.context.neighbors=0` 时 buildContext 输出与现行为一致
 
 ## 2. 上下文压缩（方案 10）
 

@@ -1,0 +1,184 @@
+package com.slz.crm.knowledge.retrieval;
+
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.slz.crm.knowledge.entity.DocumentVectorChunkEntity;
+import com.slz.crm.platform.contract.DynamicConfigService;
+import com.slz.crm.platform.contract.VectorSearchHit;
+import com.slz.crm.server.mapper.DocumentVectorChunkMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * 上下文组装器：邻居上下文增强（方案04，add-context-compression-and-enrichment 任务 1.1）。
+ *
+ * <p>对每个命中块按 {@code documentId + 相邻 chunkIndex} 从 {@code document_vector_chunk}
+ * 快照表取前/后邻居（chunkIndex 为全文档切片序号、0 起，故 ±1 即紧邻；同一序号出现多行的
+ * 数据异常场景按「同页优先 + 主键小者」确定性取舍），拼装为：</p>
+ * <pre>[n] （前文承接）邻居
+ * 命中块
+ * （后文承接）邻居</pre>
+ *
+ * <p>引用完整性约束（rag-context 规范）：邻居只进上下文、绝不进 {@code SourceReference}——
+ * 引用与跳页锚点仍指命中块；上下文 [n] 编号与 sources 下标的一一对应不受邻居拼装影响。</p>
+ *
+ * <p>开关：{@code rag.context.neighbors = 0 | 1}（默认 1；0 = 关闭，输出与升级前逐字一致）。
+ * 失败边界：快照表不可用（DB 异常）时按无邻居降级并告警，不拖垮检索链。</p>
+ */
+@Service
+public class ContextBuilder {
+    private static final Logger log = LoggerFactory.getLogger(ContextBuilder.class);
+
+    static final String NEIGHBORS_KEY = "rag.context.neighbors";
+    static final int DEFAULT_NEIGHBORS = 1;
+
+    private static final String PREV_LABEL = "（前文承接）";
+    private static final String NEXT_LABEL = "（后文承接）";
+
+    private final DocumentVectorChunkMapper chunkMapper;
+    private final ObjectProvider<DynamicConfigService> dynamicConfigProvider;
+
+    public ContextBuilder(DocumentVectorChunkMapper chunkMapper,
+                          ObjectProvider<DynamicConfigService> dynamicConfigProvider) {
+        this.chunkMapper = chunkMapper;
+        this.dynamicConfigProvider = dynamicConfigProvider;
+    }
+
+    /**
+     * 组装带编号的检索上下文。
+     *
+     * <p>输出契约：第 i 个候选对应且仅对应 {@code [i+1]} 段，与调用方 sources 列表下标一一对应。</p>
+     */
+    public String build(List<RetrievalCandidate> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return "";
+        }
+        if (!neighborsEnabled()) {
+            return plainNumbered(candidates);
+        }
+        StringBuilder builder = new StringBuilder();
+        for (int index = 0; index < candidates.size(); index++) {
+            if (index > 0) {
+                builder.append('\n');
+            }
+            VectorSearchHit hit = candidates.get(index).hit();
+            builder.append('[').append(index + 1).append("] ");
+            appendWithNeighbors(builder, hit);
+        }
+        return builder.toString();
+    }
+
+    /** 升级前行为：top-K 全文拼接，仅 [n] 编号（兼容构造与邻居关闭路径共用）。 */
+    static String plainNumbered(List<RetrievalCandidate> candidates) {
+        StringBuilder builder = new StringBuilder();
+        for (int index = 0; index < candidates.size(); index++) {
+            if (index > 0) {
+                builder.append('\n');
+            }
+            builder.append('[').append(index + 1).append("] ")
+                    .append(candidates.get(index).hit().text().strip());
+        }
+        return builder.toString();
+    }
+
+    /** 命中块 + 前/后邻居拼装；邻居缺失（首末块/跨文档/快照表不可用）时静默跳过对应一侧。 */
+    private void appendWithNeighbors(StringBuilder builder, VectorSearchHit hit) {
+        String hitText = hit.text() == null ? "" : hit.text().strip();
+        List<DocumentVectorChunkEntity> neighbors = fetchNeighbors(hit);
+        Integer hitChunkIndex = chunkIndex(hit);
+        DocumentVectorChunkEntity prev = neighborAt(neighbors, hitChunkIndex - 1, hit);
+        DocumentVectorChunkEntity next = neighborAt(neighbors, hitChunkIndex + 1, hit);
+        if (prev != null && !prev.getChunkText().isBlank()) {
+            builder.append(PREV_LABEL).append(prev.getChunkText().strip()).append('\n');
+        }
+        builder.append(hitText);
+        if (next != null && !next.getChunkText().isBlank()) {
+            builder.append('\n').append(NEXT_LABEL).append(next.getChunkText().strip());
+        }
+    }
+
+    /**
+     * 查询命中块的潜在邻居行（chunkIndex-1 与 chunkIndex+1，同文档）。
+     * chunkIndex 缺失或查询失败时返回空列表（无邻居降级，不抛错）。
+     */
+    private List<DocumentVectorChunkEntity> fetchNeighbors(VectorSearchHit hit) {
+        Integer chunkIndex = chunkIndex(hit);
+        if (chunkIndex == null || chunkIndex < 0 || hit.documentId() == null || hit.documentId().isBlank()) {
+            return List.of();
+        }
+        List<Integer> targets = new ArrayList<>();
+        if (chunkIndex > 0) {
+            targets.add(chunkIndex - 1);
+        }
+        targets.add(chunkIndex + 1);
+        try {
+            return chunkMapper.selectList(new QueryWrapper<DocumentVectorChunkEntity>()
+                    .eq("document_id", hit.documentId())
+                    .in("chunk_index", targets));
+        } catch (Exception exception) {
+            log.warn("邻居切片查询失败，按无邻居降级: {}", exception.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * 取目标序号的邻居行：SQL 已按 document_id 收敛，此处再过滤跨文档行兜底；
+     * 同序号多行按「同页优先、主键小者」确定性取舍（同页优先，任务 1.1）。
+     */
+    private DocumentVectorChunkEntity neighborAt(List<DocumentVectorChunkEntity> rows,
+                                                 int targetIndex, VectorSearchHit hit) {
+        if (targetIndex < 0) {
+            return null;
+        }
+        Integer hitPageNo = positivePageNo(hit);
+        DocumentVectorChunkEntity best = null;
+        for (DocumentVectorChunkEntity row : rows) {
+            if (row.getChunkIndex() == null || row.getChunkIndex() != targetIndex
+                    || row.getChunkText() == null
+                    || row.getDocumentId() == null || !row.getDocumentId().equals(hit.documentId())) {
+                continue;
+            }
+            if (best == null || betterNeighbor(row, best, hitPageNo)) {
+                best = row;
+            }
+        }
+        return best;
+    }
+
+    /** 同页优先；同页（或同跨页）时取主键小者，保证同输入同输出。 */
+    private boolean betterNeighbor(DocumentVectorChunkEntity candidate,
+                                   DocumentVectorChunkEntity current, Integer hitPageNo) {
+        boolean candidateSamePage = candidate.getPageNo() != null && candidate.getPageNo().equals(hitPageNo);
+        boolean currentSamePage = current.getPageNo() != null && current.getPageNo().equals(hitPageNo);
+        if (candidateSamePage != currentSamePage) {
+            return candidateSamePage;
+        }
+        return candidate.getId() != null && current.getId() != null && candidate.getId() < current.getId();
+    }
+
+    private Integer chunkIndex(VectorSearchHit hit) {
+        Object value = hit.metadata().get("chunkIndex");
+        return value instanceof Number number ? number.intValue() : null;
+    }
+
+    private Integer positivePageNo(VectorSearchHit hit) {
+        Object value = hit.metadata().get("pageNo");
+        if (value instanceof Number number) {
+            long pageNo = number.longValue();
+            return pageNo > 0 ? (int) pageNo : null;
+        }
+        return null;
+    }
+
+    /** 邻居开关：{@code rag.context.neighbors}（默认 1）；显式 0 或负值 = 关闭回退升级前行为。 */
+    private boolean neighborsEnabled() {
+        DynamicConfigService config = dynamicConfigProvider.getIfAvailable();
+        Integer configured = config == null
+                ? null : config.get(NEIGHBORS_KEY, Integer.class, DEFAULT_NEIGHBORS);
+        return configured == null || configured >= 1;
+    }
+}

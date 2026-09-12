@@ -29,6 +29,9 @@ import java.util.Objects;
  * 语料级稀疏召回路（{@link SparseRecallService}），两路 RRF 融合（weighted 模式回退升级前行为）；
  * 重排器可插拔（默认 = 向量/BM25 归一化加权，可选 LLM 重排）。
  * 图文路由融合与 topK 流程保持不变，仅插入新环节。</p>
+ *
+ * <p>方案04/10（add-context-compression-and-enrichment）：topK 截取后接上下文组装器
+ * {@link ContextBuilder}——邻居增强 + 超预算压缩；未装配（兼容构造）时保持升级前纯拼接。</p>
  */
 @Service
 public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
@@ -57,6 +60,8 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
     private final DefaultWeightedReranker defaultReranker;
     /** LLM 重排器（任务 4.2，默认关闭）；null = 兼容构造下不可用。 */
     private final LlmReranker llmReranker;
+    /** 上下文组装器（提案3：邻居增强 + 超预算压缩）；null = 兼容构造下升级前纯拼接。 */
+    private final ContextBuilder contextBuilder;
 
     @Autowired
     public KnowledgeRetrievalServiceImpl(KnowledgeBaseAuthorizationService authorizationService,
@@ -67,7 +72,8 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
                                          SparseRecallService sparseRecallService,
                                          RrfFusion rrfFusion,
                                          DefaultWeightedReranker defaultReranker,
-                                         LlmReranker llmReranker) {
+                                         LlmReranker llmReranker,
+                                         ContextBuilder contextBuilder) {
         this.authorizationService = authorizationService;
         this.embeddingService = embeddingService;
         this.vectorStore = vectorStore;
@@ -77,6 +83,21 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
         this.rrfFusion = rrfFusion;
         this.defaultReranker = defaultReranker;
         this.llmReranker = llmReranker;
+        this.contextBuilder = contextBuilder;
+    }
+
+    /** 兼容构造（提案2 九参）：不接上下文组装器（升级前纯拼接行为）。 */
+    public KnowledgeRetrievalServiceImpl(KnowledgeBaseAuthorizationService authorizationService,
+                                         EmbeddingService embeddingService,
+                                         CrmVectorStore vectorStore,
+                                         RetrievalQueryRewriteService queryRewriteService,
+                                         ObjectProvider<DynamicConfigService> dynamicConfigProvider,
+                                         SparseRecallService sparseRecallService,
+                                         RrfFusion rrfFusion,
+                                         DefaultWeightedReranker defaultReranker,
+                                         LlmReranker llmReranker) {
+        this(authorizationService, embeddingService, vectorStore, queryRewriteService,
+                dynamicConfigProvider, sparseRecallService, rrfFusion, defaultReranker, llmReranker, null);
     }
 
     /** 兼容构造：不接稀疏路/RRF/LLM 重排（纯向量单路 + 路内加权，升级前行为）。 */
@@ -261,16 +282,14 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
                 relevanceScore);
     }
 
+    /**
+     * 上下文组装（提案3 任务 1.1）：委托 {@link ContextBuilder} 做邻居增强与超预算压缩；
+     * 未装配（兼容构造）时保持升级前 top-K 纯拼接，编号与 sources 下标的映射不变。
+     */
     private String buildContext(List<RetrievalCandidate> candidates) {
-        StringBuilder builder = new StringBuilder();
-        for (int index = 0; index < candidates.size(); index++) {
-            if (index > 0) {
-                builder.append('\n');
-            }
-            builder.append('[').append(index + 1).append("] ")
-                    .append(candidates.get(index).hit().text().strip());
-        }
-        return builder.toString();
+        return contextBuilder == null
+                ? ContextBuilder.plainNumbered(candidates)
+                : contextBuilder.build(candidates);
     }
 
     private int resolveTopK(Integer requested) {
