@@ -47,6 +47,9 @@
     其中 Failures 2 + Errors 14 **全部来自存量 V6 `sensitive` 保留字缺陷**（提案2 §0 已登记，修复待用户授权，
     非本提案引入）；`FlywayMigrationIT` 因 V6 卡链无法真跑，本提案的 V23 DDL 已按提案2 V22 同口径在
     独立探针容器（mysql:8.0.36）实测通过：ALTER 双列成功、存量行默认 CHILD、PARENT 行插入与 CHILD 过滤生效。
+  - 验证记录（2026-09-12 晚，V6 修复后）：verify failsafe 复核 **24 跑 = 15 绿 + 7 门控跳过 + 2 红**
+    （WriteChainRegressionIT 为 task18 时代存量测试缺陷，与迁移链无关，另案登记）；
+    FlywayMigrationIT 3/3 真跑绿——V23 `parent_chunk_id`/`chunk_role` 断言首次在完整迁移链内通过。
 - [x] 5.4 回退演练：`rag.chunking.strategy=fixed` + `rag.context.parent-expand=off` 下，检索与上下文行为回到提案 3 完成态（基线用例不回退）
   - 验证记录：`ChunkingRollbackDrillTest` 锁定三条等价链——fixed 切分=升级前 320/40 逐字一致且无父块；
     parent-expand=off 输出=提案3邻居模式；fixed 数据 + parent-expand=on（默认）输出与 off 逐字一致（展开无父块可展，回退能力不受默认值破坏）。

@@ -46,6 +46,8 @@
 
   > 2026-09-12 实测：surefire **527 全绿**（=494+提案3新增33）。failsafe 沿用提案2 §0 的 V6 保留字存量缺陷口径
   > （迁移链在真 MySQL 卡 V6，依赖 Flyway 的 IT 无法真跑绿；修复需用户授权），修复 V6 后需真跑 `mvn -B -ntp verify` 复核并回填。
+  > 2026-09-12（晚）V6 修复后复核：failsafe **24 跑 = 15 绿 + 7 门控跳过 + 2 红**（WriteChainRegressionIT 为
+  > task18 时代存量测试缺陷，与迁移链无关，另案登记）；本提案未新增 IT，计数与 5.3 门槛（≥ 前序）满足。
 
 ## 6. Git 操作（按 `openspec/git-workflow.md` 执行）
 
