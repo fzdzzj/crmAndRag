@@ -10,8 +10,11 @@ import com.slz.crm.platform.contract.UserContextHolder;
 import com.slz.crm.platform.contract.VectorSearchHit;
 import com.slz.crm.platform.contract.VectorSearchRequest;
 import com.slz.crm.server.ai.port.KnowledgeRetrievalPort;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -21,6 +24,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 /**
  * 知识库生产检索实现：授权 → 改写 → 双路召回（向量+稀疏）→ RRF 融合 → 重排 → 路由融合 → topK。
@@ -35,6 +40,7 @@ import java.util.Objects;
  */
 @Service
 public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeRetrievalServiceImpl.class);
     private static final int DEFAULT_TOP_K = 5;
     private static final int DEFAULT_CANDIDATE_MULTIPLIER = 4;
     private static final double DEFAULT_MIN_SCORE = 0.20;
@@ -62,6 +68,12 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
     private final LlmReranker llmReranker;
     /** 上下文组装器（提案3：邻居增强 + 超预算压缩）；null = 兼容构造下升级前纯拼接。 */
     private final ContextBuilder contextBuilder;
+    /** 多查询变体生成器（提案5 任务 1.1，默认关闭）；null = 兼容构造下不可用。 */
+    private final MultiQueryRewriteService multiQueryRewriteService;
+    /** HyDE 假设答案扩展器（提案5 任务 2.1，默认关闭）；null = 兼容构造下不可用。 */
+    private final HydeQueryExpander hydeQueryExpander;
+    /** 多路并行召回执行器（提案5 任务 1.2）；null = 变体路退化为不可用。 */
+    private final Executor routeExecutor;
 
     @Autowired
     public KnowledgeRetrievalServiceImpl(KnowledgeBaseAuthorizationService authorizationService,
@@ -73,7 +85,10 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
                                          RrfFusion rrfFusion,
                                          DefaultWeightedReranker defaultReranker,
                                          LlmReranker llmReranker,
-                                         ContextBuilder contextBuilder) {
+                                         ContextBuilder contextBuilder,
+                                         MultiQueryRewriteService multiQueryRewriteService,
+                                         HydeQueryExpander hydeQueryExpander,
+                                         @Qualifier("embeddingTaskExecutor") Executor routeExecutor) {
         this.authorizationService = authorizationService;
         this.embeddingService = embeddingService;
         this.vectorStore = vectorStore;
@@ -84,6 +99,25 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
         this.defaultReranker = defaultReranker;
         this.llmReranker = llmReranker;
         this.contextBuilder = contextBuilder;
+        this.multiQueryRewriteService = multiQueryRewriteService;
+        this.hydeQueryExpander = hydeQueryExpander;
+        this.routeExecutor = routeExecutor;
+    }
+
+    /** 兼容构造（提案4 十参）：不接提案5 查询侧增强（多查询/HyDE 关闭）。 */
+    public KnowledgeRetrievalServiceImpl(KnowledgeBaseAuthorizationService authorizationService,
+                                         EmbeddingService embeddingService,
+                                         CrmVectorStore vectorStore,
+                                         RetrievalQueryRewriteService queryRewriteService,
+                                         ObjectProvider<DynamicConfigService> dynamicConfigProvider,
+                                         SparseRecallService sparseRecallService,
+                                         RrfFusion rrfFusion,
+                                         DefaultWeightedReranker defaultReranker,
+                                         LlmReranker llmReranker,
+                                         ContextBuilder contextBuilder) {
+        this(authorizationService, embeddingService, vectorStore, queryRewriteService,
+                dynamicConfigProvider, sparseRecallService, rrfFusion, defaultReranker, llmReranker,
+                contextBuilder, null, null, null);
     }
 
     /** 兼容构造（提案2 九参）：不接上下文组装器（升级前纯拼接行为）。 */
@@ -135,10 +169,33 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
         int candidateLimit = topK * resolveCandidateMultiplier();
         boolean hasImageVector = query.imageVector() != null && query.imageVector().length > 0;
 
-        float[] textVector = embeddingService.embed(retrievalQuery);
+        // 提案5（enhance-query-transformation）路由规划：路由 0 = 原查询，内联执行（嵌入失败
+        // 的异常语义与升级前一致）；多查询变体路并行提交 + HyDE 路向量-only——仅在 RRF 融合
+        // 模式下生效（weighted = 升级前行为，多查询/HyDE 不参与），全部关闭时与提案4 完成态等价。
+        List<List<RetrievalCandidate>> routes = new ArrayList<>();
+        routes.add(recallTextRoute(retrievalQuery, embeddingService.embed(retrievalQuery),
+                knowledgeBaseIds, category, candidateLimit, minScore));
+        boolean multiRouteEnabled = useRrfFusion() && rrfFusion != null;
+        List<CompletableFuture<List<RetrievalCandidate>>> variantFutures = multiRouteEnabled
+                ? submitVariantRoutes(retrievalQuery, knowledgeBaseIds, category, candidateLimit, minScore)
+                : List.of();
+        if (multiRouteEnabled) {
+            addHydeRoute(retrievalQuery, routes, knowledgeBaseIds, category, candidateLimit, minScore);
+        }
+        for (CompletableFuture<List<RetrievalCandidate>> variantFuture : variantFutures) {
+            try {
+                // exceptionally 已把单路失败兜底为空路，join 再兜一层保证"已完成路照常融合"
+                routes.add(variantFuture.join());
+            } catch (RuntimeException exception) {
+                log.warn("多查询路结果获取失败，该路降级跳过: {}", exception.getMessage());
+            }
+        }
+        List<RetrievalCandidate> fusedTextCandidates = routes.size() == 1
+                ? routes.getFirst()
+                : rrfFusion.fuseAll(routes, resolveRrfK());
+
         Reranker reranker = activeReranker();
-        List<RetrievalCandidate> textCandidates = reranker.rerank(retrievalQuery, recallTextRoute(
-                retrievalQuery, textVector, knowledgeBaseIds, category, candidateLimit, minScore));
+        List<RetrievalCandidate> textCandidates = reranker.rerank(retrievalQuery, fusedTextCandidates);
         List<RetrievalCandidate> imageCandidates = hasImageVector ? reranker.rerank(retrievalQuery,
                 recall(retrievalQuery, query.imageVector(), knowledgeBaseIds, category,
                         candidateLimit, minScore)) : List.of();
@@ -179,6 +236,66 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
         return rrfFusion.fuse(vectorCandidates, sparseCandidates, resolveRrfK());
     }
 
+    /**
+     * 多查询变体路（提案5 任务 1.1/1.2）：expand 产出 原始 + N 变体（关闭/失败退化为仅原始），
+     * 变体路经 routeExecutor 并行执行「嵌入 + 文本路召回」，单路失败降级为空路（exceptionally 兜底），
+     * 已完成路照常参与融合；全部失败时路由 0 仍走单查询现行为。
+     */
+    private List<CompletableFuture<List<RetrievalCandidate>>> submitVariantRoutes(String primaryQuery,
+                                                                                  List<Long> knowledgeBaseIds,
+                                                                                  String category,
+                                                                                  int candidateLimit,
+                                                                                  double minScore) {
+        if (multiQueryRewriteService == null || routeExecutor == null) {
+            return List.of();
+        }
+        List<String> queryRoutes;
+        try {
+            queryRoutes = multiQueryRewriteService.expand(primaryQuery);
+        } catch (RuntimeException exception) {
+            log.warn("多查询扩展异常，回退单查询: {}", exception.getMessage());
+            return List.of();
+        }
+        if (queryRoutes.size() <= 1) {
+            return List.of();
+        }
+        return queryRoutes.subList(1, queryRoutes.size()).stream()
+                .map(variantQuery -> CompletableFuture
+                        .supplyAsync(() -> recallTextRoute(variantQuery, embeddingService.embed(variantQuery),
+                                knowledgeBaseIds, category, candidateLimit, minScore), routeExecutor)
+                        .exceptionally(exception -> {
+                            log.warn("多查询路召回失败，降级为已完成路融合: {}", exception.getMessage());
+                            return List.of();
+                        }))
+                .toList();
+    }
+
+    /**
+     * HyDE 路（提案5 任务 2.1）：假设答案<b>只用于产生检索向量</b>（隔离硬约束——该文本
+     * 不进入任何候选/上下文/引用），走纯向量召回（稀疏路对假设文本无意义）。
+     * 生成失败返回 null、嵌入/召回失败吞掉——HyDE 路缺席不影响其他路。
+     */
+    private void addHydeRoute(String primaryQuery,
+                              List<List<RetrievalCandidate>> routes,
+                              List<Long> knowledgeBaseIds,
+                              String category,
+                              int candidateLimit,
+                              double minScore) {
+        if (hydeQueryExpander == null) {
+            return;
+        }
+        String hypothesis = hydeQueryExpander.hypotheticalAnswer(primaryQuery);
+        if (hypothesis == null || hypothesis.isBlank()) {
+            return;
+        }
+        try {
+            float[] hypothesisVector = embeddingService.embed(hypothesis);
+            routes.add(recall(hypothesis, hypothesisVector, knowledgeBaseIds, category, candidateLimit, minScore));
+        } catch (RuntimeException exception) {
+            log.warn("HyDE 路召回失败，该路跳过: {}", exception.getMessage());
+        }
+    }
+
     /** 融合模式开关：仅显式配置 weighted 时回退升级前行为，其余（含未配置）走 RRF 默认。 */
     private boolean useRrfFusion() {
         DynamicConfigService config = dynamicConfigProvider.getIfAvailable();
@@ -193,14 +310,18 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
         return configured == null || configured < 1 ? DEFAULT_RRF_K : configured;
     }
 
-    /** 每个知识库单独过滤，保证授权集合不能被伪造 metadata 放大；类目与授权叠加（只窄化不放大）。 */
+    /**
+     * 每个知识库单独过滤，保证授权集合不能被伪造 metadata 放大；类目与授权叠加（只窄化不放大）。
+     * 提案5（任务 3.1）：衍生问题向量与原块共享 chunkId（命中即回原块），同键命中保留最高分一条，
+     * 防止同切片多向量挤占 topK；无衍生向量时键唯一，行为与升级前逐条一致。
+     */
     private List<RetrievalCandidate> recall(String query,
                                             float[] queryVector,
                                             List<Long> knowledgeBaseIds,
                                             String category,
                                             int candidateLimit,
                                             double minScore) {
-        List<RetrievalCandidate> candidates = new ArrayList<>();
+        Map<String, RetrievalCandidate> uniqueByChunk = new LinkedHashMap<>();
         for (Long knowledgeBaseId : knowledgeBaseIds) {
             Map<String, Object> filter = category == null
                     ? Map.of("knowledgeBaseId", String.valueOf(knowledgeBaseId))
@@ -209,9 +330,11 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
                     .stream()
                     .filter(hit -> hit.text() != null && !hit.text().isBlank())
                     .map(hit -> new RetrievalCandidate(hit, hit.score()))
-                    .forEach(candidates::add);
+                    .forEach(candidate -> uniqueByChunk.merge(candidate.fusionKey(), candidate,
+                            (existing, replacement) -> replacement.rerankScore() > existing.rerankScore()
+                                    ? replacement : existing));
         }
-        return candidates;
+        return List.copyOf(uniqueByChunk.values());
     }
 
     /** 类目归一：null/空白 = 不过滤，其余去首尾空白后参与两路过滤。 */

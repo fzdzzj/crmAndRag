@@ -69,6 +69,47 @@ class RrfFusionTest {
                 .getFirst().hit().chunkId());
         assertEquals("only", fusion.fuse(List.of(candidate("only", 1.0)), null, 60)
                 .getFirst().hit().chunkId());
+        assertTrue(fusion.fuseAll(null, 60).isEmpty());
+    }
+
+    /**
+     * N 路融合手算对照（enhance-query-transformation 任务 1.2）：
+     * r1: A(1) B(2) C(3)；r2: A(1) B(2)；r3: C(1)，k=10：
+     * A = 1/11 + 1/11 = 2/11；B = 1/12 + 1/12 = 2/12；C = 1/13 + 1/11 → 排序 A &gt; C &gt; B。
+     */
+    @Test
+    void multiRouteFusionShouldMatchHandCalculation() {
+        RetrievalCandidate a = candidate("A", 0.9);
+        RetrievalCandidate b = candidate("B", 0.8);
+        RetrievalCandidate c = candidate("C", 0.7);
+        List<RetrievalCandidate> fused = fusion.fuseAll(List.of(
+                List.of(a, b, c),
+                List.of(candidate("A", 0.95), candidate("B", 0.5)),
+                List.of(candidate("C", 0.99))), 10);
+
+        assertEquals(3, fused.size());
+        assertEquals("A", fused.get(0).hit().chunkId());
+        assertEquals("C", fused.get(1).hit().chunkId());
+        assertEquals("B", fused.get(2).hit().chunkId());
+        assertEquals(1.0 / 11 + 1.0 / 11, fused.get(0).rerankScore(), 1e-12,
+                "A = r1 rank1 + r2 rank1");
+        assertEquals(1.0 / 13 + 1.0 / 11, fused.get(1).rerankScore(), 1e-12,
+                "C = r1 rank3 + r3 rank1");
+        assertEquals(1.0 / 12 + 1.0 / 12, fused.get(2).rerankScore(), 1e-12,
+                "B = r1 rank2 + r2 rank2");
+    }
+
+    /** 跨路命中同块：融合分累加、hit 保留先出现路的条目；空路安全跳过。 */
+    @Test
+    void multiRouteShouldAccumulateAndKeepFirstRouteHit() {
+        RetrievalCandidate routeOneHit = candidate("X", 0.6);
+        RetrievalCandidate routeTwoHit = candidate("X", 0.99);
+        List<RetrievalCandidate> fused = fusion.fuseAll(List.of(
+                List.of(routeOneHit), List.of(), List.of(routeTwoHit)), 60);
+
+        assertEquals(1, fused.size());
+        assertEquals(1.0 / 61 + 1.0 / 61, fused.getFirst().rerankScore(), 1e-12);
+        assertEquals(routeOneHit.hit(), fused.getFirst().hit(), "hit 保留先出现路（route0）的条目");
     }
 
     private RetrievalCandidate candidate(String chunkId, double score) {

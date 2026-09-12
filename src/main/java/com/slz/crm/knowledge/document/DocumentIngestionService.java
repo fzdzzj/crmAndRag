@@ -18,6 +18,7 @@ import com.slz.crm.server.mapper.KnowledgeBaseMapper;
 import com.slz.crm.server.mapper.UploadedFileMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
@@ -58,7 +59,10 @@ public class DocumentIngestionService {
     private final CrmVectorStore vectorStore;
     /** 治理审计记录器：重建入库为管理动作，成功/失败/拒绝均须可追溯。 */
     private final GovernanceAuditRecorder auditRecorder;
+    /** 衍生问题旁路（提案5 任务 3.1，默认关闭）；null = 兼容构造下旁路缺席。 */
+    private final DerivedQuestionService derivedQuestionService;
 
+    @Autowired
     public DocumentIngestionService(KnowledgeBaseMapper knowledgeBaseMapper,
                                     UploadedFileMapper uploadedFileMapper,
                                     DocumentVectorChunkMapper chunkMapper,
@@ -67,7 +71,8 @@ public class DocumentIngestionService {
                                     DocumentService documentService,
                                     EmbeddingService embeddingService,
                                     CrmVectorStore vectorStore,
-                                    GovernanceAuditRecorder auditRecorder) {
+                                    GovernanceAuditRecorder auditRecorder,
+                                    DerivedQuestionService derivedQuestionService) {
         this.knowledgeBaseMapper = knowledgeBaseMapper;
         this.uploadedFileMapper = uploadedFileMapper;
         this.chunkMapper = chunkMapper;
@@ -77,6 +82,21 @@ public class DocumentIngestionService {
         this.embeddingService = embeddingService;
         this.vectorStore = vectorStore;
         this.auditRecorder = auditRecorder;
+        this.derivedQuestionService = derivedQuestionService;
+    }
+
+    /** 兼容构造（提案4 九参）：不接衍生问题旁路。 */
+    public DocumentIngestionService(KnowledgeBaseMapper knowledgeBaseMapper,
+                                    UploadedFileMapper uploadedFileMapper,
+                                    DocumentVectorChunkMapper chunkMapper,
+                                    KnowledgeBaseAuthorizationService authorizationService,
+                                    FileStorageService fileStorageService,
+                                    DocumentService documentService,
+                                    EmbeddingService embeddingService,
+                                    CrmVectorStore vectorStore,
+                                    GovernanceAuditRecorder auditRecorder) {
+        this(knowledgeBaseMapper, uploadedFileMapper, chunkMapper, authorizationService,
+                fileStorageService, documentService, embeddingService, vectorStore, auditRecorder, null);
     }
 
     /** 入库前先做知识库写授权；未授权直接拒绝，不做任何文件写入。 */
@@ -104,6 +124,10 @@ public class DocumentIngestionService {
             file.setSegmentCount(savedChunks.size());
             file.setVectorCount(savedChunks.size());
             uploadedFileMapper.updateById(file);
+            // 提案5 任务 3.1：衍生问题旁路（异步，永不抛出；失败=该块退化为普通块）
+            if (derivedQuestionService != null) {
+                derivedQuestionService.submitAfterIngest(file, savedChunks);
+            }
             return new DocumentIngestionResult(
                     file.getId(), documentId, savedChunks.size(), savedChunks.size());
         } catch (RuntimeException exception) {
@@ -152,6 +176,10 @@ public class DocumentIngestionService {
             file.setVectorCount(children.size());
             uploadedFileMapper.updateById(file);
             auditReingest(documentId, user, GovernanceAuditResult.SUCCESS, "segments=" + children.size());
+            // 提案5 任务 3.1/3.4：重建后衍生问题随旁路重新生成（旧衍生向量已随 deleteByDocumentId 清空）
+            if (derivedQuestionService != null) {
+                derivedQuestionService.submitAfterIngest(file, children);
+            }
             return new DocumentIngestionResult(file.getId(), documentId, children.size(), children.size());
         } catch (RuntimeException exception) {
             markFailed(file, documentId, List.of(), exception);

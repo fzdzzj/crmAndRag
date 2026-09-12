@@ -73,3 +73,16 @@
 | `rag.intent.categories` | List&lt;String&gt; | 意图类目清单；检索侧以 `RetrievalQuery.intentCategory` 承接（提案2 任务 2.1 起两路过滤生效） |
 | `rag.intent.keywords` | List&lt;String&gt; | 类目关键词 |
 | `rag.intent.filterEnabled` | Boolean | 意图过滤开关 |
+
+## rag.query.* —— 查询侧增强（提案5 新增，enhance-query-transformation，默认全关）
+
+| 键 | 类型 | 默认值 | 语义与回退 |
+|---|---|---|---|
+| `rag.query.multi-query.enabled` | Boolean | false | 多查询变体开关（方案07 增强）。开启后对主查询一次 LLM 生成 N 变体，N+1 路并行召回 → RRF 融合（`RrfFusion.fuseAll`）→ 单一重排。关闭/LLM 失败/空输出回退单查询（现行为）；`fusion.mode=weighted` 时本增强不参与 |
+| `rag.query.multi-query.variants` | Integer | 3 | 变体数量，钳位 1~5（防 runaway 成本）；越界回落默认 |
+| `rag.query.hyde.enabled` | Boolean | false | HyDE 假设答案开关（方案15）。开启后生成假设答案→嵌入→纯向量召回路，与原查询路 RRF 融合。假设答案只用于检索向量，绝不进入生成上下文/SourceReference；关闭/失败/超时回退原查询路 |
+| `rag.query.hyde.timeout-ms` | Long | 3000 | HyDE 生成等待超时；超时跳过 HyDE 路 |
+| `rag.query.derived-questions.enabled` | Boolean | false | 衍生问题入库旁路开关（方案06）。开启后入库/重建成功后异步每块生成反向问题→嵌入→向量记录关联原块 chunkId（命中即回原块，`VectorRecord.text` 保持原块原文）。关闭=无衍生向量（回退现行为） |
+| `rag.query.derived-questions.max-per-chunk` | Integer | 2 | 每块反向问题上限，钳位 1~5 |
+
+> 衍生问题旁路线程池不走 DynamicConfig，是 Spring 配置：`platform.async.derived-questions.queue-capacity`（默认 64）/`platform.async.derived-questions.await-termination-ms`（默认 10000）；队列饱和丢弃（discard-log）=该文档退化为无衍生向量，不阻塞入库主链。

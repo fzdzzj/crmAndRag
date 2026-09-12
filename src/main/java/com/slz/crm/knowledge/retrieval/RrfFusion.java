@@ -32,15 +32,28 @@ public class RrfFusion {
     public List<RetrievalCandidate> fuse(List<RetrievalCandidate> vectorRoute,
                                          List<RetrievalCandidate> sparseRoute,
                                          int k) {
-        boolean hasVector = vectorRoute != null && !vectorRoute.isEmpty();
-        boolean hasSparse = sparseRoute != null && !sparseRoute.isEmpty();
-        if (!hasVector && !hasSparse) {
+        // Arrays.asList 兼容调用方传 null 路（既有契约：缺路安全跳过），List.of 拒绝 null 元素
+        return fuseAll(java.util.Arrays.asList(vectorRoute, sparseRoute), k);
+    }
+
+    /**
+     * N 路融合（enhance-query-transformation 任务 1.2，多查询/HyDE 路复用同一融合语义）：
+     * 每路独立按路内分数降序取排名（1 起），切片融合分 = {@code Σ_路 1/(k + rank)}；
+     * 同一切片（fusionKey 相同）跨路命中得分累加，hit 保留先出现路的条目。
+     * 空路/null 路安全跳过；全部为空返回空列表。
+     */
+    public List<RetrievalCandidate> fuseAll(List<List<RetrievalCandidate>> routes, int k) {
+        if (routes == null || routes.isEmpty()) {
             return List.of();
         }
         Map<String, Double> scores = new HashMap<>();
         Map<String, RetrievalCandidate> hits = new LinkedHashMap<>();
-        accumulate(scores, hits, vectorRoute, k);
-        accumulate(scores, hits, sparseRoute, k);
+        for (List<RetrievalCandidate> route : routes) {
+            accumulate(scores, hits, route, k);
+        }
+        if (scores.isEmpty()) {
+            return List.of();
+        }
         return scores.entrySet().stream()
                 .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
                 .map(entry -> new RetrievalCandidate(hits.get(entry.getKey()).hit(), entry.getValue()))

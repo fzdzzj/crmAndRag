@@ -141,6 +141,25 @@ public class PlatformAsyncConfig {
         return new MemoryBypassTaskExecutor(executor, meterRegistry);
     }
 
+    /**
+     * 衍生问题旁路线程池（enhance-query-transformation 任务 3.1）：入库主链成功后的
+     * 反向问题生成/嵌入旁路。队列饱和时丢弃（discard-log）——衍生问题缺失等价于
+     * 该块退化为普通块，绝不拖累入库主链。
+     *
+     * @param meterRegistry Micrometer 注册表
+     * @param queueCapacity 有界队列容量，默认 64
+     * @param awaitTerminationMillis 优雅关停等待毫秒数
+     * @return 衍生问题旁路执行器
+     */
+    @Bean("derivedQuestionBypassThreadPool")
+    public ThreadPoolTaskExecutor derivedQuestionBypassThreadPool(
+            MeterRegistry meterRegistry,
+            @Value("${platform.async.derived-questions.queue-capacity:64}") int queueCapacity,
+            @Value("${platform.async.derived-questions.await-termination-ms:10000}") long awaitTerminationMillis) {
+        return buildExecutor("platform-derived-questions", 1, 2, queueCapacity,
+                awaitTerminationMillis, "discard-log", meterRegistry);
+    }
+
     static ThreadPoolTaskExecutor buildExecutor(String prefix,
                                                 int coreSize,
                                                 int maxSize,
