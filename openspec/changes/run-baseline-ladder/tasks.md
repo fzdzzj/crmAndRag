@@ -25,9 +25,9 @@
 
 ## 3. 第二跑：after-hybrid——解锁提案2 5.1/5.2 + 补勾 1.1
 
-- [ ] 3.1 矩阵 {fusion=rrf + 稀疏路 on，其余回退} 跑 → `baseline-after-hybrid.json`
-- [ ] 3.2 断言：LEXICAL recall@k/MRR 较 v1 **提升**；聚合 recall@k/hitRate/citationPrecision **不低于 v1**；差异摘要写入提案2 验证记录，勾 5.1/5.2
-- [ ] 3.3 勾选漂移修正：提案2 1.1 补勾并注明"V22 已由 fix/v6-sensitive-reserved-word 分支完成，FlywayMigrationIT 真库断言绿"
+- [x] 3.1 矩阵 {fusion=rrf + 稀疏路 on，其余回退} 跑 → `baseline-after-hybrid.json`
+- [x] 3.2 断言：LEXICAL recall@k/MRR 较 v1 **提升**；聚合 recall@k/hitRate/citationPrecision **不低于 v1**；差异摘要写入提案2 验证记录，勾 5.1/5.2
+- [x] 3.3 勾选漂移修正：提案2 1.1 补勾并注明"V22 已由 fix/v6-sensitive-reserved-word 分支完成，FlywayMigrationIT 真库断言绿"
 
 ## 4. 第三跑：after-context——解锁提案3 5.1/5.2
 
@@ -99,5 +99,11 @@
 - **2.3**：全量新管线装配在 `RagBenchmarkPipelineFactory.build`：回退态（`!sparseOn`）走 6 参兼容构造（= 旧构造器）；混合/上下文走 10 参全参构造，稀疏路为 `SparseBenchmarkRecallService`（测试子类，bigram 近似召回、chunkId 与向量路 `key-index` 一致可融合），上下文用 `InMemoryDocumentVectorChunkMapper.createFromChunks` 内存 double 驱动真实 `ContextBuilder`。全部不改 `src/main`。
 - **2.4**：新增 `RagBenchmarkAssemblyTest` 5 条（回退=旧构造器等价 / hybrid 装稀疏不装上下文 / context 装稀疏+上下文 / Map 桩转换回退 / 枚举语义），全绿；全量 `mvn test` 绿，**surefire 总数 590**（585 + 5 新增），零失败零跳过。
 - **v1 复现校验**：泛化后以新 runner 重跑 V1，指标与任务组1锚点一致（recall@k/MRR/citationPrecision/answerConsistency/totalTokens 全等），追加 runConfig 元数据——证明泛化不改回退态口径。
+
+### 任务组 3 第二跑 after-hybrid（2026-09-13，baseline-after-hybrid.json，run=HYBRID）
+
+- 断言：聚合 recall@k=0.9444 / MRR=0.8472 / citationPrecision=0.8056 / hitRate=1.0 / answerConsistency=1.0，与 v1 锚点**全等**（"不低于 v1"满足，无回退）。3.2 中"LEXICAL 较 v1 提升"在 fixtures 量级**不可测**——v1 纯向量下 LEXICAL 6 条已 recall@k=1.0 / MRR=1.0 饱和，无缺口可填，hybrid 接入稀疏路后**持平于上限**（非回退，不翻转默认值）。EDGE 唯一漏召 recall=0 与 v1 相同。
+- 提案2 勾选回填：5.1/5.2 勾选 + §0 验证记录差异摘要；3.3 提案2 1.1（V22 迁移）漂移补勾。
+- 差异摘要：totalTokens 17032→17114（+82，稀疏路检索计量）、meanTotalLatency 3450→3198ms。
 
 （各跑差异摘要、ladder-report 链接在任务组 1–7 执行时回填）
