@@ -11,7 +11,10 @@ import com.slz.crm.knowledge.document.DocumentService;
 import com.slz.crm.knowledge.embedding.EmbeddingService;
 import com.slz.crm.knowledge.entity.DocumentVectorChunkEntity;
 import com.slz.crm.knowledge.entity.KnowledgeBaseEntity;
+import com.slz.crm.knowledge.entity.UploadedFileEntity;
 import com.slz.crm.knowledge.storage.FileStorageService;
+import com.slz.crm.platform.audit.GovernanceAuditRecorder;
+import com.slz.crm.platform.audit.GovernanceAuditResult;
 import com.slz.crm.platform.contract.CrmVectorStore;
 import com.slz.crm.platform.contract.UserContext;
 import com.slz.crm.platform.contract.VectorRecord;
@@ -30,6 +33,7 @@ import org.mockito.quality.Strictness;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -65,6 +69,8 @@ class DocumentIngestionServiceTest {
     private EmbeddingService embeddingService;
     @Mock
     private CrmVectorStore vectorStore;
+    @Mock
+    private GovernanceAuditRecorder auditRecorder;
 
     @BeforeEach
     void setUp() {
@@ -84,11 +90,14 @@ class DocumentIngestionServiceTest {
         when(embeddingService.embed(anyString())).thenReturn(new float[]{1f, 0f});
     }
 
+    private DocumentIngestionService service() {
+        return new DocumentIngestionService(knowledgeBaseMapper, uploadedFileMapper, chunkMapper,
+                authorizationService, fileStorageService, documentService, embeddingService,
+                vectorStore, auditRecorder);
+    }
+
     private DocumentIngestionResult ingest(DocumentChunk... chunks) {
-        DocumentIngestionService service = new DocumentIngestionService(
-                knowledgeBaseMapper, uploadedFileMapper, chunkMapper, authorizationService,
-                fileStorageService, documentService, embeddingService, vectorStore);
-        return service.ingest(new DocumentIngestionCommand(
+        return service().ingest(new DocumentIngestionCommand(
                 1L, USER, "a.txt", "text/plain", 100L, "crm", null,
                 new ByteArrayInputStream("file-body".getBytes(StandardCharsets.UTF_8))));
     }
@@ -189,5 +198,126 @@ class DocumentIngestionServiceTest {
                 })
                 .extracting(DocumentVectorChunkEntity::getChunkIndex)
                 .containsExactly(0, 1, 2);
+    }
+
+    // ---------------------------------------------------------------- reingest（任务 4.1/4.2/4.3）
+
+    /** 任务 4.2：同一文档连续两次重建，切片集合（文本+锚点+父子关系）完全一致。 */
+    @Test
+    void reingestIsIdempotentOnChunkSet() throws Exception {
+        when(uploadedFileMapper.selectOne(any())).thenReturn(existingFile());
+        when(chunkMapper.selectOne(any())).thenReturn(oldRow("doc-9", "crm"));
+        when(documentService.process(any(), eq("a.txt"), eq("crm"))).thenReturn(List.of(
+                new DocumentChunk("段切片一", 0, 2, null, "crm", List.of(), "段全文内容"),
+                new DocumentChunk("段切片二", 1, 2, null, "crm", List.of(), "段全文内容"),
+                new DocumentChunk("独立切片", 2, 3, null, "crm", List.of(), null)));
+
+        List<Map<String, Object>> firstRun = runReingestCaptureChunkSet();
+        List<Map<String, Object>> secondRun = runReingestCaptureChunkSet();
+
+        org.assertj.core.api.Assertions.assertThat(secondRun)
+                .as("两次重建的切片集合（文本+锚点+父子关系）必须一致")
+                .containsExactlyElementsOf(firstRun);
+        // 成功重建落 SUCCESS 审计（任务 4.3）
+        org.mockito.Mockito.verify(auditRecorder, org.mockito.Mockito.atLeastOnce()).record(
+                org.mockito.ArgumentMatchers.argThat(event ->
+                        DocumentIngestionService.REINGEST_EVENT_TYPE.equals(event.eventType())
+                                && GovernanceAuditResult.SUCCESS.equals(event.result())
+                                && "doc-9".equals(event.targetId())
+                                && "user:1".equals(event.actorUserRef())));
+    }
+
+    /** 重建失败（嵌入阶段）：物理清切片 + 清向量 + 文档标 FAILED 可重试 + FAILED 审计。 */
+    @Test
+    void reingestFailureCleansChunksAndVectorsAndMarksFailed() throws Exception {
+        when(uploadedFileMapper.selectOne(any())).thenReturn(existingFile());
+        when(chunkMapper.selectOne(any())).thenReturn(oldRow("doc-9", "crm"));
+        when(documentService.process(any(), eq("a.txt"), eq("crm"))).thenReturn(List.of(
+                new DocumentChunk("第一块", 0, 1, null, "crm", List.of(), null),
+                new DocumentChunk("第二块", 1, 1, null, "crm", List.of(), null)));
+        when(embeddingService.embed(anyString()))
+                .thenReturn(new float[]{1f})
+                .thenThrow(new IllegalStateException("嵌入服务超时"));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service().reingest("doc-9", USER))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("嵌入服务超时");
+
+        // markFailed 清理语义：向量与切片清理（不留半量），文档标 FAILED 且可重试
+        org.mockito.Mockito.verify(vectorStore, org.mockito.Mockito.atLeastOnce()).deleteByDocumentId("doc-9");
+        org.mockito.Mockito.verify(chunkMapper, org.mockito.Mockito.atLeastOnce())
+                .deletePhysicallyByDocumentId("doc-9");
+        ArgumentCaptor<UploadedFileEntity> updates = ArgumentCaptor.forClass(UploadedFileEntity.class);
+        org.mockito.Mockito.verify(uploadedFileMapper, org.mockito.Mockito.atLeastOnce()).updateById(updates.capture());
+        assertThat(updates.getValue().getStatus()).isEqualTo("FAILED");
+        assertThat(updates.getValue().getErrorMessage()).contains("嵌入服务超时");
+        org.mockito.Mockito.verify(auditRecorder).record(org.mockito.ArgumentMatchers.argThat(event ->
+                GovernanceAuditResult.FAILED.equals(event.result()) && "doc-9".equals(event.targetId())));
+    }
+
+    /** 授权拒绝：无知识库写权限不触碰任何数据，落 DENIED 审计。 */
+    @Test
+    void reingestWithoutKbWritePermissionIsDeniedAndAudited() {
+        when(uploadedFileMapper.selectOne(any())).thenReturn(existingFile());
+        when(authorizationService.canWrite(any(), eq(USER))).thenReturn(false);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service().reingest("doc-9", USER))
+                .isInstanceOf(SecurityException.class);
+
+        org.mockito.Mockito.verify(chunkMapper, org.mockito.Mockito.never())
+                .deletePhysicallyByDocumentId(org.mockito.ArgumentMatchers.anyString());
+        org.mockito.Mockito.verify(vectorStore, org.mockito.Mockito.never()).deleteByDocumentId(org.mockito.ArgumentMatchers.anyString());
+        org.mockito.Mockito.verify(auditRecorder).record(org.mockito.ArgumentMatchers.argThat(event ->
+                GovernanceAuditResult.DENIED.equals(event.result()) && "doc-9".equals(event.targetId())));
+    }
+
+    /** 单次重建的切片集合快照：文本+锚点+角色+父块链接（父块经 id 解析为文本），id 序列每次重置保证可比。 */
+    private List<Map<String, Object>> runReingestCaptureChunkSet() throws Exception {
+        java.util.concurrent.atomic.AtomicInteger idSequence = new java.util.concurrent.atomic.AtomicInteger(100);
+        List<DocumentVectorChunkEntity> inserted = new java.util.ArrayList<>();
+        when(chunkMapper.insert(any(DocumentVectorChunkEntity.class))).thenAnswer(invocation -> {
+            DocumentVectorChunkEntity entity = invocation.getArgument(0);
+            entity.setId((long) idSequence.getAndIncrement());
+            inserted.add(entity);
+            return 1;
+        });
+        service().reingest("doc-9", USER);
+        Map<Long, String> textById = new java.util.HashMap<>();
+        for (DocumentVectorChunkEntity entity : inserted) {
+            textById.put(entity.getId(), entity.getChunkText());
+        }
+        return inserted.stream()
+                .map(entity -> Map.<String, Object>of(
+                        "text", entity.getChunkText(),
+                        "pageNo", entity.getPageNo() == null ? -1 : entity.getPageNo(),
+                        "rowIndex", entity.getRowIndex() == null ? -1 : entity.getRowIndex(),
+                        "chunkIndex", entity.getChunkIndex(),
+                        "role", entity.getChunkRole(),
+                        "parentText", entity.getParentChunkId() == null ? "" : textById.get(entity.getParentChunkId())))
+                .toList();
+    }
+
+    private UploadedFileEntity existingFile() {
+        UploadedFileEntity file = new UploadedFileEntity();
+        file.setId(55L);
+        file.setDocumentId("doc-9");
+        file.setFilename("a.txt");
+        file.setOriginalFilename("a.txt");
+        file.setFileType("txt");
+        file.setStorageKey("storage-key-9");
+        file.setKnowledgeBase("1");
+        file.setStatus("COMPLETED");
+        return file;
+    }
+
+    private DocumentVectorChunkEntity oldRow(String documentId, String category) {
+        DocumentVectorChunkEntity row = new DocumentVectorChunkEntity();
+        row.setId(1L);
+        row.setDocumentId(documentId);
+        row.setChunkIndex(0);
+        row.setChunkText("旧切片");
+        row.setCategory(category);
+        row.setChunkRole("CHILD");
+        return row;
     }
 }

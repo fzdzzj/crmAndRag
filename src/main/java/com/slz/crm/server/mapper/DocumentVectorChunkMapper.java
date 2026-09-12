@@ -3,6 +3,7 @@ package com.slz.crm.server.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.slz.crm.knowledge.entity.DocumentVectorChunkEntity;
 import com.slz.crm.knowledge.retrieval.SparseChunkRow;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -12,6 +13,16 @@ import java.util.List;
 /** 文档向量切片快照表 Mapper。 */
 @Mapper
 public interface DocumentVectorChunkMapper extends BaseMapper<DocumentVectorChunkEntity> {
+
+    /**
+     * 物理删除文档全部切片行（提案4 任务 4.1，reingest 幂等前置）。
+     *
+     * <p>{@link BaseMapper#delete} 走 {@code @TableLogic} 软删，软删行仍占用
+     * {@code uk(document_id, chunk_index)}，同 documentId 重建插入会撞唯一键——
+     * 重建与失败清理必须物理删，保证"不留半量、可重试"。</p>
+     */
+    @Delete("DELETE FROM document_vector_chunk WHERE document_id = #{documentId}")
+    int deletePhysicallyByDocumentId(@Param("documentId") String documentId);
 
     /**
      * 语料级全文检索（方案16补全，complete-hybrid-retrieval-and-rerank 任务 1.3）：

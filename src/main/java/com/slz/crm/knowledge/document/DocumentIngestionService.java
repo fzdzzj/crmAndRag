@@ -7,7 +7,11 @@ import com.slz.crm.knowledge.entity.DocumentVectorChunkEntity;
 import com.slz.crm.knowledge.entity.KnowledgeBaseEntity;
 import com.slz.crm.knowledge.entity.UploadedFileEntity;
 import com.slz.crm.knowledge.storage.FileStorageService;
+import com.slz.crm.platform.audit.GovernanceAuditEvent;
+import com.slz.crm.platform.audit.GovernanceAuditRecorder;
+import com.slz.crm.platform.audit.GovernanceAuditResult;
 import com.slz.crm.platform.contract.CrmVectorStore;
+import com.slz.crm.platform.contract.UserContext;
 import com.slz.crm.platform.contract.VectorRecord;
 import com.slz.crm.server.mapper.DocumentVectorChunkMapper;
 import com.slz.crm.server.mapper.KnowledgeBaseMapper;
@@ -29,6 +33,9 @@ import java.util.UUID;
 
 /**
  * 文档入库编排：存储 → 解析分块 → 嵌入 → DB 快照 → 向量库。
+ *
+ * <p>提案4 扩展：摄取侧块头注入（任务 2.1）、语义切分父块行落库（任务 3.2）、
+ * 按文档幂等重建 {@link #reingest}（任务 4.1，失败复用 markFailed 清理语义并落平台审计）。</p>
  */
 @Service
 public class DocumentIngestionService {
@@ -37,6 +44,9 @@ public class DocumentIngestionService {
     /** 切片角色（V23 chunk_role）：CHILD=检索单元，PARENT=生成单元父块行。 */
     static final String CHUNK_ROLE_CHILD = "CHILD";
     static final String CHUNK_ROLE_PARENT = "PARENT";
+    /** 重建入库审计事件类型/动作口径（任务 4.3）。 */
+    public static final String REINGEST_EVENT_TYPE = "KNOWLEDGE_REINGEST";
+    public static final String REINGEST_ACTION = "reingest";
 
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final UploadedFileMapper uploadedFileMapper;
@@ -46,6 +56,8 @@ public class DocumentIngestionService {
     private final DocumentService documentService;
     private final EmbeddingService embeddingService;
     private final CrmVectorStore vectorStore;
+    /** 治理审计记录器：重建入库为管理动作，成功/失败/拒绝均须可追溯。 */
+    private final GovernanceAuditRecorder auditRecorder;
 
     public DocumentIngestionService(KnowledgeBaseMapper knowledgeBaseMapper,
                                     UploadedFileMapper uploadedFileMapper,
@@ -54,7 +66,8 @@ public class DocumentIngestionService {
                                     FileStorageService fileStorageService,
                                     DocumentService documentService,
                                     EmbeddingService embeddingService,
-                                    CrmVectorStore vectorStore) {
+                                    CrmVectorStore vectorStore,
+                                    GovernanceAuditRecorder auditRecorder) {
         this.knowledgeBaseMapper = knowledgeBaseMapper;
         this.uploadedFileMapper = uploadedFileMapper;
         this.chunkMapper = chunkMapper;
@@ -63,6 +76,7 @@ public class DocumentIngestionService {
         this.documentService = documentService;
         this.embeddingService = embeddingService;
         this.vectorStore = vectorStore;
+        this.auditRecorder = auditRecorder;
     }
 
     /** 入库前先做知识库写授权；未授权直接拒绝，不做任何文件写入。 */
@@ -85,25 +99,13 @@ public class DocumentIngestionService {
         List<DocumentVectorChunkEntity> savedChunks = new ArrayList<>();
         try (InputStream storedContent = fileStorageService.open(storageKey)) {
             List<DocumentChunk> chunks = documentService.process(storedContent, command.filename(), command.category());
-            vectorStore.deleteByDocumentId(documentId);
-            savedChunks.addAll(persistChunks(file, chunks));
-            List<VectorRecord> vectorRecords = new ArrayList<>(savedChunks.size());
-            for (DocumentVectorChunkEntity entity : savedChunks) {
-                // 块头只进嵌入输入（方案05）：文件名/类目/页级锚点给碎片块全局视野；
-                // DB chunk_text 与 VectorRecord.text 保持原文，引用展示不受前缀污染（任务 2.1）
-                String embedText = ChunkHeaderText.wrap(file.getOriginalFilename(),
-                        entity.getCategory(), entity.getPageNo(), entity.getRowIndex(), entity.getChunkText());
-                float[] embedding = embeddingService.embed(embedText);
-                vectorRecords.add(createVectorRecord(file, entity, command, embedding));
-            }
-            vectorStore.upsertAll(vectorRecords);
-
+            savedChunks.addAll(chunkEmbedAndWrite(file, chunks));
             file.setStatus("COMPLETED");
             file.setSegmentCount(savedChunks.size());
-            file.setVectorCount(vectorRecords.size());
+            file.setVectorCount(savedChunks.size());
             uploadedFileMapper.updateById(file);
             return new DocumentIngestionResult(
-                    file.getId(), documentId, savedChunks.size(), vectorRecords.size());
+                    file.getId(), documentId, savedChunks.size(), savedChunks.size());
         } catch (RuntimeException exception) {
             markFailed(file, documentId, savedChunks, exception);
             throw exception;
@@ -112,6 +114,96 @@ public class DocumentIngestionService {
             markFailed(file, documentId, savedChunks, wrapped);
             throw wrapped;
         }
+    }
+
+    /**
+     * 按文档重建入库（提案4 任务 4.1，方案02/05 上线后存量迁移的幂等入口）：
+     * 同一 documentId 重切分 → 重嵌入 → 重写 DB 与向量库；失败复用 {@link #markFailed}
+     * 清理语义（清向量+物理清切片+标 FAILED 可重试，不留半量检索结果）。
+     *
+     * <p>授权：仅知识库写授权用户可触发（超管/库主/成员写角色）；类目沿用旧切片行的
+     * 快照（uploaded_file 不落类目，保证重建不改检索过滤口径）。每次触发（成功/失败/拒绝）
+     * 均落平台治理审计（任务 4.3）。</p>
+     */
+    public DocumentIngestionResult reingest(String documentId, UserContext user) {
+        Objects.requireNonNull(documentId, "documentId 不能为空");
+        Objects.requireNonNull(user, "UserContext 不能为空");
+        UploadedFileEntity file = uploadedFileMapper.selectOne(new QueryWrapper<UploadedFileEntity>()
+                .eq("document_id", documentId).last("LIMIT 1"));
+        if (file == null) {
+            throw new IllegalArgumentException("待重建文档不存在: " + documentId);
+        }
+        KnowledgeBaseEntity knowledgeBase = knowledgeBaseMapper.selectById(Long.valueOf(file.getKnowledgeBase()));
+        if (knowledgeBase == null || !authorizationService.canWrite(knowledgeBase, user)) {
+            auditReingest(documentId, user, GovernanceAuditResult.DENIED, "无知识库写权限");
+            throw new SecurityException("无知识库写入权限: " + file.getKnowledgeBase());
+        }
+        String category = legacyCategoryOf(documentId);
+        file.setStatus("PROCESSING");
+        file.setErrorMessage(null);
+        uploadedFileMapper.updateById(file);
+        try (InputStream storedContent = fileStorageService.open(file.getStorageKey())) {
+            List<DocumentChunk> chunks = documentService.process(storedContent, file.getOriginalFilename(), category);
+            // 幂等重建前置：物理删旧切片行（软删行仍占 uk(document_id, chunk_index)），向量统一在写库前清
+            chunkMapper.deletePhysicallyByDocumentId(documentId);
+            List<DocumentVectorChunkEntity> children = chunkEmbedAndWrite(file, chunks);
+            file.setStatus("COMPLETED");
+            file.setSegmentCount(children.size());
+            file.setVectorCount(children.size());
+            uploadedFileMapper.updateById(file);
+            auditReingest(documentId, user, GovernanceAuditResult.SUCCESS, "segments=" + children.size());
+            return new DocumentIngestionResult(file.getId(), documentId, children.size(), children.size());
+        } catch (RuntimeException exception) {
+            markFailed(file, documentId, List.of(), exception);
+            auditReingest(documentId, user, GovernanceAuditResult.FAILED, shortMessage(exception));
+            throw exception;
+        } catch (Exception exception) {
+            RuntimeException wrapped = new IllegalStateException("文档重建入库失败", exception);
+            markFailed(file, documentId, List.of(), wrapped);
+            auditReingest(documentId, user, GovernanceAuditResult.FAILED, shortMessage(wrapped));
+            throw wrapped;
+        }
+    }
+
+    /**
+     * 切片落库 + 嵌入 + 向量写库的公共尾段（ingest 新文档与 reingest 重建共用）。
+     * 返回已落库子块行（即向量记录与计数口径；父块行不嵌入）。
+     */
+    private List<DocumentVectorChunkEntity> chunkEmbedAndWrite(UploadedFileEntity file, List<DocumentChunk> chunks) {
+        vectorStore.deleteByDocumentId(file.getDocumentId());
+        List<DocumentVectorChunkEntity> children = persistChunks(file, chunks);
+        List<VectorRecord> vectorRecords = new ArrayList<>(children.size());
+        for (DocumentVectorChunkEntity entity : children) {
+            // 块头只进嵌入输入（方案05）：文件名/类目/页级锚点给碎片块全局视野；
+            // DB chunk_text 与 VectorRecord.text 保持原文，引用展示不受前缀污染（任务 2.1）
+            String embedText = ChunkHeaderText.wrap(file.getOriginalFilename(),
+                    entity.getCategory(), entity.getPageNo(), entity.getRowIndex(), entity.getChunkText());
+            float[] embedding = embeddingService.embed(embedText);
+            vectorRecords.add(createVectorRecord(file, entity, embedding));
+        }
+        vectorStore.upsertAll(vectorRecords);
+        return children;
+    }
+
+    /** 重建沿用的旧类目快照：取旧切片行首个非空类目；无历史行（上次失败在切分前）返回 null。 */
+    private String legacyCategoryOf(String documentId) {
+        try {
+            DocumentVectorChunkEntity row = chunkMapper.selectOne(new QueryWrapper<DocumentVectorChunkEntity>()
+                    .eq("document_id", documentId)
+                    .isNotNull("category")
+                    .last("LIMIT 1"));
+            return row == null ? null : row.getCategory();
+        } catch (Exception exception) {
+            log.warn("读取旧切片类目失败，重建按无类目继续 documentId={}", documentId, exception);
+            return null;
+        }
+    }
+
+    /** 重建入库审计（任务 4.3）：record 内部吞异常不阻断业务，这里不重复兜底。 */
+    private void auditReingest(String documentId, UserContext user,
+                               GovernanceAuditResult result, String detail) {
+        auditRecorder.record(new GovernanceAuditEvent(
+                REINGEST_EVENT_TYPE, user.userIdRef(), "uploaded_file", documentId, REINGEST_ACTION, result, detail));
     }
 
     private UploadedFileEntity createUploadedFile(DocumentIngestionCommand command,
@@ -227,11 +319,10 @@ public class DocumentIngestionService {
     /** point id 使用 UUID；chunkId 使用 DB 主键，保证前端引用与 DB 可回查。 */
     private VectorRecord createVectorRecord(UploadedFileEntity file,
                                             DocumentVectorChunkEntity entity,
-                                            DocumentIngestionCommand command,
                                             float[] embedding) {
         Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("knowledgeBaseId", String.valueOf(command.knowledgeBaseId()));
-        metadata.put("category", command.category() == null ? "" : command.category());
+        metadata.put("knowledgeBaseId", file.getKnowledgeBase());
+        metadata.put("category", entity.getCategory() == null ? "" : entity.getCategory());
         metadata.put("filename", file.getOriginalFilename());
         metadata.put("fileType", file.getFileType());
         metadata.put("pageNo", entity.getPageNo() == null ? 0L : entity.getPageNo().longValue());
@@ -247,7 +338,7 @@ public class DocumentIngestionService {
                 metadata);
     }
 
-    /** 失败时保留原始文件和 DB 记录，清理向量与 DB 切片，避免半量检索结果。 */
+    /** 失败时保留原始文件和 DB 记录，清理向量与切片（物理删，保证重建可重试不留半量）。 */
     private void markFailed(UploadedFileEntity file,
                             String documentId,
                             List<DocumentVectorChunkEntity> savedChunks,
@@ -258,7 +349,7 @@ public class DocumentIngestionService {
             log.warn("入库失败后清理向量失败 documentId={}", documentId, cleanupException);
         }
         try {
-            chunkMapper.delete(new QueryWrapper<DocumentVectorChunkEntity>().eq("document_id", documentId));
+            chunkMapper.deletePhysicallyByDocumentId(documentId);
         } catch (Exception cleanupException) {
             log.warn("入库失败后清理切片失败 documentId={}", documentId, cleanupException);
         }
