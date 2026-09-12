@@ -114,7 +114,9 @@ class FlywayMigrationIT {
             String ddl = rs.getString(2);
             assertTrue(ddl.contains("FULLTEXT KEY `ft_chunk_text`"),
                     "V22 应建出 ft_chunk_text 全文索引，实际 DDL：" + ddl);
-            assertTrue(ddl.toLowerCase(java.util.Locale.ROOT).contains("with parser ngram"),
+            // SHOW CREATE TABLE 会把 parser 名渲染成带反引号的 `ngram`（位于 /*!50100 条件注释内），归一化后再匹配
+            String normalizedDdl = ddl.toLowerCase(java.util.Locale.ROOT).replace("`", "");
+            assertTrue(normalizedDdl.contains("with parser ngram"),
                     "全文索引必须使用 ngram parser（中文 bigram），实际 DDL：" + ddl);
         }
     }

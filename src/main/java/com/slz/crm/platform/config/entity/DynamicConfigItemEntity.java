@@ -43,7 +43,8 @@ public class DynamicConfigItemEntity {
     /** 配置项含义与影响面说明（超管界面展示） */
     private String description;
 
-    /** 是否敏感值（true=管理端读取/审计掩码） */
+    /** 是否敏感值（true=管理端读取/审计掩码）；列名是 MySQL 8.0 保留字（8.0.36 实测裸用语法错误），必须反引号包裹 */
+    @TableField("`sensitive`")
     private Boolean sensitive;
 
     /** 当前版本号（每次变更/回滚 +1） */

@@ -22,7 +22,6 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -95,8 +94,13 @@ class ChunkNgramRecallGateIT {
                 mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword())) {
             migrate(connection);
             Set<String> discoveredGoldIds = ingestLexicalCorpus(connection);
-            assertEquals(EXPECTED_GOLD_IDS, discoveredGoldIds,
-                    "黄金标记发现集与预期不符——语料装配有问题，闸门断言对象不成立");
+            // 干扰项 fixtures（sales-flow/payment-plan）与基准套件共用、自带各自 GOLD 标记，
+            // 发现集必然超集；闸门只要求 LEXICAL 黄金标记全部被发现（语料装配哨兵）
+            List<String> missingGoldIds = EXPECTED_GOLD_IDS.stream()
+                    .filter(id -> !discoveredGoldIds.contains(id))
+                    .toList();
+            assertTrue(missingGoldIds.isEmpty(),
+                    "LEXICAL 黄金标记未全部被发现——语料装配有问题，闸门断言对象不成立，缺失：" + missingGoldIds);
 
             List<String> misses = new ArrayList<>();
             for (String[] lexicalCase : LEXICAL_CASES) {
