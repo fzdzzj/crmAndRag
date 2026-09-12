@@ -21,7 +21,7 @@
 
 ## 4. 消费侧参数化
 
-- [ ] 4.1 `AiChatKnowledgeRetrievalService` 硬编码 topK=4 → 读 `rag.retrieval.topK`（默认回退 4）；单测覆盖配置生效与缺省回退
+- [x] 4.1 `AiChatKnowledgeRetrievalService` 硬编码 topK=4 → 读 `rag.retrieval.topK`（默认回退 4）；单测覆盖配置生效与缺省回退
 
 ## 5. 基线验收（对照 add-rag-quality-baseline）
 

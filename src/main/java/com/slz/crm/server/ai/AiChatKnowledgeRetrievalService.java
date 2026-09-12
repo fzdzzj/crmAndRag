@@ -1,5 +1,6 @@
 package com.slz.crm.server.ai;
 
+import com.slz.crm.platform.contract.DynamicConfigService;
 import com.slz.crm.platform.contract.SourceReference;
 import com.slz.crm.server.ai.port.KnowledgeRetrievalPort;
 import lombok.extern.slf4j.Slf4j;
@@ -13,6 +14,9 @@ import java.util.List;
  *
  * <p>KB OFF 绝不触发检索，也绝不注入未命中提示；KB ON 零命中时注入诚实生成的标记，
  * 避免旧 RAG 的“强制兜底一句未检索到”。B 生产实现合入后只需替换 port 实现。</p>
+ *
+ * <p>topK 参数化（add-context-compression-and-enrichment 任务 4.1）：检索条数从动态配置
+ * {@code rag.retrieval.topK} 解析（缺省/非法回退 4，与升级前硬编码一致），不再写死。</p>
  */
 @Slf4j
 @Component
@@ -22,10 +26,16 @@ public class AiChatKnowledgeRetrievalService {
             【知识库检索】本轮未命中知识库片段。请基于已掌握的信息诚实回答；\
             不要声称引用了知识库来源，也不要输出机械化的空结果提示。""";
 
-    private final ObjectProvider<KnowledgeRetrievalPort> retrievalPortProvider;
+    private static final String TOP_K_KEY = "rag.retrieval.topK";
+    private static final int DEFAULT_TOP_K = 4;
 
-    public AiChatKnowledgeRetrievalService(ObjectProvider<KnowledgeRetrievalPort> retrievalPortProvider) {
+    private final ObjectProvider<KnowledgeRetrievalPort> retrievalPortProvider;
+    private final ObjectProvider<DynamicConfigService> dynamicConfigProvider;
+
+    public AiChatKnowledgeRetrievalService(ObjectProvider<KnowledgeRetrievalPort> retrievalPortProvider,
+                                           ObjectProvider<DynamicConfigService> dynamicConfigProvider) {
         this.retrievalPortProvider = retrievalPortProvider;
+        this.dynamicConfigProvider = dynamicConfigProvider;
     }
 
     public RetrievalOutcome retrieve(String query,
@@ -43,7 +53,7 @@ public class AiChatKnowledgeRetrievalService {
         }
         try {
             KnowledgeRetrievalPort.RetrievalResult result = port.retrieve(new KnowledgeRetrievalPort.RetrievalQuery(
-                    query, userId, List.of(), 4, imageVector, null));
+                    query, userId, List.of(), resolveTopK(), imageVector, null));
             if (result == null || result.hitCount() <= 0
                     || result.context() == null || result.context().isBlank()) {
                 return RetrievalOutcome.miss();
@@ -53,6 +63,14 @@ public class AiChatKnowledgeRetrievalService {
             log.warn("知识库检索失败，按零命中继续生成", exception);
             return RetrievalOutcome.miss();
         }
+    }
+
+    /** 检索条数：动态配置 {@code rag.retrieval.topK}；未配置/&lt;1 回退 4（升级前硬编码值）。 */
+    private int resolveTopK() {
+        DynamicConfigService config = dynamicConfigProvider == null
+                ? null : dynamicConfigProvider.getIfAvailable();
+        Integer configured = config == null ? null : config.get(TOP_K_KEY, Integer.class, DEFAULT_TOP_K);
+        return configured == null || configured < 1 ? DEFAULT_TOP_K : configured;
     }
 
     private String toPromptContext(String context) {
