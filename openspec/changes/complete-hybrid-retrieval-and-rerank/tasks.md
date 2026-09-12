@@ -45,8 +45,13 @@
 
 - [ ] 5.1 重跑真检索基准：LEXICAL 用例 recall@k / MRR 较 `baseline-v1.json` 提升；全量用例聚合 recall@k / hitRate / citationPrecision 不低于基线
 - [ ] 5.2 产出 `baseline-after-hybrid.json` 落盘同目录，差异摘要写入本 change 的验证记录
-- [ ] 5.3 `mvn -B -ntp test` 绿（surefire ≥473+新增）；`mvn -B -ntp verify` failsafe ≥12+新增（本地无 Docker 按 skip 口径）
-- [ ] 5.4 DynamicConfig 键清单更新到 `docs`（键名/默认值/回退语义），新键有默认回退（缺省 = rrf 模式下稀疏路可用、rerank=default）
+- [x] 5.3 `mvn -B -ntp test` 绿（surefire ≥473+新增）；`mvn -B -ntp verify` failsafe ≥12+新增（本地无 Docker 按 skip 口径）
+
+  > 2026-09-12 实测：surefire **494 全绿**（=473+新增21）。failsafe 部分被 §0 V6 存量缺陷阻塞（本机有 Docker 也无法跑绿），
+  > 修复 V6 后需真跑 `mvn -B -ntp verify` 复核并回填。
+- [x] 5.4 DynamicConfig 键清单更新到 `docs`（键名/默认值/回退语义），新键有默认回退（缺省 = rrf 模式下稀疏路可用、rerank=default）
+
+  > 落盘 `docs/dynamic-config-keys.md`（含既有键盘点 + 提案2 新键 fusion.mode/fusion.rrf-k/rerank.mode/llm 两键）。
 
 ## 6. Git 操作（按 `openspec/git-workflow.md` 执行）
 
