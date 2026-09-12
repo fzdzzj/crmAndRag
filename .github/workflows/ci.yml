@@ -38,9 +38,10 @@ jobs:
         run: mvn -B -ntp verify
 
       # 阶段3：回归基线阈值——两个报告目录分开裁决，防止合并悄悄丢测试
-      #   口径A surefire = target/surefire-reports（pom 的 **/*Test.java，显式 exclude **/*IT.java），基线 467
-      #     实测：2026-09-11 本机 mvn -B -ntp verify，93 个 .txt 报告，Tests run 合计 467。
-      #     单测不依赖 Docker，CI 与本机同口径，因此 467 对两边都成立；只增不减。
+      #   口径A surefire = target/surefire-reports（pom 的 **/*Test.java，显式 exclude **/*IT.java），基线 473
+      #     实测：2026-09-12 本机 mvn -B -ntp test，Tests run 合计 473（=467 + 提案1新增6：
+      #       评估器LEXICAL语义/报告版本化断言 + 数据准备幂等/黄金id对齐校验）。
+      #     单测不依赖 Docker，CI 与本机同口径，因此 473 对两边都成立；只增不减。
       #   口径B failsafe = target/failsafe-reports（pom 的 **/*IT.java 与 **/*IntegrationTest.java），基线 12
       #     实测：同日 failsafe:integration-test 白名单列出 7 个可执行 IT，Tests run 合计 12
       #     （CompanyGroupDeleteIT 4 / CustomerCompanyControllerIT 1 / CustomerCompanyDeptUniqueIT 2 /
@@ -87,10 +88,10 @@ jobs:
           }
 
           rc=0
-          check_baseline target/surefire-reports 467 "surefire 单元测试" || rc=1
+          check_baseline target/surefire-reports 473 "surefire 单元测试" || rc=1
           check_baseline target/failsafe-reports 12 "failsafe 集成测试" || rc=1
           if [ "$rc" -ne 0 ]; then
-            echo "::error::回归基线阈值校验未通过（surefire 基线 467 / failsafe 基线 12）"
+            echo "::error::回归基线阈值校验未通过（surefire 基线 473 / failsafe 基线 12）"
           fi
           exit "$rc"
 

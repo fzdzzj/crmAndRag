@@ -92,7 +92,8 @@ public final class RagQualityEvaluator {
                         hitEligible == 0 ? 0 : (double) hits / hitEligible,
                         sumCitationPrecision / n, sumConsistency / n,
                         sumTtft / n, sumLatency / n, totalTokens, (double) failures / n);
-        return new Report(metrics, scores);
+        // 版本与时间戳随报告落盘：跨变更比较先核对版本，时间戳用于识别模型波动期的历史运行
+        return new Report(RagBenchmarkSuite.SUITE_VERSION, java.time.Instant.now().toString(), metrics, scores);
     }
 
     private static CaseScore score(RagBenchmarkCase benchmarkCase, CaseOutcome outcome, int k) {

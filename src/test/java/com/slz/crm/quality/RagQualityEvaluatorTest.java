@@ -95,11 +95,69 @@ class RagQualityEvaluatorTest {
     }
 
     @Test
-    void standardSuiteCoversAllFourCategories() {
-        Set<Category> categories = RagBenchmarkSuite.standard().stream()
-                .map(RagBenchmarkCase::category)
-                .collect(Collectors.toSet());
-        assertTrue(categories.containsAll(List.of(Category.TEXT, Category.TABLE, Category.IMAGE, Category.EDGE)),
-                "基准集必须覆盖文本/表格/图片/边界四类");
+    void reportCarriesSuiteVersionAndTimestamp() {
+        // 任务 1.3：报告必须携带基准集版本与时间戳，跨变更比较前先核对版本
+        Report report = evaluateCanned();
+        assertEquals(RagBenchmarkSuite.SUITE_VERSION, report.suiteVersion());
+        assertFalse(report.suiteVersion().isBlank());
+        assertFalse(report.generatedAt().isBlank(), "报告必须带生成时间戳");
+        assertTrue(report.toJson().contains("suiteVersion"));
+        assertTrue(report.toJson().contains("generatedAt"));
+    }
+
+    @Test
+    void lexicalCasesScoreBySameSemanticsAsOtherCategories() {
+        // 任务 1.4：LEXICAL 有黄金=按正常 recall 判定；LEXICAL 边界（expected 空）=空集合语义不变
+        List<RagBenchmarkCase> suite = List.of(
+                new RagBenchmarkCase("LX-1", Category.LEXICAL, "XR-500 的售后对接人是谁",
+                        Set.of("xr-gold"), List.of("王建国"), true),
+                new RagBenchmarkCase("LX-2", Category.LEXICAL, "关于虚构型号 ZZ-9 的问题",
+                        Set.of(), List.of(), true));
+        Report report = RagQualityEvaluator.evaluate(suite, c -> switch (c.id()) {
+                    // 只精确召回黄金片（词法命中的理想形态），且引用指向黄金片
+                    case "LX-1" -> new CaseOutcome(List.of("xr-gold", "xr-noise"), List.of(1), 1.0, 80, 500, 200, true);
+                    default -> new CaseOutcome(List.of(), List.of(), 1.0, 60, 300, 120, true);
+                }, 3);
+
+        var lexicalHit = report.cases().get(0);
+        assertEquals(1.0, lexicalHit.recallAtK(), EPS);
+        assertEquals(0.5, lexicalHit.precisionAtK(), EPS);
+        assertEquals(1.0, lexicalHit.reciprocalRank(), EPS);
+        assertTrue(lexicalHit.hit());
+        assertEquals(1.0, lexicalHit.citationPrecision(), EPS);
+
+        var lexicalEdge = report.cases().get(1);
+        assertEquals(1.0, lexicalEdge.recallAtK(), EPS);   // 空期望 + 空召回 = 诚实满分
+        assertEquals(1.0, lexicalEdge.citationPrecision(), EPS);
+        assertFalse(lexicalEdge.hit());
+    }
+
+    @Test
+    void standardSuiteCoversAllFiveCategoriesWithRequiredCounts() {
+        List<RagBenchmarkCase> suite = RagBenchmarkSuite.standard();
+        Set<Category> categories = suite.stream().map(RagBenchmarkCase::category).collect(Collectors.toSet());
+        assertTrue(categories.containsAll(List.of(Category.TEXT, Category.TABLE, Category.IMAGE,
+                        Category.LEXICAL, Category.EDGE)),
+                "基准集必须覆盖文本/表格/图片/词法/边界五类");
+
+        // 任务 1.2 的数量口径：总数 ≥16；LEXICAL ≥4（含向量漏召对照）；其余各类有底线
+        assertTrue(suite.size() >= 16, "基准集至少 16 条，实际=" + suite.size());
+        Map<Category, Long> counts = suite.stream()
+                .collect(Collectors.groupingBy(RagBenchmarkCase::category, Collectors.counting()));
+        assertTrue(counts.getOrDefault(Category.LEXICAL, 0L) >= 4, "LEXICAL 至少 4 条");
+        assertTrue(counts.getOrDefault(Category.TEXT, 0L) >= 4, "TEXT 至少 4 条");
+        assertTrue(counts.getOrDefault(Category.TABLE, 0L) >= 2, "TABLE 至少 2 条");
+        assertTrue(counts.getOrDefault(Category.IMAGE, 0L) >= 1, "IMAGE 至少 1 条");
+        assertTrue(counts.getOrDefault(Category.EDGE, 0L) >= 2, "EDGE 至少 2 条");
+
+        // 非边界用例必须填实黄金片段与答案要点；边界用例两者都必须为空
+        for (RagBenchmarkCase c : suite) {
+            if (c.category() == Category.EDGE) {
+                assertTrue(c.expectedChunkIds().isEmpty(), "边界用例 " + c.id() + " 期望片段必须为空");
+            } else {
+                assertFalse(c.expectedChunkIds().isEmpty(), "用例 " + c.id() + " 缺黄金片段");
+                assertFalse(c.expectedAnswerPoints().isEmpty(), "用例 " + c.id() + " 缺答案要点");
+            }
+        }
     }
 }
