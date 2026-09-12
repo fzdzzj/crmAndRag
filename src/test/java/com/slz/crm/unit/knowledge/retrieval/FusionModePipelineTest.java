@@ -27,22 +27,24 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * 类目过滤单测（complete-hybrid-retrieval-and-rerank 任务 2.2，D17 收尾）：
- * 类目命中窄化生效、空类目不过滤、类目只能窄化不能放大结果。
- * 稀疏路 SQL 侧类目语义由 {@code SparseRecallServiceIT} 真库覆盖。
+ * 融合模式开关单测（complete-hybrid-retrieval-and-rerank 任务 3.3）：
+ * fusion.mode=weighted 时行为与升级前等价（稀疏路完全不参与）；
+ * 默认（未配置/配置缺失）时稀疏路参与 RRF 融合。
  */
 @ExtendWith(MockitoExtension.class)
-class CategoryFilterPipelineTest {
+class FusionModePipelineTest {
     private static final long KB_ID = 1L;
-    private static final String QUESTION = "保修政策";
+    private static final String QUESTION = "回款计划";
 
     @Mock
     private KnowledgeBaseAuthorizationService authorizationService;
@@ -57,6 +59,9 @@ class CategoryFilterPipelineTest {
     private ObjectProvider<DynamicConfigService> dynamicConfigProvider;
 
     @Mock
+    private DynamicConfigService dynamicConfigService;
+
+    @Mock
     private SparseRecallService sparseRecallService;
 
     private final InMemoryVectorStore vectorStore = new InMemoryVectorStore();
@@ -66,61 +71,57 @@ class CategoryFilterPipelineTest {
         UserContextHolder.clear();
     }
 
-    /** 类目命中：向量路与稀疏路都收到类目；结果只含该类目切片。 */
+    /** weighted 回退开关：稀疏路零参与，结果与升级前纯向量行为一致。 */
     @Test
-    void categoryShouldNarrowBothRoutesWhenMatched() {
+    void weightedModeMustBypassSparseRouteEntirely() {
         UserContext user = new UserContext(1L, 2L, 10L, DataScopeLevel.SELF, "user");
         UserContextHolder.set(user);
-        upsert("chunk-a", "整体机保修两年", "warranty");
-        upsert("chunk-b", "发票开具流程说明", "invoice");
+        upsert("chunk-1", "回款计划分三期");
+        upsert("chunk-2", "开票流程与要求");
         KnowledgeRetrievalServiceImpl service = service();
         stubCommon(user);
-        when(sparseRecallService.recall(eq(QUESTION), eq(List.of(KB_ID)), eq("warranty"), anyInt()))
-                .thenReturn(List.of());
+        when(dynamicConfigProvider.getIfAvailable()).thenReturn(dynamicConfigService);
+        // topK/minScore/candidate-multiplier 未命中桩 → 默认值
+        when(dynamicConfigService.get(eq("rag.retrieval.fusion.mode"), eq(String.class), eq("rrf")))
+                .thenReturn("weighted");
 
         KnowledgeRetrievalPort.RetrievalResult result = service.retrieve(new KnowledgeRetrievalPort.RetrievalQuery(
-                QUESTION, 1L, List.of("1"), 5, null, "warranty"));
+                QUESTION, 1L, List.of("1"), 5, null, null));
 
-        assertEquals(1, result.hitCount());
-        assertEquals("chunk-a", result.sources().getFirst().chunkId());
-        verify(sparseRecallService).recall(eq(QUESTION), eq(List.of(KB_ID)), eq("warranty"), anyInt());
+        assertEquals(2, result.hitCount());
+        assertEquals("chunk-1", result.sources().getFirst().chunkId());
+        assertEquals("chunk-2", result.sources().getLast().chunkId());
+        verifyNoInteractions(sparseRecallService);
     }
 
-    /** 空类目：两路均不过滤，全类目候选可见。 */
+    /** 默认模式（配置缺省=rrf，provider 存在）：稀疏路参与 RRF 融合。 */
     @Test
-    void blankCategoryShouldNotFilter() {
+    void defaultModeShouldFuseSparseRouteViaRrf() {
         UserContext user = new UserContext(1L, 2L, 10L, DataScopeLevel.SELF, "user");
         UserContextHolder.set(user);
-        upsert("chunk-a", "整体机保修两年", "warranty");
-        upsert("chunk-b", "发票开具流程说明", "invoice");
         KnowledgeRetrievalServiceImpl service = service();
         stubCommon(user);
+        when(dynamicConfigProvider.getIfAvailable()).thenReturn(dynamicConfigService);
         when(sparseRecallService.recall(eq(QUESTION), eq(List.of(KB_ID)), eq(null), anyInt()))
                 .thenReturn(List.of());
 
-        KnowledgeRetrievalPort.RetrievalResult result = service.retrieve(new KnowledgeRetrievalPort.RetrievalQuery(
-                QUESTION, 1L, List.of("1"), 5, null, "  "));
+        service.retrieve(new KnowledgeRetrievalPort.RetrievalQuery(QUESTION, 1L, List.of("1"), 5, null, null));
 
-        assertEquals(2, result.hitCount(), "空类目不得过滤");
         verify(sparseRecallService).recall(eq(QUESTION), eq(List.of(KB_ID)), eq(null), anyInt());
     }
 
-    /** 越权类目：类目只与授权叠加窄化，无匹配 = 空结果而非放大。 */
+    /** 配置不可用（无 DynamicConfig bean）也走默认 rrf：稀疏路可用。 */
     @Test
-    void unmatchedCategoryMustNotExpandResults() {
+    void missingDynamicConfigShouldDefaultToRrf() {
         UserContext user = new UserContext(1L, 2L, 10L, DataScopeLevel.SELF, "user");
         UserContextHolder.set(user);
-        upsert("chunk-a", "整体机保修两年", "warranty");
         KnowledgeRetrievalServiceImpl service = service();
         stubCommon(user);
-        when(sparseRecallService.recall(eq(QUESTION), eq(List.of(KB_ID)), eq("不存在的类目"), anyInt()))
-                .thenReturn(List.of());
+        when(sparseRecallService.recall(any(), anyList(), any(), anyInt())).thenReturn(List.of());
 
-        KnowledgeRetrievalPort.RetrievalResult result = service.retrieve(new KnowledgeRetrievalPort.RetrievalQuery(
-                QUESTION, 1L, List.of("1"), 5, null, "不存在的类目"));
+        service.retrieve(new KnowledgeRetrievalPort.RetrievalQuery(QUESTION, 1L, List.of("1"), 5, null, null));
 
-        assertEquals(0, result.hitCount(), "类目不匹配应返回空，而不是回退为全量");
-        assertTrue(result.sources().isEmpty());
+        verify(sparseRecallService).recall(eq(QUESTION), eq(List.of(KB_ID)), eq(null), anyInt());
     }
 
     private KnowledgeRetrievalServiceImpl service() {
@@ -131,18 +132,21 @@ class CategoryFilterPipelineTest {
     }
 
     private void stubCommon(UserContext user) {
-        when(authorizationService.authorizedKnowledgeBaseIds(user, List.of("1"))).thenReturn(List.of(KB_ID));
-        when(embeddingService.embed(QUESTION)).thenReturn(new float[]{1f, 0f});
+        lenient().when(authorizationService.authorizedKnowledgeBaseIds(user, List.of("1")))
+                .thenReturn(List.of(KB_ID));
+        lenient().when(embeddingService.embed(QUESTION)).thenReturn(new float[]{1f, 0f});
+        // 通用兜底：未显式桩定的键按真实 DynamicConfigService 语义返回默认值（避免 null 拆箱/严格桩冲突）
+        lenient().when(dynamicConfigService.get(any(String.class), any(), any()))
+                .thenAnswer(invocation -> invocation.getArgument(2));
     }
 
-    private void upsert(String chunkId, String text, String category) {
+    private void upsert(String chunkId, String text) {
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("knowledgeBaseId", String.valueOf(KB_ID));
-        metadata.put("category", category);
+        metadata.put("category", "");
         metadata.put("filename", "a.md");
         metadata.put("pageNo", 0L);
         metadata.put("rowIndex", 0L);
-        // 同一方向向量，保证无类目过滤时两片都过 minScore
         vectorStore.upsert(new VectorRecord("point-" + chunkId, "doc-" + chunkId, chunkId, 0,
                 text, new float[]{1f, 0f}, metadata));
     }

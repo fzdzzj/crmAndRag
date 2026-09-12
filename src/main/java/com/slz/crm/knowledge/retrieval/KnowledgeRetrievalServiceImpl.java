@@ -38,6 +38,10 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
     private static final double DEFAULT_IMAGE_ROUTE_WEIGHT = 0.30;
     private static final double DEFAULT_VECTOR_WEIGHT = 0.60;
     private static final double DEFAULT_BM25_WEIGHT = 0.40;
+    private static final String FUSION_MODE_KEY = "rag.retrieval.fusion.mode";
+    private static final String FUSION_RRF_K_KEY = "rag.retrieval.fusion.rrf-k";
+    private static final String FUSION_MODE_WEIGHTED = "weighted";
+    private static final int DEFAULT_RRF_K = 60;
 
     private final KnowledgeBaseAuthorizationService authorizationService;
     private final EmbeddingService embeddingService;
@@ -47,6 +51,8 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
     private final ObjectProvider<DynamicConfigService> dynamicConfigProvider;
     /** 稀疏召回路；null = 关闭（回退纯向量单路，兼容既有装配与测试）。 */
     private final SparseRecallService sparseRecallService;
+    /** RRF 融合器（任务 3.1）；null = 兼容构造下不可用。 */
+    private final RrfFusion rrfFusion;
 
     @Autowired
     public KnowledgeRetrievalServiceImpl(KnowledgeBaseAuthorizationService authorizationService,
@@ -55,7 +61,8 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
                                          RetrievalQueryRewriteService queryRewriteService,
                                          Bm25Scorer bm25Scorer,
                                          ObjectProvider<DynamicConfigService> dynamicConfigProvider,
-                                         SparseRecallService sparseRecallService) {
+                                         SparseRecallService sparseRecallService,
+                                         RrfFusion rrfFusion) {
         this.authorizationService = authorizationService;
         this.embeddingService = embeddingService;
         this.vectorStore = vectorStore;
@@ -63,9 +70,10 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
         this.bm25Scorer = bm25Scorer;
         this.dynamicConfigProvider = dynamicConfigProvider;
         this.sparseRecallService = sparseRecallService;
+        this.rrfFusion = rrfFusion;
     }
 
-    /** 兼容构造：不接稀疏路（纯向量单路，升级前行为）。 */
+    /** 兼容构造：不接稀疏路与 RRF（纯向量单路 + 路内加权，升级前行为）。 */
     public KnowledgeRetrievalServiceImpl(KnowledgeBaseAuthorizationService authorizationService,
                                          EmbeddingService embeddingService,
                                          CrmVectorStore vectorStore,
@@ -73,7 +81,7 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
                                          Bm25Scorer bm25Scorer,
                                          ObjectProvider<DynamicConfigService> dynamicConfigProvider) {
         this(authorizationService, embeddingService, vectorStore, queryRewriteService,
-                bm25Scorer, dynamicConfigProvider, null);
+                bm25Scorer, dynamicConfigProvider, null, null);
     }
 
     @Override
@@ -118,7 +126,11 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
         return new KnowledgeRetrievalPort.RetrievalResult(buildContext(candidates), sources, candidates.size());
     }
 
-    /** 文本路召回：向量路（按授权 KB 逐库过滤）+ 稀疏路并集合并；同切片向量路优先。 */
+    /**
+     * 文本路召回：向量路（按授权 KB 逐库过滤）+ 稀疏路 → 融合（任务 3.1/3.3）。
+     * 融合模式 {@code rag.retrieval.fusion.mode = rrf | weighted}（默认 rrf）；
+     * weighted = 升级前行为，稀疏路完全不参与。
+     */
     private List<RetrievalCandidate> recallTextRoute(String query,
                                                      float[] queryVector,
                                                      List<Long> knowledgeBaseIds,
@@ -127,7 +139,7 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
                                                      double minScore) {
         List<RetrievalCandidate> vectorCandidates =
                 recall(query, queryVector, knowledgeBaseIds, category, candidateLimit, minScore);
-        if (sparseRecallService == null) {
+        if (sparseRecallService == null || rrfFusion == null || !useRrfFusion()) {
             return vectorCandidates;
         }
         List<RetrievalCandidate> sparseCandidates =
@@ -135,14 +147,21 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
         if (sparseCandidates.isEmpty()) {
             return vectorCandidates;
         }
-        Map<String, RetrievalCandidate> merged = new LinkedHashMap<>();
-        for (RetrievalCandidate candidate : vectorCandidates) {
-            merged.put(candidate.fusionKey(), candidate);
-        }
-        for (RetrievalCandidate candidate : sparseCandidates) {
-            merged.putIfAbsent(candidate.fusionKey(), candidate);
-        }
-        return List.copyOf(merged.values());
+        return rrfFusion.fuse(vectorCandidates, sparseCandidates, resolveRrfK());
+    }
+
+    /** 融合模式开关：仅显式配置 weighted 时回退升级前行为，其余（含未配置）走 RRF 默认。 */
+    private boolean useRrfFusion() {
+        DynamicConfigService config = dynamicConfigProvider.getIfAvailable();
+        String mode = config == null ? null : config.get(FUSION_MODE_KEY, String.class, "rrf");
+        return mode == null || !FUSION_MODE_WEIGHTED.equalsIgnoreCase(mode.strip());
+    }
+
+    private int resolveRrfK() {
+        DynamicConfigService config = dynamicConfigProvider.getIfAvailable();
+        Integer configured = config == null ? null
+                : config.get(FUSION_RRF_K_KEY, Integer.class, DEFAULT_RRF_K);
+        return configured == null || configured < 1 ? DEFAULT_RRF_K : configured;
     }
 
     /** 每个知识库单独过滤，保证授权集合不能被伪造 metadata 放大；类目与授权叠加（只窄化不放大）。 */

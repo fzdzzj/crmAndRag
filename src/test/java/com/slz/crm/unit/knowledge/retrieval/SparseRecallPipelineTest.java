@@ -7,6 +7,7 @@ import com.slz.crm.knowledge.retrieval.Bm25Scorer;
 import com.slz.crm.knowledge.retrieval.KnowledgeRetrievalServiceImpl;
 import com.slz.crm.knowledge.retrieval.RetrievalCandidate;
 import com.slz.crm.knowledge.retrieval.RetrievalQueryRewriteService;
+import com.slz.crm.knowledge.retrieval.RrfFusion;
 import com.slz.crm.knowledge.retrieval.SparseRecallService;
 import com.slz.crm.knowledge.vector.InMemoryVectorStore;
 import com.slz.crm.platform.contract.DynamicConfigService;
@@ -77,7 +78,7 @@ class SparseRecallPipelineTest {
         KnowledgeRetrievalServiceImpl service = new KnowledgeRetrievalServiceImpl(
                 authorizationService, embeddingService, vectorStore,
                 new RetrievalQueryRewriteService(modelProvider, dynamicConfigProvider),
-                new Bm25Scorer(), dynamicConfigProvider, sparseRecallService);
+                new Bm25Scorer(), dynamicConfigProvider, sparseRecallService, new RrfFusion());
         when(authorizationService.authorizedKnowledgeBaseIds(user, List.of("1"))).thenReturn(List.of(KB_ID));
         when(embeddingService.embed("AX-9 备件在哪个库位")).thenReturn(new float[]{1f, 0f});
         when(sparseRecallService.recall(eq("AX-9 备件在哪个库位"), eq(List.of(KB_ID)), eq(null), anyInt()))
@@ -101,7 +102,7 @@ class SparseRecallPipelineTest {
         KnowledgeRetrievalServiceImpl service = new KnowledgeRetrievalServiceImpl(
                 authorizationService, embeddingService, vectorStore,
                 new RetrievalQueryRewriteService(modelProvider, dynamicConfigProvider),
-                new Bm25Scorer(), dynamicConfigProvider, sparseRecallService);
+                new Bm25Scorer(), dynamicConfigProvider, sparseRecallService, new RrfFusion());
         // 请求了 KB 1/2/3，授权只放行 KB 2
         when(authorizationService.authorizedKnowledgeBaseIds(user, List.of("1", "2", "3")))
                 .thenReturn(List.of(2L));

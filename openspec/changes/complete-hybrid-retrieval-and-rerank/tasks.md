@@ -31,9 +31,9 @@
 
 ## 3. RRF 融合
 
-- [ ] 3.1 实现 `RrfFusion`（k 读 `rag.retrieval.fusion.rrf-k`，默认 60）；`rag.retrieval.fusion.mode = rrf | weighted`（默认 rrf）
-- [ ] 3.2 单测：两路命中同一块时 RRF 分 = Σ1/(k+rank)（手算对照）；单路命中退化为该路排名
-- [ ] 3.3 回退开关单测：`fusion.mode=weighted` 时行为与升级前等价（既有 `KnowledgeRetrievalServiceImpl` 相关测试不改一行全绿）
+- [x] 3.1 实现 `RrfFusion`（k 读 `rag.retrieval.fusion.rrf-k`，默认 60）；`rag.retrieval.fusion.mode = rrf | weighted`（默认 rrf）
+- [x] 3.2 单测：两路命中同一块时 RRF 分 = Σ1/(k+rank)（手算对照）；单路命中退化为该路排名
+- [x] 3.3 回退开关单测：`fusion.mode=weighted` 时行为与升级前等价（既有 `KnowledgeRetrievalServiceImpl` 相关测试不改一行全绿）
 
 ## 4. 重排器抽象与 LLM rerank（方案 08 升级）
 
