@@ -38,14 +38,14 @@ jobs:
         run: mvn -B -ntp verify
 
       # 阶段3：回归基线阈值——两个报告目录分开裁决，防止合并悄悄丢测试
-      #   口径A surefire = target/surefire-reports（pom 的 **/*Test.java，显式 exclude **/*IT.java），基线 555
-      #     实测：2026-09-12 本机 mvn -B -ntp test，Tests run 合计 555（=527 + 提案4新增28：
-      #       语义切分策略5 + fixed等价/锚点/对比5 + 块头注入2 + 父块落库2 + 父块展开4 +
-      #       reingest幂等/失败清理/授权3 + reingest runner 5 + 回退演练2）。
-      #     单测不依赖 Docker，CI 与本机同口径，因此 555 对两边都成立；只增不减。
-      #     ⚠ 提案2/3/4 failsafe IT（ngram 闸门/稀疏召回 DB 级/FlywayMigrationIT V22/V23 断言）待 V6 保留字缺陷
-      #       修复真跑绿后随下一轮基线上调（见 openspec/changes/complete-hybrid-retrieval-and-rerank/tasks.md §0；
-      #       V23 DDL 已按同口径在独立探针容器实测通过：ALTER 成功、存量行默认 CHILD、CHILD 过滤生效）。
+      #   口径A surefire = target/surefire-reports（pom 的 **/*Test.java，显式 exclude **/*IT.java），基线 585
+      #     实测：2026-09-12 本机 mvn -B -ntp test，Tests run 合计 585（=555 + 提案5新增30：
+      #       多查询扩展器6 + HyDE扩展器5 + 查询侧增强管线7 + 衍生问题旁路7 +
+      #       RrfFusion N路融合2 + 入库旁路接线3）。
+      #     单测不依赖 Docker，CI 与本机同口径，因此 585 对两边都成立；只增不减。
+      #     V6 保留字缺陷已于 2026-09-12 获授权就地修复：真库迁移链 V1..V23 首次完整应用，
+      #       failsafe 真跑口径 24 = 15 绿 + 7 门控跳过 + 2 红（WriteChainRegressionIT 为 task18 时代
+      #       存量测试缺陷另案登记，见 openspec/changes/complete-hybrid-retrieval-and-rerank/tasks.md §0）。
       #   口径B failsafe = target/failsafe-reports（pom 的 **/*IT.java 与 **/*IntegrationTest.java），基线 12
       #     实测：同日 failsafe:integration-test 白名单列出 7 个可执行 IT，Tests run 合计 12
       #     （CompanyGroupDeleteIT 4 / CustomerCompanyControllerIT 1 / CustomerCompanyDeptUniqueIT 2 /
@@ -92,10 +92,10 @@ jobs:
           }
 
           rc=0
-          check_baseline target/surefire-reports 555 "surefire 单元测试" || rc=1
+          check_baseline target/surefire-reports 585 "surefire 单元测试" || rc=1
           check_baseline target/failsafe-reports 12 "failsafe 集成测试" || rc=1
           if [ "$rc" -ne 0 ]; then
-            echo "::error::回归基线阈值校验未通过（surefire 基线 555 / failsafe 基线 12）"
+            echo "::error::回归基线阈值校验未通过（surefire 基线 585 / failsafe 基线 12）"
           fi
           exit "$rc"
 
