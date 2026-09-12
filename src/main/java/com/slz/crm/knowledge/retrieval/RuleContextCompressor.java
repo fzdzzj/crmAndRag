@@ -94,10 +94,13 @@ public class RuleContextCompressor implements Compressor {
         return new Parsed(prefix.toString(), sections);
     }
 
-    /** 还原为编号上下文：prefix 原样 + 每段 header + 段内句子按原顺序拼接。 */
+    /** 还原为编号上下文：prefix 原样 + 每段 header 前保证换行（压缩裁句可能吃掉段尾换行）+ 段内句子按原顺序拼接。 */
     private String join(Parsed parsed) {
         StringBuilder builder = new StringBuilder(parsed.prefix());
         for (Section section : parsed.sections()) {
+            if (builder.length() > 0 && builder.charAt(builder.length() - 1) != '\n') {
+                builder.append('\n');
+            }
             builder.append(section.header());
             for (String sentence : section.sentences()) {
                 builder.append(sentence);
