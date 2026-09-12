@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS dynamic_config_item
     value_type  varchar(20)                           not null comment '值类型：STRING/INTEGER/LONG/BOOLEAN/DOUBLE/STRING_LIST',
     config_value text                                 null comment '配置值（按类型序列化：数值为十进制文本，STRING_LIST 为 JSON 数组）',
     description varchar(500)                          null comment '配置项含义与影响面（超管界面展示）',
-    sensitive   tinyint     default 0                 not null comment '是否敏感值（1=读取/审计掩码；密钥类仍走环境变量，动态配置一般不承载）',
+    `sensitive` tinyint     default 0                 not null comment '是否敏感值（1=读取/审计掩码；密钥类仍走环境变量，动态配置一般不承载）',
     version     int         default 1                 not null comment '当前版本号（每次变更/回滚 +1，乐观并发依据）',
     is_deleted  tinyint     default 0                 not null comment '软删除（1=已删除：读取回退静态默认，历史保留可回滚/复活）',
     created_by  varchar(100)                         null comment '创建人 user:<id>',
