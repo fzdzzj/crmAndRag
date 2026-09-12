@@ -14,17 +14,23 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 上下文组装器：邻居上下文增强（方案04，add-context-compression-and-enrichment 任务 1.1）。
+ * 上下文组装器（add-context-compression-and-enrichment）：邻居上下文增强（方案04）+
+ * 超预算压缩（方案10）。
  *
- * <p>对每个命中块按 {@code documentId + 相邻 chunkIndex} 从 {@code document_vector_chunk}
- * 快照表取前/后邻居（chunkIndex 为全文档切片序号、0 起，故 ±1 即紧邻；同一序号出现多行的
- * 数据异常场景按「同页优先 + 主键小者」确定性取舍），拼装为：</p>
+ * <p>邻居增强（任务 1.1）：对每个命中块按 {@code documentId + 相邻 chunkIndex} 从
+ * {@code document_vector_chunk} 快照表取前/后邻居（chunkIndex 为全文档切片序号、0 起，
+ * 故 ±1 即紧邻；同一序号出现多行的数据异常场景按「同页优先 + 主键小者」确定性取舍），
+ * 拼装为：</p>
  * <pre>[n] （前文承接）邻居
  * 命中块
  * （后文承接）邻居</pre>
  *
+ * <p>超预算压缩（任务 2.1/2.2）：拼装结果超过 {@code rag.context.token-budget} 时交给
+ * 压缩器收敛；压缩器按 {@code rag.context.compressor.mode = rule | llm} 选择（默认 rule），
+ * llm 未装配或值非法时落规则链。</p>
+ *
  * <p>引用完整性约束（rag-context 规范）：邻居只进上下文、绝不进 {@code SourceReference}——
- * 引用与跳页锚点仍指命中块；上下文 [n] 编号与 sources 下标的一一对应不受邻居拼装影响。</p>
+ * 引用与跳页锚点仍指命中块；上下文 [n] 编号与 sources 下标的一一对应不受邻居拼装与压缩影响。</p>
  *
  * <p>开关：{@code rag.context.neighbors = 0 | 1}（默认 1；0 = 关闭，输出与升级前逐字一致）。
  * 失败边界：快照表不可用（DB 异常）时按无邻居降级并告警，不拖垮检索链。</p>
@@ -35,21 +41,33 @@ public class ContextBuilder {
 
     static final String NEIGHBORS_KEY = "rag.context.neighbors";
     static final int DEFAULT_NEIGHBORS = 1;
+    static final String TOKEN_BUDGET_KEY = "rag.context.token-budget";
+    static final int DEFAULT_TOKEN_BUDGET = 4096;
+    static final String COMPRESSOR_MODE_KEY = "rag.context.compressor.mode";
+    static final String COMPRESSOR_MODE_LLM = "llm";
 
     private static final String PREV_LABEL = "（前文承接）";
     private static final String NEXT_LABEL = "（后文承接）";
 
     private final DocumentVectorChunkMapper chunkMapper;
     private final ObjectProvider<DynamicConfigService> dynamicConfigProvider;
+    /** 规则压缩器：默认档与 LLM 压缩的回退链。 */
+    private final RuleContextCompressor ruleCompressor;
+    /** LLM 压缩器（默认关闭，mode=llm 才启用）；null = 兼容装配下不可用。 */
+    private final LlmContextCompressor llmCompressor;
 
     public ContextBuilder(DocumentVectorChunkMapper chunkMapper,
-                          ObjectProvider<DynamicConfigService> dynamicConfigProvider) {
+                          ObjectProvider<DynamicConfigService> dynamicConfigProvider,
+                          RuleContextCompressor ruleCompressor,
+                          LlmContextCompressor llmCompressor) {
         this.chunkMapper = chunkMapper;
         this.dynamicConfigProvider = dynamicConfigProvider;
+        this.ruleCompressor = ruleCompressor;
+        this.llmCompressor = llmCompressor;
     }
 
     /**
-     * 组装带编号的检索上下文。
+     * 组装带编号的检索上下文（邻居增强 → 超预算压缩）。
      *
      * <p>输出契约：第 i 个候选对应且仅对应 {@code [i+1]} 段，与调用方 sources 列表下标一一对应。</p>
      */
@@ -57,19 +75,8 @@ public class ContextBuilder {
         if (candidates == null || candidates.isEmpty()) {
             return "";
         }
-        if (!neighborsEnabled()) {
-            return plainNumbered(candidates);
-        }
-        StringBuilder builder = new StringBuilder();
-        for (int index = 0; index < candidates.size(); index++) {
-            if (index > 0) {
-                builder.append('\n');
-            }
-            VectorSearchHit hit = candidates.get(index).hit();
-            builder.append('[').append(index + 1).append("] ");
-            appendWithNeighbors(builder, hit);
-        }
-        return builder.toString();
+        String context = neighborsEnabled() ? assembleWithNeighbors(candidates) : plainNumbered(candidates);
+        return enforceTokenBudget(context);
     }
 
     /** 升级前行为：top-K 全文拼接，仅 [n] 编号（兼容构造与邻居关闭路径共用）。 */
@@ -81,6 +88,21 @@ public class ContextBuilder {
             }
             builder.append('[').append(index + 1).append("] ")
                     .append(candidates.get(index).hit().text().strip());
+        }
+        return builder.toString();
+    }
+
+    // ---------------------------------------------------------------- 邻居增强（方案04）
+
+    private String assembleWithNeighbors(List<RetrievalCandidate> candidates) {
+        StringBuilder builder = new StringBuilder();
+        for (int index = 0; index < candidates.size(); index++) {
+            if (index > 0) {
+                builder.append('\n');
+            }
+            VectorSearchHit hit = candidates.get(index).hit();
+            builder.append('[').append(index + 1).append("] ");
+            appendWithNeighbors(builder, hit);
         }
         return builder.toString();
     }
@@ -173,6 +195,37 @@ public class ContextBuilder {
         }
         return null;
     }
+
+    // ---------------------------------------------------------------- 超预算压缩（方案10）
+
+    /** 超预算触发压缩（任务 2.4：未超预算原文逐字保留，压缩器不会被调用）。 */
+    private String enforceTokenBudget(String context) {
+        int budget = resolveTokenBudget();
+        if (TokenEstimator.estimate(context) <= budget) {
+            return context;
+        }
+        return activeCompressor().compress(context, budget);
+    }
+
+    /** token 预算：{@code rag.context.token-budget}（默认 4096）；&lt;1 回落默认。 */
+    private int resolveTokenBudget() {
+        DynamicConfigService config = dynamicConfigProvider.getIfAvailable();
+        Integer configured = config == null
+                ? null : config.get(TOKEN_BUDGET_KEY, Integer.class, DEFAULT_TOKEN_BUDGET);
+        return configured == null || configured < 1 ? DEFAULT_TOKEN_BUDGET : configured;
+    }
+
+    /** 压缩器选择：{@code rag.context.compressor.mode = rule | llm}（默认 rule）；llm 未装配或值非法落规则链。 */
+    private Compressor activeCompressor() {
+        DynamicConfigService config = dynamicConfigProvider.getIfAvailable();
+        String mode = config == null ? null : config.get(COMPRESSOR_MODE_KEY, String.class, "rule");
+        if (mode != null && COMPRESSOR_MODE_LLM.equalsIgnoreCase(mode.strip()) && llmCompressor != null) {
+            return llmCompressor;
+        }
+        return ruleCompressor;
+    }
+
+    // ---------------------------------------------------------------- 开关与邻居解析
 
     /** 邻居开关：{@code rag.context.neighbors}（默认 1）；显式 0 或负值 = 关闭回退升级前行为。 */
     private boolean neighborsEnabled() {

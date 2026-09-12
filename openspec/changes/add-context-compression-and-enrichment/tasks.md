@@ -9,10 +9,10 @@
 
 ## 2. 上下文压缩（方案 10）
 
-- [ ] 2.1 实现 `Compressor` 抽象 + 规则压缩（按 `rag.context.token-budget` 截断；保留含数字/锚点词/首末句；去连续重复段）
-- [ ] 2.2 LLM 压缩可选实现（`rag.context.compressor.mode = rule | llm`，默认 rule）：`ModelProvider` 要点化，失败/空输出/超时回退规则链——三条回退路径单测
-- [ ] 2.3 LLM 压缩的 token 消耗挂 `TokenUsageRecorder`（单测断言计量调用发生，补计量盲点）
-- [ ] 2.4 预算触发单测：构造超预算上下文，断言压缩后 token 数 ≤ 预算；未超预算不压缩（原文逐字保留）
+- [x] 2.1 实现 `Compressor` 抽象 + 规则压缩（按 `rag.context.token-budget` 截断；保留含数字/锚点词/首末句；去连续重复段）
+- [x] 2.2 LLM 压缩可选实现（`rag.context.compressor.mode = rule | llm`，默认 rule）：`ModelProvider` 要点化，失败/空输出/超时回退规则链——三条回退路径单测
+- [x] 2.3 LLM 压缩的 token 消耗挂 `TokenUsageRecorder`（单测断言计量调用发生，补计量盲点）
+- [x] 2.4 预算触发单测：构造超预算上下文，断言压缩后 token 数 ≤ 预算；未超预算不压缩（原文逐字保留）
 
 ## 3. 引用编号完整性
 

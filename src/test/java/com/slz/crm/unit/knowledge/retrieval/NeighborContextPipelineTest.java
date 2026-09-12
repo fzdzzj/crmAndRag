@@ -5,6 +5,7 @@ import com.slz.crm.knowledge.auth.KnowledgeBaseAuthorizationService;
 import com.slz.crm.knowledge.embedding.EmbeddingService;
 import com.slz.crm.knowledge.retrieval.Bm25Scorer;
 import com.slz.crm.knowledge.retrieval.ContextBuilder;
+import com.slz.crm.knowledge.retrieval.RuleContextCompressor;
 import com.slz.crm.knowledge.retrieval.DefaultWeightedReranker;
 import com.slz.crm.knowledge.retrieval.KnowledgeRetrievalServiceImpl;
 import com.slz.crm.knowledge.retrieval.RetrievalQueryRewriteService;
@@ -100,7 +101,7 @@ class NeighborContextPipelineTest {
                 new RetrievalQueryRewriteService(modelProvider, dynamicConfigProvider),
                 dynamicConfigProvider, null, null,
                 new DefaultWeightedReranker(new Bm25Scorer(), dynamicConfigProvider), null,
-                new ContextBuilder(chunkMapper, dynamicConfigProvider));
+                new ContextBuilder(chunkMapper, dynamicConfigProvider, new RuleContextCompressor(), null));
 
         KnowledgeRetrievalPort.RetrievalResult result = service.retrieve(
                 new KnowledgeRetrievalPort.RetrievalQuery(QUERY, 1L, List.of("1"), 2, null, null));

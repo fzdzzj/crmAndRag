@@ -3,6 +3,8 @@ package com.slz.crm.unit.knowledge.retrieval;
 import com.slz.crm.knowledge.entity.DocumentVectorChunkEntity;
 import com.slz.crm.knowledge.retrieval.ContextBuilder;
 import com.slz.crm.knowledge.retrieval.RetrievalCandidate;
+import com.slz.crm.knowledge.retrieval.RuleContextCompressor;
+import com.slz.crm.knowledge.retrieval.TokenEstimator;
 import com.slz.crm.platform.contract.DynamicConfigService;
 import com.slz.crm.platform.contract.VectorSearchHit;
 import com.slz.crm.server.mapper.DocumentVectorChunkMapper;
@@ -53,7 +55,8 @@ class ContextBuilderTest {
     @Test
     void shouldAssemblePrevAndNextNeighbors() {
         stubNeighborRows(row(1, "前一页结尾内容", 2L), row(3, "后一页开头内容", 3L));
-        ContextBuilder builder = new ContextBuilder(chunkMapper, dynamicConfigProvider);
+        ContextBuilder builder = new ContextBuilder(chunkMapper, dynamicConfigProvider,
+                new RuleContextCompressor(), null);
 
         String context = builder.build(List.of(
                 candidate("c2", 2, "命中块正文", 3L)));
@@ -66,7 +69,7 @@ class ContextBuilderTest {
     @Test
     void firstChunkShouldHaveNoPrevNeighbor() {
         stubNeighborRows(row(1, "第二块内容", 1L));
-        ContextBuilder builder = new ContextBuilder(chunkMapper, dynamicConfigProvider);
+        ContextBuilder builder = new ContextBuilder(chunkMapper, dynamicConfigProvider, new RuleContextCompressor(), null);
 
         String context = builder.build(List.of(
                 candidate("c0", 0, "首块正文", 1L)));
@@ -80,7 +83,7 @@ class ContextBuilderTest {
     @Test
     void lastChunkShouldHaveNoNextNeighbor() {
         stubNeighborRows(row(4, "倒数第二块内容", 2L));
-        ContextBuilder builder = new ContextBuilder(chunkMapper, dynamicConfigProvider);
+        ContextBuilder builder = new ContextBuilder(chunkMapper, dynamicConfigProvider, new RuleContextCompressor(), null);
 
         String context = builder.build(List.of(
                 candidate("c5", 5, "末块正文", 2L)));
@@ -96,7 +99,7 @@ class ContextBuilderTest {
         DocumentVectorChunkEntity foreign = row(1, "其他文档内容", 1L);
         foreign.setDocumentId("doc-OTHER");
         when(chunkMapper.selectList(any())).thenReturn(List.of(foreign));
-        ContextBuilder builder = new ContextBuilder(chunkMapper, dynamicConfigProvider);
+        ContextBuilder builder = new ContextBuilder(chunkMapper, dynamicConfigProvider, new RuleContextCompressor(), null);
 
         String context = builder.build(List.of(
                 candidate("c2", 2, "命中块正文", 1L)));
@@ -111,7 +114,7 @@ class ContextBuilderTest {
     void switchOffShouldFallBackToPlainNumberedContext() {
         when(dynamicConfigService.get(NEIGHBORS_KEY, Integer.class, 1)).thenReturn(0);
         stubNeighborRows(row(1, "前一页结尾内容", 1L), row(3, "后一页开头内容", 2L));
-        ContextBuilder builder = new ContextBuilder(chunkMapper, dynamicConfigProvider);
+        ContextBuilder builder = new ContextBuilder(chunkMapper, dynamicConfigProvider, new RuleContextCompressor(), null);
         List<RetrievalCandidate> candidates = List.of(
                 candidate("c2", 2, "命中块正文", 2L),
                 candidate("c9", 9, "  另一块正文  ", 3L));
@@ -129,7 +132,7 @@ class ContextBuilderTest {
         DocumentVectorChunkEntity samePage = row(1, "同页邻居", 2L);
         samePage.setId(2L);
         when(chunkMapper.selectList(any())).thenReturn(List.of(crossPage, samePage));
-        ContextBuilder builder = new ContextBuilder(chunkMapper, dynamicConfigProvider);
+        ContextBuilder builder = new ContextBuilder(chunkMapper, dynamicConfigProvider, new RuleContextCompressor(), null);
 
         String context = builder.build(List.of(
                 candidate("c2", 2, "命中块正文", 2L)));
@@ -141,7 +144,7 @@ class ContextBuilderTest {
     @Test
     void dbFailureShouldDegradeToNoNeighbor() {
         when(chunkMapper.selectList(any())).thenThrow(new IllegalStateException("db down"));
-        ContextBuilder builder = new ContextBuilder(chunkMapper, dynamicConfigProvider);
+        ContextBuilder builder = new ContextBuilder(chunkMapper, dynamicConfigProvider, new RuleContextCompressor(), null);
 
         String context = builder.build(List.of(
                 candidate("c2", 2, "命中块正文", 1L)));
@@ -153,13 +156,34 @@ class ContextBuilderTest {
     @Test
     void multipleHitsKeepIndependentNumbering() {
         when(chunkMapper.selectList(any())).thenReturn(List.of());
-        ContextBuilder builder = new ContextBuilder(chunkMapper, dynamicConfigProvider);
+        ContextBuilder builder = new ContextBuilder(chunkMapper, dynamicConfigProvider, new RuleContextCompressor(), null);
 
         String context = builder.build(List.of(
                 candidate("c2", 2, "命中块A", 1L),
                 candidate("c7", 7, "命中块B", 1L)));
 
         assertThat(context).isEqualTo("[1] 命中块A\n[2] 命中块B");
+    }
+
+    /** 预算触发（任务 2.4）：拼装结果超预算时经规则压缩收敛到预算内；编号仍完整。 */
+    @Test
+    void overBudgetContextShouldTriggerCompression() {
+        when(chunkMapper.selectList(any())).thenReturn(List.of());
+        ContextBuilder builder = new ContextBuilder(chunkMapper, dynamicConfigProvider,
+                new RuleContextCompressor(), null);
+        String text1 = "首句含数字金额15万元。填充内容一句。填充内容二句。填充内容三句。填充内容四句。末句收尾。";
+        String text2 = "第二段首句。第二段填充一句。第二段填充二句。第二段填充三句。第二段填充四句。第二段末句。";
+        List<RetrievalCandidate> candidates = List.of(
+                candidate("c1", 1, text1, 1L),
+                candidate("c2", 2, text2, 1L));
+        int plainTokens = TokenEstimator.estimate("[1] " + text1 + "\n[2] " + text2);
+        int budget = plainTokens / 2;
+        when(dynamicConfigService.get("rag.context.token-budget", Integer.class, 4096)).thenReturn(budget);
+
+        String context = builder.build(candidates);
+
+        assertThat(TokenEstimator.estimate(context)).isLessThanOrEqualTo(budget);
+        assertThat(context).contains("[1]").contains("[2]");
     }
 
     private void stubNeighborRows(DocumentVectorChunkEntity... rows) {
