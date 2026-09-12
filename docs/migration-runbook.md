@@ -65,16 +65,67 @@
 
 ## 6. 本地验证方式
 
-- 单元测试：`mvn test`（306 个 CRM 基线测试，不需要数据库）。
-- V1 真库验证（可选、需本地 MySQL）：
+### 6.1 两类测试与命令
 
-  ```bash
-  mysql -uroot -p -e "CREATE DATABASE crm_v1_verify DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-  SLZ_MYSQL_VERIFY_DATABASE=crm_v1_verify \
-  SLZ_MYSQL_VERIFY_USERNAME=root \
-  SLZ_MYSQL_VERIFY_PASSWORD=*** \
-  mvn test-compile failsafe:integration-test -Dit.test=V1BaselineMySqlIT
-  mysql -uroot -p -e "DROP DATABASE crm_v1_verify;"
-  ```
+- 单元测试：`mvn -B -ntp test`（surefire，`**/*Test.java`，不需要数据库也不需要 Docker）。
+  实测口径（2026-09-11，本机 `mvn -B -ntp verify`）：`target/surefire-reports` 下 93 个 `.txt` 报告，`Tests run` 合计 **467**。
+  此数不依赖 Docker，CI 同口径，即 `.github/workflows/ci.yml` 阶段3 的 surefire 基线。
+  （旧文档曾写「306 个 CRM 基线测试」，那是 V1 接管期的数字，已作废。）
+- 集成测试：`mvn -B -ntp verify` 追加 failsafe（`**/*IT.java`、`**/*IntegrationTest.java`），报告写入 `target/failsafe-reports`。
+  可执行 IT 共 8 个类（`AbstractMySqlIT` 是抽象基类，不产出报告）；无 Docker 实测其中 7 个的 `Tests run` 合计 **12**。
 
-  该 IT 只在 `SLZ_MYSQL_VERIFY_DATABASE` 存在时执行，因此 CI 无 MySQL 不会误报。
+### 6.2 覆盖边界：本地无 Docker 时 `mvn verify` 不是绿灯
+
+实测（2026-09-11，Docker Desktop 未运行）：`Tests run: 479, Failures: 0, Errors: 11, Skipped: 1` → **BUILD FAILURE**。
+
+- **会直接报错的**：`AbstractMySqlIT` 的 5 个子类共 11 个用例——`CompanyGroupDeleteIT` 4、`CustomerCompanyControllerIT` 1、
+  `CustomerCompanyDeptUniqueIT` 2、`PermissionControllerIT` 2、`WriteChainRegressionIT` 2。
+  根因：`AbstractMySqlIT` 第 24 行以静态字段急加载 `new MySQLContainer<>("mysql:8.0.36")`，**没有 `assumeTrue` 守卫**，
+  Docker 缺失时类初始化失败抛 `ExceptionInInitializerError`，同类其余用例接着报 `NoClassDefFoundError`。
+- **会优雅跳过的只有三处**：
+  1. `FlywayMigrationIT` 第 54 行 `assumeTrue(DockerClientFactory.instance().isDockerAvailable())` 在 `@BeforeAll`，
+     整类中止，报告记 `Tests run: 0`（该类只有 1 个 `@Test`）；
+  2. `V1BaselineMySqlIT` 需 `SLZ_MYSQL_VERIFY_DATABASE`，实测 `Tests run: 1, Skipped: 1`；
+  3. `ModelProviderImplDashScopeIT` 第 91 行 `assumeTrue(apiKey 非空)`（3 个 `@Test`），无 key 时全 skip。
+
+**因此：本地无 Docker 时，Flyway 真库迁移这条路径是被跳过（`Tests run: 0`）而不是通过。**
+不能用本地构建结果支撑「Flyway 迁移已验证」或「真机模型链路已验证」；这两条只在 CI（`ubuntu-latest` 自带 Docker）真跑。
+
+### 6.3 反向警告：本地 `mvn verify` 可能真的打外网
+
+`ModelProviderImplDashScopeIT` 的 key 解析顺序是「环境变量 `DASHSCOPE_API_KEY` → 仓库根 `.env` 同名键」。
+**只要任一处有值，它就会真跑**，向 `https://dashscope.aliyuncs.com/compatible-mode/v1` 发真实 chat/stream/embed 请求并消耗额度。
+当前仓库根 `.env` 含该键（2026-09-11 实测命中 1 处），所以本地随手 `mvn verify` 会产生外发请求；
+不想打外网又不能用 `-Dit.test=!ModelProviderImplDashScopeIT`（见 6.4），需临时把 env 与 `.env` 两处都置空。
+
+### 6.4 `-Dit.test` 的坑
+
+`-Dit.test=...` 会**覆盖** pom 里 failsafe 的 `<includes>`，而不是在其之上再过滤。
+实测：`mvn -B -ntp verify "-Dit.test=!ModelProviderImplDashScopeIT"` 让 failsafe 把 93 个单元类全部又跑了一遍，
+`target/failsafe-reports` 出现 100 个 `.txt`、`Tests run` 合计 479（= surefire 467 + IT 12）。
+只想跑单个 IT 时用白名单写法，例如 `-Dit.test=V1BaselineMySqlIT`（见 6.5）。
+
+### 6.5 V1 真库验证（可选、需本地 MySQL）
+
+```bash
+mysql -uroot -p -e "CREATE DATABASE crm_v1_verify DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+SLZ_MYSQL_VERIFY_DATABASE=crm_v1_verify \
+SLZ_MYSQL_VERIFY_USERNAME=root \
+SLZ_MYSQL_VERIFY_PASSWORD=*** \
+mvn test-compile failsafe:integration-test -Dit.test=V1BaselineMySqlIT
+mysql -uroot -p -e "DROP DATABASE crm_v1_verify;"
+```
+
+该 IT 只在 `SLZ_MYSQL_VERIFY_DATABASE` 存在时执行，因此 CI 无 MySQL 不会误报。
+
+### 6.6 怎么读跳过数
+
+看 `target/failsafe-reports/<类全名>.txt` 首行：`Tests run: X, Failures: Y, Errors: Z, Skipped: W`。
+
+- `FlywayMigrationIT` 的 `X = 0` 就是「整类被 `@BeforeAll` 假设中止」的信号；
+- **`X` 含 `W`**（skipped 也计入 `Tests run`），所以「总数没降」不等于「真跑了」，判断是否真跑要看 `W` 是否为 0；
+- surefire 侧同理读 `target/surefire-reports/<类全名>.txt`。
+
+CI 侧 failsafe 期望值推算为 12 + `FlywayMigrationIT` 1 + `ModelProviderImplDashScopeIT` 3 = **16**（推算值，非实测）。
+`.github/workflows/ci.yml` 阶段3 当前把 failsafe 基线保守设在实测下限 12；首次 Docker 可用的 CI 跑完后，
+应按 `target/failsafe-reports` 的实测合计把该数字上调。

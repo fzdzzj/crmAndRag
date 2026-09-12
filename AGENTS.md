@@ -31,3 +31,50 @@
 1. 计划里还有 `in_progress` 或 `pending` 吗？有 → 继续干，别结束这个 turn。
 2. 我这句话是不是预告？是 → 立刻补上工具调用。
 3. 我是不是在没跑工具的情况下断言了结果？是 → 先跑再答。
+
+## 项目路线（只指路，不复制内容）
+
+### 构建与校验
+
+- `mvn -B -ntp test` —— surefire，只跑 `**/*Test.java`（排除 `**/*IT.java`），不需 Docker，不访问外网。
+- `mvn -B -ntp verify` —— 再追加 failsafe，跑 `**/*IT.java` 与 `**/*IntegrationTest.java`，其中 Testcontainers MySQL 系列**需本地 Docker**。
+- 两者与 `.github/workflows/ci.yml` 的三段门禁同源（阶段1 surefire → 阶段2 failsafe → 阶段3 回归基线阈值），命令以那里为准。
+- 坑：`-Dit.test=...` 会**覆盖** pom 里 failsafe 的 `<includes>`。写成 `-Dit.test=!XxxIT` 不是“排除一个”，而是让 failsafe 把全量单测再跑一遍。
+- 本地无 Docker 时 `mvn verify` 的真实结果、哪些用例会跳、哪些会直接报错，读 `docs/migration-runbook.md` 第 6 节。**先读它再下“已验证”结论**。
+
+### 环境与迁移入口
+
+- `docs/migration-runbook.md`：`.env.example` → `.env`、`SPRING_PROFILES_ACTIVE=prod`、Flyway 号段归属（V1 基座 / V2x Lane A / V3x Lane B / V4x Lane C / V5x Lane D / V6x Lane E）。
+- 库结构唯一真相源 = `src/main/resources/db/migration`；**禁改已合入脚本**（Flyway 校 checksum），改错出 `V(n+1)__fix_xxx.sql`。
+- 回退：**不提供 DROP 回滚**，回退 = 恢复迁移前的数据库快照（runbook 第 4.1 步的 dump）。
+
+### 权威上下文 owner
+
+都在 `spec/changes/add-crm-rag-fusion-platform/` 下，改对应领域前先读：
+
+- `proposal.md` —— 变更范围与目标
+- `design-decisions.md` —— 架构决策及其取舍
+- `contracts-frozen.md` —— 已冻结的接口/契约，改动需先解冻
+- `db-table-coordination.md` —— 跳 lane 库表归属，谁建谁用
+
+### 模块边界（`src/main/java/com/slz/crm`）
+
+- `server` —— CRM 业务（controller/service/mapper）与 AI 助手（`server/ai`）
+- `knowledge` —— 知识库/RAG：文档摄取、向量化、检索、存储
+- `platform` —— 平台治理：配额、token、审计、对账、韧性、健康、安全、跟踪、生命周期、动态配置
+- `common` —— 注解、枚举、工具、异常、过滤器、结果包装
+- `pojo` —— entity / dto / vo / ao / excel
+- `quality` —— RAG 质量评测（benchmark 与评分）
+
+## 未闭合的授权缺口（改相关代码前必读）
+
+- **缺口**：`GET /permission/list` 与 `GET /permission/getByRole` 没有任何权限注解，任何登录用户都能读到全量权限清单。
+- **机制**：鉴权靠方法级注解 `com.slz.crm.common.annotation.RequirePermission`（`@Target(METHOD)`，打在类上不生效），由 `PermissionsInterceptor#preHandle` 执行（`WebMvcConfiguration#addInterceptors` 注册）；**注解缺失时拦截器直接放行**，校验不过才抛 `ErrorCode.PERMISSION_DENIED`（code 12002）。
+- **当前状态**：`PermissionController` 全类只有第 57 行的分配接口带 `@RequirePermission(PermissionOperates.SYSTEM_ASSIGN_PERMISSION)`；`list()` 与 `getByRole()` 无注解。
+- **唯一校验被停放**：`src/test/java/com/slz/crm/integration/controller/PermissionControllerIT.java` 两个 `@Disabled`，其理由串已写清再启用的三项机械核对条件与 owner。
+- **约束**：补上注解会改变产品鉴权行为（现有调用方可能立即开始收到 12002），属需单独授权的变更，不要顺手在无关任务里加；`PermissionOperates` 当前无“查看权限”常量，需先定下复用还是新增。
+- **核对命令**（期望只命中第 57 行；一旦 `list()` / `getByRole()` 也命中，就去移除那两个 `@Disabled`）：
+
+  ```bash
+  grep -n "@RequirePermission" src/main/java/com/slz/crm/server/controller/PermissionController.java
+  ```
