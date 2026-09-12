@@ -9,8 +9,8 @@
 
 ## 2. 块头注入（方案 05）
 
-- [ ] 2.1 摄取侧构造：嵌入文本 = `【文件名 | 类目 | 页码】`+ 块文本；DB `chunk_text` 与 `SourceReference.excerpt` 保持原文（单测断言两文本分离）
-- [ ] 2.2 嵌入调用点单测：`EmbeddingService.embed` 收到带前缀文本（mock 断言入参）
+- [x] 2.1 摄取侧构造：嵌入文本 = `【文件名 | 类目 | 页码】`+ 块文本；DB `chunk_text` 与 `SourceReference.excerpt` 保持原文（单测断言两文本分离）
+- [x] 2.2 嵌入调用点单测：`EmbeddingService.embed` 收到带前缀文本（mock 断言入参）
 
 ## 3. 双粒度索引（方案 03）
 

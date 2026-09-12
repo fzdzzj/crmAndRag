@@ -87,7 +87,11 @@ public class DocumentIngestionService {
                 DocumentVectorChunkEntity entity = createChunkEntity(file, chunk);
                 chunkMapper.insert(entity);
                 savedChunks.add(entity);
-                float[] embedding = embeddingService.embed(chunk.text());
+                // 块头只进嵌入输入（方案05）：文件名/类目/页级锚点给碎片块全局视野；
+                // DB chunk_text 与 VectorRecord.text 保持原文，引用展示不受前缀污染（任务 2.1）
+                String embedText = ChunkHeaderText.wrap(file.getOriginalFilename(),
+                        chunk.category(), chunk.pageNo(), chunk.rowIndex(), chunk.text());
+                float[] embedding = embeddingService.embed(embedText);
                 vectorRecords.add(createVectorRecord(file, entity, command, embedding));
             }
             vectorStore.upsertAll(vectorRecords);

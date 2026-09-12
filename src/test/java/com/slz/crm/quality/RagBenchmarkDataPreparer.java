@@ -1,5 +1,6 @@
 package com.slz.crm.quality;
 
+import com.slz.crm.knowledge.document.ChunkHeaderText;
 import com.slz.crm.knowledge.document.DocumentChunk;
 import com.slz.crm.knowledge.document.DocumentService;
 import com.slz.crm.platform.contract.CrmVectorStore;
@@ -122,13 +123,17 @@ public final class RagBenchmarkDataPreparer {
 
                 chunkIds.add(chunkId);
                 chunkTexts.add(indexedText);
+                // 嵌入输入与生产入库（DocumentIngestionService）同口径：块头 + 切片文本（提案4 任务 2.1）；
+                // 向量记录文本仍为剥离标记后的干净原文，引用展示不受头污染
+                String embedText = ChunkHeaderText.wrap(fixture.filename(), BENCHMARK_CATEGORY,
+                        chunk.pageNo(), chunk.rowIndex(), indexedText);
                 store.upsert(new VectorRecord(
                         documentId + ":" + chunk.chunkIndex(),
                         documentId,
                         chunkId,
                         chunk.chunkIndex(),
                         indexedText,
-                        embedder.embed(indexedText),
+                        embedder.embed(embedText),
                         metadata(fixture, chunk, evalKbId, chunkId)));
             }
         }
