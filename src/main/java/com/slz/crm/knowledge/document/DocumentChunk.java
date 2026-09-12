@@ -11,6 +11,8 @@ import java.util.List;
  * @param rowIndex   Excel 行号
  * @param category   类目
  * @param keywords   关键词
+ * @param parentText 所属逻辑段（父块）全文，双粒度索引用（提案4 任务 3.2）；
+ *                   null = 无独立父块（fixed 策略恒为 null，或语义切分下切片自身即逻辑段）
  */
 public record DocumentChunk(
         String text,
@@ -18,5 +20,6 @@ public record DocumentChunk(
         Integer pageNo,
         Integer rowIndex,
         String category,
-        List<String> keywords) {
+        List<String> keywords,
+        String parentText) {
 }

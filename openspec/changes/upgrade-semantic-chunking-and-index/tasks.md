@@ -2,10 +2,10 @@
 
 ## 1. 语义切分策略（方案 02）
 
-- [ ] 1.1 切分器策略抽象：`rag.chunking.strategy = fixed | semantic`（DynamicConfig，默认 fixed）；fixed 路径行为等价单测（同输入同 chunk 序列）
-- [ ] 1.2 semantic 实现：段落/标题/转折词边界 + `rag.chunking.max-chunk-size` 上限；单测断言：切点均落在边界、超长段按上限二次切分
-- [ ] 1.3 锚点保留断言：semantic 切分后每个 chunk 携带正确 pageNo（PDF 按页）与 rowIndex（Excel 按行）；D15 页级引用回归不破坏
-- [ ] 1.4 切分质量对比测试：构造跨段话题文档，semantic 相对 fixed 的块内话题一致性（构造断言：同一小节标题下的内容不分裂到两个 chunk）
+- [x] 1.1 切分器策略抽象：`rag.chunking.strategy = fixed | semantic`（DynamicConfig，默认 fixed）；fixed 路径行为等价单测（同输入同 chunk 序列）
+- [x] 1.2 semantic 实现：段落/标题/转折词边界 + `rag.chunking.max-chunk-size` 上限；单测断言：切点均落在边界、超长段按上限二次切分
+- [x] 1.3 锚点保留断言：semantic 切分后每个 chunk 携带正确 pageNo（PDF 按页）与 rowIndex（Excel 按行）；D15 页级引用回归不破坏
+- [x] 1.4 切分质量对比测试：构造跨段话题文档，semantic 相对 fixed 的块内话题一致性（构造断言：同一小节标题下的内容不分裂到两个 chunk）
 
 ## 2. 块头注入（方案 05）
 
