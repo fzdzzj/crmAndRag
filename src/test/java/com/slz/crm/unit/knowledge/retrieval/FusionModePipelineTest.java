@@ -4,6 +4,7 @@ import com.slz.crm.common.enumeration.DataScopeLevel;
 import com.slz.crm.knowledge.auth.KnowledgeBaseAuthorizationService;
 import com.slz.crm.knowledge.embedding.EmbeddingService;
 import com.slz.crm.knowledge.retrieval.Bm25Scorer;
+import com.slz.crm.knowledge.retrieval.DefaultWeightedReranker;
 import com.slz.crm.knowledge.retrieval.KnowledgeRetrievalServiceImpl;
 import com.slz.crm.knowledge.retrieval.RetrievalQueryRewriteService;
 import com.slz.crm.knowledge.retrieval.RrfFusion;
@@ -128,7 +129,8 @@ class FusionModePipelineTest {
         return new KnowledgeRetrievalServiceImpl(
                 authorizationService, embeddingService, vectorStore,
                 new RetrievalQueryRewriteService(modelProvider, dynamicConfigProvider),
-                new Bm25Scorer(), dynamicConfigProvider, sparseRecallService, new RrfFusion());
+                dynamicConfigProvider, sparseRecallService, new RrfFusion(),
+                new DefaultWeightedReranker(new Bm25Scorer(), dynamicConfigProvider), null);
     }
 
     private void stubCommon(UserContext user) {

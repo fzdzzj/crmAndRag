@@ -23,11 +23,12 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 知识库生产检索实现：授权 → 改写 → 双路召回（向量+稀疏）→ 融合 → rerank → 路由融合。
+ * 知识库生产检索实现：授权 → 改写 → 双路召回（向量+稀疏）→ RRF 融合 → 重排 → 路由融合 → topK。
  *
- * <p>方案16补全（complete-hybrid-retrieval-and-rerank）：在纯向量召回之外接入语料级稀疏
- * 召回路（{@link SparseRecallService}，词法精确命中向量漏召的块也能入池），
- * 两路候选并集合并后进入既有「向量/BM25 归一化加权」路内精排；图文路由融合与 topK 流程不变。</p>
+ * <p>方案16补全 + 方案08升级（complete-hybrid-retrieval-and-rerank）：在纯向量召回之外接入
+ * 语料级稀疏召回路（{@link SparseRecallService}），两路 RRF 融合（weighted 模式回退升级前行为）；
+ * 重排器可插拔（默认 = 向量/BM25 归一化加权，可选 LLM 重排）。
+ * 图文路由融合与 topK 流程保持不变，仅插入新环节。</p>
  */
 @Service
 public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
@@ -36,44 +37,49 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
     private static final double DEFAULT_MIN_SCORE = 0.20;
     private static final double DEFAULT_TEXT_ROUTE_WEIGHT = 0.70;
     private static final double DEFAULT_IMAGE_ROUTE_WEIGHT = 0.30;
-    private static final double DEFAULT_VECTOR_WEIGHT = 0.60;
-    private static final double DEFAULT_BM25_WEIGHT = 0.40;
     private static final String FUSION_MODE_KEY = "rag.retrieval.fusion.mode";
     private static final String FUSION_RRF_K_KEY = "rag.retrieval.fusion.rrf-k";
     private static final String FUSION_MODE_WEIGHTED = "weighted";
     private static final int DEFAULT_RRF_K = 60;
+    private static final String RERANK_MODE_KEY = "rag.retrieval.rerank.mode";
+    private static final String RERANK_MODE_LLM = "llm";
 
     private final KnowledgeBaseAuthorizationService authorizationService;
     private final EmbeddingService embeddingService;
     private final CrmVectorStore vectorStore;
     private final RetrievalQueryRewriteService queryRewriteService;
-    private final Bm25Scorer bm25Scorer;
     private final ObjectProvider<DynamicConfigService> dynamicConfigProvider;
     /** 稀疏召回路；null = 关闭（回退纯向量单路，兼容既有装配与测试）。 */
     private final SparseRecallService sparseRecallService;
     /** RRF 融合器（任务 3.1）；null = 兼容构造下不可用。 */
     private final RrfFusion rrfFusion;
+    /** 默认重排器：向量/BM25 归一化加权（任务 4.1，行为等价搬运）。 */
+    private final DefaultWeightedReranker defaultReranker;
+    /** LLM 重排器（任务 4.2，默认关闭）；null = 兼容构造下不可用。 */
+    private final LlmReranker llmReranker;
 
     @Autowired
     public KnowledgeRetrievalServiceImpl(KnowledgeBaseAuthorizationService authorizationService,
                                          EmbeddingService embeddingService,
                                          CrmVectorStore vectorStore,
                                          RetrievalQueryRewriteService queryRewriteService,
-                                         Bm25Scorer bm25Scorer,
                                          ObjectProvider<DynamicConfigService> dynamicConfigProvider,
                                          SparseRecallService sparseRecallService,
-                                         RrfFusion rrfFusion) {
+                                         RrfFusion rrfFusion,
+                                         DefaultWeightedReranker defaultReranker,
+                                         LlmReranker llmReranker) {
         this.authorizationService = authorizationService;
         this.embeddingService = embeddingService;
         this.vectorStore = vectorStore;
         this.queryRewriteService = queryRewriteService;
-        this.bm25Scorer = bm25Scorer;
         this.dynamicConfigProvider = dynamicConfigProvider;
         this.sparseRecallService = sparseRecallService;
         this.rrfFusion = rrfFusion;
+        this.defaultReranker = defaultReranker;
+        this.llmReranker = llmReranker;
     }
 
-    /** 兼容构造：不接稀疏路与 RRF（纯向量单路 + 路内加权，升级前行为）。 */
+    /** 兼容构造：不接稀疏路/RRF/LLM 重排（纯向量单路 + 路内加权，升级前行为）。 */
     public KnowledgeRetrievalServiceImpl(KnowledgeBaseAuthorizationService authorizationService,
                                          EmbeddingService embeddingService,
                                          CrmVectorStore vectorStore,
@@ -81,7 +87,8 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
                                          Bm25Scorer bm25Scorer,
                                          ObjectProvider<DynamicConfigService> dynamicConfigProvider) {
         this(authorizationService, embeddingService, vectorStore, queryRewriteService,
-                bm25Scorer, dynamicConfigProvider, null, null);
+                dynamicConfigProvider, null, null,
+                new DefaultWeightedReranker(bm25Scorer, dynamicConfigProvider), null);
     }
 
     @Override
@@ -108,9 +115,10 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
         boolean hasImageVector = query.imageVector() != null && query.imageVector().length > 0;
 
         float[] textVector = embeddingService.embed(retrievalQuery);
-        List<RetrievalCandidate> textCandidates = rerank(retrievalQuery, recallTextRoute(
+        Reranker reranker = activeReranker();
+        List<RetrievalCandidate> textCandidates = reranker.rerank(retrievalQuery, recallTextRoute(
                 retrievalQuery, textVector, knowledgeBaseIds, category, candidateLimit, minScore));
-        List<RetrievalCandidate> imageCandidates = hasImageVector ? rerank(retrievalQuery,
+        List<RetrievalCandidate> imageCandidates = hasImageVector ? reranker.rerank(retrievalQuery,
                 recall(retrievalQuery, query.imageVector(), knowledgeBaseIds, category,
                         candidateLimit, minScore)) : List.of();
         List<RetrievalCandidate> candidates = fuseRoutes(textCandidates, imageCandidates).stream()
@@ -190,26 +198,17 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
         return intentCategory == null || intentCategory.isBlank() ? null : intentCategory.strip();
     }
 
-    /** 路内 rerank：向量分与 BM25 分都先归一化，再加权融合。 */
-    private List<RetrievalCandidate> rerank(String query, List<RetrievalCandidate> candidates) {
-        if (candidates.isEmpty()) {
-            return List.of();
+    /**
+     * 重排器选择（任务 4.2/4.3）：{@code rag.retrieval.rerank.mode = default | llm}（默认 default）；
+     * llm 未装配（兼容构造）时同样落回默认链。
+     */
+    private Reranker activeReranker() {
+        DynamicConfigService config = dynamicConfigProvider.getIfAvailable();
+        String mode = config == null ? null : config.get(RERANK_MODE_KEY, String.class, "default");
+        if (mode != null && RERANK_MODE_LLM.equalsIgnoreCase(mode.strip()) && llmReranker != null) {
+            return llmReranker;
         }
-        List<Double> vectorScores = candidates.stream().map(candidate -> candidate.hit().score()).toList();
-        List<Double> bm25Scores = bm25Scorer.score(query,
-                candidates.stream().map(candidate -> candidate.hit().text()).toList());
-        List<Double> normalizedVectorScores = normalizeScores(vectorScores);
-        List<Double> normalizedBm25Scores = normalizeScores(bm25Scores);
-
-        double vectorWeight = resolveRatio("rag.retrieval.rerank.vector-weight", DEFAULT_VECTOR_WEIGHT);
-        double bm25Weight = resolveRatio("rag.retrieval.rerank.bm25-weight", DEFAULT_BM25_WEIGHT);
-        List<RetrievalCandidate> reranked = new ArrayList<>(candidates.size());
-        for (int index = 0; index < candidates.size(); index++) {
-            double score = normalizedVectorScores.get(index) * vectorWeight
-                    + normalizedBm25Scores.get(index) * bm25Weight;
-            reranked.add(new RetrievalCandidate(candidates.get(index).hit(), score));
-        }
-        return reranked;
+        return defaultReranker;
     }
 
     /** 图文路由融合：文本 0.7 + 图片 0.3，同切片两路命中则累加。 */
@@ -240,21 +239,6 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
                         existing.rerankScore() + candidate.rerankScore() * routeWeight));
             }
         }
-    }
-
-    private List<Double> normalizeScores(List<Double> scores) {
-        if (scores.isEmpty()) {
-            return List.of();
-        }
-        double min = scores.stream().mapToDouble(Double::doubleValue).min().orElse(0);
-        double max = scores.stream().mapToDouble(Double::doubleValue).max().orElse(0);
-        if (max <= 0) {
-            return java.util.Collections.nCopies(scores.size(), 0.0);
-        }
-        if (max == min) {
-            return java.util.Collections.nCopies(scores.size(), 1.0);
-        }
-        return scores.stream().map(score -> (score - min) / (max - min)).toList();
     }
 
     private SourceReference toSourceReference(VectorSearchHit hit, double relevanceScore) {

@@ -37,9 +37,9 @@
 
 ## 4. 重排器抽象与 LLM rerank（方案 08 升级）
 
-- [ ] 4.1 抽取 `Reranker` 接口；默认实现搬运现有"向量/BM25 归一化加权"逻辑，行为等价单测（同输入同排序）
-- [ ] 4.2 LLM rerank 实现：`ModelProvider` listwise 打分，`rag.retrieval.rerank.mode = default | llm`（默认 default）；失败/空输出/超时回退默认链，单测覆盖三条回退路径
-- [ ] 4.3 `KnowledgeRetrievalServiceImpl` 接线：召回（向量+稀疏）→ 融合 → rerank → 图文路由融合 → topK（既有管线顺序不变，仅插入新环节）
+- [x] 4.1 抽取 `Reranker` 接口；默认实现搬运现有"向量/BM25 归一化加权"逻辑，行为等价单测（同输入同排序）
+- [x] 4.2 LLM rerank 实现：`ModelProvider` listwise 打分，`rag.retrieval.rerank.mode = default | llm`（默认 default）；失败/空输出/超时回退默认链，单测覆盖三条回退路径
+- [x] 4.3 `KnowledgeRetrievalServiceImpl` 接线：召回（向量+稀疏）→ 融合 → rerank → 图文路由融合 → topK（既有管线顺序不变，仅插入新环节）
 
 ## 5. 基线验收（对照 add-rag-quality-baseline）
 

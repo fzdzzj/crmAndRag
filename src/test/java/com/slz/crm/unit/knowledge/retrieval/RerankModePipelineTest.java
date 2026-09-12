@@ -6,11 +6,14 @@ import com.slz.crm.knowledge.embedding.EmbeddingService;
 import com.slz.crm.knowledge.retrieval.Bm25Scorer;
 import com.slz.crm.knowledge.retrieval.DefaultWeightedReranker;
 import com.slz.crm.knowledge.retrieval.KnowledgeRetrievalServiceImpl;
+import com.slz.crm.knowledge.retrieval.LlmReranker;
 import com.slz.crm.knowledge.retrieval.RetrievalQueryRewriteService;
 import com.slz.crm.knowledge.retrieval.RrfFusion;
 import com.slz.crm.knowledge.retrieval.SparseRecallService;
 import com.slz.crm.knowledge.vector.InMemoryVectorStore;
 import com.slz.crm.platform.contract.DynamicConfigService;
+import com.slz.crm.platform.contract.ModelCallOptions;
+import com.slz.crm.platform.contract.ModelCallResult;
 import com.slz.crm.platform.contract.ModelProvider;
 import com.slz.crm.platform.contract.UserContext;
 import com.slz.crm.platform.contract.UserContextHolder;
@@ -21,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.LinkedHashMap;
@@ -28,22 +32,21 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * 类目过滤单测（complete-hybrid-retrieval-and-rerank 任务 2.2，D17 收尾）：
- * 类目命中窄化生效、空类目不过滤、类目只能窄化不能放大结果。
- * 稀疏路 SQL 侧类目语义由 {@code SparseRecallServiceIT} 真库覆盖。
+ * 重排模式接线单测（complete-hybrid-retrieval-and-rerank 任务 4.3）：
+ * rerank.mode=llm 时管线走 LLM 重排；默认（default）时完全不触模型，走默认加权链。
  */
 @ExtendWith(MockitoExtension.class)
-class CategoryFilterPipelineTest {
+class RerankModePipelineTest {
     private static final long KB_ID = 1L;
-    private static final String QUESTION = "保修政策";
+    private static final String QUESTION = "回款计划";
 
     @Mock
     private KnowledgeBaseAuthorizationService authorizationService;
@@ -58,6 +61,9 @@ class CategoryFilterPipelineTest {
     private ObjectProvider<DynamicConfigService> dynamicConfigProvider;
 
     @Mock
+    private DynamicConfigService dynamicConfigService;
+
+    @Mock
     private SparseRecallService sparseRecallService;
 
     private final InMemoryVectorStore vectorStore = new InMemoryVectorStore();
@@ -67,61 +73,44 @@ class CategoryFilterPipelineTest {
         UserContextHolder.clear();
     }
 
-    /** 类目命中：向量路与稀疏路都收到类目；结果只含该类目切片。 */
+    /** mode=llm：LLM listwise 输出 [2,1] → 最终 topK 顺序 c2、c1，且确实调用了模型。 */
     @Test
-    void categoryShouldNarrowBothRoutesWhenMatched() {
+    void llmModeShouldReorderFinalTopKByLlm() {
         UserContext user = new UserContext(1L, 2L, 10L, DataScopeLevel.SELF, "user");
         UserContextHolder.set(user);
-        upsert("chunk-a", "整体机保修两年", "warranty");
-        upsert("chunk-b", "发票开具流程说明", "invoice");
+        upsert("chunk-1", "回款计划分三期执行", new float[]{1f, 0f});
+        upsert("chunk-2", "回款台账与对账口径", new float[]{0.6f, 0.8f});
         KnowledgeRetrievalServiceImpl service = service();
         stubCommon(user);
-        when(sparseRecallService.recall(eq(QUESTION), eq(List.of(KB_ID)), eq("warranty"), anyInt()))
-                .thenReturn(List.of());
+        when(dynamicConfigService.get(eq("rag.retrieval.rerank.mode"), eq(String.class), eq("default")))
+                .thenReturn("llm");
+        when(modelProvider.chat(any(Prompt.class), any(ModelCallOptions.class)))
+                .thenReturn(ModelCallResult.ofText("[2,1]", "qwen-max", 100L, 10L, 110L));
 
         KnowledgeRetrievalPort.RetrievalResult result = service.retrieve(new KnowledgeRetrievalPort.RetrievalQuery(
-                QUESTION, 1L, List.of("1"), 5, null, "warranty"));
+                QUESTION, 1L, List.of("1"), 5, null, null));
+
+        assertEquals(2, result.hitCount());
+        assertEquals("chunk-2", result.sources().getFirst().chunkId());
+        assertEquals("chunk-1", result.sources().getLast().chunkId());
+        verify(modelProvider).chat(any(Prompt.class), any(ModelCallOptions.class));
+    }
+
+    /** 默认模式：不触碰模型（改写显式关闭后 provider 零调用），走默认加权链。 */
+    @Test
+    void defaultModeMustNotTouchModelProvider() {
+        UserContext user = new UserContext(1L, 2L, 10L, DataScopeLevel.SELF, "user");
+        UserContextHolder.set(user);
+        upsert("chunk-1", "回款计划分三期执行", new float[]{1f, 0f});
+        KnowledgeRetrievalServiceImpl service = service();
+        stubCommon(user);
+
+        KnowledgeRetrievalPort.RetrievalResult result = service.retrieve(new KnowledgeRetrievalPort.RetrievalQuery(
+                QUESTION, 1L, List.of("1"), 5, null, null));
 
         assertEquals(1, result.hitCount());
-        assertEquals("chunk-a", result.sources().getFirst().chunkId());
-        verify(sparseRecallService).recall(eq(QUESTION), eq(List.of(KB_ID)), eq("warranty"), anyInt());
-    }
-
-    /** 空类目：两路均不过滤，全类目候选可见。 */
-    @Test
-    void blankCategoryShouldNotFilter() {
-        UserContext user = new UserContext(1L, 2L, 10L, DataScopeLevel.SELF, "user");
-        UserContextHolder.set(user);
-        upsert("chunk-a", "整体机保修两年", "warranty");
-        upsert("chunk-b", "发票开具流程说明", "invoice");
-        KnowledgeRetrievalServiceImpl service = service();
-        stubCommon(user);
-        when(sparseRecallService.recall(eq(QUESTION), eq(List.of(KB_ID)), eq(null), anyInt()))
-                .thenReturn(List.of());
-
-        KnowledgeRetrievalPort.RetrievalResult result = service.retrieve(new KnowledgeRetrievalPort.RetrievalQuery(
-                QUESTION, 1L, List.of("1"), 5, null, "  "));
-
-        assertEquals(2, result.hitCount(), "空类目不得过滤");
-        verify(sparseRecallService).recall(eq(QUESTION), eq(List.of(KB_ID)), eq(null), anyInt());
-    }
-
-    /** 越权类目：类目只与授权叠加窄化，无匹配 = 空结果而非放大。 */
-    @Test
-    void unmatchedCategoryMustNotExpandResults() {
-        UserContext user = new UserContext(1L, 2L, 10L, DataScopeLevel.SELF, "user");
-        UserContextHolder.set(user);
-        upsert("chunk-a", "整体机保修两年", "warranty");
-        KnowledgeRetrievalServiceImpl service = service();
-        stubCommon(user);
-        when(sparseRecallService.recall(eq(QUESTION), eq(List.of(KB_ID)), eq("不存在的类目"), anyInt()))
-                .thenReturn(List.of());
-
-        KnowledgeRetrievalPort.RetrievalResult result = service.retrieve(new KnowledgeRetrievalPort.RetrievalQuery(
-                QUESTION, 1L, List.of("1"), 5, null, "不存在的类目"));
-
-        assertEquals(0, result.hitCount(), "类目不匹配应返回空，而不是回退为全量");
-        assertTrue(result.sources().isEmpty());
+        assertEquals("chunk-1", result.sources().getFirst().chunkId());
+        verify(modelProvider, never()).chat(any(Prompt.class), any(ModelCallOptions.class));
     }
 
     private KnowledgeRetrievalServiceImpl service() {
@@ -129,23 +118,32 @@ class CategoryFilterPipelineTest {
                 authorizationService, embeddingService, vectorStore,
                 new RetrievalQueryRewriteService(modelProvider, dynamicConfigProvider),
                 dynamicConfigProvider, sparseRecallService, new RrfFusion(),
-                new DefaultWeightedReranker(new Bm25Scorer(), dynamicConfigProvider), null);
+                new DefaultWeightedReranker(new Bm25Scorer(), dynamicConfigProvider),
+                new LlmReranker(modelProvider,
+                        new DefaultWeightedReranker(new Bm25Scorer(), dynamicConfigProvider),
+                        dynamicConfigProvider));
     }
 
     private void stubCommon(UserContext user) {
-        when(authorizationService.authorizedKnowledgeBaseIds(user, List.of("1"))).thenReturn(List.of(KB_ID));
-        when(embeddingService.embed(QUESTION)).thenReturn(new float[]{1f, 0f});
+        lenient().when(authorizationService.authorizedKnowledgeBaseIds(user, List.of("1")))
+                .thenReturn(List.of(KB_ID));
+        lenient().when(embeddingService.embed(QUESTION)).thenReturn(new float[]{1f, 0f});
+        lenient().when(dynamicConfigProvider.getIfAvailable()).thenReturn(dynamicConfigService);
+        lenient().when(dynamicConfigService.get(any(String.class), any(), any()))
+                .thenAnswer(invocation -> invocation.getArgument(2));
+        // 改写开关显式关闭：本测试只考察重排模式，且 default 模式要求 provider 零调用
+        lenient().when(dynamicConfigService.get(eq("rag.retrieval.query-rewrite.enabled"),
+                eq(Boolean.class), eq(true))).thenReturn(false);
     }
 
-    private void upsert(String chunkId, String text, String category) {
+    private void upsert(String chunkId, String text, float[] vector) {
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("knowledgeBaseId", String.valueOf(KB_ID));
-        metadata.put("category", category);
+        metadata.put("category", "");
         metadata.put("filename", "a.md");
         metadata.put("pageNo", 0L);
         metadata.put("rowIndex", 0L);
-        // 同一方向向量，保证无类目过滤时两片都过 minScore
         vectorStore.upsert(new VectorRecord("point-" + chunkId, "doc-" + chunkId, chunkId, 0,
-                text, new float[]{1f, 0f}, metadata));
+                text, vector, metadata));
     }
 }
