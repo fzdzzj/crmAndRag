@@ -177,6 +177,12 @@ CREATE TABLE IF NOT EXISTS `user_handover` (
 );
 
 -- ============================================
+-- 重播种说明：真库表结构由 Flyway 建（role_permissions 等子表带指向 sys_role 的外键），
+-- Testcontainers 容器跨用例共享、本脚本随用例重放，清库前须关外键检查，否则 DELETE 父表命中 fk_rp_role。
+-- ============================================
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- ============================================
 -- 插入测试角色 (Admin)
 -- ============================================
 DELETE FROM `sys_role`;
@@ -487,3 +493,5 @@ CREATE TABLE IF NOT EXISTS `sales_stage_approval` (
   KEY `idx_approval_opportunity` (`opportunity_id`),
   KEY `idx_approval_status` (`approval_status`)
 );
+
+SET FOREIGN_KEY_CHECKS = 1;
