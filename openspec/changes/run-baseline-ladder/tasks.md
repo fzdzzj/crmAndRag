@@ -18,10 +18,10 @@
 
 ## 2. Runner 泛化（测试侧代码，单测可验）
 
-- [ ] 2.1 输出路径参数化：`-Drag.benchmark.out=docs/rag-quality/<name>.json`，缺省 `baseline-v1.json` 保持兼容
-- [ ] 2.2 开关矩阵注入：`DynamicConfig` 桩（Map 背书）替换 `emptyDynamicConfigProvider()`，矩阵含 fusion.mode / context.neighbors / context.compressor.mode / context.parent-expand / chunking.strategy / query.*；报告 JSON 含**当跑矩阵快照**
-- [ ] 2.3 全量新管线装配：全参构造器 + 0.1 结论的稀疏路装配；无 Docker 且稀疏路必需时显式跳过并警告（不静默降级）
-- [ ] 2.4 单测：矩阵装配断言（回退矩阵 = 旧构造器行为等价，可引用既有等价测试）；`mvn -B -ntp test` 绿（585+新增）
+- [x] 2.1 输出路径参数化：`-Drag.benchmark.out=docs/rag-quality/<name>.json`，缺省 `baseline-v1.json` 保持兼容
+- [x] 2.2 开关矩阵注入：`DynamicConfig` 桩（Map 背书）替换 `emptyDynamicConfigProvider()`，矩阵含 fusion.mode / context.neighbors / context.compressor.mode / context.parent-expand / chunking.strategy / query.*；报告 JSON 含**当跑矩阵快照**
+- [x] 2.3 全量新管线装配：全参构造器 + 0.1 结论的稀疏路装配；无 Docker 且稀疏路必需时显式跳过并警告（不静默降级）
+- [x] 2.4 单测：矩阵装配断言（回退矩阵 = 旧构造器行为等价，可引用既有等价测试）；`mvn -B -ntp test` 绿（585+新增）
 
 ## 3. 第二跑：after-hybrid——解锁提案2 5.1/5.2 + 补勾 1.1
 
@@ -92,5 +92,12 @@
 
 - 断言全过：caseCount=18 全评分、suiteVersion=1.0、failureRate=0.0（≤0.25）、hitRate=1.0（>0）。初始锚点：recall@k=0.9444 / MRR=0.8472 / citationPrecision=0.8056 / answerConsistency=1.0 / totalTokens=17032 / totalLatency=3450ms。
 - **1.3 机械归因（run5 触发判定的输入）**：baseline-v1 纯向量单路口径下，**TEXT 5 条 recall@k=1.0 / MRR=1.0，LEXICAL 6 条 recall@k=1.0 / MRR=1.0**——词汇路与文本路均已到顶，**无词汇失配缺口**。「查询-文档词汇失配为主要漏召」在 fixtures 量级**不成立**（触发判定细节见任务组 6）。
+
+### 任务组 2 runner 泛化落地（2026-09-13，任务组 2，surefire 基线 585→590）
+
+- **2.1/2.2**：`RagRealRetrievalBenchmarkIT` 经 `-Drag.benchmark.run=<profile>` + `-Drag.benchmark.out=<path>` 参数化；`-Drag.rag.benchmark.run` 由 `RagBenchmarkRun` 枚举解析（V1/HYBRID/CONTEXT/CHUNKING/QUERY），`rag.benchmark.out` 缺省回退 profile 自带路径。跑矩阵经 `RagBenchmarkPipelineFactory.dynamicConfig(Map)` 背书为 `DynamicConfigService` 匿名类（接口为泛型方法，不能用 lambda），命中键按 String/Integer/Boolean/Double 转换、缺失回默认值；报告 JSON 末尾追加 `runProfile / runChunking / runConfig`（矩阵快照）。
+- **2.3**：全量新管线装配在 `RagBenchmarkPipelineFactory.build`：回退态（`!sparseOn`）走 6 参兼容构造（= 旧构造器）；混合/上下文走 10 参全参构造，稀疏路为 `SparseBenchmarkRecallService`（测试子类，bigram 近似召回、chunkId 与向量路 `key-index` 一致可融合），上下文用 `InMemoryDocumentVectorChunkMapper.createFromChunks` 内存 double 驱动真实 `ContextBuilder`。全部不改 `src/main`。
+- **2.4**：新增 `RagBenchmarkAssemblyTest` 5 条（回退=旧构造器等价 / hybrid 装稀疏不装上下文 / context 装稀疏+上下文 / Map 桩转换回退 / 枚举语义），全绿；全量 `mvn test` 绿，**surefire 总数 590**（585 + 5 新增），零失败零跳过。
+- **v1 复现校验**：泛化后以新 runner 重跑 V1，指标与任务组1锚点一致（recall@k/MRR/citationPrecision/answerConsistency/totalTokens 全等），追加 runConfig 元数据——证明泛化不改回退态口径。
 
 （各跑差异摘要、ladder-report 链接在任务组 1–7 执行时回填）
