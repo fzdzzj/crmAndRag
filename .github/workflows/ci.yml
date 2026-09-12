@@ -38,11 +38,11 @@ jobs:
         run: mvn -B -ntp verify
 
       # 阶段3：回归基线阈值——两个报告目录分开裁决，防止合并悄悄丢测试
-      #   口径A surefire = target/surefire-reports（pom 的 **/*Test.java，显式 exclude **/*IT.java），基线 494
-      #     实测：2026-09-12 本机 mvn -B -ntp test，Tests run 合计 494（=473 + 提案2新增21：
-      #       稀疏路管线2 + 类目过滤3 + RRF融合4 + 融合回退开关3 + 默认重排等价2 + LLM重排回退链5 + 重排模式接线2）。
-      #     单测不依赖 Docker，CI 与本机同口径，因此 494 对两边都成立；只增不减。
-      #     ⚠ 提案2 failsafe IT（ngram 闸门/稀疏召回 DB 级/FlywayMigrationIT V22 断言）待 V6 保留字缺陷
+      #   口径A surefire = target/surefire-reports（pom 的 **/*Test.java，显式 exclude **/*IT.java），基线 527
+      #     实测：2026-09-12 本机 mvn -B -ntp test，Tests run 合计 527（=494 + 提案3新增33：
+      #       邻居拼装9 + 邻居不混引用管线1 + 规则压缩8 + LLM压缩回退链8 + 引用完整性管线5 + 消费侧topK新增2）。
+      #     单测不依赖 Docker，CI 与本机同口径，因此 527 对两边都成立；只增不减。
+      #     ⚠ 提案2/3 failsafe IT（ngram 闸门/稀疏召回 DB 级/FlywayMigrationIT V22 断言）待 V6 保留字缺陷
       #       修复真跑绿后随下一轮基线上调（见 openspec/changes/complete-hybrid-retrieval-and-rerank/tasks.md §0）。
       #   口径B failsafe = target/failsafe-reports（pom 的 **/*IT.java 与 **/*IntegrationTest.java），基线 12
       #     实测：同日 failsafe:integration-test 白名单列出 7 个可执行 IT，Tests run 合计 12
@@ -90,10 +90,10 @@ jobs:
           }
 
           rc=0
-          check_baseline target/surefire-reports 494 "surefire 单元测试" || rc=1
+          check_baseline target/surefire-reports 527 "surefire 单元测试" || rc=1
           check_baseline target/failsafe-reports 12 "failsafe 集成测试" || rc=1
           if [ "$rc" -ne 0 ]; then
-            echo "::error::回归基线阈值校验未通过（surefire 基线 494 / failsafe 基线 12）"
+            echo "::error::回归基线阈值校验未通过（surefire 基线 527 / failsafe 基线 12）"
           fi
           exit "$rc"
 

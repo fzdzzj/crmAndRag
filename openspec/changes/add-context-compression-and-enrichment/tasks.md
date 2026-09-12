@@ -1,5 +1,20 @@
 # Tasks — add-context-compression-and-enrichment
 
+## 0. 执行记录（执行 agent 填写）
+
+- 2026-09-12：分支 `feature/add-context-compression-and-enrichment` 基于提案2分支 tip（e368ae4）叠罗汉创建
+  （本提案与提案2同改 buildContext 区域，tasks.md §6 时序：合入顺序 2 → 3）。
+- 计量类型取舍（任务 2.3）：`TokenUsageType` 为冻结契约、无压缩枚举值，按硬约束不为其解冻；
+  LLM 压缩计量复用 `SUMMARY`（要点化压缩=摘要类旁路，语义最近）。后续若走解冻流程新增
+  `COMPRESSION` 值，仅改 `LlmContextCompressor.recordUsage` 一处。
+- "同页优先"落法（任务 1.1）：`chunkIndex` 为全文档连续序号（DocumentChunk 契约），±1 即紧邻；
+  同页优先仅在"同 documentId 同 chunkIndex 多行"的数据异常下作为确定性 tie-break 生效
+  （同页优先 → 主键小者）。
+- 压缩编号防破坏：段头仅认"行首 [n] 且 n 恰为前段+1"，正文内行首 [7] 类文本不构成新段；
+  规则压缩拼回时保证每段段头前有换行（裁句可能吃掉段尾换行）。
+- 新键 `rag.context.neighbors` / `rag.context.token-budget` / `rag.context.compressor.mode` /
+  `rag.context.compressor.llm.timeout-ms` 已同步 `docs/dynamic-config-keys.md`。
+
 ## 1. 邻居上下文增强（方案 04）
 
 - [x] 1.1 实现 `ContextBuilder`：命中块按 documentId + chunkIndex 取紧邻邻居（同页优先），拼 `[前置][命中][后置]`；`rag.context.neighbors = 0|1`（默认 1）
@@ -25,9 +40,12 @@
 
 ## 5. 基线验收（对照 add-rag-quality-baseline）
 
-- [ ] 5.1 重跑真检索基准：token 用量较 `baseline-v1.json` 下降（或混合检索后最新基线）；答案要点覆盖 / answerConsistency / citationPrecision 不回退
-- [ ] 5.2 产出 `baseline-after-context.json` 落盘同目录，差异摘要写入本 change 验证记录
-- [ ] 5.3 `mvn -B -ntp test` 绿（surefire ≥ 前序变更后的计数）；`mvn -B -ntp verify` failsafe 不减
+- [ ] 5.1 重跑真检索基准：token 用量较 `baseline-v1.json` 下降（或混合检索后最新基线）；答案要点覆盖 / answerConsistency / citationPrecision 不回退 【待授权：DASHSCOPE_API_KEY 真实外发；且前置依赖提案1任务4.1基线首跑（baseline-v1.json 尚不存在）】
+- [ ] 5.2 产出 `baseline-after-context.json` 落盘同目录，差异摘要写入本 change 验证记录 【待授权：同 5.1，随提案1基线首跑后一并执行】
+- [x] 5.3 `mvn -B -ntp test` 绿（surefire ≥ 前序变更后的计数）；`mvn -B -ntp verify` failsafe 不减
+
+  > 2026-09-12 实测：surefire **527 全绿**（=494+提案3新增33）。failsafe 沿用提案2 §0 的 V6 保留字存量缺陷口径
+  > （迁移链在真 MySQL 卡 V6，依赖 Flyway 的 IT 无法真跑绿；修复需用户授权），修复 V6 后需真跑 `mvn -B -ntp verify` 复核并回填。
 
 ## 6. Git 操作（按 `openspec/git-workflow.md` 执行）
 

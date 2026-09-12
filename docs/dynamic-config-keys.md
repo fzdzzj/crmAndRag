@@ -40,6 +40,17 @@
 | `rag.retrieval.image-text-route-weight` | Double | 0.70 | 文本路权重（0~1） |
 | `rag.retrieval.image-vector-route-weight` | Double | 0.30 | 图片路权重（0~1） |
 
+## rag.context.* —— 上下文组装：邻居增强与压缩（提案3 新增，add-context-compression-and-enrichment）
+
+| 键 | 类型 | 默认值 | 语义与回退 |
+|---|---|---|---|
+| `rag.context.neighbors` | Integer | 1 | 邻居增强开关：1（默认，取命中块紧邻前/后各一片）\| 0（关闭，输出与升级前逐字一致）。&lt;0 按 1 处理。邻居只进上下文、不进 SourceReference |
+| `rag.context.token-budget` | Integer | 4096 | 上下文 token 预算（TokenEstimator 估算口径）；超预算触发压缩，未超预算原文逐字保留。&lt;1 回落默认 |
+| `rag.context.compressor.mode` | String | `rule` | 压缩器选择：`rule`（确定性规则压缩，默认）\| `llm`（LLM 要点化压缩，需 ModelProvider 可用）。llm 未装配或值非法时落规则链 |
+| `rag.context.compressor.llm.timeout-ms` | Long | 3000 | LLM 压缩等待超时；超时/失败/空输出/编号不完整/仍超预算均回退规则压缩链 |
+
+> 计量口径：LLM 压缩调用 token 挂 `TokenUsageRecorder`（type=SUMMARY，`TokenUsageType` 为冻结契约无压缩枚举值，语义最近者为摘要旁路）。
+
 ## rag.intent.* —— 意图/类目（D17 既有键）
 
 | 键 | 类型 | 语义 |
