@@ -92,6 +92,8 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
         }
 
         String retrievalQuery = queryRewriteService.rewrite(query.query());
+        // D17 收尾（complete-hybrid-retrieval-and-rerank 任务 2.1）：意图类目两路同语义过滤，空 = 不过滤
+        String category = normalizeCategory(query.intentCategory());
         int topK = resolveTopK(query.topK());
         double minScore = resolveMinScore();
         int candidateLimit = topK * resolveCandidateMultiplier();
@@ -99,9 +101,10 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
 
         float[] textVector = embeddingService.embed(retrievalQuery);
         List<RetrievalCandidate> textCandidates = rerank(retrievalQuery, recallTextRoute(
-                retrievalQuery, textVector, knowledgeBaseIds, candidateLimit, minScore));
+                retrievalQuery, textVector, knowledgeBaseIds, category, candidateLimit, minScore));
         List<RetrievalCandidate> imageCandidates = hasImageVector ? rerank(retrievalQuery,
-                recall(retrievalQuery, query.imageVector(), knowledgeBaseIds, candidateLimit, minScore)) : List.of();
+                recall(retrievalQuery, query.imageVector(), knowledgeBaseIds, category,
+                        candidateLimit, minScore)) : List.of();
         List<RetrievalCandidate> candidates = fuseRoutes(textCandidates, imageCandidates).stream()
                 .sorted(Comparator.comparingDouble(RetrievalCandidate::rerankScore).reversed())
                 .limit(topK)
@@ -119,15 +122,16 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
     private List<RetrievalCandidate> recallTextRoute(String query,
                                                      float[] queryVector,
                                                      List<Long> knowledgeBaseIds,
+                                                     String category,
                                                      int candidateLimit,
                                                      double minScore) {
         List<RetrievalCandidate> vectorCandidates =
-                recall(query, queryVector, knowledgeBaseIds, candidateLimit, minScore);
+                recall(query, queryVector, knowledgeBaseIds, category, candidateLimit, minScore);
         if (sparseRecallService == null) {
             return vectorCandidates;
         }
         List<RetrievalCandidate> sparseCandidates =
-                sparseRecallService.recall(query, knowledgeBaseIds, null, candidateLimit);
+                sparseRecallService.recall(query, knowledgeBaseIds, category, candidateLimit);
         if (sparseCandidates.isEmpty()) {
             return vectorCandidates;
         }
@@ -141,15 +145,18 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
         return List.copyOf(merged.values());
     }
 
-    /** 每个知识库单独过滤，保证授权集合不能被伪造 metadata 放大。 */
+    /** 每个知识库单独过滤，保证授权集合不能被伪造 metadata 放大；类目与授权叠加（只窄化不放大）。 */
     private List<RetrievalCandidate> recall(String query,
                                             float[] queryVector,
                                             List<Long> knowledgeBaseIds,
+                                            String category,
                                             int candidateLimit,
                                             double minScore) {
         List<RetrievalCandidate> candidates = new ArrayList<>();
         for (Long knowledgeBaseId : knowledgeBaseIds) {
-            Map<String, Object> filter = Map.of("knowledgeBaseId", String.valueOf(knowledgeBaseId));
+            Map<String, Object> filter = category == null
+                    ? Map.of("knowledgeBaseId", String.valueOf(knowledgeBaseId))
+                    : Map.of("knowledgeBaseId", String.valueOf(knowledgeBaseId), "category", category);
             vectorStore.search(new VectorSearchRequest(queryVector, candidateLimit, minScore, filter))
                     .stream()
                     .filter(hit -> hit.text() != null && !hit.text().isBlank())
@@ -157,6 +164,11 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
                     .forEach(candidates::add);
         }
         return candidates;
+    }
+
+    /** 类目归一：null/空白 = 不过滤，其余去首尾空白后参与两路过滤。 */
+    private String normalizeCategory(String intentCategory) {
+        return intentCategory == null || intentCategory.isBlank() ? null : intentCategory.strip();
     }
 
     /** 路内 rerank：向量分与 BM25 分都先归一化，再加权融合。 */

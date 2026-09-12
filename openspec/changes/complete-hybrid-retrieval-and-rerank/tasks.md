@@ -27,6 +27,8 @@
 - [ ] 2.1 `recall()` 向量路 filter 增 `category`（null/空 = 不过滤）；稀疏路同语义
 - [ ] 2.2 单测：类目命中过滤生效；空类目不过滤；越权类目不放大结果
 
+> 2.1–2.2 代码与单测（`CategoryFilterPipelineTest`）已完成；稀疏路 SQL 侧类目真跑同被 §0 V6 阻塞，勾选待真跑后补。
+
 ## 3. RRF 融合
 
 - [ ] 3.1 实现 `RrfFusion`（k 读 `rag.retrieval.fusion.rrf-k`，默认 60）；`rag.retrieval.fusion.mode = rrf | weighted`（默认 rrf）
