@@ -14,10 +14,10 @@
 
 ## 3. 双粒度索引（方案 03）
 
-- [ ] 3.1 Flyway `V23__chunk_parent_link.sql`：`document_vector_chunk` 增 `parent_chunk_id`（可空，自引用父块行）；`FlywayMigrationIT` 断言通过
-- [ ] 3.2 语义切分时生成父块记录（逻辑段聚合），子块挂 `parent_chunk_id`；fixed 策略下父块=块自身（`parent_chunk_id` 空，行为不变）
-- [ ] 3.3 `ContextBuilder` 升级：双粒度模式下命中子块 → 展开父块进上下文；`SourceReference` 仍指子块（引用锚点不降级）；`rag.context.parent-expand = on | off`（默认 on，off 回退邻居模式）
-- [ ] 3.4 单测：命中子块时上下文含父块全文；引用/跳页锚点指向子块
+- [x] 3.1 Flyway `V23__chunk_parent_link.sql`：`document_vector_chunk` 增 `parent_chunk_id`（可空，自引用父块行）；`FlywayMigrationIT` 断言通过
+- [x] 3.2 语义切分时生成父块记录（逻辑段聚合），子块挂 `parent_chunk_id`；fixed 策略下父块=块自身（`parent_chunk_id` 空，行为不变）
+- [x] 3.3 `ContextBuilder` 升级：双粒度模式下命中子块 → 展开父块进上下文；`SourceReference` 仍指子块（引用锚点不降级）；`rag.context.parent-expand = on | off`（默认 on，off 回退邻居模式）
+- [x] 3.4 单测：命中子块时上下文含父块全文；引用/跳页锚点指向子块
 
 ## 4. 幂等重建入库（reingest）
 

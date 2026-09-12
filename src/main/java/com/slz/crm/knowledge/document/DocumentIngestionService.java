@@ -34,6 +34,10 @@ import java.util.UUID;
 public class DocumentIngestionService {
     private static final Logger log = LoggerFactory.getLogger(DocumentIngestionService.class);
 
+    /** 切片角色（V23 chunk_role）：CHILD=检索单元，PARENT=生成单元父块行。 */
+    static final String CHUNK_ROLE_CHILD = "CHILD";
+    static final String CHUNK_ROLE_PARENT = "PARENT";
+
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final UploadedFileMapper uploadedFileMapper;
     private final DocumentVectorChunkMapper chunkMapper;
@@ -82,15 +86,13 @@ public class DocumentIngestionService {
         try (InputStream storedContent = fileStorageService.open(storageKey)) {
             List<DocumentChunk> chunks = documentService.process(storedContent, command.filename(), command.category());
             vectorStore.deleteByDocumentId(documentId);
-            List<VectorRecord> vectorRecords = new ArrayList<>(chunks.size());
-            for (DocumentChunk chunk : chunks) {
-                DocumentVectorChunkEntity entity = createChunkEntity(file, chunk);
-                chunkMapper.insert(entity);
-                savedChunks.add(entity);
+            savedChunks.addAll(persistChunks(file, chunks));
+            List<VectorRecord> vectorRecords = new ArrayList<>(savedChunks.size());
+            for (DocumentVectorChunkEntity entity : savedChunks) {
                 // 块头只进嵌入输入（方案05）：文件名/类目/页级锚点给碎片块全局视野；
                 // DB chunk_text 与 VectorRecord.text 保持原文，引用展示不受前缀污染（任务 2.1）
                 String embedText = ChunkHeaderText.wrap(file.getOriginalFilename(),
-                        chunk.category(), chunk.pageNo(), chunk.rowIndex(), chunk.text());
+                        entity.getCategory(), entity.getPageNo(), entity.getRowIndex(), entity.getChunkText());
                 float[] embedding = embeddingService.embed(embedText);
                 vectorRecords.add(createVectorRecord(file, entity, command, embedding));
             }
@@ -144,7 +146,82 @@ public class DocumentIngestionService {
         entity.setKeywords(String.join(",", chunk.keywords()));
         entity.setPageNo(chunk.pageNo());
         entity.setRowIndex(chunk.rowIndex());
+        entity.setChunkRole(CHUNK_ROLE_CHILD);
         return entity;
+    }
+
+    /**
+     * 切片落库（提案4 任务 3.2，双粒度索引）：子块行 + 语义切分产生的父块行。
+     *
+     * <p>父块分组规则：相邻且 parentText 逐字相同、页锚点一致的连续子块属同一逻辑段；
+     * 段被切成 ≥2 个子块时才落一行父块（chunk_role=PARENT，chunk_index 从子块总数+1 起编号、
+     * 与子块序号空间隔离），子块挂 parent_chunk_id。恰好 1 个子块的逻辑段自身即父块，
+     * 不落父块行、parent_chunk_id 保持空（fixed 策略全部子块如此，行为与升级前一致）。</p>
+     *
+     * <p>父块行不嵌入、不产向量记录——父块是生成单元不是检索单元（稀疏召回与邻居
+     * 增强只消费 CHILD 行）。</p>
+     *
+     * @return 已落库的子块行（按 chunkIndex 升序，即向量写库与计数的口径）
+     */
+    private List<DocumentVectorChunkEntity> persistChunks(UploadedFileEntity file, List<DocumentChunk> chunks) {
+        List<DocumentVectorChunkEntity> children = new ArrayList<>(chunks.size());
+        int index = 0;
+        int parentOrdinal = 0;
+        while (index < chunks.size()) {
+            int runEnd = groupRunEnd(chunks, index);
+            DocumentVectorChunkEntity parent = null;
+            if (runEnd - index >= 2) {
+                parent = createParentEntity(file, chunks.get(index));
+                parent.setChunkIndex(chunks.size() + 1 + parentOrdinal);
+                parentOrdinal++;
+                chunkMapper.insert(parent);
+            }
+            for (int i = index; i < runEnd; i++) {
+                DocumentVectorChunkEntity entity = createChunkEntity(file, chunks.get(i));
+                if (parent != null) {
+                    entity.setParentChunkId(parent.getId());
+                }
+                chunkMapper.insert(entity);
+                children.add(entity);
+            }
+            index = runEnd;
+        }
+        return children;
+    }
+
+    /** 从 index 起的同一逻辑段连续区段：parentText 非空逐字相同且页锚点一致才延续。 */
+    private int groupRunEnd(List<DocumentChunk> chunks, int index) {
+        DocumentChunk first = chunks.get(index);
+        if (first.parentText() == null) {
+            return index + 1;
+        }
+        int end = index + 1;
+        while (end < chunks.size()) {
+            DocumentChunk next = chunks.get(end);
+            if (next.parentText() == null || !next.parentText().equals(first.parentText())
+                    || !Objects.equals(next.pageNo(), first.pageNo())
+                    || !Objects.equals(next.rowIndex(), first.rowIndex())) {
+                break;
+            }
+            end++;
+        }
+        return end;
+    }
+
+    /** 父块行：逻辑段全文；锚点/类目取段内子块口径（同段同页），关键词从段全文提取。 */
+    private DocumentVectorChunkEntity createParentEntity(UploadedFileEntity file, DocumentChunk first) {
+        String parentText = first.parentText();
+        DocumentVectorChunkEntity parent = new DocumentVectorChunkEntity();
+        parent.setDocumentId(file.getDocumentId());
+        parent.setChunkText(parentText);
+        parent.setChunkHash(sha256(parentText));
+        parent.setFilename(file.getOriginalFilename());
+        parent.setCategory(first.category());
+        parent.setKeywords(String.join(",", documentService.extractKeywords(parentText)));
+        parent.setPageNo(first.pageNo());
+        parent.setRowIndex(first.rowIndex());
+        parent.setChunkRole(CHUNK_ROLE_PARENT);
+        return parent;
     }
 
     /** point id 使用 UUID；chunkId 使用 DB 主键，保证前端引用与 DB 可回查。 */

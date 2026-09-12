@@ -22,6 +22,9 @@ public interface DocumentVectorChunkMapper extends BaseMapper<DocumentVectorChun
      * {@code kbIds} 授权集合内，调用方传什么集合就只可能出什么集合的切片——
      * 切片侧不存在可放大的 metadata。类目为可空窄化条件（空 = 不过滤）。</p>
      *
+     * <p>双粒度过滤（提案4 任务 3.1）：只召回 CHILD 检索单元行——PARENT 父块行不嵌入，
+     * 混入稀疏路会让同一内容以子/父两行挤占 topK（V23 迁移对存量行补默认 CHILD）。</p>
+     *
      * @param query    整句查询（不预切词，交给 ngram）
      * @param kbIds    授权知识库 ID 字符串集合（非空）
      * @param category 类目过滤（null/空 = 不过滤）
@@ -36,6 +39,7 @@ public interface DocumentVectorChunkMapper extends BaseMapper<DocumentVectorChun
             FROM document_vector_chunk c
             JOIN uploaded_file f ON f.document_id = c.document_id AND f.is_deleted = 0
             WHERE c.is_deleted = 0
+              AND c.chunk_role = 'CHILD'
               AND MATCH(c.chunk_text) AGAINST(#{query} IN NATURAL LANGUAGE MODE)
               AND f.knowledge_base IN
               <foreach collection="kbIds" item="kbId" open="(" separator="," close=")">#{kbId}</foreach>

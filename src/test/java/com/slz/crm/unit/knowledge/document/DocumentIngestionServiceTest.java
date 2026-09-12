@@ -133,4 +133,61 @@ class DocumentIngestionServiceTest {
         assertThat(ChunkHeaderText.wrap(null, null, null, null, "正文"))
                 .isEqualTo("【未命名 | 未分类】\n正文");
     }
+
+    /** 任务 3.2：语义切分逻辑段（≥2 子块）落一行父块（先行落库），子块挂 parent_chunk_id；父块不嵌入。 */
+    @Test
+    void semanticSectionPersistsParentRowAndLinksChildren() throws Exception {
+        when(documentService.process(any(), eq("a.txt"), eq("crm"))).thenReturn(List.of(
+                new DocumentChunk("段切片一", 0, 2, null, "crm", List.of(), "第2页逻辑段全文"),
+                new DocumentChunk("段切片二", 1, 2, null, "crm", List.of(), "第2页逻辑段全文"),
+                new DocumentChunk("独立切片", 2, 3, null, "crm", List.of(), null)));
+        ingest();
+
+        ArgumentCaptor<DocumentVectorChunkEntity> inserts = ArgumentCaptor.forClass(DocumentVectorChunkEntity.class);
+        org.mockito.Mockito.verify(chunkMapper, org.mockito.Mockito.times(4)).insert(inserts.capture());
+        List<DocumentVectorChunkEntity> rows = inserts.getAllValues();
+
+        // 父块行先落库（子块要挂它的主键）：role/text/锚点/编号隔离全对齐
+        DocumentVectorChunkEntity parent = rows.get(0);
+        assertThat(parent.getChunkRole()).isEqualTo("PARENT");
+        assertThat(parent.getChunkText()).isEqualTo("第2页逻辑段全文");
+        assertThat(parent.getChunkIndex()).as("父块从子块总数+1 起编号，与子块序号空间隔离").isEqualTo(4);
+        assertThat(parent.getPageNo()).isEqualTo(2);
+        assertThat(parent.getId()).isNotNull();
+
+        assertThat(rows.get(1).getChunkRole()).isEqualTo("CHILD");
+        assertThat(rows.get(1).getParentChunkId()).isEqualTo(parent.getId());
+        assertThat(rows.get(2).getParentChunkId()).isEqualTo(parent.getId());
+        // 单片逻辑段（独立切片）：自身即父块，不挂父块行
+        assertThat(rows.get(3).getChunkText()).isEqualTo("独立切片");
+        assertThat(rows.get(3).getParentChunkId()).isNull();
+        assertThat(rows.get(3).getChunkRole()).isEqualTo("CHILD");
+
+        // 父块是生成单元不是检索单元：只有 3 个子块被嵌入
+        org.mockito.Mockito.verify(embeddingService, org.mockito.Mockito.times(3)).embed(anyString());
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<VectorRecord>> records = ArgumentCaptor.forClass(List.class);
+        org.mockito.Mockito.verify(vectorStore).upsertAll(records.capture());
+        assertThat(records.getValue()).hasSize(3);
+    }
+
+    /** 任务 3.2：fixed 策略（parentText 恒 null）不产生父块行，行为与升级前一致。 */
+    @Test
+    void fixedStrategyPersistsNoParentRows() throws Exception {
+        when(documentService.process(any(), eq("a.txt"), eq("crm"))).thenReturn(List.of(
+                new DocumentChunk("切片甲", 0, 1, null, "crm", List.of(), null),
+                new DocumentChunk("切片乙", 1, 1, null, "crm", List.of(), null),
+                new DocumentChunk("切片丙", 2, 1, null, "crm", List.of(), null)));
+        ingest();
+
+        ArgumentCaptor<DocumentVectorChunkEntity> inserts = ArgumentCaptor.forClass(DocumentVectorChunkEntity.class);
+        org.mockito.Mockito.verify(chunkMapper, org.mockito.Mockito.times(3)).insert(inserts.capture());
+        assertThat(inserts.getAllValues())
+                .allSatisfy(row -> {
+                    assertThat(row.getChunkRole()).isEqualTo("CHILD");
+                    assertThat(row.getParentChunkId()).isNull();
+                })
+                .extracting(DocumentVectorChunkEntity::getChunkIndex)
+                .containsExactly(0, 1, 2);
+    }
 }
