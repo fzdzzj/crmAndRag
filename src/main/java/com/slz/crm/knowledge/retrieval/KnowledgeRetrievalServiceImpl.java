@@ -11,6 +11,7 @@ import com.slz.crm.platform.contract.VectorSearchHit;
 import com.slz.crm.platform.contract.VectorSearchRequest;
 import com.slz.crm.server.ai.port.KnowledgeRetrievalPort;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -22,7 +23,11 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 知识库生产检索实现：授权 → 改写 → 双路召回 → BM25 rerank → 路由融合。
+ * 知识库生产检索实现：授权 → 改写 → 双路召回（向量+稀疏）→ 融合 → rerank → 路由融合。
+ *
+ * <p>方案16补全（complete-hybrid-retrieval-and-rerank）：在纯向量召回之外接入语料级稀疏
+ * 召回路（{@link SparseRecallService}，词法精确命中向量漏召的块也能入池），
+ * 两路候选并集合并后进入既有「向量/BM25 归一化加权」路内精排；图文路由融合与 topK 流程不变。</p>
  */
 @Service
 public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
@@ -40,19 +45,35 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
     private final RetrievalQueryRewriteService queryRewriteService;
     private final Bm25Scorer bm25Scorer;
     private final ObjectProvider<DynamicConfigService> dynamicConfigProvider;
+    /** 稀疏召回路；null = 关闭（回退纯向量单路，兼容既有装配与测试）。 */
+    private final SparseRecallService sparseRecallService;
 
+    @Autowired
     public KnowledgeRetrievalServiceImpl(KnowledgeBaseAuthorizationService authorizationService,
                                          EmbeddingService embeddingService,
                                          CrmVectorStore vectorStore,
                                          RetrievalQueryRewriteService queryRewriteService,
                                          Bm25Scorer bm25Scorer,
-                                         ObjectProvider<DynamicConfigService> dynamicConfigProvider) {
+                                         ObjectProvider<DynamicConfigService> dynamicConfigProvider,
+                                         SparseRecallService sparseRecallService) {
         this.authorizationService = authorizationService;
         this.embeddingService = embeddingService;
         this.vectorStore = vectorStore;
         this.queryRewriteService = queryRewriteService;
         this.bm25Scorer = bm25Scorer;
         this.dynamicConfigProvider = dynamicConfigProvider;
+        this.sparseRecallService = sparseRecallService;
+    }
+
+    /** 兼容构造：不接稀疏路（纯向量单路，升级前行为）。 */
+    public KnowledgeRetrievalServiceImpl(KnowledgeBaseAuthorizationService authorizationService,
+                                         EmbeddingService embeddingService,
+                                         CrmVectorStore vectorStore,
+                                         RetrievalQueryRewriteService queryRewriteService,
+                                         Bm25Scorer bm25Scorer,
+                                         ObjectProvider<DynamicConfigService> dynamicConfigProvider) {
+        this(authorizationService, embeddingService, vectorStore, queryRewriteService,
+                bm25Scorer, dynamicConfigProvider, null);
     }
 
     @Override
@@ -77,12 +98,12 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
         boolean hasImageVector = query.imageVector() != null && query.imageVector().length > 0;
 
         float[] textVector = embeddingService.embed(retrievalQuery);
-        List<Candidate> textCandidates = rerank(retrievalQuery,
-                recall(retrievalQuery, textVector, knowledgeBaseIds, candidateLimit, minScore));
-        List<Candidate> imageCandidates = hasImageVector ? rerank(retrievalQuery,
+        List<RetrievalCandidate> textCandidates = rerank(retrievalQuery, recallTextRoute(
+                retrievalQuery, textVector, knowledgeBaseIds, candidateLimit, minScore));
+        List<RetrievalCandidate> imageCandidates = hasImageVector ? rerank(retrievalQuery,
                 recall(retrievalQuery, query.imageVector(), knowledgeBaseIds, candidateLimit, minScore)) : List.of();
-        List<Candidate> candidates = fuseRoutes(textCandidates, imageCandidates).stream()
-                .sorted(Comparator.comparingDouble(Candidate::rerankScore).reversed())
+        List<RetrievalCandidate> candidates = fuseRoutes(textCandidates, imageCandidates).stream()
+                .sorted(Comparator.comparingDouble(RetrievalCandidate::rerankScore).reversed())
                 .limit(topK)
                 .toList();
         if (candidates.isEmpty()) {
@@ -94,26 +115,52 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
         return new KnowledgeRetrievalPort.RetrievalResult(buildContext(candidates), sources, candidates.size());
     }
 
+    /** 文本路召回：向量路（按授权 KB 逐库过滤）+ 稀疏路并集合并；同切片向量路优先。 */
+    private List<RetrievalCandidate> recallTextRoute(String query,
+                                                     float[] queryVector,
+                                                     List<Long> knowledgeBaseIds,
+                                                     int candidateLimit,
+                                                     double minScore) {
+        List<RetrievalCandidate> vectorCandidates =
+                recall(query, queryVector, knowledgeBaseIds, candidateLimit, minScore);
+        if (sparseRecallService == null) {
+            return vectorCandidates;
+        }
+        List<RetrievalCandidate> sparseCandidates =
+                sparseRecallService.recall(query, knowledgeBaseIds, null, candidateLimit);
+        if (sparseCandidates.isEmpty()) {
+            return vectorCandidates;
+        }
+        Map<String, RetrievalCandidate> merged = new LinkedHashMap<>();
+        for (RetrievalCandidate candidate : vectorCandidates) {
+            merged.put(candidate.fusionKey(), candidate);
+        }
+        for (RetrievalCandidate candidate : sparseCandidates) {
+            merged.putIfAbsent(candidate.fusionKey(), candidate);
+        }
+        return List.copyOf(merged.values());
+    }
+
     /** 每个知识库单独过滤，保证授权集合不能被伪造 metadata 放大。 */
-    private List<Candidate> recall(String query,
-                                   float[] queryVector,
-                                   List<Long> knowledgeBaseIds,
-                                   int candidateLimit,
-                                   double minScore) {
-        List<Candidate> candidates = new ArrayList<>();
+    private List<RetrievalCandidate> recall(String query,
+                                            float[] queryVector,
+                                            List<Long> knowledgeBaseIds,
+                                            int candidateLimit,
+                                            double minScore) {
+        List<RetrievalCandidate> candidates = new ArrayList<>();
         for (Long knowledgeBaseId : knowledgeBaseIds) {
             Map<String, Object> filter = Map.of("knowledgeBaseId", String.valueOf(knowledgeBaseId));
             vectorStore.search(new VectorSearchRequest(queryVector, candidateLimit, minScore, filter))
                     .stream()
                     .filter(hit -> hit.text() != null && !hit.text().isBlank())
-                    .map(hit -> new Candidate(hit, hit.score()))
+                    .map(hit -> new RetrievalCandidate(hit, hit.score()))
                     .forEach(candidates::add);
         }
         return candidates;
     }
 
     /** 路内 rerank：向量分与 BM25 分都先归一化，再加权融合。 */
-    private List<Candidate> rerank(String query, List<Candidate> candidates) {
+    private List<RetrievalCandidate> rerank(String query, List<RetrievalCandidate> candidates) {
         if (candidates.isEmpty()) {
             return List.of();
         }
@@ -125,21 +172,22 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
 
         double vectorWeight = resolveRatio("rag.retrieval.rerank.vector-weight", DEFAULT_VECTOR_WEIGHT);
         double bm25Weight = resolveRatio("rag.retrieval.rerank.bm25-weight", DEFAULT_BM25_WEIGHT);
-        List<Candidate> reranked = new ArrayList<>(candidates.size());
+        List<RetrievalCandidate> reranked = new ArrayList<>(candidates.size());
         for (int index = 0; index < candidates.size(); index++) {
             double score = normalizedVectorScores.get(index) * vectorWeight
                     + normalizedBm25Scores.get(index) * bm25Weight;
-            reranked.add(new Candidate(candidates.get(index).hit(), score));
+            reranked.add(new RetrievalCandidate(candidates.get(index).hit(), score));
         }
         return reranked;
     }
 
     /** 图文路由融合：文本 0.7 + 图片 0.3，同切片两路命中则累加。 */
-    private List<Candidate> fuseRoutes(List<Candidate> textCandidates, List<Candidate> imageCandidates) {
+    private List<RetrievalCandidate> fuseRoutes(List<RetrievalCandidate> textCandidates,
+                                                List<RetrievalCandidate> imageCandidates) {
         if (imageCandidates.isEmpty()) {
             return textCandidates;
         }
-        Map<String, Candidate> merged = new LinkedHashMap<>();
+        Map<String, RetrievalCandidate> merged = new LinkedHashMap<>();
         double textWeight = resolveRatio("rag.retrieval.image-text-route-weight", DEFAULT_TEXT_ROUTE_WEIGHT);
         double imageWeight = resolveRatio("rag.retrieval.image-vector-route-weight", DEFAULT_IMAGE_ROUTE_WEIGHT);
         mergeRoute(merged, textCandidates, textWeight);
@@ -147,14 +195,16 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
         return List.copyOf(merged.values());
     }
 
-    private void mergeRoute(Map<String, Candidate> merged, List<Candidate> candidates, double routeWeight) {
-        for (Candidate candidate : candidates) {
-            String key = candidate.hit().documentId() + ":" + candidate.hit().chunkId();
-            Candidate existing = merged.get(key);
+    private void mergeRoute(Map<String, RetrievalCandidate> merged,
+                            List<RetrievalCandidate> candidates,
+                            double routeWeight) {
+        for (RetrievalCandidate candidate : candidates) {
+            RetrievalCandidate existing = merged.get(candidate.fusionKey());
             if (existing == null) {
-                merged.put(key, new Candidate(candidate.hit(), candidate.rerankScore() * routeWeight));
+                merged.put(candidate.fusionKey(),
+                        new RetrievalCandidate(candidate.hit(), candidate.rerankScore() * routeWeight));
             } else {
-                merged.put(key, new Candidate(
+                merged.put(candidate.fusionKey(), new RetrievalCandidate(
                         existing.hit(),
                         existing.rerankScore() + candidate.rerankScore() * routeWeight));
             }
@@ -196,7 +246,7 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
                 relevanceScore);
     }
 
-    private String buildContext(List<Candidate> candidates) {
+    private String buildContext(List<RetrievalCandidate> candidates) {
         StringBuilder builder = new StringBuilder();
         for (int index = 0; index < candidates.size(); index++) {
             if (index > 0) {
@@ -255,9 +305,5 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
 
     private Integer integer(Object value) {
         return value instanceof Number number ? number.intValue() : null;
-    }
-
-    /** 路内候选：hit 携带原始契约数据，rerankScore 为路内混合分。 */
-    private record Candidate(VectorSearchHit hit, double rerankScore) {
     }
 }

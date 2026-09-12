@@ -19,6 +19,9 @@
 - [ ] 1.4 单测（InMemory/H2 或 Testcontainers）：构造"向量 miss + 词法 hit"用例（自定义 embedding 让向量路漏召），断言命中块经稀疏路进入最终 top-K
 - [ ] 1.5 越权单测：用户仅授权 KB1 时，KB2 的块不出现在稀疏路结果（伪造 metadata 不可放大授权集合）
 
+> 1.3–1.5 代码与测试已完成（管线级单测 `SparseRecallPipelineTest` + DB 级 `SparseRecallServiceIT`），
+> 但 DB 级用例真跑同样被 §0 的 V6 存量缺陷阻塞，勾选待 V6 授权修复并真跑绿后补。
+
 ## 2. 类目过滤（D17 收尾）
 
 - [ ] 2.1 `recall()` 向量路 filter 增 `category`（null/空 = 不过滤）；稀疏路同语义
