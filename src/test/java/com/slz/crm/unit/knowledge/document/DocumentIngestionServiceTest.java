@@ -8,6 +8,7 @@ import com.slz.crm.knowledge.document.DocumentIngestionCommand;
 import com.slz.crm.knowledge.document.DocumentIngestionResult;
 import com.slz.crm.knowledge.document.DocumentIngestionService;
 import com.slz.crm.knowledge.document.DocumentService;
+import com.slz.crm.knowledge.document.DerivedQuestionService;
 import com.slz.crm.knowledge.embedding.EmbeddingService;
 import com.slz.crm.knowledge.entity.DocumentVectorChunkEntity;
 import com.slz.crm.knowledge.entity.KnowledgeBaseEntity;
@@ -16,6 +17,10 @@ import com.slz.crm.knowledge.storage.FileStorageService;
 import com.slz.crm.platform.audit.GovernanceAuditRecorder;
 import com.slz.crm.platform.audit.GovernanceAuditResult;
 import com.slz.crm.platform.contract.CrmVectorStore;
+import com.slz.crm.platform.contract.DynamicConfigService;
+import com.slz.crm.platform.contract.ModelCallResult;
+import com.slz.crm.platform.contract.ModelProvider;
+import com.slz.crm.platform.contract.TokenUsageRecorder;
 import com.slz.crm.platform.contract.UserContext;
 import com.slz.crm.platform.contract.VectorRecord;
 import com.slz.crm.server.mapper.DocumentVectorChunkMapper;
@@ -29,9 +34,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -39,6 +46,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 /**
@@ -71,6 +79,16 @@ class DocumentIngestionServiceTest {
     private CrmVectorStore vectorStore;
     @Mock
     private GovernanceAuditRecorder auditRecorder;
+    @Mock
+    private ModelProvider modelProvider;
+    @Mock
+    private ObjectProvider<DynamicConfigService> ragConfigProvider;
+    @Mock
+    private DynamicConfigService ragConfigService;
+    @Mock
+    private ObjectProvider<TokenUsageRecorder> usageRecorderProvider;
+    @Mock
+    private TokenUsageRecorder usageRecorder;
 
     @BeforeEach
     void setUp() {
@@ -294,6 +312,119 @@ class DocumentIngestionServiceTest {
                         "chunkIndex", entity.getChunkIndex(),
                         "role", entity.getChunkRole(),
                         "parentText", entity.getParentChunkId() == null ? "" : textById.get(entity.getParentChunkId())))
+                .toList();
+    }
+
+    // ---------------------------------------------------------------- 衍生问题旁路（提案5 任务 3.1–3.5）
+
+    private DocumentIngestionService ingestionWithDerived(DerivedQuestionService derived) {
+        return new DocumentIngestionService(knowledgeBaseMapper, uploadedFileMapper, chunkMapper,
+                authorizationService, fileStorageService, documentService, embeddingService,
+                vectorStore, auditRecorder, derived);
+    }
+
+    private DerivedQuestionService derivedService(Boolean enabled) {
+        lenient().when(ragConfigProvider.getIfAvailable()).thenReturn(ragConfigService);
+        lenient().when(ragConfigService.get(eq("rag.query.derived-questions.enabled"), eq(Boolean.class), eq(false)))
+                .thenReturn(enabled);
+        lenient().when(usageRecorderProvider.getIfAvailable()).thenReturn(usageRecorder);
+        return new DerivedQuestionService(modelProvider, embeddingService, vectorStore, chunkMapper,
+                ragConfigProvider, usageRecorderProvider, Runnable::run);
+    }
+
+    /** 任务 3.2：旁路整体失败（LLM 全挂）绝不阻塞入库主链——结果照常 COMPLETED。 */
+    @Test
+    void derivedQuestionFailureMustNotBlockIngestion() throws Exception {
+        when(documentService.process(any(), eq("a.txt"), eq("crm"))).thenReturn(List.of(
+                new DocumentChunk("切片一", 0, 1, null, "crm", List.of(), null),
+                new DocumentChunk("切片二", 1, 1, null, "crm", List.of(), null)));
+        when(modelProvider.chat(any(), any())).thenThrow(new IllegalStateException("模型超载"));
+
+        DocumentIngestionResult result = ingestionWithDerived(derivedService(true))
+                .ingest(new DocumentIngestionCommand(
+                        1L, USER, "a.txt", "text/plain", 100L, "crm", null,
+                        new ByteArrayInputStream("file-body".getBytes(StandardCharsets.UTF_8))));
+
+        assertThat(result.chunkCount()).isEqualTo(2);
+        ArgumentCaptor<UploadedFileEntity> updates = ArgumentCaptor.forClass(UploadedFileEntity.class);
+        org.mockito.Mockito.verify(uploadedFileMapper, org.mockito.Mockito.atLeastOnce()).updateById(updates.capture());
+        assertThat(updates.getValue().getStatus()).isEqualTo("COMPLETED");
+        org.mockito.Mockito.verify(vectorStore, org.mockito.Mockito.times(1)).upsertAll(any());
+    }
+
+    /** 任务 3.4：重建后衍生问题重新生成，两次重建的衍生向量集合（chunkId+文本+问句+向量）一致。 */
+    @Test
+    void reingestRegeneratesDerivedQuestionsIdempotently() throws Exception {
+        when(uploadedFileMapper.selectOne(any())).thenReturn(existingFile());
+        when(chunkMapper.selectOne(any())).thenReturn(oldRow("doc-9", "crm"));
+        when(documentService.process(any(), eq("a.txt"), eq("crm"))).thenReturn(List.of(
+                new DocumentChunk("切片一", 0, 1, null, "crm", List.of(), null),
+                new DocumentChunk("切片二", 1, 1, null, "crm", List.of(), null)));
+        when(modelProvider.chat(any(), any()))
+                .thenReturn(ModelCallResult.ofText("问一\n问二", "chat-model", 10L, 20L, 30L));
+        when(embeddingService.embedWithUsage(anyString())).thenAnswer(invocation -> {
+            String text = invocation.getArgument(0, String.class);
+            return ModelCallResult.ofVector(new float[]{text.length(), 1f}, "embed-model", 5L, 5L);
+        });
+
+        DocumentIngestionService ingestion = ingestionWithDerived(derivedService(true));
+        List<String> firstRun = runReingestCapturingDerived(ingestion);
+        List<String> secondRun = runReingestCapturingDerived(ingestion);
+
+        org.assertj.core.api.Assertions.assertThat(firstRun).hasSize(4);
+        org.assertj.core.api.Assertions.assertThat(secondRun)
+                .as("两次重建的衍生向量集合（chunkId+原文+问句+向量）必须一致")
+                .containsExactlyElementsOf(firstRun);
+    }
+
+    /** 任务 3.5：开关关闭（默认）时旁路零调用——入库无衍生向量，回退现行为。 */
+    @Test
+    void disabledDerivedQuestionsProduceNoDerivedVectors() throws Exception {
+        when(documentService.process(any(), eq("a.txt"), eq("crm"))).thenReturn(List.of(
+                new DocumentChunk("切片一", 0, 1, null, "crm", List.of(), null)));
+
+        ingestionWithDerived(derivedService(false))
+                .ingest(new DocumentIngestionCommand(
+                        1L, USER, "a.txt", "text/plain", 100L, "crm", null,
+                        new ByteArrayInputStream("file-body".getBytes(StandardCharsets.UTF_8))));
+
+        org.mockito.Mockito.verify(modelProvider, org.mockito.Mockito.never()).chat(any(), any());
+        org.mockito.Mockito.verify(vectorStore, org.mockito.Mockito.times(1)).upsertAll(any());
+    }
+
+    /**
+     * 单次重建并返回本次 upsertAll 的衍生记录签名快照（主链调用不含衍生标记 → 空表被过滤）。
+     * id 序列每次重置（100 起），保证两次重建的 chunkId 可比。
+     */
+    private List<String> runReingestCapturingDerived(DocumentIngestionService ingestion) throws Exception {
+        java.util.concurrent.atomic.AtomicInteger idSequence = new java.util.concurrent.atomic.AtomicInteger(100);
+        List<DocumentVectorChunkEntity> inserted = new java.util.ArrayList<>();
+        when(chunkMapper.insert(any(DocumentVectorChunkEntity.class))).thenAnswer(invocation -> {
+            DocumentVectorChunkEntity entity = invocation.getArgument(0);
+            entity.setId((long) idSequence.getAndIncrement());
+            inserted.add(entity);
+            return 1;
+        });
+        when(chunkMapper.selectList(any())).thenAnswer(invocation -> new java.util.ArrayList<>(inserted));
+        List<List<String>> perCallSignatures = new java.util.ArrayList<>();
+        org.mockito.Mockito.doAnswer(invocation -> {
+            List<VectorRecord> records = invocation.getArgument(0);
+            List<String> signatures = new java.util.ArrayList<>();
+            for (VectorRecord record : records) {
+                if (DerivedQuestionService.VECTOR_KIND_DERIVED.equals(record.metadata().get("vectorKind"))) {
+                    signatures.add(record.chunkId() + "|" + record.text()
+                            + "|" + record.metadata().get("derivedQuestion")
+                            + "|" + Arrays.toString(record.embedding()));
+                }
+            }
+            perCallSignatures.add(signatures);
+            return null;
+        }).when(vectorStore).upsertAll(any());
+
+        ingestion.reingest("doc-9", USER);
+        return perCallSignatures.stream()
+                .flatMap(java.util.List::stream)
+                .sorted()
                 .toList();
     }
 
