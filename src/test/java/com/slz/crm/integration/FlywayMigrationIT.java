@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *
  * <p>动机：单元测试与 H2 上下文冒烟都用 auto-table/ddl-auto，<b>从不执行 Flyway 脚本</b>；
  * 而 V1 含 MySQL 专有 DDL（{@code generated always as(if(...))stored}）H2 无法解析。
- * 因此七张迁移脚本（V1/V3/V4/V4_1/V5/V6/V21）能否在真 MySQL 上按序无撞号跑通，只能靠本 IT。</p>
+ * 因此八张迁移脚本（V1/V3/V4/V4_1/V5/V6/V21/V22）能否在真 MySQL 上按序无撞号跑通，只能靠本 IT。</p>
  *
  * <p>Docker 门禁：无 Docker 时 {@code assumeTrue} 优雅跳过（本地开发机）；CI（ubuntu-latest 自带 Docker）真跑。
  * 与 {@link AbstractMySqlIT} 共用 mysql:8.0.36 镜像口径。</p>
@@ -36,7 +36,7 @@ class FlywayMigrationIT {
 
     /** 迁移脚本全集（版本 → 归属 lane），任何增删都要在此登记，防漏跑/撞号。 */
     private static final Set<String> EXPECTED_VERSIONS =
-            new TreeSet<>(List.of("1", "3", "4", "4.1", "5", "6", "21"));
+            new TreeSet<>(List.of("1", "3", "4", "4.1", "5", "6", "21", "22"));
 
     /** 跨 lane 关键表抽样：确认各号段 DDL 真的建出了表（V1/V3/V4/V5/V6）。 */
     private static final List<String> SPOT_CHECK_TABLES = List.of(
@@ -96,6 +96,27 @@ class FlywayMigrationIT {
         // 抽样确认关键表真的建出（跨 V1/V3/V4/V4_1/V6）
         List<String> missing = missingTables();
         assertTrue(missing.isEmpty(), "以下关键表迁移后仍缺失：" + missing);
+    }
+
+    /**
+     * V22 断言（complete-hybrid-retrieval-and-rerank 任务 1.1）：
+     * document_vector_chunk 上存在 ngram parser 的 chunk_text 全文索引——稀疏召回路的载体。
+     * parser 名不在 information_schema.statistics 暴露，用 SHOW CREATE TABLE 验证 DDL 原文。
+     */
+    @Test
+    void chunkFulltextIndexExistsWithNgramParser() throws Exception {
+        assumeTrue(mysql != null, "Docker 不可用时本用例随类跳过");
+        try (Connection connection = DriverManager.getConnection(
+                mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
+             Statement statement = connection.createStatement();
+             ResultSet rs = statement.executeQuery("SHOW CREATE TABLE document_vector_chunk")) {
+            assertTrue(rs.next(), "document_vector_chunk 表应存在");
+            String ddl = rs.getString(2);
+            assertTrue(ddl.contains("FULLTEXT KEY `ft_chunk_text`"),
+                    "V22 应建出 ft_chunk_text 全文索引，实际 DDL：" + ddl);
+            assertTrue(ddl.toLowerCase(java.util.Locale.ROOT).contains("with parser ngram"),
+                    "全文索引必须使用 ngram parser（中文 bigram），实际 DDL：" + ddl);
+        }
     }
 
     /** 查 information_schema 找出未建出的抽样表。 */
