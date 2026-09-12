@@ -248,5 +248,12 @@
     "totalLatencyMs" : 1770,
     "tokens" : 1035,
     "success" : true
-  } ]
+  } ],
+  "runProfile" : "V1",
+  "runChunking" : "fixed",
+  "runConfig" : {
+    "sparseOn" : false,
+    "contextOn" : false,
+    "matrix" : { }
+  }
 }
