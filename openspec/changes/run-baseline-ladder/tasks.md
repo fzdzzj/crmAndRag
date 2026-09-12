@@ -5,10 +5,10 @@
 
 ## 0. 盘点与决策（不改行为，结论写入本文件"验证记录"节）
 
-- [ ] 0.1 稀疏路评测装配决策：读 `SparseRecallService` 实现与耦合度，在 (a) Testcontainers MySQL 真库装配（V1..V23 全迁移 + fixtures chunk 行入库）与 (b) 测试侧内存替换之间选定，理由与改造点清单写入验证记录——若 (b) 需动 `src/main`，停下向用户报告
-- [ ] 0.2 黄金对齐适配决策：`RagBenchmarkDataPreparer` 的占位符→chunkId 对齐在 semantic 切分下是否成立；不成立列出改造点（归任务组 5）
-- [ ] 0.3 回退态口径确认：确认现 runner 旧构造器（sparseRecallService/contextBuilder=null）= 升级前行为，第一跑可零改造执行（引用 `KnowledgeRetrievalServiceImpl` 类注释与既有等价单测）
-- [ ] 0.4 压缩口径确认：rule 压缩器在基准上下文预算内是否无损（不裁剪）；有裁剪则给关闭值或按等价测试口径处理，写入验证记录
+- [x] 0.1 稀疏路评测装配决策：读 `SparseRecallService` 实现与耦合度，在 (a) Testcontainers MySQL 真库装配（V1..V23 全迁移 + fixtures chunk 行入库）与 (b) 测试侧内存替换之间选定，理由与改造点清单写入验证记录——若 (b) 需动 `src/main`，停下向用户报告
+- [x] 0.2 黄金对齐适配决策：`RagBenchmarkDataPreparer` 的占位符→chunkId 对齐在 semantic 切分下是否成立；不成立列出改造点（归任务组 5）
+- [x] 0.3 回退态口径确认：确认现 runner 旧构造器（sparseRecallService/contextBuilder=null）= 升级前行为，第一跑可零改造执行（引用 `KnowledgeRetrievalServiceImpl` 类注释与既有等价单测）
+- [x] 0.4 压缩口径确认：rule 压缩器在基准上下文预算内是否无损（不裁剪）；有裁剪则给关闭值或按等价测试口径处理，写入验证记录
 
 ## 1. 第一跑：baseline-v1（回退态）——解锁提案1 4.1/4.4
 
@@ -69,4 +69,23 @@
 
 ## 验证记录（执行时回填）
 
-（0.1/0.2/0.3/0.4 决策结论与各跑差异摘要、ladder-report 链接）
+### 任务组 0 盘点决策（2026-09-12，分支 feature/run-baseline-ladder）
+
+**0.1 稀疏路评测装配 → 选 (b)「测试侧内存 double」但替换层定为 `DocumentVectorChunkMapper`（DB 快照层），而非替换 SparseRecallService 本体。**
+
+- 耦合盘点：`SparseRecallService` 与 `ContextBuilder` 对生产库的唯一耦合都是 `DocumentVectorChunkMapper`（`fulltextSearch` / `selectById` / `selectList` 查 `document_vector_chunk` 快照表）。两类的检索算法、RRF、重排、邻居拼装、压缩都是纯内存逻辑，只等 mapper 喂快照行。
+- 结论：在 **mapper 层**注入一个测试侧内存 double（fixtures 快照行 + 字符 ngram 近似的 `fulltextSearch`），让 `SparseRecallService`/`ContextBuilder` **以真实代码运行**——比"整类替换"更贴近生产口径，又比 Testcontainers 真库自包含、确定性、无 Docker 依赖。**不触碰任何 `src/main`**，故不触发"停下要授权"硬条件。
+- 生产口径偏差（写入改动清单）：FULLTEXT(ngram) 的 `MATCH..AGAINST` 评分由测试 double 的字符 ngram 重叠近似；无 `JOIN uploaded_file` 授权收敛与软删过滤（fixtures 本身单一授权 KB、无软删场景，影响可忽略）；`parentChunkId` 列在 fixed 切分 fixtures 下恒空。真库 ngram 路径的 DB 级正确性已由 `SparseRecallServiceIT` / `FlywayMigrationIT`（V6 修复后绿）独立背书，本基准只测"RAG 管线增量"。
+- 改造点（归任务组 2 落地）：新增测试侧 `InMemoryDocumentVectorChunkMapper`（实现 `fulltextSearch`/`selectById`/`selectList`），由 `RagBenchmarkDataPreparer` 产出的 fixtures chunk 行装载；runner 用它装配真实 `SparseRecallService` + `ContextBuilder`。
+
+**0.2 黄金对齐在 semantic 切分下 → 成立，无需改标记机制。**
+
+- 机制：`【GOLD:占位id】` 标记位于正文，语义切分(`DocumentService.process`)发生在剥标记之前，标记必落在某个切片内；`goldenToChunkId` 每次运行按**实际切分**重算，占位 id → 携带该标记的切片 chunkId，故对齐在 semantic 下自适应、不失效。
+- Caveat：semantic 大块切分下，同一用例彼此独立的多个 GOLD 标记可能聚到同一语义块，命中该块即同判多个预期块，可能对 recall 产生聚合放大——记录为测量口径 note，非对齐失败。
+- 改造点（归任务组 5）：`RagBenchmarkDataPreparer.prepare` 接受 chunking 策略（fixed/semantic）并注入 `DocumentService` 的切分配置，供第四跑切换。
+
+**0.3 回退态口径 → 确认成立，第一跑零改造。** `RagRealRetrievalBenchmarkIT` 现用 6 参兼容构造（`sparseRecallService=null, rrfFusion=null, contextBuilder=null, multiQuery=null, hyde=null`）：`recallTextRoute` 因稀疏路 null 返回纯向量单路；`useRrfFusion()` 在空 DynamicConfig 下返回 true 但 `rrfFusion==null → multiRouteEnabled=false`（查询侧不启）；`buildContext` 走 `ContextBuilder.plainNumbered` 纯拼接；`activeReranker` 用 `DefaultWeightedReranker`（向量/BM25 加权）。与 `KnowledgeRetrievalServiceImpl` 类注释「未装配（兼容构造）时保持升级前纯拼接」一致，等价单测已由 `NeighborContextPipelineTest` 等覆盖。
+
+**0.4 压缩口径 → rule 无损 iff `estimate(context)<=budget`，默认 budget=4096 下 fixtures 5 块短文基本无损/no-op。** 为使第三跑机械展示「token 下降」，第三跑矩阵在 `compressor=rule` 基础上**注入 `rag.context.token-budget=1024`**（紧于自然上下文，配合 neighbors=1 先把上下文撑大、再被 rule 压缩回收）——这是评测参数化而非默认值翻转，记录在案。
+
+（各跑差异摘要、ladder-report 链接在任务组 1–7 执行时回填）
