@@ -36,7 +36,7 @@ class FlywayMigrationIT {
 
     /** 迁移脚本全集（版本 → 归属 lane），任何增删都要在此登记，防漏跑/撞号。 */
     private static final Set<String> EXPECTED_VERSIONS =
-            new TreeSet<>(List.of("1", "3", "4", "4.1", "5", "6", "21", "22", "23", "24"));
+            new TreeSet<>(List.of("1", "3", "4", "4.1", "5", "6", "21", "22", "23", "24", "25"));
 
     /** 跨 lane 关键表抽样：确认各号段 DDL 真的建出了表（V1/V3/V4/V5/V6）。 */
     private static final List<String> SPOT_CHECK_TABLES = List.of(
