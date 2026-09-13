@@ -254,6 +254,16 @@ INSERT INTO `customer_company` (`id`, `company_name`, `industry`, `status`, `add
 (3, '测试公司C', '制造', '成交客户', '广州市天河区', '020-11112222', 1, 3, 0, 3);
 
 -- ============================================
+-- 插入客户联系人测试数据
+-- 列清单同时兼容 Flyway V1 真表与 H2 auto-table 按实体建表两套 schema
+-- company_id→customer_company.id(已种1-3)、creator_id→sys_user.id(已种1-3)，
+-- 供 business_activity_contact 等外键成功引用（V1 真库有 fk_act_contact_contact）
+-- ============================================
+DELETE FROM `customer_contact`;
+INSERT INTO `customer_contact` (`id`, `company_id`, `name`, `position`, `phone`, `mobile`, `email`, `gender`, `dept`, `creator_id`) VALUES
+(1, 1, '测试联系人A', '销售总监', '010-11112222', '13911112222', 'contact-a@slz.com', 1, '销售部', 1);
+
+-- ============================================
 -- 插入联络任务测试数据
 -- ============================================
 DELETE FROM `contact_task`;

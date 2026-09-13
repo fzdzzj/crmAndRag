@@ -39,7 +39,7 @@ class WriteChainRegressionIT extends AbstractMySqlIT {
         jdbcTemplate.update("INSERT INTO business_activity (id, activity_title, activity_type, activity_content, activity_time, company_id, creator_id) "
                 + "VALUES (20, '删除级联测试活动', '拜访', '内容', NOW(), 1, 1)");
         jdbcTemplate.update("INSERT INTO business_activity_contact (id, activity_id, contact_id, creator_id) VALUES (20, 20, 1, 1)");
-        jdbcTemplate.update("INSERT INTO business_activity_user (id, activity_id, user_id, creator_id) VALUES (20, 20, 12, 1)");
+        jdbcTemplate.update("INSERT INTO business_activity_user (id, activity_id, user_id, creator_id) VALUES (20, 20, 2, 1)");
         jdbcTemplate.update("INSERT INTO approval_attachment (id, and_id, model_name, file_name, file_path, file_size, file_type) "
                 + "VALUES (20, 20, 'BUSINESS_ACTIVITY', 'a.txt', '/tmp/a.txt', 10, 'txt')");
 
