@@ -42,8 +42,9 @@
 
 ## 6. 第五跑：after-query——解锁提案5 4.1/4.2（先过机械触发判定）
 
-- [ ] 6.1 机械判定：v1/after-hybrid 的 LEXICAL 实测数字是否支持"词汇失配为主要漏召"——**不支持则只回填归因结论**，P5 4.1/4.2 改标"触发不成立"并勾选，任务组到此为止
-- [ ] 6.2 支持则矩阵 {承 5.1 + multi-query on（hyde/derived 视归因结论）} 跑 → `baseline-after-query.json`；词汇失配类 recall ↑、聚合不回退、TTFT/token 增幅记录；回填勾选（默认值不动，增幅可接受与否留用户决策）
+- [x] 6.1 机械判定：v1/after-hybrid 的 LEXICAL 实测数字是否支持"词汇失配为主要漏召"——**不支持则只回填归因结论**，P5 4.1/4.2 改标"触发不成立"并勾选，任务组到此为止
+  - **判定结论：不支持，本轮不执行 after-query（只回填归因）**。依据任务组 1 机械归因：baseline-v1 纯向量单路口径下 TEXT 5 条 recall@k=1.0 / MRR=1.0、LEXICAL 6 条 recall@k=1.0 / MRR=1.0，词汇路与文本路均已到顶、无缺口可填，hybrid 接入稀疏路后更持平于上限。fixtures 量级**无「查询-文档词汇失配」漏召缺口**，多查询/HyDE 的"改写救漏召"作用面为空，跑它无法产生可归因到词汇失配的提升。故不经授权额外外发（成本闸门显式不浪费）。
+- [ ] 6.2 ~~支持则~~矩阵 {承 5.1 + multi-query on（hyde/derived 视归因结论）} 跑 → `baseline-after-query.json`；词汇失配类 recall ↑、聚合不回退、TTFT/token 增幅记录；回填勾选（默认值不动，增幅可接受与否留用户决策）——**触发条件不成立，本条不执行**（见 6.1 判定；`baseline-after-query.json` 不产出）
 
 ## 7. 收尾
 
@@ -120,4 +121,8 @@
 - 提案4 回填：5.1/5.2 勾选（5.1 "MRR 提升或持平"未达成小降，差异已记录）；5.3 确认生产 reingest 用独立运维 runner（`KnowledgeReingestRunner`）且**全量执行仍"另授权"**（4.4 待勾）。
 - 差异摘要：totalTokens 17179→20274（+3095，parent-expand 填父块 + semantic 大块）、meanTotalLatency 3940→3523ms。
 
-（各跑差异摘要、ladder-report 链接在任务组 1–7 执行时回填）
+### 任务组 6 第五跑 after-query：触发判定不成立（2026-09-13，不执行真跑）
+
+- **6.1 判定 = 不支持，只回填归因不跑 after-query**。依据任务组 1 机械归因（baseline-v1 纯向量单路口径）：TEXT 5 条 recall@k=1.0 / MRR=1.0、LEXICAL 6 条 recall@k=1.0 / MRR=1.0，词汇路与文本路均已到顶；after-hybrid 接入稀疏路后 LEXICAL 持平于上限（任务组 3 已证）。fixtures 量级**不存在「查询-文档词汇失配为主要漏召」缺口**。
+- 推论：多查询/HyDE 的作用面是"改写救词汇失配漏召"，在召回已饱和的量级下无可归因提升空间——执行 after-query 只会多花一次真外发测不到差异化收益，故按 6.1 条件分支**不执行、不产出 `baseline-after-query.json`**（成本闸门显式不浪费，多查询/HyDE 三开关维持默认 false 不翻转，是否在有真实词汇失配数据的更大语料上启用留待用户决策）。
+- 提案5 回填：4.1/4.2 改标「触发不成立」并勾选（任务台持续，真库更大语料词汇失配系回归时可再授权重跑）。

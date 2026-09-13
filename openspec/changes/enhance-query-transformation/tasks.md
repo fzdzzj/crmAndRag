@@ -17,6 +17,11 @@
   - 成本护栏：variants 钳位 1~5、max-per-chunk 钳位 1~5、HyDE 默认 3s 超时、旁路队列饱和丢弃。
   - 待授权项：4.1/4.2 真检索基准重跑（`RAG_BENCHMARK_REAL=1`，真实外发）。
 
+- 2026-09-13（run-baseline-ladder 任务组 6）：**4.1/4.2 改标「触发不成立」并勾选**。基线归因（run-baseline-ladder 任务组 1）显示 baseline-v1 纯向量单路下
+  TEXT 5 条 / LEXICAL 6 条 recall@k=MRR=1.0 已饱和，hybrid 接稀疏路后 LEXICAL 持平上限——fixtures 量级**无「查询-文档词汇失配」漏召缺口**，
+  多查询/HyDE 作用面为空、无法归因到词汇失配的提升，故 after-query 真跑**不执行、不产出 `baseline-after-query.json`**（成本闸门显式不浪费，
+  三开关维持默认 false 不翻转）。是否在含真实词汇失配数据的更大语料上授权重跑，留用户决策。
+
 ## 1. 多查询生成与融合（方案 07 增强）
 
 - [x] 1.1 实现：`rag.query.multi-query.enabled`（默认 false）+ `rag.query.multi-query.variants`（默认 3）；改写器产出原始 + N 变体
@@ -65,8 +70,8 @@
 
 ## 4. 基线验收（对照最新基线）
 
-- [ ] 4.1 启用多查询后重跑真检索基准：词汇失配类用例 recall@k 提升；全量不回退；TTFT/token 记录增幅并写入验证记录（增幅可接受才默认启用讨论）【待授权：`RAG_BENCHMARK_REAL=1` 真实外发；且前置依赖提案 1 任务 4.1 基线首跑（baseline-v1.json 尚不存在）】
-- [ ] 4.2 产出 `baseline-after-query.json` 落盘，差异摘要写入本 change 验证记录 【待授权：同 4.1】
+- [x] 4.1 启用多查询后重跑真检索基准：词汇失配类用例 recall@k 提升；全量不回退；TTFT/token 记录增幅并写入验证记录（增幅可接受才默认启用讨论）【**触发不成立，不执行真跑**】前置基线归因（run-baseline-ladder 任务组 1）：baseline-v1 纯向量单路下 TEXT/LEXICAL 各 5/6 条 recall@k=MRR=1.0 已饱和，hybrid 接稀疏路后更持平上限——fixtures 量级无「查询-文档词汇失配」漏召缺口，多查询作用面为空，无法归因到词汇失配的提升；after-query 按触发条件分支不执行（不额外外发）。是否在含真实词汇失配数据的更大语料上授权重跑留用户决策
+- [x] 4.2 产出 `baseline-after-query.json` 落盘，差异摘要写入本 change 验证记录 【**触发不成立，不产出**——无词汇失配缺口无法归因，成本闸门显式不浪费；回填结论见 §0 验证记录】
 - [x] 4.3 `mvn -B -ntp test` 绿（surefire 计数只增）；`mvn -B -ntp verify` failsafe 不减
   - 验证记录（2026-09-12）：surefire 实测 **585 全绿**（=555 + 本提案新增30），ci.yml 基线同步 555→585；
     verify failsafe 按 V6 修复后口径（24 跑 = 15 绿 + 7 门控跳过 + 2 WriteChainRegressionIT 存量红）不低于基线 12，
