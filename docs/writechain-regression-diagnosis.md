@@ -165,7 +165,7 @@ contactTaskController.deleteById (ContactTaskController.java:124-129)
 > **修复记录（2026-09-13，feature/fix-approval-attachment-drift 合入）**：P0 与 P2 已在本次合入中修复——P0 = `V24__approval_attachment_add_uploader.sql`（补 uploader_id 列 + idx_attachment_uploader 索引，真库 FlywayMigrationIT 全链应用通过）；P2 = `init_data.sql` 补 customer_contact 种子 + `WriteChainRegressionIT` user_id 悬空修正。本 IT 2/2 真库全绿。P1 全量漂移审计另案待办。
 
 1. ~~**P0**：`V24__approval_attachment_add_uploader`（根修，解除删除接口 90004）。~~ **已修复（本次）**
-2. **P1**：全量列漂移比对（实体↔真实表），排查是否还有同类缺失列（不只 `approval_attachment`）。
+2. **P1**：全量列漂移比对（实体↔真实表），排查是否还有同类缺失列（不只 `approval_attachment`）。 ~~**另案待办**~~ **已关闭（2026-09-13，audit-entity-table-drift）**：`SchemaDriftAuditIT` 永久门禁 + `docs/schema-drift-audit.md` 全量审计——定位到第 2 处同类 CRITICAL `invoice_info.remark`（实体有、V1 建表无列），由 `V25__invoice_info_add_remark.sql` 根修，当前 CRITICAL=0。
 3. ~~**P2**：红灯 1 的测试种子/断言修整（纯测试，低风险，可随任何一次提交顺带）。~~ **已修复（本次）**
 4. **可选**：新增级联删除调用点时审计「入口必须 `@Transactional`」（§4.3 撤回后仅作约定，非当前缺口）。
 
