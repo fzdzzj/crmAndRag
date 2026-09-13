@@ -10,9 +10,9 @@
 | # | 测试 | 表象 | 根因归属 | 是否有数据丢失风险 |
 |---|------|------|----------|:---:|
 | 1 | `deleteActivityShouldCascadeAssociationsAndAttachments` | setup 第一步 INSERT 即抛 FK 异常（Error） | **测试自身缺陷**（种子数据缺失 + 级联删除断言携带本会被 FK 阻断的冗余数据） | 无 |
-| 2 | `deleteTaskShouldCascadeComments` | `DELETE /contactTask/1` 返回 `90004` 而非 `1`（Failure） | **产品级真缺陷**：`approval_attachment` 表与 `ApprovalAttachmentEntity` 发生列漂移，删除链在附件联查时抛 `BadSqlGrammarException` | **有（见 §4 红标）** |
+| 2 | `deleteTaskShouldCascadeComments` | `DELETE /contactTask/1` 返回 `90004` 而非 `1`（Failure） | **产品级真缺陷**：`approval_attachment` 表与 `ApprovalAttachmentEntity` 发生列漂移，删除链在附件联查时抛 `BadSqlGrammarException` | 无（全链 `@Transactional`，fail-closed；见 §4 修订） |
 
-> **★ 红标（产品级数据丢失风险）**：测试2暴露的缺陷直接落在**任务删除链**上。当前真实库中，**联络任务删除接口对一切带附件的任务都会 90004 而整体回滚**——即「任务+评论+附件」一个都删不掉，删不完。这本身不会「丢」数据，但存在一个更危险的**副作用缺口**：若某调用点调用了**未包事务**的级联删除（见 §4.3），评论已删而附件/任务因 SQL 错误残留，会造成 **task_comment 孤儿 + 附件孤儿** 的脏数据。且产品在任何一次版本迭代中仍会命中，属**高优先级待授权修复项**。
+> **修订注（2026-09-13 复核）**：初版报告曾红标「`deleteByRecords` 未包事务 → 孤儿数据风险」。经复核 [AssistRequestServiceImpl.java:943](file:///d:/code/crmAndRag/src/main/java/com/slz/crm/server/service/impl/AssistRequestServiceImpl.java#L943)，该方法**有** `@Transactional(rollbackFor = Exception.class)`，且 `ContactTaskServiceImpl` 两个删除方法（L193/L214）同样有——**全链事务保护，孤儿风险不成立，红标撤回**。缺陷的真实影响收敛为：删除功能不可用（可用性事故），无数据丢失。P0 修复项（V24 迁移）不受影响。
 
 ---
 
@@ -156,17 +156,15 @@ contactTaskController.deleteById (ContactTaskController.java:124-129)
 ### 4.2 但「删除不可用」本身是可用性事故
 联络任务是 CRM 高频对象。删除接口对大范围带附件任务 90004、前端只能看到「服务器内部错误」，无法区分是无权限/无数据/系统错，体验与运维定位都差。
 
-### 4.3 **★ 真正的孤儿风险（红标）** —— 未包事务的级联删除调用点
-`AssistRequestServiceImpl.deleteByRecords`（[L944-961](file:///d:/code/crmAndRag/src/main/java/com/slz/crm/server/service/impl/AssistRequestServiceImpl.java#L944-L961)）内部也调 `approvalAttachmentService.removeByAndIds(assistIds, ModelName.ASSIST_REQUEST)` 删协助交付物附件。
-- `deleteByRecords` 自身**未标注 `@Transactional`**（依赖外层调用者的事务）；
-- 在任务删除链里它由外层 `deleteById` 的事务包着，回滚安全；但**任何其它未包事务的直接调用**（如协助单条取消/交接入口）在真库同样会撞 `uploader_id`，一旦 SQL 错误发生在「已先删 assist_request/评论、后删附件」的顺序里，就会产生**孤儿附件 / 孤儿评论**。
-- 需逐一核对所有 `removeByAndIds` / `removeByIds` 的调用点是否都在事务内（本报告不展开全部调用图，作为修复前的检查清单项）。
+### 4.3 ~~孤儿风险（初版红标，已撤回）~~ —— 事务保护复核结论
+
+初版曾判断 `AssistRequestServiceImpl.deleteByRecords`（L944-961）「未标注 `@Transactional`、在外部事务外调用会产生孤儿」。**复核证伪**：该方法 L943 有 `@Transactional(rollbackFor = Exception.class)`，`ContactTaskServiceImpl.deleteById/deleteByIds` 亦然（L193/L214）。SQL 错误发生时整链回滚，且错误位置（`removeByAndIds` 的 `selectList`）先于该链任何删除动作——既无部分提交、也无孤儿。初版红标撤回，风险收敛为 §4.2 的可用性事故。若后续新增调用点，保持「级联删除入口必须 `@Transactional`」即可（可选审计项，非当前缺口）。
 
 ### 4.4 建议优先级排序（写入待办）
 1. **P0**：`V24__approval_attachment_add_uploader`（根修，解除删除接口 90004）。
 2. **P1**：全量列漂移比对（实体↔真实表），排查是否还有同类缺失列（不只 `approval_attachment`）。
-3. **P1**：清理 `removeByAndIds` 未事务级的调用点，堵住孤儿数据缺口。
-4. **P2**：红灯 1 的测试种子/断言修整（纯测试，低风险，可随任何一次提交顺带）。
+3. **P2**：红灯 1 的测试种子/断言修整（纯测试，低风险，可随任何一次提交顺带）。
+4. **可选**：新增级联删除调用点时审计「入口必须 `@Transactional`」（§4.3 撤回后仅作约定，非当前缺口）。
 
 ---
 
