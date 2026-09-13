@@ -38,12 +38,11 @@ jobs:
         run: mvn -B -ntp verify
 
       # 阶段3：回归基线阈值——两个报告目录分开裁决，防止合并悄悄丢测试
-      #   口径A surefire = target/surefire-reports（pom 的 **/*Test.java，显式 exclude **/*IT.java），基线 590
-      #     实测：2026-09-13 本机 mvn -B -ntp test，Tests run 合计 590（=555 + 提案5新增30 +
-      #       基线阶梯 runner 泛化新增5：RagBenchmarkRun 矩阵装配/复现校验等）。
-      #       提案5明细：多查询扩展器6 + HyDE扩展器5 + 查询侧增强管线7 + 衍生问题旁路7 +
-      #       RrfFusion N路融合2 + 入库旁路接线3。
-      #     单测不依赖 Docker，CI 与本机同口径，因此 590 对两边都成立；只增不减。
+      #   口径A surefire = target/surefire-reports（pom 的 **/*Test.java，显式 exclude **/*IT.java），基线 602
+      #     实测：2026-09-13 本机 mvn -B -ntp test，Tests run 合计 602（=590 + audit-entity-table-drift 新增12：
+      #       SchemaDriftAuditorTest 5 + SchemaDriftComparatorTest 7）。
+      #       此前基线 590（=555 + 提案5新增30 + 基线阶梯 runner 泛化新增5；明细见上一版注释）。
+      #     单测不依赖 Docker，CI 与本机同口径，因此 602 对两边都成立；只增不减。
       #     V6 保留字缺陷已于 2026-09-12 获授权就地修复：真库迁移链 V1..V23 首次完整应用，
       #       failsafe 真跑口径 24 = 15 绿 + 7 门控跳过 + 2 红（WriteChainRegressionIT 为 task18 时代
       #       存量测试缺陷另案登记，见 openspec/changes/complete-hybrid-retrieval-and-rerank/tasks.md §0）。
@@ -52,8 +51,9 @@ jobs:
       #     （CompanyGroupDeleteIT 4 / CustomerCompanyControllerIT 1 / CustomerCompanyDeptUniqueIT 2 /
       #       PermissionControllerIT 2 / WriteChainRegressionIT 2 / V1BaselineMySqlIT 1 / FlywayMigrationIT 0）。
       #     ⚠ 12 是「无 Docker 下限」，不是 CI 期望值：FlywayMigrationIT 无 Docker 时整类被 @BeforeAll 假设中止记 0，
-      #       且本轮排除了 ModelProviderImplDashScopeIT（3 个 @Test，会发真实外网请求）。
-      #       CI 有 Docker 时推算为 16（=12+1+3，推算值非实测）。
+      #       且本轮排除 ModelProviderImplDashScopeIT（3 个 @Test，会发真实外网请求）。
+      #       CI 有 Docker 时新增 SchemaDriftAuditIT 1 后推算为 17（=12+FlywayMigrationIT1+ModelProvider3+
+      #       SchemaDriftAuditIT1，推算值非实测）。
       #     TODO（首次 Docker 可用的 CI 跑完立即做）：按 target/failsafe-reports 的实测合计把 12 上调到真实值，
       #       否则丢掉最多 4 个 IT 用例不会被本门禁拦住。
       #   失败关闭：目录缺失、目录内无 .txt 报告、求和为空或非数字，一律 exit 1，不允许静默通过。
@@ -93,10 +93,10 @@ jobs:
           }
 
           rc=0
-          check_baseline target/surefire-reports 590 "surefire 单元测试" || rc=1
+          check_baseline target/surefire-reports 602 "surefire 单元测试" || rc=1
           check_baseline target/failsafe-reports 12 "failsafe 集成测试" || rc=1
           if [ "$rc" -ne 0 ]; then
-            echo "::error::回归基线阈值校验未通过（surefire 基线 590 / failsafe 基线 12）"
+            echo "::error::回归基线阈值校验未通过（surefire 基线 602 / failsafe 基线 12）"
           fi
           exit "$rc"
 
