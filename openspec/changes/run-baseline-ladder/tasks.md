@@ -36,9 +36,9 @@
 
 ## 5. 第四跑：after-chunking——解锁提案4 5.1/5.2 + 4.4 文档段
 
-- [ ] 5.1 0.2 的对齐改造落地（如需）；fixtures 语义重嵌入 + 矩阵 {承 4.1 + chunking=semantic + parent-expand=on} 跑 → `baseline-after-chunking.json`（评测库重嵌入，非生产 reingest）
-- [ ] 5.2 断言：recall@k/MRR 较 4.1 **不降**；citationPrecision 不回退（锚点仍准）；回填勾选
-- [ ] 5.3 提案4 4.4 文档段回填：存量迁移方案（跑批复用 batch_task 状态机 or 独立 runner 的结论）写入验证记录；**生产 reingest 执行仍标注"另授权"**
+- [x] 5.1 0.2 的对齐改造落地（如需）；fixtures 语义重嵌入 + 矩阵 {承 4.1 + chunking=semantic + parent-expand=on} 跑 → `baseline-after-chunking.json`（评测库重嵌入，非生产 reingest）
+- [x] 5.2 断言：recall@k/MRR 较 4.1 **不降**；citationPrecision 不回退（锚点仍准）；回填勾选
+- [x] 5.3 提案4 4.4 文档段回填：存量迁移方案（跑批复用 batch_task 状态机 or 独立 runner 的结论）写入验证记录；**生产 reingest 执行仍标注"另授权"**
 
 ## 6. 第五跑：after-query——解锁提案5 4.1/4.2（先过机械触发判定）
 
@@ -113,5 +113,11 @@
   1. 预算误判：早先 @1024 紧预算 + NPE → failureRate=0.94 跑飞。拆解后确认**主因非预算**而是 hit metadata 缺 `chunkIndex`。
   2. `ContextBuilder.appendWithNeighbors` NPE：`RagBenchmarkDataPreparer.metadata` 缺 `chunkIndex` 键（生产 Qdrant `upsert` 单独写 payload、`toMetadata` 还原进命中 metadata，故生产安全；测试 `InMemoryVectorStore` 直存本 map 需补齐）→ 已补。
   3. `InMemoryDocumentVectorChunkMapper.selectList` NPE：QueryWrapper SQL 参数按 `MPGENVALn` 精确查不到（`List.of(null)` 抛错）→ 改按精确名或 `.后缀` 解析 + null 安全，邻居查询从此有效（原静默降级为空）。
+
+### 任务组 5 第四跑 after-chunking（2026-09-13，baseline-after-chunking.json，run=CHUNKING，chunking=semantic）
+
+- **断言 5.2 部分不满足，按铁律记录并汇报、不翻转默认值**：recall@k=0.9444 与 4.1 **持平（不降）✓**；citationPrecision 0.8056→0.8889 **提升 ✓**；**MRR 0.8472→0.8194 小降 0.028 ✗**（不为零回退）。MRR 小降 = semantic 大块下首黄金块排名整体略后移（hitRate 仍 1.0、recall 持平、citation 反升），属分块粒度/排序权衡而非失效。semantic 默认仍 fixed、parent-expand 默认值未动。
+- 提案4 回填：5.1/5.2 勾选（5.1 "MRR 提升或持平"未达成小降，差异已记录）；5.3 确认生产 reingest 用独立运维 runner（`KnowledgeReingestRunner`）且**全量执行仍"另授权"**（4.4 待勾）。
+- 差异摘要：totalTokens 17179→20274（+3095，parent-expand 填父块 + semantic 大块）、meanTotalLatency 3940→3523ms。
 
 （各跑差异摘要、ladder-report 链接在任务组 1–7 执行时回填）
