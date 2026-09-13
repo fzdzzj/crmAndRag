@@ -47,12 +47,14 @@ jobs:
       #       failsafe 真跑口径 24 = 15 绿 + 7 门控跳过 + 2 红（WriteChainRegressionIT 为 task18 时代
       #       存量测试缺陷另案登记，见 openspec/changes/complete-hybrid-retrieval-and-rerank/tasks.md §0）。
       #   口径B failsafe = target/failsafe-reports（pom 的 **/*IT.java 与 **/*IntegrationTest.java），基线 12
-      #     实测：同日 failsafe:integration-test 白名单列出 7 个可执行 IT，Tests run 合计 12
+      #     实测：2026-09-13 failsafe:integration-test 白名单列出 7 个可执行 IT，Tests run 合计 12
       #     （CompanyGroupDeleteIT 4 / CustomerCompanyControllerIT 1 / CustomerCompanyDeptUniqueIT 2 /
       #       PermissionControllerIT 2 / WriteChainRegressionIT 2 / V1BaselineMySqlIT 1 / FlywayMigrationIT 0）。
+      #       PermissionControllerIT 后由 close-permission-read-gap 启用 2 个停放用例并新增 1 个正向用例
+      #       → 2 disabled → 3 运行（2026-09-13 本地 Docker 实测 3 绿）。
       #     ⚠ 12 是「无 Docker 下限」，不是 CI 期望值：FlywayMigrationIT 无 Docker 时整类被 @BeforeAll 假设中止记 0，
       #       且本轮排除 ModelProviderImplDashScopeIT（3 个 @Test，会发真实外网请求）。
-      #       CI 有 Docker 时新增 SchemaDriftAuditIT 1 后推算为 17（=12+FlywayMigrationIT1+ModelProvider3+
+      #       CI 有 Docker 时按 3 运行计新增 SchemaDriftAuditIT 1 后推算为 18（=12-2+3+FlywayMigrationIT1+ModelProvider3+
       #       SchemaDriftAuditIT1，推算值非实测）。
       #     TODO（首次 Docker 可用的 CI 跑完立即做）：按 target/failsafe-reports 的实测合计把 12 上调到真实值，
       #       否则丢掉最多 4 个 IT 用例不会被本门禁拦住。
