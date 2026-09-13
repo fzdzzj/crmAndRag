@@ -161,9 +161,12 @@ contactTaskController.deleteById (ContactTaskController.java:124-129)
 初版曾判断 `AssistRequestServiceImpl.deleteByRecords`（L944-961）「未标注 `@Transactional`、在外部事务外调用会产生孤儿」。**复核证伪**：该方法 L943 有 `@Transactional(rollbackFor = Exception.class)`，`ContactTaskServiceImpl.deleteById/deleteByIds` 亦然（L193/L214）。SQL 错误发生时整链回滚，且错误位置（`removeByAndIds` 的 `selectList`）先于该链任何删除动作——既无部分提交、也无孤儿。初版红标撤回，风险收敛为 §4.2 的可用性事故。若后续新增调用点，保持「级联删除入口必须 `@Transactional`」即可（可选审计项，非当前缺口）。
 
 ### 4.4 建议优先级排序（写入待办）
-1. **P0**：`V24__approval_attachment_add_uploader`（根修，解除删除接口 90004）。
+
+> **修复记录（2026-09-13，feature/fix-approval-attachment-drift 合入）**：P0 与 P2 已在本次合入中修复——P0 = `V24__approval_attachment_add_uploader.sql`（补 uploader_id 列 + idx_attachment_uploader 索引，真库 FlywayMigrationIT 全链应用通过）；P2 = `init_data.sql` 补 customer_contact 种子 + `WriteChainRegressionIT` user_id 悬空修正。本 IT 2/2 真库全绿。P1 全量漂移审计另案待办。
+
+1. ~~**P0**：`V24__approval_attachment_add_uploader`（根修，解除删除接口 90004）。~~ **已修复（本次）**
 2. **P1**：全量列漂移比对（实体↔真实表），排查是否还有同类缺失列（不只 `approval_attachment`）。
-3. **P2**：红灯 1 的测试种子/断言修整（纯测试，低风险，可随任何一次提交顺带）。
+3. ~~**P2**：红灯 1 的测试种子/断言修整（纯测试，低风险，可随任何一次提交顺带）。~~ **已修复（本次）**
 4. **可选**：新增级联删除调用点时审计「入口必须 `@Transactional`」（§4.3 撤回后仅作约定，非当前缺口）。
 
 ---

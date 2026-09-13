@@ -77,11 +77,11 @@ com.slz.crm
 ## 3. 当前 git 状态与未决事项
 
 - 工作树干净（仅两个未跟踪的 rag 工作区暂存件 `_rag优化交接.md`/`_vlm_transcribe.py`，属另一工作区，勿提交勿删除）；**未 push**（硬约束：推送需你显式授权）。
-- **surefire 590 全绿（本地亲验）**；真库迁移链 V1..V23 已在本机 Docker 完整应用（FlywayMigrationIT 3 绿，曾因 V6 `sensitive` 保留字全灭，已修复）。
-- **WriteChainRegressionIT 2 红另案**：task18 时代存量写链路疑似缺陷（setup 引用不存在的表行、任务删除链返回 90004），从未在真库跑过，修复待授权（登记于 `openspec/changes/archive/complete-hybrid-retrieval-and-rerank/tasks.md` §0）。
+- **surefire 590 全绿（本地亲验）**；真库迁移链 V1..V24 已在本机 Docker 完整应用（FlywayMigrationIT 4 绿；V24 为 approval_attachment 补 uploader_id 列，解除删除接口 90004）。
+- **WriteChainRegressionIT 2 红已修复（2026-09-13 合入）**：P0 新增 `V24__approval_attachment_add_uploader.sql` 补 uploader_id 列与索引（根因：实体带该列而 V1 建表缺失）；P2 补 `init_data.sql` customer_contact 种子并修正悬空 user_id。诊断与修复方案见 `docs/writechain-regression-diagnosis.md`。剩余待办：全量实体↔表列漂移审计（P1，另案）。
 - **RAG 真检索基线已跑**：四份 JSON + `docs/rag-quality/ladder-report.md`。跑法铁律：`RAG_BENCHMARK_REAL=1` 且只 `-Dit.test=RagRealRetrievalBenchmarkIT` 过滤——`.env` 常备 key，全量 `mvn verify` 会连带其他 DashScope IT 真外发。
 - CI：`.github/workflows/ci.yml` = surefire + failsafe 双口径回归门禁（基线数字以文件为准）+ 报告归档。
-- **待授权遗留**：生产库全量 reingest（真实嵌入成本 × chunk 总量，`KnowledgeReingestRunner` 已实现）、WriteChainRegression 诊断、多查询/HyDE 生产语料重评。
+- **待授权遗留**：生产库全量 reingest（真实嵌入成本 × chunk 总量，`KnowledgeReingestRunner` 已实现）、多查询/HyDE 生产语料重评。
 
 ---
 
