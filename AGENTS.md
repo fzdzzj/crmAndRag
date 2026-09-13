@@ -73,6 +73,7 @@
 - **当前状态**：`PermissionController` 三处 `@RequirePermission(PermissionOperates.SYSTEM_ASSIGN_PERMISSION)`（list / addORDeletePermissionsToRole / getByRole）。
 - **测试**：`src/test/java/com/slz/crm/integration/controller/PermissionControllerIT.java` 两个 `@Disabled` 已移除并启用（2 反向 + 1 正向共 3 绿，本地 Docker 实测）。
 - **不放开**：`getMyPermission`（自查）、`/auditor`（审批人下拉）仍为业务必需的开放接口，不在收紧范围。
+- **覆盖门禁（audit-permission-matrix，已合入）**：`src/test/java/com/slz/crm/integration/permission/PermissionCoverageAuditIT` 永久门禁（纯 JVM 静态扫描，无 Docker，本地与 CI 均真跑）——每个端点强制三选一：方法级 `@RequirePermission` / `OpenEndpointRegistry` INTENTIONAL_OPEN 登记 / PENDING_DECISION 登记，写语义裸奔端点直接红；**新增 controller 必须同步登记 `PermissionCoverageScanner.CONTROLLER_REGISTRY`**，否则门禁红。首轮审计报告 `docs/permission-matrix-audit.md`（27×208 端点矩阵 + 57 零注解端点映射建议，**映射待用户拍板，落地另立提案**）。
 
   ```bash
   grep -n "@RequirePermission" src/main/java/com/slz/crm/server/controller/PermissionController.java
