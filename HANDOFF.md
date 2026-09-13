@@ -79,6 +79,7 @@ com.slz.crm
 - 工作树干净（仅两个未跟踪的 rag 工作区暂存件 `_rag优化交接.md`/`_vlm_transcribe.py`，属另一工作区，勿提交勿删除）；**未 push**（硬约束：推送需你显式授权）。
 - **surefire 602 全绿（本地亲验）**；真库迁移链 V1..V25 已在本机 Docker 完整应用（FlywayMigrationIT 3 绿）。
 - **WriteChainRegressionIT 双红灯已修复（V24 补 approval_attachment.uploader_id + 种子修正）**；**全量实体↔表列漂移审计（P1）已完成（audit-entity-table-drift 合入）**：新增 `SchemaDriftAuditIT` 永久门禁（真 MySQL CRITICAL 非空即 fail）根修 `V25__invoice_info_add_remark.sql` 补 `invoice_info.remark` 列，审计报告见 `docs/schema-drift-audit.md`（当前 CRITICAL=0 / WARN=5 / INFO=2，均只记录待授权）。
+- **权限读取缺口已闭合（close-permission-read-gap 合入）**：`GET /permission/list` 与 `GET /permission/getByRole` 已加 `@RequirePermission(PermissionOperates.SYSTEM_ASSIGN_PERMISSION)`（复用 606，读写同权，未新增 608）；`PermissionControllerIT` 两个 `@Disabled` 已移除并新增 1 正向用例（本地 Docker 实测 3 绿）；surefire 602 不变。AGENTS.md「未闭合的授权缺口」章节已改写为闭合记录。
 - **RAG 真检索基线已跑**：四份 JSON + `docs/rag-quality/ladder-report.md`。跑法铁律：`RAG_BENCHMARK_REAL=1` 且只 `-Dit.test=RagRealRetrievalBenchmarkIT` 过滤——`.env` 常备 key，全量 `mvn verify` 会连带其他 DashScope IT 真外发。
 - CI：`.github/workflows/ci.yml` = surefire + failsafe 双口径回归门禁（基线数字以文件为准）+ 报告归档。
 - **待授权遗留**：生产库全量 reingest（真实嵌入成本 × chunk 总量，`KnowledgeReingestRunner` 已实现）、多查询/HyDE 生产语料重评。

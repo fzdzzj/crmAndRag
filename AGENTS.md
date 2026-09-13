@@ -66,14 +66,13 @@
 - `pojo` —— entity / dto / vo / ao / excel
 - `quality` —— RAG 质量评测（benchmark 与评分）
 
-## 未闭合的授权缺口（改相关代码前必读）
+## 已闭合的授权缺口（close-permission-read-gap，已合入）
 
-- **缺口**：`GET /permission/list` 与 `GET /permission/getByRole` 没有任何权限注解，任何登录用户都能读到全量权限清单。
-- **机制**：鉴权靠方法级注解 `com.slz.crm.common.annotation.RequirePermission`（`@Target(METHOD)`，打在类上不生效），由 `PermissionsInterceptor#preHandle` 执行（`WebMvcConfiguration#addInterceptors` 注册）；**注解缺失时拦截器直接放行**，校验不过才抛 `ErrorCode.PERMISSION_DENIED`（code 12002）。
-- **当前状态**：`PermissionController` 全类只有第 57 行的分配接口带 `@RequirePermission(PermissionOperates.SYSTEM_ASSIGN_PERMISSION)`；`list()` 与 `getByRole()` 无注解。
-- **唯一校验被停放**：`src/test/java/com/slz/crm/integration/controller/PermissionControllerIT.java` 两个 `@Disabled`，其理由串已写清再启用的三项机械核对条件与 owner。
-- **约束**：补上注解会改变产品鉴权行为（现有调用方可能立即开始收到 12002），属需单独授权的变更，不要顺手在无关任务里加；`PermissionOperates` 当前无“查看权限”常量，需先定下复用还是新增。
-- **核对命令**（期望只命中第 57 行；一旦 `list()` / `getByRole()` 也命中，就去移除那两个 `@Disabled`）：
+- **已闭合**：`GET /permission/list` 与 `GET /permission/getByRole` 已加 `@RequirePermission(PermissionOperates.SYSTEM_ASSIGN_PERMISSION)`（取值复用 606，读写同权，用户已拍板，不新增 608 常量），任何登录用户不再能枚举全量权限清单。
+- **机制（保留说明）**：鉴权靠方法级注解 `com.slz.crm.common.annotation.RequirePermission`（`@Target(METHOD)`，打在类上不生效），由 `PermissionsInterceptor#preHandle` 执行（`WebMvcConfiguration#addInterceptors` 注册）；**注解缺失时拦截器直接放行**，校验不过才抛 `ErrorCode.PERMISSION_DENIED`（code 12002）。
+- **当前状态**：`PermissionController` 三处 `@RequirePermission(PermissionOperates.SYSTEM_ASSIGN_PERMISSION)`（list / addORDeletePermissionsToRole / getByRole）。
+- **测试**：`src/test/java/com/slz/crm/integration/controller/PermissionControllerIT.java` 两个 `@Disabled` 已移除并启用（2 反向 + 1 正向共 3 绿，本地 Docker 实测）。
+- **不放开**：`getMyPermission`（自查）、`/auditor`（审批人下拉）仍为业务必需的开放接口，不在收紧范围。
 
   ```bash
   grep -n "@RequirePermission" src/main/java/com/slz/crm/server/controller/PermissionController.java
