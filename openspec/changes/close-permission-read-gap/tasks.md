@@ -25,5 +25,5 @@
 
 ## 4. Git 收尾
 
-- [ ] 4.1 分支 `feature/close-permission-read-gap`，提交按任务组（`fix(permission): 中文描述` 等），tasks.md 勾选随代码同提交
-- [ ] 4.2 亲验全绿后合入：`git checkout master; git merge --no-ff feature/close-permission-read-gap -m "Merge branch 'feature/close-permission-read-gap'：闭合权限目录读取缺口（复用606）"`；汇报带 commit hash、实测计数、AGENTS.md 闭合确认
+- [x] 4.1 分支 `feature/close-permission-read-gap`，提交按任务组（`fix(permission): 中文描述` 等），tasks.md 勾选随代码同提交
+- [x] 4.2 亲验全绿后合入：`git checkout master; git merge --no-ff feature/close-permission-read-gap -m "Merge branch 'feature/close-permission-read-gap'：闭合权限目录读取缺口（复用606）"`；汇报带 commit hash、实测计数、AGENTS.md 闭合确认
