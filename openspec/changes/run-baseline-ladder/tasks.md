@@ -48,9 +48,9 @@
 
 ## 7. 收尾
 
-- [ ] 7.1 五份 JSON + baseline.md + 各案验证记录齐并入库；`ladder-report.md`（五跑核心指标一览 + 遗留清单：生产 reingest 另授权 / WriteChainRegression 2 红另案 / 11·14 deferred 不变）
-- [ ] 7.2 `mvn -B -ntp test` 绿（surefire ≥ 585+新增）；有新增则 ci.yml 基线 bump 三处同步
-- [ ] 7.3 回归处置核对：任一跑较锚点回退的，均已记录差异并在汇报中列明（默认值翻转属用户决策，本提案不拍板）
+- [x] 7.1 四份 JSON 已入库 + baseline.md 已建（v1 锚点）+ `docs/rag-quality/ladder-report.md` 五跑一览与遗留清单已产出（after-query 触发不成立，第五份 JSON 不产出属预期）；公司提案 1–5 验证记录齐
+- [x] 7.2 `mvn -B -ntp test` 绿（surefire 590 全绿）；本阶梯未新增单测 → ci.yml 基线维持 590 无需 bump（比对见 ladder-report "surefire / failsafe 基线"节）
+- [x] 7.3 回归处置核对：回退项 = after-chunking MRR 小降 0.028 / after-context token 未降（scale 限制），均已记录差异并在 ladder-report 与各案验证记录列明；**默认值一律未翻转**（semantic/neighbors/compressor/parent-expand/multi-query/hyde 均维持默认）
 
 ## 8. Git 操作（按 `openspec/git-workflow.md` 执行）
 
