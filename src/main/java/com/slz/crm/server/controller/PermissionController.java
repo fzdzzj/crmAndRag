@@ -39,9 +39,11 @@ public class PermissionController {
 
     /**
      * 获取所有权限（按模块分组，主权限+子权限分离）
+     * <p>close-permission-read-gap：复用 606（读写同权，用户已拍板），无 606 角色将收 12002。</p>
      * @return 按模块分组的权限Map
      */
     @RequestMapping("/list")
+    @RequirePermission(PermissionOperates.SYSTEM_ASSIGN_PERMISSION)
     public Result<Map<String, PermissionGroupedVO>> list() {
         Map<String, PermissionGroupedVO> permissionMap = permissionService.getAllPermissionsGroupedByModuleGrouped();
         return Result.success(permissionMap);
@@ -61,10 +63,12 @@ public class PermissionController {
 
     /**
      * 根据角色ID查询权限（分组）
+     * <p>close-permission-read-gap：复用 606（读写同权，用户已拍板），无 606 角色将收 12002。</p>
      * @param roleId 角色ID
      * @return 分组后的权限（主权限 + 子权限）
      */
     @GetMapping("/getByRole")
+    @RequirePermission(PermissionOperates.SYSTEM_ASSIGN_PERMISSION)
     public Result<PermissionGroupedVO> getByRole(@RequestParam("roleId") Long roleId) {
         return Result.success(permissionService.getByRoleGrouped(roleId));
     }
