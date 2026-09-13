@@ -210,13 +210,19 @@ final class InMemoryDocumentVectorChunkMapper {
                 // 读取失败则按无条件处理（保守：返回全量，检索右侧再按 hit 过滤）
             }
             String sql = wrapperSql(wrapper);
+            return selectListBySql(queryWrapper, sql, rows, params);
+        }
+
+        private List<DocumentVectorChunkEntity> selectListBySql(
+                com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<?> queryWrapper, String sql,
+                List<DocumentVectorChunkEntity> rows, Map<String, Object> params) {
             List<Criterion> criteria = new ArrayList<>();
             Matcher inMatcher = COL_IN.matcher(sql);
             while (inMatcher.find()) {
                 List<Object> values = new ArrayList<>();
                 Matcher token = Pattern.compile("MPGENVAL\\d+").matcher(inMatcher.group(2));
                 while (token.find()) {
-                    Object value = params.get(token.group());
+                    Object value = resolveParam(params, token.group());
                     if (value instanceof Iterable<?> iterable) {
                         iterable.forEach(values::add);
                     } else if (value != null && value.getClass().isArray()) {
@@ -232,8 +238,10 @@ final class InMemoryDocumentVectorChunkMapper {
             }
             Matcher eqMatcher = COL_EQ.matcher(sql);
             while (eqMatcher.find()) {
-                Object value = params.get(eqMatcher.group(3));
-                criteria.add(Criterion.of(eqMatcher.group(1), List.of(value)));
+                Object value = resolveParam(params, eqMatcher.group(3));
+                if (value != null) {
+                    criteria.add(Criterion.of(eqMatcher.group(1), List.of(value)));
+                }
             }
             List<DocumentVectorChunkEntity> matched = new ArrayList<>();
             for (DocumentVectorChunkEntity entity : rows) {
@@ -258,6 +266,24 @@ final class InMemoryDocumentVectorChunkMapper {
             } catch (ClassCastException ignored) {
                 return "";
             }
+        }
+
+        /** 参数解析：sqlSegment 引用 {@code ew.paramNameValuePairs.MPGENVALn}，键可能带 {@code ew.paramNameValuePairs.}
+         *  前缀或裸名，这里按精确名或 {@code .<name>} 后缀解析，避免 {@code List.of(null)} 触发 NPE。 */
+        private static Object resolveParam(Map<String, Object> params, String tokenName) {
+            if (params == null) {
+                return null;
+            }
+            Object exact = params.get(tokenName);
+            if (exact != null || params.containsKey(tokenName)) {
+                return exact;
+            }
+            for (Map.Entry<String, Object> entry : params.entrySet()) {
+                if (entry.getKey().endsWith("." + tokenName) || entry.getKey().equals(tokenName)) {
+                    return entry.getValue();
+                }
+            }
+            return null;
         }
 
         private int deletePhysicallyByDocumentId(String documentId) {

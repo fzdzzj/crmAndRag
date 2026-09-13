@@ -242,6 +242,9 @@ public final class RagBenchmarkDataPreparer {
         metadata.put("fileType", fileType(fixture.filename()));
         metadata.put("pageNo", chunk.pageNo() == null ? 0L : chunk.pageNo().longValue());
         metadata.put("rowIndex", chunk.rowIndex() == null ? 0L : chunk.rowIndex().longValue());
+        // chunkIndex：生产 QdrantVectorStore.upsert 单独写 payload（toMetadata 还原进命中 metadata），
+        // ContextBuilder 邻居拼装读它；InMemoryVectorStore 直存本 map，故在此补齐对齐生产命中口径
+        metadata.put("chunkIndex", chunk.chunkIndex());
         metadata.put("chunkId", chunkId);
         return metadata;
     }

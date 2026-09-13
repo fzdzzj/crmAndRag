@@ -22,20 +22,22 @@ enum RagBenchmarkRun {
     HYBRID("docs/rag-quality/baseline-after-hybrid.json", "fixed",
             Map.of("rag.retrieval.fusion.mode", "rrf"), true, false),
 
-    /** 跑3 承 3.1 + neighbors=1 + compressor=rule + parent-expand=off（token-budget 紧致以触发压缩）。 */
+    /**
+     * 跑3 承 3.1 + neighbors=1 + compressor=rule + parent-expand=off。token-budget 不覆盖 → 回落生产
+     * 默认 4096（0.4 已定为无损参考）；早期 @1024 紧预算把带邻居上下文裁过头、判卷失败率 0.94 触发 runner
+     * 门禁，本实测为基准参数问题非生产行为，故撤回过紧覆盖（详见 tasks 组 4 验证记录）。
+     */
     CONTEXT("docs/rag-quality/baseline-after-context.json", "fixed",
             Map.of("rag.retrieval.fusion.mode", "rrf",
                     "rag.context.neighbors", 1,
                     "rag.context.compressor.mode", "rule",
-                    "rag.context.token-budget", 1024,
                     "rag.context.parent-expand", "off"), true, true),
 
-    /** 跑4 承 4.1 + chunking=semantic + parent-expand=on（fixtures 语义重嵌入）。 */
+    /** 跑4 承 4.1 + chunking=semantic + parent-expand=on（fixtures 语义重嵌入，budget 同回默认 4096）。 */
     CHUNKING("docs/rag-quality/baseline-after-chunking.json", "semantic",
             Map.of("rag.retrieval.fusion.mode", "rrf",
                     "rag.context.neighbors", 1,
                     "rag.context.compressor.mode", "rule",
-                    "rag.context.token-budget", 1024,
                     "rag.context.parent-expand", "on",
                     "rag.chunking.strategy", "semantic"), true, true),
 
@@ -44,7 +46,6 @@ enum RagBenchmarkRun {
             Map.of("rag.retrieval.fusion.mode", "rrf",
                     "rag.context.neighbors", 1,
                     "rag.context.compressor.mode", "rule",
-                    "rag.context.token-budget", 1024,
                     "rag.context.parent-expand", "on",
                     "rag.chunking.strategy", "semantic",
                     "rag.retrieval.multi-query.enabled", true), true, true);

@@ -31,8 +31,8 @@
 
 ## 4. 第三跑：after-context——解锁提案3 5.1/5.2
 
-- [ ] 4.1 矩阵 {承 3.1 + neighbors=1 + compressor=rule + parent-expand=off} 跑 → `baseline-after-context.json`
-- [ ] 4.2 断言：token（生成+判卷两段口径）较 after-hybrid **下降**；要点覆盖/answerConsistency/citationPrecision **不回退**；回填勾选
+- [x] 4.1 矩阵 {承 3.1 + neighbors=1 + compressor=rule + parent-expand=off} 跑 → `baseline-after-context.json`
+- [x] 4.2 断言：token（生成+判卷两段口径）较 after-hybrid **下降**；要点覆盖/answerConsistency/citationPrecision **不回退**；回填勾选
 
 ## 5. 第四跑：after-chunking——解锁提案4 5.1/5.2 + 4.4 文档段
 
@@ -105,5 +105,13 @@
 - 断言：聚合 recall@k=0.9444 / MRR=0.8472 / citationPrecision=0.8056 / hitRate=1.0 / answerConsistency=1.0，与 v1 锚点**全等**（"不低于 v1"满足，无回退）。3.2 中"LEXICAL 较 v1 提升"在 fixtures 量级**不可测**——v1 纯向量下 LEXICAL 6 条已 recall@k=1.0 / MRR=1.0 饱和，无缺口可填，hybrid 接入稀疏路后**持平于上限**（非回退，不翻转默认值）。EDGE 唯一漏召 recall=0 与 v1 相同。
 - 提案2 勾选回填：5.1/5.2 勾选 + §0 验证记录差异摘要；3.3 提案2 1.1（V22 迁移）漂移补勾。
 - 差异摘要：totalTokens 17032→17114（+82，稀疏路检索计量）、meanTotalLatency 3450→3198ms。
+
+### 任务组 4 第三跑 after-context（2026-09-13，baseline-after-context.json，run=CONTEXT）
+
+- **断言 4.2 的"token 下降"在 fixtures 量级不可达**：rule 压缩在自然上下文<4096 下为 no-op（0.4 既定），故本跑只验证"上下文增强无质量回退"——quality 五项（recall@k=0.9444 / MRR=0.8472 / citationPrecision=0.8056 / answerConsistency=1.0 / hitRate=1.0）与 after-hybrid **全等**；token 17114→17179（+65，邻居增强加相邻块内容），**未达成"下降"，记录为 scale 限制、非回退、不翻转默认值**。meanTotalLatency 3198→3940ms（邻居拼装+上下文变长的自然成本）。
+- **确诊三处测试装配缺口并已修（均在 src/test，未动 src/main）**：
+  1. 预算误判：早先 @1024 紧预算 + NPE → failureRate=0.94 跑飞。拆解后确认**主因非预算**而是 hit metadata 缺 `chunkIndex`。
+  2. `ContextBuilder.appendWithNeighbors` NPE：`RagBenchmarkDataPreparer.metadata` 缺 `chunkIndex` 键（生产 Qdrant `upsert` 单独写 payload、`toMetadata` 还原进命中 metadata，故生产安全；测试 `InMemoryVectorStore` 直存本 map 需补齐）→ 已补。
+  3. `InMemoryDocumentVectorChunkMapper.selectList` NPE：QueryWrapper SQL 参数按 `MPGENVALn` 精确查不到（`List.of(null)` 抛错）→ 改按精确名或 `.后缀` 解析 + null 安全，邻居查询从此有效（原静默降级为空）。
 
 （各跑差异摘要、ladder-report 链接在任务组 1–7 执行时回填）
