@@ -6,9 +6,6 @@ import com.alibaba.cloud.ai.dashscope.embedding.DashScopeEmbeddingModel;
 import com.slz.crm.common.enumeration.DataScopeLevel;
 import com.slz.crm.knowledge.auth.KnowledgeBaseAuthorizationService;
 import com.slz.crm.knowledge.embedding.EmbeddingService;
-import com.slz.crm.knowledge.retrieval.Bm25Scorer;
-import com.slz.crm.knowledge.retrieval.KnowledgeRetrievalServiceImpl;
-import com.slz.crm.knowledge.retrieval.RetrievalQueryRewriteService;
 import com.slz.crm.knowledge.vector.InMemoryVectorStore;
 import com.slz.crm.platform.contract.DynamicConfigService;
 import com.slz.crm.platform.contract.ModelCallOptions;
@@ -33,7 +30,6 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.document.MetadataMode;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.mock.env.MockEnvironment;
 import reactor.core.publisher.Flux;
 
@@ -79,8 +75,12 @@ class RagRealRetrievalBenchmarkIT {
     /** recall@k / precision@k / MRR 的截断排名 = 生产默认 topK */
     private static final int TOP_K = 5;
 
-    /** 基线报告落盘路径（failsafe 工作目录 = 仓库根） */
-    private static final Path BASELINE_PATH = Path.of("docs", "rag-quality", "baseline-v1.json");
+    /** 基线报告默认落盘路径（failsafe 工作目录 = 仓库根）；可用 {@code -Drag.benchmark.out} 覆盖。 */
+    private static final Path DEFAULT_BASELINE_PATH = Path.of("docs", "rag-quality", "baseline-v1.json");
+    /** 当跑 profile：{@code -Drag.benchmark.run=v1|hybrid|context|chunking|query}（默认 v1）。 */
+    private static final String RUN_PROP = "rag.benchmark.run";
+    /** 报告输出路径覆盖：{@code -Drag.benchmark.out=docs/rag-quality/<name>.json}。 */
+    private static final String OUT_PROP = "rag.benchmark.out";
 
     private static final String KB_ANSWER_SYSTEM_PROMPT = """
             你是 CRM 知识库助手。仅依据下方编号资料回答用户问题，作答时用 [n] 标注所引用资料的编号。
@@ -113,19 +113,26 @@ class RagRealRetrievalBenchmarkIT {
         ModelProviderProperties properties = new ModelProviderProperties();
         EmbeddingService embeddingService = new EmbeddingService(provider, properties);
 
-        // 1) 数据准备：fixtures 幂等入库（真嵌入），黄金占位 id → 真实 chunkId（对齐失败显式报错）
+        // profile 由 -Drag.benchmark.run 决定；当跑矩阵（DynamicConfig 桩）+ 输出路径据此装配
+        RagBenchmarkRun run = RagBenchmarkRun.from(System.getProperty(RUN_PROP, "v1"));
+        DynamicConfigService dynamicConfig = RagBenchmarkPipelineFactory.dynamicConfig(run.matrix);
+        System.out.println("[rag-benchmark] run=" + run + " matrix=" + run.matrix);
+
+        // 1) 数据准备：fixtures 幂等入库（真嵌入），黄金占位 id → 真实 chunkId（对齐失败显式报错）；
+        //    DocumentService 走矩阵的 rag.chunking.strategy（fixed/semantic）
         InMemoryVectorStore store = new InMemoryVectorStore();
-        RagBenchmarkDataPreparer.Preparation preparation =
-                RagBenchmarkDataPreparer.prepare(store, embeddingService::embed, EVAL_KB_ID);
+        RagBenchmarkDataPreparer.Preparation preparation = RagBenchmarkDataPreparer.prepare(
+                store, embeddingService::embed, EVAL_KB_ID,
+                new com.slz.crm.knowledge.document.DocumentService(
+                        RagBenchmarkPipelineFactory.provider(dynamicConfig)));
         System.out.println("[rag-benchmark] 语料入库完成：chunks=" + preparation.chunkIds().size()
                 + " goldens=" + preparation.goldenToChunkId().size());
         List<RagBenchmarkCase> suite = RagBenchmarkDataPreparer.rewriteSuite(RagBenchmarkSuite.standard(), preparation);
 
         // 2) 真检索管线：真改写 + 真嵌入 + 真召回融合重排（授权为评测桩：固定放行评测库）
-        KnowledgeRetrievalPort retrievalPort = new KnowledgeRetrievalServiceImpl(
-                allowEvalKnowledgeBaseOnly(), embeddingService, store,
-                new RetrievalQueryRewriteService(provider, emptyDynamicConfigProvider()),
-                new Bm25Scorer(), emptyDynamicConfigProvider());
+        KnowledgeRetrievalPort retrievalPort = RagBenchmarkPipelineFactory.build(
+                run, allowEvalKnowledgeBaseOnly(), embeddingService, store,
+                dynamicConfig, provider, preparation.chunks());
 
         UserContext evaluator = new UserContext(EVAL_USER_ID, EVAL_USER_ID + 1, EVAL_USER_ID + 2,
                 DataScopeLevel.NONE, "rag-benchmark-runner");
@@ -144,10 +151,31 @@ class RagRealRetrievalBenchmarkIT {
                 "失败用例过多（" + report.metrics().failureRate() + "），基线不可信");
         assertTrue(report.metrics().hitRate() > 0.0, "整轮零命中说明检索链路或语料装配有问题");
 
-        Files.createDirectories(BASELINE_PATH.getParent());
-        Files.writeString(BASELINE_PATH, report.toJson(), StandardCharsets.UTF_8);
-        System.out.println("[rag-benchmark] 基线已落盘: " + BASELINE_PATH.toAbsolutePath());
+        Path outPath = System.getProperty(OUT_PROP) == null || System.getProperty(OUT_PROP).isBlank()
+                ? run.outFile == null ? DEFAULT_BASELINE_PATH : Path.of(run.outFile)
+                : Path.of(System.getProperty(OUT_PROP));
+        Files.createDirectories(outPath.getParent());
+        Files.writeString(outPath, withRunConfig(report.toJson(), run), StandardCharsets.UTF_8);
+        System.out.println("[rag-benchmark] 基线已落盘: " + outPath.toAbsolutePath());
         System.out.println("[rag-benchmark] metrics=" + report.metrics());
+    }
+
+    /** 在报告 JSON 末尾附当跑矩阵快照（凭报告可复现该跑）；不影响 RAG 指标字段。 */
+    private static String withRunConfig(String reportJson, RagBenchmarkRun run) {
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper =
+                    new com.fasterxml.jackson.databind.ObjectMapper()
+                            .enable(com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT);
+            com.fasterxml.jackson.databind.node.ObjectNode root =
+                    (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(reportJson);
+            root.put("runProfile", run.name());
+            root.put("runChunking", run.chunking);
+            root.putObject("runConfig").put("sparseOn", run.sparseOn).put("contextOn", run.contextOn)
+                    .set("matrix", mapper.valueToTree(run.matrix));
+            return mapper.writeValueAsString(root);
+        } catch (Exception ignored) {
+            return reportJson;
+        }
     }
 
     /** 单条用例：检索 → 生成（带引用）→ 判卷要点覆盖；任何阶段异常由评估器记失败用例。 */
@@ -281,26 +309,6 @@ class RagRealRetrievalBenchmarkIT {
             @Override
             public List<Long> authorizedKnowledgeBaseIds(UserContext user, List<String> requestedScopes) {
                 return List.of(EVAL_KB_ID);
-            }
-        };
-    }
-
-    /** 空 DynamicConfigProvider：全部走代码内默认参数（与生产默认一致）。 */
-    private ObjectProvider<DynamicConfigService> emptyDynamicConfigProvider() {
-        return new ObjectProvider<>() {
-            @Override
-            public DynamicConfigService getObject() {
-                throw new NoSuchBeanDefinitionException(DynamicConfigService.class);
-            }
-
-            @Override
-            public DynamicConfigService getIfAvailable() {
-                return null;
-            }
-
-            @Override
-            public DynamicConfigService getIfUnique() {
-                return null;
             }
         };
     }

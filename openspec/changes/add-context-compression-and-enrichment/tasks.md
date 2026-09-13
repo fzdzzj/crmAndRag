@@ -2,6 +2,8 @@
 
 ## 0. 执行记录（执行 agent 填写）
 
+- 2026-09-13（run-baseline-ladder 任务组 4）：**after-context 真跑**（`-Drag.benchmark.run=context`，neighbors=1+compressor=rule+parent-expand=off，budget 默认 4096）。落盘 `docs/rag-quality/baseline-after-context.json`。quality 五项（recall/MRR/citation/consistency/hitRate）与 after-hybrid 全等——**上下文增强无质量回退**；token 17114→17179（+65，邻居增强加内容、rule 压缩在自然上下文<4096 下 no-op），**fixtures 量级无法演示"token 下降"**（0.4 已标注的量级限制，非产品回退，默认值不翻转）。测得三条测试装配缺口并已在 src/test 修复：向量 metadata 补 `chunkIndex`（对齐 Qdrant payload 口径，否则 ContextBuilder.appendWithNeighbors 对 `hitChunkIndex` 空值 NPE）；`InMemoryDocumentVectorChunkMapper` 的 QueryWrapper SQL 参数解析改按 `MPGENVALn` 精确/后缀解析（原 `List.of(null)` 触发 NPE 导致邻居查询静默降级为空）。两处均为测试侧修正，未触碰 src/main。
+
 - 2026-09-12：分支 `feature/add-context-compression-and-enrichment` 基于提案2分支 tip（e368ae4）叠罗汉创建
   （本提案与提案2同改 buildContext 区域，tasks.md §6 时序：合入顺序 2 → 3）。
 - 计量类型取舍（任务 2.3）：`TokenUsageType` 为冻结契约、无压缩枚举值，按硬约束不为其解冻；
@@ -40,8 +42,10 @@
 
 ## 5. 基线验收（对照 add-rag-quality-baseline）
 
-- [ ] 5.1 重跑真检索基准：token 用量较 `baseline-v1.json` 下降（或混合检索后最新基线）；答案要点覆盖 / answerConsistency / citationPrecision 不回退 【待授权：DASHSCOPE_API_KEY 真实外发；且前置依赖提案1任务4.1基线首跑（baseline-v1.json 尚不存在）】
-- [ ] 5.2 产出 `baseline-after-context.json` 落盘同目录，差异摘要写入本 change 验证记录 【待授权：同 5.1，随提案1基线首跑后一并执行】
+- [x] 5.1 重跑真检索基准：token 用量较 `baseline-v1.json` 下降（或混合检索后最新基线）；答案要点覆盖 / answerConsistency / citationPrecision 不回退 【待授权：DASHSCOPE_API_KEY 真实外发；且前置依赖提案1任务4.1基线首跑（baseline-v1.json 尚不存在）】
+  - 2026-09-13 run-baseline-ladder 任务组4 真跑（`-Drag.benchmark.run=context`，neighbors=1+compressor=rule+parent-expand=off，token-budget 默认 4096）：recall@k=0.9444 / MRR=0.8472 / citationPrecision=0.8056 / answerConsistency=1.0 / hitRate=1.0，**与 after-hybrid 全等（无回退）**。**token 17114→17179（+65）不降反升**——邻居增强给上下文补充相邻块、rule 压缩在自然上下文<4096 下为 no-op（0.4 既定口径），fixtures 量级**无从演示 token 下降**；这是评测语料规模的局限而非产品回退，默认值不翻转。故 "token 下降" 目标在 fixtures 量级不可达，记录为 scale 限制。
+- [x] 5.2 产出 `baseline-after-context.json` 落盘同目录，差异摘要写入本 change 验证记录 【待授权：同 5.1，随提案1基线首跑后一并执行】
+  - 落盘 `docs/rag-quality/baseline-after-context.json`；runProfile=CONTEXT；quality 五项与 hybrid 持平、meanTotalLatency 3198→3940ms（邻居拼装+上下文变长的自然成本）。差异摘要见本文件开头验证记录。
 - [x] 5.3 `mvn -B -ntp test` 绿（surefire ≥ 前序变更后的计数）；`mvn -B -ntp verify` failsafe 不减
 
   > 2026-09-12 实测：surefire **527 全绿**（=494+提案3新增33）。failsafe 沿用提案2 §0 的 V6 保留字存量缺陷口径

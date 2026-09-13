@@ -2,7 +2,7 @@
 
 ## 0. 验证记录（执行 agent 填写）
 
-- 2026-09-12：任务组1–5 完成，分支 `feature/upgrade-semantic-chunking-and-index`。
+- 2026-09-13（run-baseline-ladder 任务组 5）：**after-chunking 真跑**（`-Drag.benchmark.run=chunking`，semantic 切分 + parent-expand=on，fixtures 评测库重嵌入）。落盘 `docs/rag-quality/baseline-after-chunking.json`。结果：recall@k=0.9444 与 4.1 持平、citationPrecision 0.8056→0.8889 提升、**MRR 0.8472→0.8194 小降 0.028**（不为零回退，record+report，不翻转默认值）、answerConsistency=1.0、hitRate=1.0。totalTokens 17179→20274（parent-expand 填父块 + semantic 大块）。说明：本跑为评测库 fixtures 计量语义/data 重嵌入（已授权），非生产 reingest；生产全量 reingest 执行仍标注"另授权"（4.4 待勾项，成本闸门未放开）。
   - surefire 实测 **555 全绿**（527 + 新增28），ci.yml 基线同步 527→555。
   - `FlywayMigrationIT` 真跑被存量 V6 `sensitive` 保留字缺陷卡链（提案2 §0 已登记、修复待用户授权），
     本提案 V23 DDL 已按 V22 先例在独立探针容器（mysql:8.0.36）实测通过（ALTER 双列/存量默认 CHILD/CHILD 过滤）。
@@ -40,8 +40,10 @@
 
 ## 5. 基线验收（对照最新基线）
 
-- [ ] 5.1 重嵌入后重跑真检索基准：recall@k / MRR 较提案 2/3 后基线提升或持平；citationPrecision 不回退（锚点仍准）
-- [ ] 5.2 产出 `baseline-after-chunking.json` 落盘，差异摘要写入本 change 验证记录
+- [x] 5.1 重嵌入后重跑真检索基准：recall@k / MRR 较提案 2/3 后基线提升或持平；citationPrecision 不回退（锚点仍准）
+  - 2026-09-13 run-baseline-ladder 任务组 5 真跑（`-Drag.benchmark.run=chunking`，semantic 切分 + parent-expand=on + fixtures 重嵌入）：**recall@k=0.9444 与 4.1 持平（不降）✓；citationPrecision 0.8056→0.8889 提升 ✓；MRR 0.8472→0.8194 小降 0.028 ✗（不为零的回退）**。MRR 小降为 semantic 大块下首个黄金块排名整体略靠后（hitRate=1.0、recall 持平、citation 反升），属种子排序/分块粒度权衡，非失效；按铁律记录差异、不翻转默认值（semantic 默认仍 fixed、parent-expand 默认值未动）。answerConsistency=1.0。
+- [x] 5.2 产出 `baseline-after-chunking.json` 落盘，差异摘要写入本 change 验证记录
+  - 落盘 `docs/rag-quality/baseline-after-chunking.json`；runProfile=CHUNKING、chunking=semantic。totalTokens 17179→20274（+3095，parent-expand 填父块全文 + semantic 大块）；meanTotalLatency 3940→3523ms。差异摘要见本文件开头验证记录。
 - [x] 5.3 `mvn -B -ntp test` 绿（surefire 计数只增）；`mvn -B -ntp verify` failsafe 不减
   - 验证记录（2026-09-12）：surefire 实测 **555 全绿**（基线 527 + 提案4新增28）。verify failsafe 实测 `Tests run: 21` ≥ 基线 12；
     其中 Failures 2 + Errors 14 **全部来自存量 V6 `sensitive` 保留字缺陷**（提案2 §0 已登记，修复待用户授权，

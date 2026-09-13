@@ -71,10 +71,25 @@ public final class RagBenchmarkDataPreparer {
      * @param goldenToChunkId 黄金占位 id → 真实 chunkId（按语料顺序确定性排序）
      * @param chunkIds        本次入库的全部真实 chunkId
      * @param chunkTexts      实际索引的切片文本（已剥离 GOLD 标记；顺序同 chunkIds，供单测断言）
+     * @param chunks          本次入库的切片明细（含 chunkId/文本/元数据），供稀疏路与邻居装配用例
      */
     public record Preparation(Map<String, String> goldenToChunkId,
                               Set<String> chunkIds,
-                              List<String> chunkTexts) {
+                              List<String> chunkTexts,
+                              List<BenchmarkChunk> chunks) {
+    }
+
+    /**
+     * 一次性入块明细（run-baseline-ladder）：测试侧稀疏/邻居用同一批块，chunkId 与向量库一致。
+     *
+     * @param chunkId   切片稳定 chunkId（{@code <key>-<chunkIndex>}）
+     * @param text      已剥离 GOLD 标记的索引文本
+     * @param chunkIndex 文档内切片序号
+     * @param pageNo    页码（1 起，可空）
+     * @param rowIndex  Excel 行号（1 起，可空）
+     */
+    public record BenchmarkChunk(String chunkId, String text, String filename, String category,
+                                 int chunkIndex, Integer pageNo, Integer rowIndex) {
     }
 
     /** 固定评测文档集：与 fixtures 目录一一对应；新增语料 = 在此登记并同步扩充基准集。 */
@@ -96,10 +111,26 @@ public final class RagBenchmarkDataPreparer {
      * @throws IllegalStateException 语料缺失或解析失败时（黄金对齐校验在 {@link #validateAlignment}）
      */
     public static Preparation prepare(CrmVectorStore store, ChunkEmbedder embedder, long evalKbId) {
-        DocumentService documentService = new DocumentService();
+        return prepare(store, embedder, evalKbId, new DocumentService());
+    }
+
+    /**
+     * 幂等入库全部评测语料：清旧向量 → 真实分块 → 剥标记 → 向量化 → 写入向量库。
+     *
+     * @param store           目标向量库（评测环境通常是 {@code InMemoryVectorStore}）
+     * @param embedder        切片向量化函数
+     * @param evalKbId        评测知识库 id（写入 metadata.knowledgeBaseId，与检索侧过滤一致）
+     * @param documentService 分块服务（默认 fixed；run-baseline-ladder 第四跑传按 {@code rag.chunking.strategy}
+     *                        装配的实例以走 semantic）
+     * @return 黄金映射与 chunkId 集合
+     * @throws IllegalStateException 语料缺失或解析失败时（黄金对齐校验在 {@link #validateAlignment}）
+     */
+    public static Preparation prepare(CrmVectorStore store, ChunkEmbedder embedder, long evalKbId,
+                                      DocumentService documentService) {
         Map<String, String> goldenToChunkId = new LinkedHashMap<>();
         Set<String> chunkIds = new LinkedHashSet<>();
         List<String> chunkTexts = new ArrayList<>();
+        List<BenchmarkChunk> chunkList = new ArrayList<>();
 
         for (FixtureDocument fixture : FIXTURES) {
             String documentId = "benchdoc-" + fixture.key();
@@ -123,6 +154,10 @@ public final class RagBenchmarkDataPreparer {
 
                 chunkIds.add(chunkId);
                 chunkTexts.add(indexedText);
+                chunkList.add(new BenchmarkChunk(chunkId, indexedText, fixture.filename(),
+                        BENCHMARK_CATEGORY, chunk.chunkIndex(),
+                        chunk.pageNo() == null ? null : chunk.pageNo().intValue(),
+                        chunk.rowIndex() == null ? null : chunk.rowIndex().intValue()));
                 // 嵌入输入与生产入库（DocumentIngestionService）同口径：块头 + 切片文本（提案4 任务 2.1）；
                 // 向量记录文本仍为剥离标记后的干净原文，引用展示不受头污染
                 String embedText = ChunkHeaderText.wrap(fixture.filename(), BENCHMARK_CATEGORY,
@@ -137,7 +172,8 @@ public final class RagBenchmarkDataPreparer {
                         metadata(fixture, chunk, evalKbId, chunkId)));
             }
         }
-        return new Preparation(Map.copyOf(goldenToChunkId), Set.copyOf(chunkIds), List.copyOf(chunkTexts));
+        return new Preparation(Map.copyOf(goldenToChunkId), Set.copyOf(chunkIds),
+                List.copyOf(chunkTexts), List.copyOf(chunkList));
     }
 
     /**
@@ -206,6 +242,9 @@ public final class RagBenchmarkDataPreparer {
         metadata.put("fileType", fileType(fixture.filename()));
         metadata.put("pageNo", chunk.pageNo() == null ? 0L : chunk.pageNo().longValue());
         metadata.put("rowIndex", chunk.rowIndex() == null ? 0L : chunk.rowIndex().longValue());
+        // chunkIndex：生产 QdrantVectorStore.upsert 单独写 payload（toMetadata 还原进命中 metadata），
+        // ContextBuilder 邻居拼装读它；InMemoryVectorStore 直存本 map，故在此补齐对齐生产命中口径
+        metadata.put("chunkIndex", chunk.chunkIndex());
         metadata.put("chunkId", chunkId);
         return metadata;
     }

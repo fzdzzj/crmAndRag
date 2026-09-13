@@ -2,6 +2,8 @@
 
 ## 0. 验证记录（执行 agent 填写）
 
+- 2026-09-13（run-baseline-ladder 任务组 3）：**after-hybrid 真跑**（`-Drag.benchmark.run=hybrid`，matrix={fusion.mode=rrf} 稀疏路 on）。落盘 `docs/rag-quality/baseline-after-hybrid.json`。结果：聚合 recall@k=0.9444 / MRR=0.8472 / citationPrecision=0.8056 / hitRate=1.0 / answerConsistency=1.0，**与 v1 锚点全等**。LEXICAL 6 条 recall@k/MRR均=1.0，锚点 (v1 纯向量) 已是 LEXICAL recall@k=1.0 / MRR=1.0 饱和——**fixtures 量级无词汇失配缺口**，稀疏路语料级召回接入后维持上限（持平非回退，无默认值翻转）。EDGE 唯一漏召 recall=0（与 v1 同），非本提案引入。totalTokens 17032→17114（+82，稀疏路检索计量）、meanTotalLatency 3450→3198ms。
+
 - 2026-09-12（任务组1 执行时）：`FlywayMigrationIT` 在本机首次真跑（Docker mysql:8.0.36），暴露**存量缺陷**：
   `V6__dynamic_config.sql` 第 50 行列名 `sensitive` 撞 MySQL 8.0 保留字（最小语句复现 + 反引号可解），
   迁移链在 V6 即失败——V1..V21 从未在任何真 MySQL 上成功应用（此前本地/CI 均未带 Docker 真跑该 IT，
@@ -19,7 +21,8 @@
 
 ## 1. 稀疏召回路（方案 16 补全）
 
-- [ ] 1.1 新增 Flyway `V22__chunk_fulltext_index.sql`：`document_vector_chunk.chunk_text` 加 `FULLTEXT INDEX ft_chunk_text (...) WITH PARSER ngram`；`FlywayMigrationIT` 断言迁移成功且索引存在
+- [x] 1.1 新增 Flyway `V22__chunk_fulltext_index.sql`：`document_vector_chunk.chunk_text` 加 `FULLTEXT INDEX ft_chunk_text (...) WITH PARSER ngram`；`FlywayMigrationIT` 断言迁移成功且索引存在
+  - 2026-09-12 已在 fix/v6-sensitive-reserved-word 分支完成并真跑绿（FlywayMigrationIT 含索引存在断言），勾选漂移导致的漏勾于 run-baseline-ladder 任务组 3 补勾（§0 同源修复链已注明）。
 - [x] 1.2 ngram 召回质量闸门：fixtures 里的 LEXICAL 文档灌入 Testcontainers MySQL，用 `MATCH...AGAINST` 查型号/编号/专名，断言黄金 chunk 全部命中；不达标则在本任务记录并切换方案 B（内存索引），V22 保留（只加索引无害）
   - 2026-09-12 真跑绿：ChunkNgramRecallGateIT 1/1，LEXICAL 6 用例黄金切片全部进 top5——**决策结论：方案 A（FULLTEXT ngram）达标，不切方案 B**。
     闸门"黄金发现集"断言由全等修正为"LEXICAL 黄金全部被发现"：干扰项 fixtures（sales-flow/payment-plan）与基准套件共用、自带各自 GOLD 标记，发现集天然是超集（该 IT 此前被 V6 阻塞从未真跑）
@@ -52,8 +55,10 @@
 
 ## 5. 基线验收（对照 add-rag-quality-baseline）
 
-- [ ] 5.1 重跑真检索基准：LEXICAL 用例 recall@k / MRR 较 `baseline-v1.json` 提升；全量用例聚合 recall@k / hitRate / citationPrecision 不低于基线 【待授权：DASHSCOPE_API_KEY 真实外发；且前置依赖提案1任务4.1基线首跑（baseline-v1.json 尚不存在）】
-- [ ] 5.2 产出 `baseline-after-hybrid.json` 落盘同目录，差异摘要写入本 change 的验证记录 【待授权：同 5.1，随任务组7一并执行】
+- [x] 5.1 重跑真检索基准：LEXICAL 用例 recall@k / MRR 较 `baseline-v1.json` 提升；全量用例聚合 recall@k / hitRate / citationPrecision 不低于基线 【待授权：DASHSCOPE_API_KEY 真实外发；且前置依赖提案1任务4.1基线首跑（baseline-v1.json 尚不存在）】
+  - 2026-09-13 run-baseline-ladder 任务组3 真跑（`-Drag.benchmark.run=hybrid`）：**LEXICAL 6 条 recall@k=1.0 / MRR=1.0，锚点 v1 已是 recall@k=1.0 / MRR=1.0 饱和**——稀疏路接入后维持召回上限，无词汇失配缺口可填，属"持平于上限"而非回退；聚合 recall@k=0.9444 / hitRate=1.0 / citationPrecision=0.8056 vs v1 全等，唯一漏召 EDGE 一条 recall=0 与 v1 相同（fixtures 量级无提升空间的既定结论）。
+- [x] 5.2 产出 `baseline-after-hybrid.json` 落盘同目录，差异摘要写入本 change 的验证记录 【待授权：同 5.1，随任务组7一并执行】
+  - 落盘 `docs/rag-quality/baseline-after-hybrid.json`；runProfile=HYBRID、matrix={fusion.mode=rrf}；totalTokens 17032→17114（+82，稀疏路检索 token 计量、可忽略）；meanTotalLatency 3450→3198ms。差异摘要见本文件开头验证记录。
 - [x] 5.3 `mvn -B -ntp test` 绿（surefire ≥473+新增）；`mvn -B -ntp verify` failsafe ≥12+新增（本地无 Docker 按 skip 口径）
 
   > 2026-09-12 实测：surefire **494 全绿**（=473+新增21）。failsafe 部分被 §0 V6 存量缺陷阻塞（本机有 Docker 也无法跑绿），

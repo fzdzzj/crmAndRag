@@ -23,7 +23,7 @@
 
 ## 4. 基线记录与门禁确认
 
-- [ ] 4.1 在有 key 的环境跑出基线，确认 `docs/rag-quality/baseline-v1.json` 存在且指标齐全——**待授权**：真实外发约 60–90 次模型调用，按仓库约定需先获确认（基础设施已就绪，命令见 `baseline.md`）
+- [x] 4.1 在有 key 的环境跑出基线，确认 `docs/rag-quality/baseline-v1.json` 存在且指标齐全（run-baseline-ladder 第一跑已授权执行，metrics 见 `baseline.md`）
 - [x] 4.2 `mvn -B -ntp test` 绿：surefire 合计 **473**（基线 467 + 新增 6）；failsafe 口径白名单实测新 IT +1（skip），全量 verify 门禁由 CI 落地确认
 - [x] 4.3 `ci.yml` 阶段 2 注释补充"真检索基准 runner 为 env 门控、不进默认 CI"的说明（未改门禁逻辑与基线数字）
-- [ ] 4.4 `baseline.md` 已建（运行环境/指标口径/复现命令），基线数字摘要待 4.1 首跑后回填
+- [x] 4.4 `baseline.md` 已建（运行环境/指标口径/复现命令），基线数字摘要已随 4.1 首跑回填（run-baseline-ladder）
