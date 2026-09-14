@@ -1,4 +1,5 @@
 package com.slz.crm.server.controller;
+import com.slz.crm.common.annotation.RequirePermission;
 import com.slz.crm.common.enumeration.PermissionOperates;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
@@ -35,6 +36,8 @@ public class DataStatisticsController {
      */
     @PostMapping("/chartData")
     @Cacheable(value = "chartDataCache", key = "#dataStatisticsDTO.dataType", condition = "#dataStatisticsDTO.dataType != null")
+    // apply-permission-matrix 任务 2.1：报表生成权限
+    @RequirePermission(PermissionOperates.REPORT_GENERATE_REPORT)
     public Result<ChartDataVO> getChartData(@RequestBody DataStatisticsDTO dataStatisticsDTO) {
         try {
             // 参数校验
@@ -62,6 +65,8 @@ public class DataStatisticsController {
     @PostMapping("/chart")
     @Deprecated
     @Cacheable(value = "chartCache", key = "#dataStatisticsDTO.dataType", condition = "#dataStatisticsDTO.dataType != null")
+    // apply-permission-matrix 任务 2.1：报表生成权限
+    @RequirePermission(PermissionOperates.REPORT_GENERATE_REPORT)
     public ResponseEntity<byte[]> generateLineChart(@RequestBody DataStatisticsDTO dataStatisticsDTO) {
         try {
             // 参数校验
@@ -93,6 +98,8 @@ public class DataStatisticsController {
      * @return 综合统计数据
      */
     @PostMapping("/summary")
+    // apply-permission-matrix 任务 2.1：报表查看权限
+    @RequirePermission(PermissionOperates.REPORT_VIEW_REPORT)
     public Result<StatisticsSummaryVO> getStatisticsSummary(@RequestBody StatisticsRequest request) {
         LocalDateTime startTime = request.getStartTime();
         LocalDateTime endTime = request.getEndTime();
@@ -114,6 +121,8 @@ public class DataStatisticsController {
      * @return 商机阶段分布数据
      */
     @GetMapping("/opportunityStageDistribution")
+    // apply-permission-matrix 任务 2.1：报表查看权限
+    @RequirePermission(PermissionOperates.REPORT_VIEW_REPORT)
     public Result<OpportunityStageDistributionVO> getOpportunityStageDistribution() {
         OpportunityStageDistributionVO distribution = dataStatisticsService.getOpportunityStageDistribution();
         return Result.success(distribution);
