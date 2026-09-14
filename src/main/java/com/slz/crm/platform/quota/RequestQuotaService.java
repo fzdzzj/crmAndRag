@@ -33,6 +33,7 @@ public class RequestQuotaService {
         this.meterRegistry = meterRegistry;
         this.windows = Caffeine.newBuilder()
                 .expireAfterAccess(Duration.ofMinutes(10))
+                .recordStats() // test-hygiene 任务 1.2：开统计供 Micrometer 采集窗口缓存命中
                 .build();
     }
 
@@ -76,6 +77,7 @@ public class RequestQuotaService {
     private Cache<String, FixedWindow> cache(QuotaDimension dimension) {
         return windows.get(dimension, ignored -> Caffeine.newBuilder()
                 .expireAfterAccess(Duration.ofMinutes(10))
+                .recordStats() // test-hygiene 任务 1.2：开统计供 Micrometer 采集每维度窗口命中
                 .build());
     }
 

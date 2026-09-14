@@ -26,52 +26,61 @@ public class CacheConfig {
         // 定义各缓存名的差异化配置
         Map<String, Caffeine<Object, Object>> caffeineConfigs = new HashMap<>();
 
-        // 用户名缓存：2小时过期
+        // 用户名缓存：2小时过期（test-hygiene 任务 1.1：开统计供 Micrometer 采集命中率/驱逐）
         caffeineConfigs.put("userName", Caffeine.newBuilder()
                 .expireAfterWrite(Duration.ofHours(2))
                 .initialCapacity(100)
-                .maximumSize(1000));
+                .maximumSize(1000)
+                .recordStats()); // test-hygiene 任务 1.1
 
-        // 部门名缓存：4小时过期
+        // 部门名缓存：4小时过期（test-hygiene 任务 1.1：开统计）
         caffeineConfigs.put("deptName", Caffeine.newBuilder()
                 .expireAfterWrite(Duration.ofHours(4))
                 .initialCapacity(50)
-                .maximumSize(200));
+                .maximumSize(200)
+                .recordStats()); // test-hygiene 任务 1.1
 
-        // 公司名称缓存：2小时过期
+        // 公司名称缓存：2小时过期（test-hygiene 任务 1.1：开统计）
         caffeineConfigs.put("companyName", Caffeine.newBuilder()
                 .expireAfterWrite(Duration.ofHours(2))
                 .initialCapacity(100)
-                .maximumSize(500));
+                .maximumSize(500)
+                .recordStats()); // test-hygiene 任务 1.1
 
-        // 联系人姓名缓存：2小时过期
+        // 联系人姓名缓存：2小时过期（test-hygiene 任务 1.1：开统计）
         caffeineConfigs.put("contactName", Caffeine.newBuilder()
                 .expireAfterWrite(Duration.ofHours(2))
                 .initialCapacity(100)
-                .maximumSize(500));
+                .maximumSize(500)
+                .recordStats()); // test-hygiene 任务 1.1
 
-        // 商机名称缓存：30分钟过期
+        // 商机名称缓存：30分钟过期（test-hygiene 任务 1.1：开统计）
         caffeineConfigs.put("opportunityName", Caffeine.newBuilder()
                 .expireAfterWrite(Duration.ofMinutes(30))
                 .initialCapacity(100)
-                .maximumSize(500));
+                .maximumSize(500)
+                .recordStats()); // test-hygiene 任务 1.1
 
-        // 合同名称缓存：30分钟过期
+        // 合同名称缓存：30分钟过期（test-hygiene 任务 1.1：开统计）
         caffeineConfigs.put("contractName", Caffeine.newBuilder()
                 .expireAfterWrite(Duration.ofMinutes(30))
                 .initialCapacity(100)
-                .maximumSize(500));
+                .maximumSize(500)
+                .recordStats()); // test-hygiene 任务 1.1
 
-        // 统计图表缓存：10分钟过期
+        // 统计图表缓存：10分钟过期（test-hygiene 任务 1.1：开统计）
         caffeineConfigs.put("chartDataCache", Caffeine.newBuilder()
                 .expireAfterWrite(Duration.ofMinutes(10))
                 .initialCapacity(20)
-                .maximumSize(100));
+                .maximumSize(100)
+                .recordStats()); // test-hygiene 任务 1.1
 
+        // 统计图表缓存：10分钟过期（test-hygiene 任务 1.1：开统计）
         caffeineConfigs.put("chartCache", Caffeine.newBuilder()
                 .expireAfterWrite(Duration.ofMinutes(10))
                 .initialCapacity(20)
-                .maximumSize(100));
+                .maximumSize(100)
+                .recordStats()); // test-hygiene 任务 1.1
 
         // 注册所有自定义缓存
         caffeineConfigs.forEach((name, caffeine) ->
