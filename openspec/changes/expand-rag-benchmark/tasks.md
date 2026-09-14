@@ -17,9 +17,9 @@
 
 ## 3. ¥0 验证链（先全绿，无需授权）
 
-- [ ] 3.1 `RagBenchmarkDataPreparerTest` 扩充：11 语料全部解析成功、54 条占位 id 全对齐、新旧混合校验（断言总数=54、分类计数=17/13/6/14/4）
-- [ ] 3.2 `ChunkNgramRecallGateIT`（免外呼）：跑新旧全集 ngram 召回闸门绿（本地 Docker 可用时真跑，不可用记录跳过）
-- [ ] 3.3 `mvn -B -ntp test` 全绿，surefire 实测计数同步 ci.yml 三处（surefire 数字、check_baseline、错误提示行）
+- [x] 3.1 `RagBenchmarkDataPreparerTest` 扩充：11 语料全部解析成功、54 条占位 id 全对齐、新旧混合校验（断言总数=54、分类计数=17/13/6/14/4）
+- [x] 3.2 `ChunkNgramRecallGateIT`（免外呼）：跑新旧全集 ngram 召回闸门绿（本地 Docker 可用时真跑，不可用记录跳过）
+- [x] 3.3 `mvn -B -ntp test` 全绿，surefire 实测计数同步 ci.yml 三处（surefire 数字、check_baseline、错误提示行）
 
 ## 4. 真基准新锚点（授权节点，未授权禁止执行）
 
