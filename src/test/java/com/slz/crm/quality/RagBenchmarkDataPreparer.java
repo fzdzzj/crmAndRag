@@ -46,6 +46,13 @@ public final class RagBenchmarkDataPreparer {
     /** 黄金标记：{@code 【GOLD:占位id】}；占位 id 允许字母/数字/下划线/连字符/中文。 */
     private static final Pattern GOLD_MARKER = Pattern.compile("【GOLD:([A-Za-z0-9_\\-\\u4e00-\\u9fff]+)】");
 
+    /**
+     * 剥离用宽松模式（expand-rag-benchmark 任务 1.3）：滑窗 320/overlap 40 的切点可能把标记
+     * 切在半截（前一 slice 只含 {@code 【GOLD:...} 前缀、无闭合 {@code 】}）。完整标记由
+     * {@link #GOLD_MARKER} 负责映射；本模式兼容残段，保证索引文本不留任何评测脚手架痕迹。
+     */
+    private static final Pattern GOLD_MARKER_FRAGMENT = Pattern.compile("【GOLD:[^】]*】?");
+
     /** 评测语料的业务类目元数据值（区别于生产文档的真实类目）。 */
     private static final String BENCHMARK_CATEGORY = "benchmark";
 
@@ -99,7 +106,13 @@ public final class RagBenchmarkDataPreparer {
             new FixtureDocument("regional-q3", "regional-sales-q3.xlsx"),
             new FixtureDocument("arch", "architecture-diagram.txt"),
             new FixtureDocument("models", "product-model-catalog.md"),
-            new FixtureDocument("codes", "contract-code-registry.txt"));
+            new FixtureDocument("codes", "contract-code-registry.txt"),
+            // expand-rag-benchmark 任务 1.3：新增 5 语料（客户 SOP/价格政策/区域政策/SLA/维保周期表）
+            new FixtureDocument("customer-sop", "customer-sop.md"),
+            new FixtureDocument("pricing", "pricing-policy.md"),
+            new FixtureDocument("regional-policy", "regional-policy.txt"),
+            new FixtureDocument("sla", "sla-terms.md"),
+            new FixtureDocument("maint", "maintenance-schedule.xlsx"));
 
     /**
      * 幂等入库全部评测语料：清旧向量 → 真实分块 → 剥标记 → 向量化 → 写入向量库。
@@ -144,8 +157,8 @@ public final class RagBenchmarkDataPreparer {
                 while (marker.find()) {
                     goldIds.add(marker.group(1));
                 }
-                // 剥离标记后再索引：向量库里的文本是"干净"的生产形态
-                String indexedText = GOLD_MARKER.matcher(chunk.text()).replaceAll("").strip();
+                // 剥离标记后再索引：向量库里的文本是"干净"的生产形态（宽松模式兼容滑窗切半标记的残段）
+                String indexedText = GOLD_MARKER_FRAGMENT.matcher(chunk.text()).replaceAll("").strip();
                 String chunkId = fixture.key() + "-" + chunk.chunkIndex();
                 for (String goldId : goldIds) {
                     // 首个（chunkIndex 最小）完整命中者获胜：overlap 复制时结果仍确定
