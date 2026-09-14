@@ -18,6 +18,14 @@ public final class RoleTokenSupport {
     }
 
     public static String tokenOf(TestRole role) {
-        return JwtUntil.createJWT(JWT_SECRET, JWT_TTL_MS, Map.of("userID", role.getUserId()));
+        return tokenOfUserId(role.getUserId());
+    }
+
+    /**
+     * 为任意用户ID构造登录 token（apply-permission-matrix 任务 2.3/4.2：in-test seeding 的
+     * 非超管角色其 userID 未必落在 {@link TestRole} 枚举内，故开放任意 userID 构造）。
+     */
+    public static String tokenOfUserId(Long userId) {
+        return JwtUntil.createJWT(JWT_SECRET, JWT_TTL_MS, Map.of("userID", userId));
     }
 }

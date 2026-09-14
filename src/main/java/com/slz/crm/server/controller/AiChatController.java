@@ -1,6 +1,8 @@
 package com.slz.crm.server.controller;
 
 import com.slz.crm.common.result.Result;
+import com.slz.crm.common.annotation.RequirePermission;
+import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.platform.contract.AssistantChatRequest;
@@ -61,6 +63,8 @@ public class AiChatController {
      * 核心对话接口（SSE 流式）
      */
     @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    // apply-permission-matrix 任务 1.2：AI 模块流式对话
+    @RequirePermission(PermissionOperates.AI_CHAT_STREAM)
     public SseEmitter streamChat(@Valid @RequestBody AiChatRequestDTO dto,
                                  @RequestHeader(value = "Last-Event-ID", required = false) String lastEventId) {
         SseEmitter emitter = new SseEmitter(resolveSseTimeoutMillis());
@@ -83,6 +87,8 @@ public class AiChatController {
      * 取消生成中的对话（幂等；已输出内容保留并标记 interrupted）
      */
     @PostMapping("/chat/cancel")
+    // apply-permission-matrix 任务 1.2：AI 模块取消生成
+    @RequirePermission(PermissionOperates.AI_CHAT_CANCEL)
     public Result<Boolean> cancelChat(@RequestParam Long sessionId) {
         boolean cancelled = aiChatService.cancelStream(sessionId, BaseUnit.getCurrentId());
 
@@ -94,6 +100,8 @@ public class AiChatController {
      * 上传助手会话聊天图片，返回后续对话可用的 imageRef。
      */
     @PostMapping("/sessions/{sessionId}/images")
+    // apply-permission-matrix 任务 1.2：AI 模块会话管理
+    @RequirePermission(PermissionOperates.AI_CHAT_SESSION)
     public Result<AiChatImageUploadVO> uploadImage(@PathVariable Long sessionId,
                                                    @RequestParam("file") MultipartFile file) {
         AiSessionEntity session = aiSessionService.getOwnedSession(sessionId, BaseUnit.getCurrentId());
@@ -119,6 +127,8 @@ public class AiChatController {
     }
 
     @PostMapping("/sessions")
+    // apply-permission-matrix 任务 1.2：AI 模块会话管理
+    @RequirePermission(PermissionOperates.AI_CHAT_SESSION)
     public Result<AiSessionVO> createSession(@RequestParam(required = false) String title) {
         AiSessionEntity session = aiSessionService.createSession(BaseUnit.getCurrentId(), title);
 
@@ -138,6 +148,8 @@ public class AiChatController {
      * @param limit      每页条数（默认 10）
      */
     @GetMapping("/sessions")
+    // apply-permission-matrix 任务 1.2：AI 模块会话管理
+    @RequirePermission(PermissionOperates.AI_CHAT_SESSION)
     public Result<List<AiSessionVO>> listSessions(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime cursorTime,
             @RequestParam(required = false) Long cursorId,
@@ -157,6 +169,8 @@ public class AiChatController {
      * @param limit   条数上限（默认 20）
      */
     @GetMapping("/sessions/{id}/messages")
+    // apply-permission-matrix 任务 1.2：AI 模块会话管理
+    @RequirePermission(PermissionOperates.AI_CHAT_SESSION)
     public Result<List<AiMessageVO>> listMessages(
             @PathVariable Long id,
             @RequestParam(required = false) Long afterId,
@@ -177,6 +191,8 @@ public class AiChatController {
      * 归档会话（软删 status=0），并级联取消其 PENDING 待确认操作
      */
     @DeleteMapping("/sessions/{id}")
+    // apply-permission-matrix 任务 1.2：AI 模块会话管理
+    @RequirePermission(PermissionOperates.AI_CHAT_SESSION)
     public Result<Boolean> archiveSession(@PathVariable Long id) {
         aiSessionService.archiveSession(id, BaseUnit.getCurrentId());
 

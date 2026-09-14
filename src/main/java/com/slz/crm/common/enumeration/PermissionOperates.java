@@ -256,7 +256,26 @@ public enum PermissionOperates {
     /** 隐私信息查看 - 查看邮箱 */
     PRIVACY_EMAIL_VIEW(702L, "查看邮箱"),
     /** 隐私信息查看 - 查看金额 */
-    PRIVACY_TOTAL_VIEW(703L, "查看金额");
+    PRIVACY_TOTAL_VIEW(703L, "查看金额"),
+
+    // ==================== AI 模块权限 (800-899) ====================
+
+    /** AI 模块 - 查看被指派的协助 / 协助详情与关联业务 */
+    AI_ASSIST_VIEW(800L, "查看协助"),
+    /** AI 模块 - 发起/追加/重新申请协助，上传来源附件 */
+    AI_ASSIST_APPLY(801L, "提交协助申请"),
+    /** AI 模块 - 协助人提交处理意见、删除附件 */
+    AI_ASSIST_HANDLE(802L, "处理协助"),
+    /** AI 模块 - 管理 AI 会话（建会话/会话列表/消息历史/上传图片/归档） */
+    AI_CHAT_SESSION(803L, "管理AI会话"),
+    /** AI 模块 - SSE 流式对话 */
+    AI_CHAT_STREAM(804L, "AI流式对话"),
+    /** AI 模块 - 取消生成中的对话 */
+    AI_CHAT_CANCEL(805L, "取消AI生成"),
+    /** AI 模块 - 查看待确认操作状态 */
+    AI_ACTION_VIEW(806L, "查看待确认操作"),
+    /** AI 模块 - 确认执行/取消/编辑待确认操作（含创建客户/开票等敏感动作） */
+    AI_ACTION_CONFIRM(807L, "确认执行待确认操作");
 
     private final Long id;
     private final String description;

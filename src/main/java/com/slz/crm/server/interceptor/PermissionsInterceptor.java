@@ -53,11 +53,8 @@ public class PermissionsInterceptor implements HandlerInterceptor {
             roleAO.setDeptId(user.getDeptId());
         }
 
-        RequirePermission requirePermission = handlerMethod.getMethodAnnotation(RequirePermission.class);
-        if (requirePermission == null) {
-            return true;
-        }
-
+        // apply-permission-matrix 任务 4.1，D3 拍板纳入：用户状态检查前置于 @RequirePermission 判空之前——
+        // 任何登录请求（含零注解端点）先过状态闸，杜绝冻结(roleId=0)/离职(roleId=2)用户绕过鉴权访问业务功能。
         if (user.getStatus() != 1) {
             if (user.getRoleId() == 0) {
                 throw new BaseException(ErrorCode.USER_IS_FROZEN);
@@ -67,6 +64,11 @@ public class PermissionsInterceptor implements HandlerInterceptor {
             } else {
                 throw new BaseException(ErrorCode.USER_STATUS_EXCEPTION);
             }
+        }
+
+        RequirePermission requirePermission = handlerMethod.getMethodAnnotation(RequirePermission.class);
+        if (requirePermission == null) {
+            return true;
         }
 
         // 如果用户角色ID为1，视为超级管理员，拥有所有权限

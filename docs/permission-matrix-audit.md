@@ -18,21 +18,22 @@
 | 端点总数 | 227 | **208** | 摸底为手工估算；扫描实测为准 |
 | SECURED（已挂注解） | 172（估算） | **146** | 实测为准 |
 | INTENTIONAL_OPEN（有意开放） | 若干 | **5** | /login、/health、/public/**、getMyPermission、auditor |
-| PENDING_DECISION（零注解待拍板） | 40 | **57** | 摸底 40 外**新发现 22**（User 6 / DynamicConfig 7 / template×2 / auditor / getMyRole 等） |
+| PENDING_DECISION（零注解待拍板） | 40 | **57** | 摸底 40 外**新发现 17**（User 6 / DynamicConfig 7 / template×2 / auditor / getMyRole） |
 | CRITICAL（写裸奔未登记） | — | **0** | 首轮全登记，门禁放行（显式知情制） |
 
 **四档分布：208 = SECURED 146 + INTENTIONAL_OPEN 5 + PENDING_DECISION 57 + CRITICAL 0 + WARN 0。**
 
 摸底 40 的构成偏差：Assist 实为 23（非 22）、AiChat 实为 7（非 8），40 合计恰一致；摸底**漏掉了**
 UserController、DynamicConfigAdminController、CustomerCompany/CustomerContact 模板端点、
-RoleController#getMyRole 等 22 个零注解端点——这正是"无门禁时零注解静默合入"风险的实证。
+RoleController#getMyRole 等 17 个零注解端点——这正是"无门禁时零注解静默合入"风险的实证。
 
 ## 2. 门禁语义（防再犯）
 
 `PermissionCoverageAuditIT` 对每个端点强制三选一：① 方法级 `@RequirePermission`；② 登记
 `OpenEndpointRegistry` INTENTIONAL_OPEN（附理由）；③ 登记 PENDING_DECISION（待拍板）。
-任何端点不满足 → 写语义（POST/PUT/DELETE）判 CRITICAL **门禁直接红**；读语义（GET/ANY）判 WARN
-不失败但打印待定夺。controller 扫描数 ≠ 登记数（27）→ 抛错红。新 controller 必须同步登记，防漏审。
+任何端点不满足 → 写语义（POST/PUT/DELETE）判 CRITICAL 门禁直接红；读语义（GET/ANY）判 WARN，
+**WARN 非空同样判 fail**（实现口径：零注解读端点若未登记进 PENDING/OPEN 即视为遗漏登记，一律报红）。
+controller 扫描数 ≠ 登记数（27）→ 抛错红。新 controller 必须同步登记，防漏审。
 
 ## 3. 各 controller 端点矩阵（27 × 208）
 
@@ -151,7 +152,7 @@ RoleController#getMyRole 等 22 个零注解端点——这正是"无门禁时�
 `PermissionOperates` 枚举，**零端点引用、零种植**——V1 建空表、V21 仅种组织权限（1174–4045）、
 `init_data.sql` 仅种 id 1–10。复用 501/502/503 需在迁移/种子中补权限项并给角色授权（行为变更）。
 
-### 4.3 审计新发现 22 端点（摸底遗漏）
+### 4.3 审计新发现 17 端点（摸底遗漏）
 
 | HTTP | 路径 | 操作语义 | 建议映射 |
 |---|---|---|---|
@@ -191,7 +192,30 @@ RoleController#getMyRole 等 22 个零注解端点——这正是"无门禁时�
 `REPORT_MANAGE_TEMPLATE(504)` 存在于枚举却无任何端点引用、无任何种植（见 §4.2）——
 与 DataStatistics/Report 6 个报表端点形成"常量在、端点裸奔"的双侧漂移。拍板方向见 §4.2。
 
-## 6. OPTIONS 与已知口径
+## 6. 拍板记录（apply-permission-matrix，2026-09-14 用户已拍板）
+
+> 以下将 §4 全部"建议映射"正式落地为真实鉴权。落地细节见提案
+> `openspec/changes/apply-permission-matrix/proposal.md` 与产出 `V26__permission_seed.sql`。
+
+| # | 决策点 | 拍板结论 | 落地方式 |
+|---|---|---|---|
+| D1 | AI 模块 34 端点（Assist 23 / AiChat 7 / AiAction 4） | **方案A：新增 800 段权限常量 + 挂注解 + 种植授权** | `PermissionOperates` 新增 800-807；三 AI controller 按 §4.1 方案A 列逐方法挂注解；V26 种 `permissions` 800-807 并授权 |
+| D2 | 报表/统计 6 端点（Report 2 / DataStatistics 4） | **复用 501/502/503 并 V26 种植激活** | Report 挂 501；DataStatistics 按 501/502 挂；V26 补种 501-504 并授权 |
+| D3 | 冻结/离职绕过修复 | **纳入本提案** | `PermissionsInterceptor` 状态检查前置到注解判空之前 + 反向 IT |
+
+**两个工程默认（随本提案一并生效）：**
+
+1. **角色授权策略 = 保持现状访问面**：V26 给全部现有业务角色授权新权限项（超管 roleId=1 由 interceptor
+   直通无需授权行；roleId=0 冻结 / roleId=2 离职特殊角色不授）——建立可管理权限面的同时不破坏任何现有角色
+   访问（向后兼容硬约束）；后续管理员可经 606 权限管理路径按需收紧。
+2. **`GET /company/template` / `GET /contact/template` 转 INTENTIONAL_OPEN**（不挂 118/107）：模板是静态资源
+   无数据暴露面；挂导出权限会把"登录可下模板"收紧为"有导出权限才可下"，可能破坏 Excel 导入流程。
+
+**消解结果**：57 条 PENDING_DECISION 全消解——42 条挂注解转 SECURED（SECURED 146→188：
+AI 34 + 报表 6 + `DELETE /user`/`POST /user/find` 2）+ 15 条转 INTENTIONAL_OPEN（OPEN 5→20）；
+PENDING_DECISION 57→0。§4 建议映射不再待拍板。
+
+## 7. OPTIONS 与已知口径
 
 - OPTIONS（CORS 预检）：`JWTInterceptor` 直接放行（`preHandle` 返回 false 不报错）、CORS `allowedMethods`
   含 OPTIONS——合理，无需处理，审计不产生 OPTIONS 端点。
@@ -200,6 +224,9 @@ RoleController#getMyRole 等 22 个零注解端点——这正是"无门禁时�
 - 数据权限（DataScope AOP 面）不在本审计范围（只管功能权限方法级注解覆盖）。
 
 ---
+
+> 拍板已由用户在 2026-09-14 完成（见 §6），§4 建议映射已由 `apply-permission-matrix` 落地；
+> 本节（§6/§7）为产权与口径说明，不再构成"待拍板输入"。
 
 > ⚠️ **再次强调：本报告的"建议映射"均为待拍板输入，未经用户拍板，禁止直接落地。**
 > 落地（挂注解 / 新增 800 段常量 / 种植权限）属下一提案，执行方必须停下等用户拍板。

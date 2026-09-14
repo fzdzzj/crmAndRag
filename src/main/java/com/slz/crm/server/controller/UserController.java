@@ -64,6 +64,8 @@ public class UserController {
      * @return
      */
     @PostMapping("/find")
+    // apply-permission-matrix 任务 3.1：条件查用户挂查看权限
+    @RequirePermission(PermissionOperates.SYSTEM_VIEW_USER)
     private Result<Page<UserVO>> findUser(GetUserDTO dto) {
         Page<UserVO> ans = userService.findPage(dto);
         return Result.success(ans);
@@ -144,6 +146,8 @@ public class UserController {
      * @return
      */
     @DeleteMapping
+    // apply-permission-matrix 任务 3.1：删除用户挂修改用户权限
+    @RequirePermission(PermissionOperates.SYSTEM_UPDATE_USER)
     public Result<Boolean> delete(@RequestParam List<Long> ids) {
         boolean b = userService.deleteById(ids);
         return Result.success(b);

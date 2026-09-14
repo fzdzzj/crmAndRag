@@ -1,4 +1,5 @@
 package com.slz.crm.server.controller;
+import com.slz.crm.common.annotation.RequirePermission;
 import com.slz.crm.common.enumeration.PermissionOperates;
 
 import com.slz.crm.common.result.Result;
@@ -32,6 +33,8 @@ public class ReportController {
      * @return 签约合同数量
      */
     @GetMapping("/contract")
+    // apply-permission-matrix 任务 2.1：报表查看权限
+    @RequirePermission(PermissionOperates.REPORT_VIEW_REPORT)
     public Result<ContractNumVO> getTotalSignContractNum(@RequestParam(required = false) LocalDateTime reportStartTime,
                                                          @RequestParam(required = false) LocalDateTime reportEndTime){
         //参数验证
@@ -49,6 +52,8 @@ public class ReportController {
      * @return 商机数量
      */
     @GetMapping("/business")
+    // apply-permission-matrix 任务 2.1：报表查看权限
+    @RequirePermission(PermissionOperates.REPORT_VIEW_REPORT)
     public Result<SalesNumVO> getTotalBusinessNum(@RequestParam(required = false) LocalDateTime reportStartTime,
                                                   @RequestParam(required = false) LocalDateTime reportEndTime){
         //参数验证
