@@ -27,6 +27,6 @@
 
 ## 5. 回归与收尾
 
-- [ ] 5.1 `mvn -B -ntp test` 全绿 615（基线不动），四类警告全部消失（对比修复前后日志）
-- [ ] 5.2 `ci.yml` 无需改（基线 615/13 不动）；`HANDOFF.md` 增补 test-hygiene 收尾行（四项修复 + 基线确认）
+- [x] 5.1 `mvn -B -ntp test` 全绿 615（基线不动）亲验，四类警告全部消失（对比修复前后日志；本地 Docker 不可用，Docker IT 未跑并记录）
+- [x] 5.2 `ci.yml` 无需改（基线 615/13 不动）；`HANDOFF.md` 增补 test-hygiene 收尾行（四项修复 + 基线确认）
 - [ ] 5.3 git 收尾：分支 `feature/test-hygiene`，提交按任务组 `type(scope): 中文描述`（提案三件套随首个提交入库），亲验全绿 + `git status` 干净（已知未跟踪件 `_rag优化交接.md` / `_vlm_transcribe.py` 勿提交勿删除）后 `--no-ff` 合入 master，汇报带 commit hash
