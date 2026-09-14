@@ -82,6 +82,8 @@ rag:
 # B 生产检索实现(KnowledgeRetrievalServiceImpl)已并入，停用 C 的 Mock 端口，避免 KnowledgeRetrievalPort 双 bean
 crm:
   ai:
+    # test-hygiene 任务 2.2：测试环境关闭 AI 定时任务，避免 H2 冒烟环境 ai_pending_action Table not found
+    scheduled-enabled: false
     knowledge-retrieval:
       mock-enabled: false
 # 测试无 MinIO → 无 'minio' 健康贡献者；readiness 组去掉 minio，否则 actuator 启动校验失败

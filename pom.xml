@@ -37,6 +37,9 @@
         <qdrant-client.version>1.13.0</qdrant-client.version>
         <easyexcel.version>3.1.5</easyexcel.version>
         <jfreechart.version>1.5.3</jfreechart.version>
+        <!-- test-hygiene 任务 3.1：byte-buddy-agent 版本实测自依赖树（mockito-core 5.17.0 传递 1.17.7），勿猜 -->
+        <byte-buddy-agent.version>1.17.7</byte-buddy-agent.version>
+        <byte-buddy-agent.path>${settings.localRepository}/net/bytebuddy/byte-buddy-agent/${byte-buddy-agent.version}/byte-buddy-agent-${byte-buddy-agent.version}.jar</byte-buddy-agent.path>
     </properties>
 
     <dependencyManagement>
@@ -332,6 +335,10 @@
                     <excludes>
                         <exclude>**/*IT.java</exclude>
                     </excludes>
+                    <!-- test-hygiene 任务 3.1：@{argLine} 合并 JaCoCo（prepare-agent 注入的覆盖率参数），
+                         再追加 -javaagent 挂载 byte-buddy-agent，消除 Mockito 动态加载 agent 警告；
+                         漏 @{argLine} 会导致 JaCoCo 覆盖率静默失效 -->
+                    <argLine>@{argLine} -javaagent:${byte-buddy-agent.path}</argLine>
                 </configuration>
             </plugin>
             <!-- Failsafe：集成测试（*IT.java），含 H2 上下文与 Testcontainers MySQL 两类 -->

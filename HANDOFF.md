@@ -82,6 +82,7 @@ com.slz.crm
 - **权限读取缺口已闭合（close-permission-read-gap 合入）**：`GET /permission/list` 与 `GET /permission/getByRole` 已加 `@RequirePermission(PermissionOperates.SYSTEM_ASSIGN_PERMISSION)`（复用 606，读写同权，未新增 608）；`PermissionControllerIT` 两个 `@Disabled` 已移除并新增 1 正向用例（本地 Docker 实测 3 绿）；surefire 602 不变。AGENTS.md「未闭合的授权缺口」章节已改写为闭合记录。
 - **全量端点权限矩阵审计上线（audit-permission-matrix 合入，零行为变更）**：新增 `PermissionCoverageAuditIT` 永久门禁（纯 JVM 静态扫描，无 Docker 依赖，本地与 CI 均真跑）——每个端点强制三选一（方法级注解 / INTENTIONAL_OPEN 登记 / PENDING_DECISION 登记），写语义裸奔端点直接红。实测 27 controller × 208 端点 = SECURED 146 / INTENTIONAL_OPEN 5 / PENDING_DECISION 57 / CRITICAL 0；首轮审计报告 `docs/permission-matrix-audit.md` 含 57 个零注解端点映射建议（DataStatistics/Report 复用 501/502/503；Assist/AiChat/AiAction 方案A 新增 800 段 vs 方案B 登录即可用）——**映射表待用户拍板，落地属下一提案**。
 - **RAG 真检索基线已跑**：四份 JSON + `docs/rag-quality/ladder-report.md`。跑法铁律：`RAG_BENCHMARK_REAL=1` 且只 `-Dit.test=RagRealRetrievalBenchmarkIT` 过滤——`.env` 常备 key，全量 `mvn verify` 会连带其他 DashScope IT 真外发。
+- **测试与可观测性卫生修复（test-hygiene 合入，零行为变更）**：① 9 个 Caffeine cache 开 `recordStats()`（CacheConfig 8 + RequestQuotaService 2，命中率指标可见）；② AI 定时任务按 `crm.ai.scheduled-enabled` 门控（生产默认开，测试 profile 关闭，H2 冒烟不再刷 `ai_pending_action` Table not found）；③ surefire `@{argLine}` 合并挂 byte-buddy-agent 1.17.7 消 Mockito 动态加载警告；④ AsyncContextDecoratorConfig 的 @Bean 工厂方法 static 化消 Spring 6.2 BPP 警告。**surefire 615 绿不变**，四类警告日志全消。
 - CI：`.github/workflows/ci.yml` = surefire + failsafe 双口径回归门禁（基线数字以文件为准）+ 报告归档。
 - **待授权遗留**：生产库全量 reingest（真实嵌入成本 × chunk 总量，`KnowledgeReingestRunner` 已实现）、多查询/HyDE 生产语料重评。
 
