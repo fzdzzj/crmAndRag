@@ -80,6 +80,11 @@ class SchemaDriftAuditIT {
                 .filter(f -> f.severity() == Severity.CRITICAL)
                 .toList();
 
+        // KNOWN/NEW 二分（drift-disposition 任务 1.3）：WARN/INFO 命中豁免登记（KnownDriftRegistry）为 KNOWN，
+        // 未命中为 NEW（新出现待定夺）。门禁语义不变：CRITICAL 非空 fail；NEW 不失败但显式打印提醒定夺。
+        SchemaDriftComparator.DriftDispositionReport disposition =
+                SchemaDriftComparator.classify(findings);
+
         // 全量 findings 打印到 stdout，无论成败都可见——落盘 docs/schema-drift-audit.md 以本输出为准
         StringBuilder report = new StringBuilder();
         report.append("\n===== schema 漂移审计：实体数=").append(entities.size())
@@ -87,6 +92,12 @@ class SchemaDriftAuditIT {
         report.append("-- CRITICAL (").append(critical.size()).append(") --\n");
         findings.stream().filter(f -> f.severity() == Severity.CRITICAL)
                 .forEach(f -> report.append(format(f)).append('\n'));
+        report.append("-- KNOWN (").append(disposition.knownCount())
+                .append(") 已定夺豁免（见 KnownDriftRegistry），仅计数 --\n");
+        disposition.known().forEach(f -> report.append(format(f)).append('\n'));
+        report.append("-- NEW (").append(disposition.newCount())
+                .append(") 新出现待定夺（需登记豁免或处置）--\n");
+        disposition.newFindings().forEach(f -> report.append(format(f)).append('\n'));
         report.append("-- WARN --\n");
         findings.stream().filter(f -> f.severity() == Severity.WARN)
                 .forEach(f -> report.append(format(f)).append('\n'));
@@ -94,6 +105,12 @@ class SchemaDriftAuditIT {
         findings.stream().filter(f -> f.severity() == Severity.INFO)
                 .forEach(f -> report.append(format(f)).append('\n'));
         System.out.println(report);
+
+        if (disposition.newCount() > 0) {
+            System.out.println("[提醒] 发现 " + disposition.newCount()
+                    + " 处新出现的 schema 漂移（NEW），未在 KnownDriftRegistry 登记——请按 drift-disposition "
+                    + "契约定夺：登记豁免或处置，勿任其累积。");
+        }
 
         assertTrue(critical.isEmpty(),
                 "CRITICAL schema 漂移必须清零（实体表/列在真库缺失 = 运行期必炸类），共 " + critical.size() + " 处：\n"

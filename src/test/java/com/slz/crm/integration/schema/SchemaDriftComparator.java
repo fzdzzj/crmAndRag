@@ -29,6 +29,72 @@ public final class SchemaDriftComparator {
     }
 
     /**
+     * KNOWN/NEW 二分结果（drift-disposition 任务 1.2）。
+     *
+     * @param known       命中 {@link KnownDriftRegistry} 的 WARN/INFO finding（已定夺豁免，仅计数）
+     * @param newFindings 未命中登记的 WARN/INFO finding（新出现待定夺，打印明细）
+     */
+    public record DriftDispositionReport(List<DriftFinding> known, List<DriftFinding> newFindings) {
+        /** KNOWN 计数（已定夺豁免）。 */
+        public int knownCount() {
+            return known.size();
+        }
+
+        /** NEW 计数（新出现待定夺）。 */
+        public int newCount() {
+            return newFindings.size();
+        }
+    }
+
+    /**
+     * 将 WARN/INFO finding 按 {@link KnownDriftRegistry} 划分为 KNOWN 与 NEW。
+     *
+     * <p>CRITICAL 不属二分范围（门禁单独裁决），原样透传、不参与 KNOWN/NEW 计数。
+     * KNOWN 仅计数不做明细；NEW（新出现）携带明细，供审计报告/门禁 IT 显式提醒定夺。</p>
+     *
+     * @param findings 比对器产出全量 finding
+     * @return 二分报告
+     */
+    public static DriftDispositionReport classify(List<DriftFinding> findings) {
+        List<DriftFinding> known = new ArrayList<>();
+        List<DriftFinding> novelty = new ArrayList<>();
+        for (DriftFinding f : findings) {
+            if (f.severity() != Severity.WARN && f.severity() != Severity.INFO) {
+                continue;
+            }
+            if (KnownDriftRegistry.isKnownDrift(f.table(), f.column())) {
+                known.add(f);
+            } else {
+                novelty.add(f);
+            }
+        }
+        return new DriftDispositionReport(known, novelty);
+    }
+
+    /**
+     * 防呆：校验每项登记仍能命中实际 WARN/INFO 漂移。
+     *
+     * <p>逐项核对 {@link KnownDriftRegistry#KNOWN_DRIFTS} 是否在 WARN/INFO finding 池中存在对应漂移
+     * （表级登记仅匹配同表表级 finding）。某项登记未命中即视为"登记过期/写错"（该漂移已根修、或登记项在
+     * 实体与迁移链中已不存在）——返回该登记条目，由调用方报错，防止登记的豁免掩盖新问题或登记与实际脱节。</p>
+     *
+     * @param warnOrInfo WARN/INFO finding 池（可含 NEW，不影响判定）
+     * @return 未命中任何实际漂移的登记条目；全部命中则返回空集合
+     */
+    public static List<KnownDriftRegistry.Entry> unmatchedKnownDrifts(List<DriftFinding> warnOrInfo) {
+        List<KnownDriftRegistry.Entry> unmatched = new ArrayList<>();
+        for (KnownDriftRegistry.Entry entry : KnownDriftRegistry.KNOWN_DRIFTS) {
+            boolean hit = warnOrInfo.stream().anyMatch(f ->
+                    f.table().equals(entry.table())
+                            && (entry.column() == null ? f.column() == null : entry.column().equals(f.column())));
+            if (!hit) {
+                unmatched.add(entry);
+            }
+        }
+        return unmatched;
+    }
+
+    /**
      * 比对实体侧与库侧 schema。
      *
      * @param entitySide 表名 → 实体映射元数据（含列名与 Java 类型）

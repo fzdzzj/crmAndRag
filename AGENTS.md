@@ -78,3 +78,12 @@
   ```bash
   grep -n "@RequirePermission" src/main/java/com/slz/crm/server/controller/PermissionController.java
   ```
+
+## 已闭合的 schema 漂移定夺（drift-disposition，已合入）
+
+- **门禁**：`src/test/java/com/slz/crm/integration/schema/SchemaDriftAuditIT`（真 MySQL CRITICAL 非空即 fail，Docker assumeTrue 守卫）。实体↔迁移链真库漂移：
+  - **CRITICAL**：实体表/列在真库缺失（运行期必炸）→ fail；
+  - **KNOWN**：WARN/INFO 命中 `KnownDriftRegistry`（7 项已定夺豁免，2026-09-14，W1-W5 类型不亲和 + I1 生成列 + I2 预留表），仅计数；
+  - **NEW**：未命中登记的 WARN/INFO，显式打印提醒定夺（不失败）。
+- **新漂移处置契约**：新出现的 WARN/INFO 漂移走 NEW 登记流程——要么修订 `KnownDriftRegistry` 登记豁免，要么先停下向用户要授权处置；**禁任其累积**。单测防呆 `SchemaDriftComparator.unmatchedKnownDrifts` 保证每项登记必须仍产出真实漂移，登记过期/写错即报错。
+- **边界**：不做任何类型对齐改造、不删生成列/预留表、不为预留表补实体、不动 CRITICAL 门禁语义与迁移链（V1..V26 均禁改）。
