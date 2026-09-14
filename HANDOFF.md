@@ -9,7 +9,7 @@
 
 - **是什么**：一个 Java/Spring Boot **单体**，把原 CRM 系统与原 RAG 系统融合成一个产品。
 - **架构定位（关键，D11）**：**不是**"两个对等系统拼接"，而是 **CRM 为基座** + **AI 助手吸收 RAG 的对话能力** + **知识库能力移植为 `com.slz.crm.knowledge` 模块**。原 RAG 的独立对话层（`chat_*` 表 / `RagChatPipeline` / 匿名问答）**已丢弃**，对话统一走 CRM 的 `ai_session`/`ai_message`。
-- **当前状态**：`master` = 完整融合产品 + **检索链路优化 5 提案已全部落地**（混合检索/上下文压缩/语义切分/查询增强，见 §2.5 与 `openspec/`）；**surefire 615 绿**、真库迁移链 V1..V25 已通；**未 push**（推送需显式授权）。
+- **当前状态**：`master` = 完整融合产品 + **检索链路优化 5 提案已全部落地**（混合检索/上下文压缩/语义切分/查询增强，见 §2.5 与 `openspec/`）；**surefire 618 绿**、真库迁移链 V1..V26 已通；**schema 漂移 7 项遗留已全部定夺豁免**（Known/NEW 二分机制上线，见 §3）；**未 push**（推送需显式授权）。
 - **怎么建的**：OpenSpec 规范驱动 + **多 agent 并行**：Wave 0 基座串行（契约冻结）→ Wave 1 四 lane 并行（A 数据权限/B 知识库/C 助手/D 治理）→ Wave 2 E 动态配置 → Wave 3 串行集成。理解这个波次结构对理解代码归属很重要（见 §1/§2）。
 
 ---
@@ -77,8 +77,9 @@ com.slz.crm
 ## 3. 当前 git 状态与未决事项
 
 - 工作树干净（仅两个未跟踪的 rag 工作区暂存件 `_rag优化交接.md`/`_vlm_transcribe.py`，属另一工作区，勿提交勿删除）；**未 push**（硬约束：推送需你显式授权）。
-- **surefire 615 全绿（本地亲验）**；真库迁移链 V1..V25 已在本机 Docker 完整应用（FlywayMigrationIT 3 绿）。
-- **WriteChainRegressionIT 双红灯已修复（V24 补 approval_attachment.uploader_id + 种子修正）**；**全量实体↔表列漂移审计（P1）已完成（audit-entity-table-drift 合入）**：新增 `SchemaDriftAuditIT` 永久门禁（真 MySQL CRITICAL 非空即 fail）根修 `V25__invoice_info_add_remark.sql` 补 `invoice_info.remark` 列，审计报告见 `docs/schema-drift-audit.md`（当前 CRITICAL=0 / WARN=5 / INFO=2，均只记录待授权）。
+- **surefire 618 全绿（本地亲验）**；真库迁移链 V1..V26 已在本机 Docker 完整应用（FlywayMigrationIT 3 绿）。
+- **WriteChainRegressionIT 双红灯已修复（V24 补 approval_attachment.uploader_id + 种子修正）**；**全量实体↔表列漂移审计（P1）已完成（audit-entity-table-drift 合入）**：新增 `SchemaDriftAuditIT` 永久门禁（真 MySQL CRITICAL 非空即 fail）根修 `V25__invoice_info_add_remark.sql` 补 `invoice_info.remark` 列，审计报告见 `docs/schema-drift-audit.md`。
+- **schema 漂移 7 项遗留已全部定夺豁免（drift-disposition 合入，零行为变更）**：新增 `KnownDriftRegistry`（W1-W5 类型不亲和 + I1 生成列 + I2 预留表，2026-09-14 拍板"登记豁免、不动表结构"），审计 KNOWN/NEW 二分上线（KNOWN=7 / NEW=0 / CRITICAL=0，IT 真库实测）；单测防呆 `unmatchedKnownDrifts` 保证登记项必须仍产出真实漂移，新漂移走 NEW 登记流程。
 - **权限读取缺口已闭合（close-permission-read-gap 合入）**：`GET /permission/list` 与 `GET /permission/getByRole` 已加 `@RequirePermission(PermissionOperates.SYSTEM_ASSIGN_PERMISSION)`（复用 606，读写同权，未新增 608）；`PermissionControllerIT` 两个 `@Disabled` 已移除并新增 1 正向用例（本地 Docker 实测 3 绿）；surefire 602 不变。AGENTS.md「未闭合的授权缺口」章节已改写为闭合记录。
 - **全量端点权限矩阵审计上线（audit-permission-matrix 合入，零行为变更）**：新增 `PermissionCoverageAuditIT` 永久门禁（纯 JVM 静态扫描，无 Docker 依赖，本地与 CI 均真跑）——每个端点强制三选一（方法级注解 / INTENTIONAL_OPEN 登记 / PENDING_DECISION 登记），写语义裸奔端点直接红。实测 27 controller × 208 端点 = SECURED 146 / INTENTIONAL_OPEN 5 / PENDING_DECISION 57 / CRITICAL 0；首轮审计报告 `docs/permission-matrix-audit.md` 含 57 个零注解端点映射建议（DataStatistics/Report 复用 501/502/503；Assist/AiChat/AiAction 方案A 新增 800 段 vs 方案B 登录即可用）——**映射表待用户拍板，落地属下一提案**。
 - **RAG 真检索基线已跑**：四份 JSON + `docs/rag-quality/ladder-report.md`。跑法铁律：`RAG_BENCHMARK_REAL=1` 且只 `-Dit.test=RagRealRetrievalBenchmarkIT` 过滤——`.env` 常备 key，全量 `mvn verify` 会连带其他 DashScope IT 真外发。
@@ -107,7 +108,7 @@ com.slz.crm
 - `project.md` —— 17 方案处置总表 + 硬约束（**改检索链路前必读**）
 - `git-workflow.md` —— 分支/提交/合并/CI 基线/成本闸门契约
 - `changes/archive/` —— 六案：add-rag-quality-baseline（评估基线）/ complete-hybrid-retrieval-and-rerank（混合检索+重排）/ add-context-compression-and-enrichment（压缩+邻居）/ upgrade-semantic-chunking-and-index（语义切分+双粒度）/ enhance-query-transformation（查询增强，默认关）/ run-baseline-ladder（基线阶梯五回）
-- `changes/`（进行中/待归档）—— audit-permission-matrix（端点权限矩阵审计，已合入，映射表待拍板）
+- `changes/`（进行中/待归档）—— audit-permission-matrix（端点权限矩阵审计，已合入，映射表待拍板）；drift-disposition（schema 漂移 7 项定夺豁免 + KNOWN/NEW 二分，已合入，待授权清零）
 
 代码入口：`src/main/java/com/slz/crm/{server,knowledge,platform}`；测试：`src/test/java/com/slz/crm/{unit,integration,contract,quality}`。
 
@@ -115,7 +116,7 @@ com.slz.crm
 
 ## 5. 接手后的第一步 / 常见任务怎么做
 
-1. **先跑** `mvn test`（应 615 绿）+ 看 `git status`（工作树应干净，已知未跟踪件见 §3）。
+1. **先跑** `mvn test`（应 618 绿）+ 看 `git status`（工作树应干净，已知未跟踪件见 §3）。
 2. **理解助手**：读 `server/ai/` + `assistant-decision-tree.md` + SSE 契约（`SseEventName` + `SseContractTest`）。改事件/payload = 契约变更，同步前端 + 测试。
 3. **理解知识库**：`knowledge/` + `contracts-frozen.md §2`；检索管线 = 授权过滤→查询改写→向量/稀疏双路召回→RRF 融合→rerank→ContextBuilder 邻居增强+预算压缩（`KnowledgeRetrievalServiceImpl`；开关矩阵见 §2.5 与 `docs/dynamic-config-keys.md`）。
 4. **改契约**：`contracts-frozen.md` 是权威；改 `platform/contract` 要同步所有消费方 + `SseContractTest`。
