@@ -13,7 +13,7 @@ import java.util.List;
  *   <li><b>INTENTIONAL_OPEN</b>——有意开放（JWT 层排除的匿名路径 + 业务必需登录即可用），各附理由；
  *       支持路径前缀登记（如 {@code /public/**}，匹配其下任意方法任意路径）；</li>
  *   <li><b>PENDING_DECISION</b>——已知零注解、待权限映射拍板（理由统一"待权限映射拍板"）。
- *       首轮审计把实测全部零注解端点（摸底 40 + 新发现 22 = 62，其中 5 个属 INTENTIONAL_OPEN）登记进来；
+ *       首轮审计把实测全部零注解端点（摸底 40 + 新发现 17 = 57）登记进来；
  *       拍板后落地为注解或转 INTENTIONAL_OPEN，本区条目随之移除。</li>
  * </ul>
  *
@@ -35,7 +35,7 @@ public final class OpenEndpointRegistry {
 
     // ==================== 待拍板区（首轮审计实测零注解端点全量登记） ====================
 
-    /** 待权限映射拍板端点。57 条 = 摸底 40 + 新发现 22 − 已归 INTENTIONAL_OPEN 的 5 条。 */
+    /** 待权限映射拍板端点。57 条 = 摸底 40 + 新发现 17。 */
     public static final List<Entry> PENDING_DECISION = buildPendingDecision();
 
     private OpenEndpointRegistry() {
@@ -76,86 +76,33 @@ public final class OpenEndpointRegistry {
         // 业务必需登录即可用（close-permission-read-gap 拍板结论，用户已确认）
         list.add(new Entry("ANY", "/permission/getMyPermission", "业务必需：用户自查自身权限（close-permission-read-gap 拍板开放）", "PermissionController#getMyPermission"));
         list.add(new Entry("GET", "/permission/auditor", "业务必需：审批人下拉选择（close-permission-read-gap 拍板开放）", "PermissionController#getAuditorList"));
+
+        // apply-permission-matrix 任务 3.2：自服务端点（用户改密/改己信息/查己信息/在职下拉，登录即可用）
+        list.add(new Entry("POST", "/user/password", "自服务：用户改自己密码（业务必需登录即可用）", "UserController#updatePassword"));
+        list.add(new Entry("POST", "/user/update/my", "自服务：用户改自己信息（业务必需登录即可用）", "UserController#updateUserMy"));
+        list.add(new Entry("GET", "/user/my", "自服务：用户查自己信息（业务必需登录即可用）", "UserController#getMyUser"));
+        list.add(new Entry("GET", "/user/options", "自服务：在职用户下拉（协助人选择器，登录即可用）", "UserController#options"));
+        // apply-permission-matrix 任务 3.3（拍板工程默认 2）：静态 Excel 模板（无数据暴露面，导入流程依赖）
+        list.add(new Entry("GET", "/company/template", "静态 Excel 模板无数据面，导入流程依赖（拍板工程默认 2）", "CustomerCompanyController#template"));
+        list.add(new Entry("GET", "/contact/template", "静态 Excel 模板无数据面，导入流程依赖（拍板工程默认 2）", "CustomerContactController#template"));
+        // apply-permission-matrix 任务 3.4：自查/下拉（与 /permission/auditor 同款）
+        list.add(new Entry("GET", "/contact/auditor", "业务必需：联系人侧审批人下拉（与 /permission/auditor 同款）", "CustomerContactController#auditor"));
+        list.add(new Entry("GET", "/role", "业务必需：用户自查自身角色（登录即可用）", "RoleController#getMyRole"));
+        // apply-permission-matrix 任务 3.5：DynamicConfig（服务层已强制 roleId=1 抛 96005，登记避免双重鉴权漂移）
+        list.add(new Entry("GET", "/platform/config/items", "服务层已强制 roleId=1 抛 96005（登记避免双重鉴权漂移）", "DynamicConfigAdminController#list"));
+        list.add(new Entry("GET", "/platform/config/items/{key}", "服务层已强制 roleId=1 抛 96005（登记避免双重鉴权漂移）", "DynamicConfigAdminController#detail"));
+        list.add(new Entry("GET", "/platform/config/items/{key}/history", "服务层已强制 roleId=1 抛 96005（登记避免双重鉴权漂移）", "DynamicConfigAdminController#history"));
+        list.add(new Entry("POST", "/platform/config/items", "服务层已强制 roleId=1 抛 96005（登记避免双重鉴权漂移）", "DynamicConfigAdminController#update"));
+        list.add(new Entry("POST", "/platform/config/items/{key}/rollback", "服务层已强制 roleId=1 抛 96005（登记避免双重鉴权漂移）", "DynamicConfigAdminController#rollback"));
+        list.add(new Entry("DELETE", "/platform/config/items/{key}", "服务层已强制 roleId=1 抛 96005（登记避免双重鉴权漂移）", "DynamicConfigAdminController#delete"));
+        list.add(new Entry("POST", "/platform/config/cache/refresh", "服务层已强制 roleId=1 抛 96005（登记避免双重鉴权漂移）", "DynamicConfigAdminController#refreshCache"));
         return Collections.unmodifiableList(list);
     }
 
     private static List<Entry> buildPendingDecision() {
-        List<Entry> list = new ArrayList<>();
-        // 摸底 40 端点（Assist/AiChat/AiAction/DataStatistics/Report），理由统一待拍板
-        String pendingReason = "待权限映射拍板";
-        // ---- AssistController 23 ----
-        add(list, "POST", "/assist/append", pendingReason, "AssistController#append");
-        add(list, "POST", "/assist/apply", pendingReason, "AssistController#apply");
-        add(list, "GET", "/assist/{id}/task", pendingReason, "AssistController#task");
-        add(list, "PUT", "/assist", pendingReason, "AssistController#handle");
-        add(list, "GET", "/assist/{id}/messages", pendingReason, "AssistController#messages");
-        add(list, "GET", "/assist/{id}/attachments", pendingReason, "AssistController#attachments");
-        add(list, "POST", "/assist/{id}/attachments", pendingReason, "AssistController#uploadAttachments");
-        add(list, "GET", "/assist/{id}/opportunity", pendingReason, "AssistController#opportunity");
-        add(list, "GET", "/assist/applications", pendingReason, "AssistController#myApplications");
-        add(list, "DELETE", "/assist/{id}/attachments", pendingReason, "AssistController#deleteAttachments");
-        add(list, "POST", "/assist/{id}/messages", pendingReason, "AssistController#sendMessage");
-        add(list, "GET", "/assist/{id}/activity/attachments", pendingReason, "AssistController#sourceActivityAttachments");
-        add(list, "DELETE", "/assist/{id}/source-attachments", pendingReason, "AssistController#deleteSourceAttachments");
-        add(list, "GET", "/assist/{id}/task/attachments", pendingReason, "AssistController#sourceTaskAttachments");
-        add(list, "POST", "/assist/{id}/source-attachments", pendingReason, "AssistController#uploadSourceAttachments");
-        add(list, "GET", "/assist/{id}/contact", pendingReason, "AssistController#contact");
-        add(list, "GET", "/assist/{id}/related", pendingReason, "AssistController#related");
-        add(list, "GET", "/assist/{id}/company", pendingReason, "AssistController#company");
-        add(list, "GET", "/assist/{id}/detail", pendingReason, "AssistController#detail");
-        add(list, "GET", "/assist/{id}/approval", pendingReason, "AssistController#approval");
-        add(list, "POST", "/assist/reapply", pendingReason, "AssistController#reapply");
-        add(list, "GET", "/assist/{id}/activity", pendingReason, "AssistController#activity");
-        add(list, "GET", "/assist/my", pendingReason, "AssistController#myAssists");
-        // ---- AiChatController 7 ----
-        add(list, "POST", "/ai/sessions", pendingReason, "AiChatController#createSession");
-        add(list, "GET", "/ai/sessions/{id}/messages", pendingReason, "AiChatController#listMessages");
-        add(list, "GET", "/ai/sessions", pendingReason, "AiChatController#listSessions");
-        add(list, "DELETE", "/ai/sessions/{id}", pendingReason, "AiChatController#archiveSession");
-        add(list, "POST", "/ai/sessions/{sessionId}/images", pendingReason, "AiChatController#uploadImage");
-        add(list, "POST", "/ai/chat/cancel", pendingReason, "AiChatController#cancelChat");
-        add(list, "POST", "/ai/chat/stream", pendingReason, "AiChatController#streamChat");
-        // ---- AiActionController 4 ----
-        add(list, "POST", "/ai/actions/{pendingId}/cancel", pendingReason, "AiActionController#cancel");
-        add(list, "GET", "/ai/actions/{pendingId}", pendingReason, "AiActionController#getStatus");
-        add(list, "PUT", "/ai/actions/{pendingId}/edit", pendingReason, "AiActionController#edit");
-        add(list, "POST", "/ai/actions/{pendingId}/confirm", pendingReason, "AiActionController#confirm");
-        // ---- DataStatisticsController 4 ----
-        add(list, "POST", "/dataStatistics/chartData", pendingReason, "DataStatisticsController#getChartData");
-        add(list, "POST", "/dataStatistics/chart", pendingReason, "DataStatisticsController#generateLineChart");
-        add(list, "GET", "/dataStatistics/opportunityStageDistribution", pendingReason, "DataStatisticsController#getOpportunityStageDistribution");
-        add(list, "POST", "/dataStatistics/summary", pendingReason, "DataStatisticsController#getStatisticsSummary");
-        // ---- ReportController 2 ----
-        add(list, "GET", "/report/business", pendingReason, "ReportController#getTotalBusinessNum");
-        add(list, "GET", "/report/contract", pendingReason, "ReportController#getTotalSignContractNum");
-
-        // ---- 审计新发现 22 端点（摸底遗漏，扫描实测登记）----
-        // ---- UserController 6（/user/login 已归 INTENTIONAL_OPEN）----
-        add(list, "DELETE", "/user", pendingReason, "UserController#delete");
-        add(list, "GET", "/user/options", pendingReason, "UserController#options");
-        add(list, "POST", "/user/update/my", pendingReason, "UserController#updateUserMy");
-        add(list, "POST", "/user/password", pendingReason, "UserController#updatePassword");
-        add(list, "POST", "/user/find", pendingReason, "UserController#findUser");
-        add(list, "GET", "/user/my", pendingReason, "UserController#getMyUser");
-        // ---- DynamicConfigAdminController 7 ----
-        add(list, "POST", "/platform/config/items", pendingReason, "DynamicConfigAdminController#update");
-        add(list, "GET", "/platform/config/items", pendingReason, "DynamicConfigAdminController#list");
-        add(list, "DELETE", "/platform/config/items/{key}", pendingReason, "DynamicConfigAdminController#delete");
-        add(list, "POST", "/platform/config/cache/refresh", pendingReason, "DynamicConfigAdminController#refreshCache");
-        add(list, "GET", "/platform/config/items/{key}/history", pendingReason, "DynamicConfigAdminController#history");
-        add(list, "POST", "/platform/config/items/{key}/rollback", pendingReason, "DynamicConfigAdminController#rollback");
-        add(list, "GET", "/platform/config/items/{key}", pendingReason, "DynamicConfigAdminController#detail");
-        // ---- CustomerCompanyController 1 ----
-        add(list, "GET", "/company/template", pendingReason, "CustomerCompanyController#template");
-        // ---- CustomerContactController 2 ----
-        add(list, "GET", "/contact/template", pendingReason, "CustomerContactController#template");
-        add(list, "GET", "/contact/auditor", pendingReason, "CustomerContactController#auditor");
-        // ---- RoleController 1 ----
-        add(list, "GET", "/role", pendingReason, "RoleController#getMyRole");
-        return Collections.unmodifiableList(list);
-    }
-
-    private static void add(List<Entry> list, String method, String path, String reason, String source) {
-        list.add(new Entry(method, path, reason, source));
+        // apply-permission-matrix 任务 3.6：PENDING_DECISION 已全部消解（40 挂注解转 SECURED + 17 转
+        // INTENTIONAL_OPEN 或注解），拍板记录见 docs/permission-matrix-audit.md §6。
+        // 本区保持为空——任何新零注解端点将触发门禁 CRITICAL/WARN 报红。
+        return Collections.unmodifiableList(new ArrayList<>());
     }
 }

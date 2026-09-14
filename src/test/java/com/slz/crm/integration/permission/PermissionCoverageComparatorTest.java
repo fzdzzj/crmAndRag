@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * 权限覆盖比对器纯函数单测（audit-permission-matrix 任务 2.2，≥4 条）。
  *
- * <p>夹具覆盖四档分类 + 全 SECURED 零 finding + 登记后 CRITICAL/WARN 转 PENDING_DECISION +
+ * <p>夹具覆盖四档分类 + 全 SECURED 零 finding + PENDING_DECISION 已消解（转 SECURED/INTENTIONAL_OPEN） +
  * INTENTIONAL_OPEN 前缀匹配（{@code /public/**}）。</p>
  */
 class PermissionCoverageComparatorTest {
@@ -27,17 +27,17 @@ class PermissionCoverageComparatorTest {
     }
 
     @Test
-    void securedAndIntentionalOpenAndPendingAllClassified() {
+    void securedAndIntentionalOpenClassifiedAndPendingCleared() {
         List<EndpointCoverage> endpoints = List.of(
                 ep("POST", "/contract", true, "SALES_CREATE_CONTRACT"),                 // SECURED
                 ep("GET", "/permission/auditor", false, null),                           // INTENTIONAL_OPEN（登记）
-                ep("GET", "/report/contract", false, null));                             // PENDING_DECISION（登记）
+                ep("GET", "/user/my", false, null));                                     // INTENTIONAL_OPEN（自服务，登记）
 
         List<PermissionCoverageComparator.Finding> findings = PermissionCoverageComparator.classify(endpoints);
 
         assertEquals(1, byTier(findings, PermissionCoverageComparator.Tier.SECURED).size());
-        assertEquals(1, byTier(findings, PermissionCoverageComparator.Tier.INTENTIONAL_OPEN).size());
-        assertEquals(1, byTier(findings, PermissionCoverageComparator.Tier.PENDING_DECISION).size());
+        assertEquals(2, byTier(findings, PermissionCoverageComparator.Tier.INTENTIONAL_OPEN).size());
+        assertEquals(0, byTier(findings, PermissionCoverageComparator.Tier.PENDING_DECISION).size());
         assertEquals(0, byTier(findings, PermissionCoverageComparator.Tier.CRITICAL).size());
         assertEquals(0, byTier(findings, PermissionCoverageComparator.Tier.WARN).size());
     }
@@ -74,18 +74,18 @@ class PermissionCoverageComparatorTest {
     }
 
     @Test
-    void pendingDecisionRegistrationTurnsCriticalAndWarnIntoPending() {
-        // AssistController 真实端点：写语义（POST）与读语义（GET）均已登记 PENDING_DECISION
+    void assistRealEndpointsNowSecuredWithNoPendingDecision() {
+        // apply-permission-matrix 任务 3.6：PENDING_DECISION 已全部消解——AssistController 真实端点按方案A挂 800 段注解转 SECURED
         List<EndpointCoverage> endpoints = List.of(
-                ep("POST", "/assist/apply", false, null),
-                ep("GET", "/assist/my", false, null));
+                ep("POST", "/assist/apply", true, "AI_ASSIST_APPLY"),
+                ep("GET", "/assist/my", true, "AI_ASSIST_VIEW"));
 
         List<PermissionCoverageComparator.Finding> findings = PermissionCoverageComparator.classify(endpoints);
 
-        assertEquals(0, byTier(findings, PermissionCoverageComparator.Tier.CRITICAL).size(),
-                "登记 PENDING_DECISION 后写端点不再 CRITICAL（显式知情制）");
+        assertEquals(2, byTier(findings, PermissionCoverageComparator.Tier.SECURED).size());
+        assertEquals(0, byTier(findings, PermissionCoverageComparator.Tier.PENDING_DECISION).size());
+        assertEquals(0, byTier(findings, PermissionCoverageComparator.Tier.CRITICAL).size());
         assertEquals(0, byTier(findings, PermissionCoverageComparator.Tier.WARN).size());
-        assertEquals(2, byTier(findings, PermissionCoverageComparator.Tier.PENDING_DECISION).size());
     }
 
     @Test
@@ -112,7 +112,7 @@ class PermissionCoverageComparatorTest {
                 .map(PermissionCoverageComparator.Finding::path)
                 .collect(Collectors.toSet());
         assertTrue(uncovered.isEmpty(), "实测零注解端点必须全部登记（CRITICAL/WARN 应为空），未覆盖：" + uncovered);
-        assertTrue(byTier(findings, PermissionCoverageComparator.Tier.PENDING_DECISION).size() >= 57,
-                "PENDING_DECISION 至少 57 条（摸底 40 + 新发现 22 − INTENTIONAL_OPEN 5）");
+        assertEquals(0, byTier(findings, PermissionCoverageComparator.Tier.PENDING_DECISION).size(),
+                "PENDING_DECISION 已全部消解为 0（apply-permission-matrix 任务 3.6）");
     }
 }
