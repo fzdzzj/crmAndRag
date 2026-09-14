@@ -11,9 +11,9 @@
 
 ## 2. 查询集扩容（18 → 54）
 
-- [ ] 2.1 `RagBenchmarkSuite.standard()` 新增 36 条（用户确认分布 TEXT 17 / TABLE 13 / IMAGE 6 / LEXICAL 14 / EDGE 4）：TEXT +12（同义改写/跨 chunk/多条件各 4）、TABLE +10（多列交叉/数值区间/聚合比较 4/3/3）、IMAGE +4（四张图注各 1）、LEXICAL +8（编号/人名/版本号 3/3/2）、EDGE +2（近义闲聊/近邻主题误导各 1）；每条含 expectedChunkIds 占位 id 与要点词，中文注释标注「expand-rag-benchmark 任务 2.1」
-- [ ] 2.2 `SUITE_VERSION` 升 "2.0"，Javadoc 注明 v1.0=18 条（历史锚 baseline-v1.json）、v2.0=54 条（新锚 baseline-v2.json），跨版本不可直接比较
-- [ ] 2.3 新查询与新语料黄金对齐：占位 id 与 fixtures 标记一一对应（RagBenchmarkDataPreparer 的 rewriteSuite 对齐失败显式报错的既有机制兜底）
+- [x] 2.1 `RagBenchmarkSuite.standard()` 新增 36 条（用户确认分布 TEXT 17 / TABLE 13 / IMAGE 6 / LEXICAL 14 / EDGE 4）：TEXT +12（同义改写/跨 chunk/多条件各 4）、TABLE +10（多列交叉/数值区间/聚合比较 4/3/3）、IMAGE +4（四张图注各 1）、LEXICAL +8（编号/人名/版本号 3/3/2）、EDGE +2（近义闲聊/近邻主题误导各 1）；每条含 expectedChunkIds 占位 id 与要点词，中文注释标注「expand-rag-benchmark 任务 2.1」
+- [x] 2.2 `SUITE_VERSION` 升 "2.0"，Javadoc 注明 v1.0=18 条（历史锚 baseline-v1.json）、v2.0=54 条（新锚 baseline-v2.json），跨版本不可直接比较
+- [x] 2.3 新查询与新语料黄金对齐：占位 id 与 fixtures 标记一一对应（RagBenchmarkDataPreparer 的 rewriteSuite 对齐失败显式报错的既有机制兜底）
 
 ## 3. ¥0 验证链（先全绿，无需授权）
 

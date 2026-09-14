@@ -3,7 +3,7 @@
 ## ADDED Requirements
 
 ### Requirement: 基准集版本化扩容
-`RagBenchmarkSuite` MUST 以 `SUITE_VERSION` 版本化（v1.0=18 条历史锚 baseline-v1.json；v2.0=54 条新锚 baseline-v2.json），增删用例/改黄金片段 MUST 升版本；跨版本报告不可直接比较（Report 携带版本字段供核对）。扩容后查询集 MUST 覆盖五类配比 TEXT 14 / TABLE 11 / IMAGE 5 / LEXICAL 12 / EDGE 4，且新难度面（同义改写、跨 chunk 关联、数值区间、多约束组合、近邻主题误导）各至少 1 条。
+`RagBenchmarkSuite` MUST 以 `SUITE_VERSION` 版本化（v1.0=18 条历史锚 baseline-v1.json；v2.0=54 条新锚 baseline-v2.json），增删用例/改黄金片段 MUST 升版本；跨版本报告不可直接比较（Report 携带版本字段供核对）。扩容后查询集 MUST 覆盖五类配比 TEXT 17 / TABLE 13 / IMAGE 6 / LEXICAL 14 / EDGE 4（用户确认，合计 54），且新难度面（同义改写、跨 chunk 关联、数值区间、多约束组合、近邻主题误导）各至少 1 条。
 
 #### Scenario: 版本一致性校验
 - **WHEN** 生成 RagQualityReport
