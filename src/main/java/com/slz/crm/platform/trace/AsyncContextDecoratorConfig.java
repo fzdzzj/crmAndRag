@@ -17,8 +17,9 @@ import java.lang.reflect.Field;
 public class AsyncContextDecoratorConfig {
 
     /** 通过 BeanPostProcessor 覆盖所有 ThreadPoolTaskExecutor，业务代码无需感知。 */
+    // test-hygiene 任务 4.1：@Bean 工厂方法 static 化（Spring 6.2+ 建议），匿名类体与 MDC 装饰逻辑不变
     @Bean
-    public BeanPostProcessor asyncContextDecoratorPostProcessor() {
+    public static BeanPostProcessor asyncContextDecoratorPostProcessor() {
         return new BeanPostProcessor() {
             @Override
             public Object postProcessAfterInitialization(Object bean, String beanName) {
