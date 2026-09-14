@@ -3,6 +3,7 @@ package com.slz.crm.server.ai;
 import com.slz.crm.server.service.PendingActionService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -13,6 +14,8 @@ import org.springframework.stereotype.Component;
 @Slf4j
 
 @Component
+// test-hygiene 任务 2.1：测试环境隔离，生产默认开（matchIfMissing=true 保证未配置时照常调度）
+@ConditionalOnProperty(name = "crm.ai.scheduled-enabled", havingValue = "true", matchIfMissing = true)
 public class AiPendingActionExpireTask {
 
 
