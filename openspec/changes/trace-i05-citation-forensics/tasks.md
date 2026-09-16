@@ -21,7 +21,7 @@
 
 ## 3. CI
 
-- [ ] 3.1 `mvn -B -ntp test` 全绿，实测改 ci.yml 三处
+- [x] 3.1 `mvn -B -ntp test` 全绿，实测改 ci.yml 三处
 
 ## 4. 授权：只跑 I-05
 
