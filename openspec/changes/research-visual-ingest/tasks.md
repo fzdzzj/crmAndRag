@@ -24,6 +24,6 @@
 
 ## 3. 收尾
 
-- [ ] 3.1 HANDOFF 增加摄取调研入口（指向 gap-map；实现未立项）
-- [ ] 3.2 git：`feature/research-visual-ingest`；提案三件套 + gap-map + HANDOFF；`--no-ff` 合入；不 push；三个未跟踪件仍不提交
+- [x] 3.1 HANDOFF 增加摄取调研入口（指向 gap-map；实现未立项）
+- [x] 3.2 git：`feature/research-visual-ingest`；提案三件套 + gap-map + HANDOFF；`--no-ff` 合入；不 push；三个未跟踪件仍不提交
 
