@@ -9,7 +9,7 @@
 
 - **是什么**：一个 Java/Spring Boot **单体**，把原 CRM 系统与原 RAG 系统融合成一个产品。
 - **架构定位（关键，D11）**：**不是**"两个对等系统拼接"，而是 **CRM 为基座** + **AI 助手吸收 RAG 的对话能力** + **知识库能力移植为 `com.slz.crm.knowledge` 模块**。原 RAG 的独立对话层（`chat_*` 表 / `RagChatPipeline` / 匿名问答）**已丢弃**，对话统一走 CRM 的 `ai_session`/`ai_message`。
-- **当前状态**：`master` = 完整融合产品 + **检索链路优化 5 提案已全部落地**（混合检索/上下文压缩/语义切分/查询增强，见 §2.5 与 `openspec/`）；**surefire 634 绿**、真库迁移链 V1..V26 已通；**schema 漂移 7 项遗留已全部定夺豁免**（Known/NEW 二分机制上线，见 §3）；**RAG 基准集已扩容 18→54 条（SUITE_VERSION 2.0）且 v2 锚点已跑**（见 §3）；**未 push**（推送需显式授权）。
+- **当前状态**：`master` = 完整融合产品 + **检索链路优化 5 提案已全部落地**（混合检索/上下文压缩/语义切分/查询增强，见 §2.5 与 `openspec/`）；**surefire 639 绿**、真库迁移链 V1..V26 已通；**schema 漂移 7 项遗留已全部定夺豁免**（Known/NEW 二分机制上线，见 §3）；**RAG 基准集已扩容 18→54 条（SUITE_VERSION 2.0）且 v2 锚点已跑**（见 §3）；**未 push**（推送需显式授权）。
 - **怎么建的**：OpenSpec 规范驱动 + **多 agent 并行**：Wave 0 基座串行（契约冻结）→ Wave 1 四 lane 并行（A 数据权限/B 知识库/C 助手/D 治理）→ Wave 2 E 动态配置 → Wave 3 串行集成。理解这个波次结构对理解代码归属很重要（见 §1/§2）。
 
 ---
@@ -76,8 +76,9 @@ com.slz.crm
 
 ## 3. 当前 git 状态与未决事项
 
+- **图像 PDF 视觉转写试点已落地（add-vision-pdf-ingest-pilot，默认关）**：`PdfVisionTranscriber` + `DocumentService.parsePdf` 可选接入；三键 `rag.retrieval.vision-pdf.*`（enabled=false / min-text-chars=80 / max-pages=3）；失败回退文本层；pageNo 不变。真 VLM 试点（任务组 5）**未授权、未跑**。
 - 工作树干净（仅三个未跟踪的 rag 工作区暂存件 `_rag优化交接.md`/`_vlm_transcribe.py`/`_技术深化交接.md`，属另一工作区，勿提交勿删除）；**未 push**（硬约束：推送需你显式授权）。
-- **surefire 634 全绿（本地亲验，2026-09-16，fix-multicondition-recall 合入后；=628+拆句单测6）**；真库迁移链 V1..V26 已在本机 Docker 完整应用（FlywayMigrationIT 3 绿）。
+- **surefire 639 全绿（本地亲验，2026-09-16，add-vision-pdf-ingest-pilot 合入后；=634+视觉PDF单测5）**；真库迁移链 V1..V26 已在本机 Docker 完整应用（FlywayMigrationIT 3 绿）。
 - **WriteChainRegressionIT 双红灯已修复（V24 补 approval_attachment.uploader_id + 种子修正）**；**全量实体↔表列漂移审计（P1）已完成（audit-entity-table-drift 合入）**：新增 `SchemaDriftAuditIT` 永久门禁（真 MySQL CRITICAL 非空即 fail）根修 `V25__invoice_info_add_remark.sql` 补 `invoice_info.remark` 列，审计报告见 `docs/schema-drift-audit.md`。
 - **schema 漂移 7 项遗留已全部定夺豁免（drift-disposition 合入，零行为变更）**：新增 `KnownDriftRegistry`（W1-W5 类型不亲和 + I1 生成列 + I2 预留表，2026-09-14 拍板"登记豁免、不动表结构"），审计 KNOWN/NEW 二分上线（KNOWN=7 / NEW=0 / CRITICAL=0，IT 真库实测）；单测防呆 `unmatchedKnownDrifts` 保证登记项必须仍产出真实漂移，新漂移走 NEW 登记流程。
 - **权限读取缺口已闭合（close-permission-read-gap 合入）**：`GET /permission/list` 与 `GET /permission/getByRole` 已加 `@RequirePermission(PermissionOperates.SYSTEM_ASSIGN_PERMISSION)`（复用 606，读写同权，未新增 608）；`PermissionControllerIT` 两个 `@Disabled` 已移除并新增 1 正向用例（本地 Docker 实测 3 绿）；surefire 602 不变。AGENTS.md「未闭合的授权缺口」章节已改写为闭合记录。
@@ -90,7 +91,7 @@ com.slz.crm
 - **生成后引用编号对齐（fix-citation-alignment，已合入）**：`CitationAligner` 零外呼 KEEP/REMAP/DROP；生产 `AiChatStreamLifecycle` 落库前对齐、评测 `RagRealRetrievalBenchmarkIT` 共用同一实现对齐后再抽 citations。阈值 KEEP_MIN=0.12 / REMAP_MIN=0.22 / TIE_MARGIN=0.08；计分子句 CJK 二字覆盖率。surefire 619→625（+CitationAlignerTest 6）。**after-citation 真基准复测待授权**（禁止覆盖 v1/v2 JSON，输出 `docs/rag-quality/baseline-after-citation.json`）。
 - **Excel 多列表头投影（add-excel-header-projection，已合入）**：`DocumentService.parseExcel` 在首行非空格≥2 且每格≤32 时把列名投影为「列名：值」进数据行，表头行不入库；单列/超长首行保持原行为。¥0 单测 + 语料黄金行列名断言已绿（surefire 625→628）。**after-excel-header 真基准复测待授权**（输出 `docs/rag-quality/baseline-after-excel-header.json`，禁止覆盖 v1/v2/after-citation；盯 TB-01/TB-10 recall，其余 TABLE 不回退）。生产已入库 xlsx 需另授权 reingest，本单不触发。
 - **多条件查询零 LLM 拆路召回（fix-multicondition-recall，已合入）**：`ConstraintQuerySplitter` 确定性拆「A后B/且/并且/同时」为原查询+左右路；`KnowledgeRetrievalServiceImpl.retrieve` 每路 embed+recallTextRoute，>1 路用本地 `new RrfFusion().fuseAll`（V1 六参 this.rrfFusion==null 也可融）。**禁止改构造器**；**不打开** multi-query 默认。surefire 628→634（+ConstraintQuerySplitterTest 6）。**任务组4 真基准复测待授权**（输出 `docs/rag-quality/baseline-after-multicondition.json`，禁止覆盖 v1/v2/after-citation/after-excel-header；盯 T-14 recall 目标 1.0，T-15/T-16/T-17 不回退）。**after-multicondition / after-citation / after-excel-header 三项均待授权，本会话均未跑。**
-- **视觉摄取适用性调研（research-visual-ingest，已合入）**：对照文档 `docs/ingest-gap-map.md`（本仓 PDFBox 文本层现状 × 学习工作区 PNG+VLM 做法 × 差距表 × 成本粗估）。**实现未立项**；推荐下一切口见 gap-map §5（图像 PDF 检测 + 单页 VLM 转写试点，默认关，失败回退文本层）。本调研 ¥0、零外呼；`_vlm_transcribe.py` 等仍未跟踪不提交。
+- **视觉摄取适用性调研（research-visual-ingest，已合入）**：对照文档 `docs/ingest-gap-map.md`（本仓 PDFBox 文本层现状 × 学习工作区 PNG+VLM 做法 × 差距表 × 成本粗估）。**试点已落地**（`add-vision-pdf-ingest-pilot`，默认 `vision-pdf.enabled=false`）：`PdfVisionTranscriber` + parsePdf 可选接入，失败回退文本层，pageNo 不变。**真 VLM 任务组 5 未授权未跑**；三次 after-* 54 条复测仍挂起。本调研/试点合入路径 ¥0、零外呼；`_vlm_transcribe.py` 等仍未跟踪不提交。
 
 
 ---
@@ -116,7 +117,7 @@ com.slz.crm
 - `changes/archive/` —— 六案：add-rag-quality-baseline（评估基线）/ complete-hybrid-retrieval-and-rerank（混合检索+重排）/ add-context-compression-and-enrichment（压缩+邻居）/ upgrade-semantic-chunking-and-index（语义切分+双粒度）/ enhance-query-transformation（查询增强，默认关）/ run-baseline-ladder（基线阶梯五回）
 - `changes/`（进行中/待归档）—— audit-permission-matrix（端点权限矩阵审计，已合入，映射表待拍板）；drift-disposition（schema 漂移 7 项定夺豁免 + KNOWN/NEW 二分，已合入，待授权清零）；expand-rag-benchmark（基准集 18→54 条 + SUITE_VERSION 2.0，已合入；v2 锚点已授权跑完，baseline-v2.json + baseline-v2-anchor.md 于 feature/rag-v2-anchor 合入）；fix-citation-alignment（生成后引用编号对齐，已合入；after-citation 锚点待授权补跑）；add-excel-header-projection（Excel 表头投影到数据行，已合入；after-excel-header 锚点待授权补跑）；fix-multicondition-recall（多条件拆路召回，已合入；after-multicondition 锚点待授权补跑）；research-visual-ingest（视觉摄取差距对照，已合入；实现另案，见 docs/ingest-gap-map.md）
 
-摄取调研：`docs/ingest-gap-map.md` —— 视觉摄取适用性对照（实现未立项）。
+摄取：`docs/ingest-gap-map.md`（调研）+ `openspec/changes/add-vision-pdf-ingest-pilot/`（试点实现，默认关；真 VLM 待授权）。
 
 代码入口：`src/main/java/com/slz/crm/{server,knowledge,platform}`；测试：`src/test/java/com/slz/crm/{unit,integration,contract,quality}`。
 
