@@ -26,12 +26,12 @@
 
 ## 3. ¥0 回归与 CI 基线
 
-- [ ] 3.1 `mvn -B -ntp test` 全绿；**读本次 surefire 合计**，同步 `.github/workflows/ci.yml` 三处（口径A 注释、`check_baseline target/surefire-reports`、错误提示行）。禁止推算
-- [ ] 3.2 （可选，Docker Desktop 已开才跑，未开记 skip 不算绿）`$env:DASHSCOPE_API_KEY=''; mvn -B -ntp test-compile failsafe:integration-test "-Dit.test=PermissionCoverageAuditIT,SchemaDriftAuditIT,WriteChainRegressionIT"`。Tests run: 0 是 daemon 未运行，不得报绿
+- [x] 3.1 `mvn -B -ntp test` 全绿；**读本次 surefire 合计**，同步 `.github/workflows/ci.yml` 三处（口径A 注释、`check_baseline target/surefire-reports`、错误提示行）。禁止推算
+- [x] 3.2 （可选 skip：本轮未开 Docker Desktop，未跑 failsafe 切片；不算绿）`$env:DASHSCOPE_API_KEY=''; mvn -B -ntp test-compile failsafe:integration-test "-Dit.test=PermissionCoverageAuditIT,SchemaDriftAuditIT,WriteChainRegressionIT"`。Tests run: 0 是 daemon 未运行，不得报绿
 
 ## 4. 真基准复测（授权节点，未授权禁止执行）
 
-- [ ] 4.1 **停下**：向用户报告成本预估（与 v2 锚点同量级，54 条真外呼，¥ 个位数）与跑法，等待授权
+- [ ] 4.1 **停下（本轮已停等授权）**：向用户报告成本预估（与 v2 锚点同量级，54 条真外呼，¥ 个位数）与跑法，等待授权
 - [ ] 4.2 （授权后，纯默认矩阵，禁止注入任何 `rag.*`）
   ```
   $env:RAG_BENCHMARK_REAL='1'
