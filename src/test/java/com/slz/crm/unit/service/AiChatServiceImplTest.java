@@ -729,8 +729,9 @@ class AiChatServiceImplTest {
         activeStream.setContext(AiChatStreamContext.initial(9L, emitter, List.of(), List.of(),
                 System.currentTimeMillis(), buildUser(42L)));
         activeStream.setSources(List.of(
-                new SourceReference("pdf", "hybrid", "A.pdf", "doc-a", "chunk-a", 1, 1, null, "A", 0.9D),
-                new SourceReference("pdf", "vector", "B.pdf", "doc-b", "chunk-b", 4, 2, null, "B", 0.8D)));
+                new SourceReference("pdf", "hybrid", "A.pdf", "doc-a", "chunk-a", 1, 1, null, "无关片段甲", 0.9D),
+                // excerpt 需能支撑子句「依据结论」，否则 CitationAligner 会 DROP 编号
+                new SourceReference("pdf", "vector", "B.pdf", "doc-b", "chunk-b", 4, 2, null, "依据结论：B 方案已验证", 0.8D)));
         registry.register(9L, activeStream);
         when(assistantMessageStore.complete(eq(88L), eq("依据[2]结论"), any(), eq(123))).thenReturn(true);
 

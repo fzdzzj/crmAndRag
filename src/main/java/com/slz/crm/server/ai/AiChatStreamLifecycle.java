@@ -151,6 +151,9 @@ public class AiChatStreamLifecycle {
                         Usage usage = usageHolder[0];
                         String content = activeStream.getPartialAnswer().toString();
                         List<SourceReference> sources = activeStream.getSources();
+                        // fix-citation-alignment 任务 2.1：落库/citations 前对齐编号（不回放已流出 SSE token）
+                        CitationAligner.Alignment aligned = CitationAligner.align(content, sources);
+                        content = aligned.text();
                         List<Integer> citations = extractCitations(content, sources);
                         if (!references.isEmpty() && !sendBufferedEvent(activeStream, "references",
                                 eventWriter.toReferencesJson(references, citations))) {

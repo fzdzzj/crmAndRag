@@ -23,9 +23,9 @@
 
 ## 4. 真基准新锚点（授权节点，未授权禁止执行）
 
-- [ ] 4.1 **停下**：向用户报告成本预估（54 条 ≈ 旧 18 条单跑的 3 倍调用量，¥ 个位数预估，以实际账单为准）与跑法命令，等待授权
-- [ ] 4.2 （授权后）`$env:RAG_BENCHMARK_REAL='1'; $env:DASHSCOPE_API_KEY='<key>'; mvn -B -ntp test-compile failsafe:integration-test "-Dit.test=RagRealRetrievalBenchmarkIT" "-Drag.benchmark.out=docs/rag-quality/baseline-v2.json"`，产出 v2 锚点并在汇报中给出全套指标（recall@5 / precision@5 / MRR / 引用率 / 拒答正确率 / token / 时延）
-- [ ] 4.3 （授权后）`docs/rag-quality/` 落 v2 锚点说明（版本 2.0、54 条口径、与 v1 不可比的声明）
+- [x] 4.1 **停下**（已在 master `0501722` 授权完成，本处补勾）：向用户报告成本预估（54 条 ≈ 旧 18 条单跑的 3 倍调用量，¥ 个位数预估，以实际账单为准）与跑法命令，等待授权
+- [x] 4.2 （授权后）`$env:RAG_BENCHMARK_REAL='1'; $env:DASHSCOPE_API_KEY='<key>'; mvn -B -ntp test-compile failsafe:integration-test "-Dit.test=RagRealRetrievalBenchmarkIT" "-Drag.benchmark.out=docs/rag-quality/baseline-v2.json"`，产出 v2 锚点并在汇报中给出全套指标（recall@5 / precision@5 / MRR / 引用率 / 拒答正确率 / token / 时延）
+- [x] 4.3 （授权后）`docs/rag-quality/` 落 v2 锚点说明（版本 2.0、54 条口径、与 v1 不可比的声明）
 
 ## 5. 回归与收尾
 

@@ -18,6 +18,7 @@ import com.slz.crm.platform.model.ModelProviderImpl;
 import com.slz.crm.platform.model.ModelProviderProperties;
 import com.slz.crm.quality.RagQualityReport.CaseOutcome;
 import com.slz.crm.quality.RagQualityReport.Report;
+import com.slz.crm.server.ai.CitationAligner;
 import com.slz.crm.server.ai.port.KnowledgeRetrievalPort;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -205,14 +206,17 @@ class RagRealRetrievalBenchmarkIT {
         // 有命中：资料编号注入 → 流式生成带 [n] 引用的答案 → 抽取真实引用编号
         String userContent = "资料：\n" + result.context() + "\n\n问题：" + c.question();
         Generated answer = generate(provider, KB_ANSWER_SYSTEM_PROMPT, userContent, 512);
-        List<Integer> citations = extractCitations(answer.text(), retrieved.size());
+        // fix-citation-alignment 任务 2.2：评测抽取与生产共用 CitationAligner
+        CitationAligner.Alignment aligned = CitationAligner.align(answer.text(), result.sources());
+        String alignedText = aligned.text();
+        List<Integer> citations = extractCitations(alignedText, retrieved.size());
 
-        // 答案要点覆盖：期望要点非空时由模型判卷；EDGE（期望空）看是否诚实拒答
+        // 答案要点覆盖：期望要点非空时由模型判卷；EDGE（期望空）看是否诚实拒答（对齐只改编号）
         double coverage;
         if (c.expectedAnswerPoints().isEmpty()) {
-            coverage = isDecline(answer.text()) ? 1.0 : 0.0;
+            coverage = isDecline(alignedText) ? 1.0 : 0.0;
         } else {
-            coverage = judgeCoverage(provider, c.expectedAnswerPoints(), answer.text());
+            coverage = judgeCoverage(provider, c.expectedAnswerPoints(), alignedText);
         }
         return new CaseOutcome(retrieved, citations, coverage,
                 answer.ttftMs(), System.currentTimeMillis() - startedAt, answer.tokens(), true);
