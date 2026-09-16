@@ -169,12 +169,16 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
         int candidateLimit = topK * resolveCandidateMultiplier();
         boolean hasImageVector = query.imageVector() != null && query.imageVector().length > 0;
 
-        // 提案5（enhance-query-transformation）路由规划：路由 0 = 原查询，内联执行（嵌入失败
-        // 的异常语义与升级前一致）；多查询变体路并行提交 + HyDE 路向量-only——仅在 RRF 融合
-        // 模式下生效（weighted = 升级前行为，多查询/HyDE 不参与），全部关闭时与提案4 完成态等价。
+
+        // fix-multicondition-recall：改写后确定性拆「A后B/A且B」为原查询+左右路，每路 embed+文本召回；
+        // 切不出时仍仅 1 次 embed。V1 六参（this.rrfFusion==null）也必须能融多路 → 本地 new RrfFusion。
+        // 提案5 多查询/HyDE 仍仅在 RRF 且 this.rrfFusion 非空时叠加（默认关，行为不变）。
         List<List<RetrievalCandidate>> routes = new ArrayList<>();
-        routes.add(recallTextRoute(retrievalQuery, embeddingService.embed(retrievalQuery),
-                knowledgeBaseIds, category, candidateLimit, minScore));
+        List<String> constraintQueries = ConstraintQuerySplitter.split(retrievalQuery);
+        for (String routeQuery : constraintQueries) {
+            routes.add(recallTextRoute(routeQuery, embeddingService.embed(routeQuery),
+                    knowledgeBaseIds, category, candidateLimit, minScore));
+        }
         boolean multiRouteEnabled = useRrfFusion() && rrfFusion != null;
         List<CompletableFuture<List<RetrievalCandidate>>> variantFutures = multiRouteEnabled
                 ? submitVariantRoutes(retrievalQuery, knowledgeBaseIds, category, candidateLimit, minScore)
@@ -190,9 +194,14 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
                 log.warn("多查询路结果获取失败，该路降级跳过: {}", exception.getMessage());
             }
         }
-        List<RetrievalCandidate> fusedTextCandidates = routes.size() == 1
-                ? routes.getFirst()
-                : rrfFusion.fuseAll(routes, resolveRrfK());
+        List<RetrievalCandidate> fusedTextCandidates;
+        if (routes.size() <= 1) {
+            fusedTextCandidates = routes.isEmpty() ? List.of() : routes.getFirst();
+        } else {
+            // 多路融合：优先用装配的 rrfFusion；V1 回退态（null）本地 new，保证拆路结果可融
+            RrfFusion fusion = rrfFusion != null ? rrfFusion : new RrfFusion();
+            fusedTextCandidates = fusion.fuseAll(routes, resolveRrfK());
+        }
 
         Reranker reranker = activeReranker();
         List<RetrievalCandidate> textCandidates = reranker.rerank(retrievalQuery, fusedTextCandidates);
