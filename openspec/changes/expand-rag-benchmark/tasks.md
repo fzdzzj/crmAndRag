@@ -29,6 +29,6 @@
 
 ## 5. 回归与收尾
 
-- [ ] 5.1 `HANDOFF.md` 更新（基准集 2.0 扩容记录 + v2 锚点状态）；AGENTS.md 若有基准相关行同步
-- [ ] 5.2 git 收尾：分支 `feature/expand-rag-benchmark`，提交按任务组 `type(scope): 中文描述`（提案三件套随首个提交入库），亲验全绿 + `git status` 干净（已知未跟踪件勿提交勿删除）后 `--no-ff` 合入 master，汇报带 commit hash + 54 条分类计数 + surefire 实测计数
-- [ ] 5.3 若任务组 4 未获授权：合入时不含 baseline-v2.json，HANDOFF 标注"v2 锚点待授权后补跑"
+- [x] 5.1 `HANDOFF.md` 更新（基准集 2.0 扩容记录 + v2 锚点状态）；AGENTS.md 若有基准相关行同步
+- [x] 5.2 git 收尾：分支 `feature/expand-rag-benchmark`，提交按任务组 `type(scope): 中文描述`（提案三件套随首个提交入库），亲验全绿 + `git status` 干净（已知未跟踪件勿提交勿删除）后 `--no-ff` 合入 master，汇报带 commit hash + 54 条分类计数 + surefire 实测计数
+- [x] 5.3 若任务组 4 未获授权：合入时不含 baseline-v2.json，HANDOFF 标注"v2 锚点待授权后补跑"
