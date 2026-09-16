@@ -6,9 +6,12 @@ import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -55,15 +58,28 @@ public class DocumentService {
 
 
     private final ObjectProvider<DynamicConfigService> dynamicConfigProvider;
+    /** 图像 PDF 视觉转写器；无参/单参构造为 null，永不调 vision（add-vision-pdf-ingest-pilot）。 */
+    private final ObjectProvider<PdfVisionTranscriber> visionTranscriberProvider;
 
-    /** 兼容构造（评测数据准备/单测）：无动态配置，固定 fixed 策略。 */
+    /** 兼容构造（评测数据准备/单测）：无动态配置，固定 fixed 策略，不注入视觉转写。 */
     public DocumentService() {
-        this(null);
+        this(null, null);
     }
 
-    /** Spring 装配构造：经动态配置解析切分策略。 */
+    /** 单测/评测：仅动态配置，不注入视觉转写。 */
     public DocumentService(ObjectProvider<DynamicConfigService> dynamicConfigProvider) {
+        this(dynamicConfigProvider, null);
+    }
+
+    /**
+     * Spring 装配构造：经动态配置解析切分策略；可选装配 {@link PdfVisionTranscriber}。
+     * add-vision-pdf-ingest-pilot 任务 2.1。
+     */
+    @Autowired
+    public DocumentService(ObjectProvider<DynamicConfigService> dynamicConfigProvider,
+                           ObjectProvider<PdfVisionTranscriber> visionTranscriberProvider) {
         this.dynamicConfigProvider = dynamicConfigProvider;
+        this.visionTranscriberProvider = visionTranscriberProvider;
     }
 
     /**
@@ -133,21 +149,57 @@ public class DocumentService {
         };
     }
 
-    /** PDFBox 直连解析；按页抽取并保留 pageNo，供页级来源引用使用。 */
+    /**
+     * PDFBox 直连解析；按页抽取并保留 pageNo，供页级来源引用使用。
+     *
+     * <p>add-vision-pdf-ingest-pilot 任务 2.1：开关开且转写器给出非空转写时替换该页文本，
+     * pageNo 不变；开关关 / 未装配 / 闸门失败 → 保留文本层，视觉异常不向外抛。</p>
+     */
     private ParsedDocument parsePdf(InputStream content) throws Exception {
         byte[] bytes = content.readAllBytes();
         try (PDDocument document = Loader.loadPDF(bytes)) {
             PDFTextStripper stripper = new PDFTextStripper();
             int pageCount = document.getNumberOfPages();
             List<DocumentPage> pages = new ArrayList<>(pageCount);
+            PdfVisionTranscriber transcriber = resolveVisionTranscriber();
+            AtomicInteger visionBudget = transcriber == null ? null : transcriber.newPageBudget();
             for (int page = 1; page <= pageCount; page++) {
                 stripper.setStartPage(page);
                 stripper.setEndPage(page);
                 String text = stripper.getText(document);
+                if (transcriber != null && visionBudget != null) {
+                    try {
+                        Optional<String> visionText = transcriber.tryTranscribe(
+                                document, page - 1, text, visionBudget);
+                        if (visionText.isPresent()) {
+                            text = visionText.get();
+                        }
+                    } catch (Exception ignored) {
+                        // 视觉路径任何异常都不得打断整篇解析
+                    }
+                }
                 pages.add(new DocumentPage(page, null, text));
             }
             return new ParsedDocument("pdf", pages);
         }
+    }
+
+    /**
+     * 仅当 vision-pdf.enabled=true 且转写器已装配时返回实例；默认关路径零 vision 调用。
+     */
+    private PdfVisionTranscriber resolveVisionTranscriber() {
+        if (visionTranscriberProvider == null) {
+            return null;
+        }
+        PdfVisionTranscriber transcriber = visionTranscriberProvider.getIfAvailable();
+        if (transcriber == null) {
+            return null;
+        }
+        DynamicConfigService config = dynamicConfigProvider == null
+                ? null : dynamicConfigProvider.getIfAvailable();
+        Boolean enabled = config == null ? Boolean.FALSE
+                : config.get(PdfVisionTranscriber.ENABLED_KEY, Boolean.class, Boolean.FALSE);
+        return Boolean.TRUE.equals(enabled) ? transcriber : null;
     }
 
     /**

@@ -164,6 +164,17 @@ public class DynamicConfigKeyRegistry {
                         "strict-KB 空匹配硬兜底开关（D16）：true 时 KB ON 零命中返回“未检索到”式硬兜底；"
                                 + "false 时软标记 + 诚实生成。影响面：助手空匹配行为。",
                         null, null, Set.of(), false, 100),
+                // add-vision-pdf-ingest-pilot 任务 2.2：图像 PDF 视觉转写试点（默认关）
+                def(objectMapper, "rag.retrieval.vision-pdf.enabled", "rag.retrieval", ConfigValueType.BOOLEAN, "false",
+                        "图像 PDF 视觉转写总开关（add-vision-pdf-ingest-pilot）：false=仅文本层（默认）；"
+                                + "true=文本层过短页可走 ModelProvider.vision。影响面：入库解析成本与图像页召回。",
+                        null, null, Set.of(), false, 100),
+                def(objectMapper, "rag.retrieval.vision-pdf.min-text-chars", "rag.retrieval", ConfigValueType.INTEGER, "80",
+                        "图像页判定阈值：normalize 后文本长度低于此值才尝试视觉转写，范围 1~2000（默认 80）。",
+                        "1", "2000", Set.of(), false, 100),
+                def(objectMapper, "rag.retrieval.vision-pdf.max-pages", "rag.retrieval", ConfigValueType.INTEGER, "3",
+                        "单文档最多视觉转写页数，范围 1~20（默认 3）；超出的过短页保留文本层。",
+                        "1", "20", Set.of(), false, 100),
 
                 // ---------------- rag.intent.*：意图类目与关键词（D17） ----------------
                 def(objectMapper, "rag.intent.filterEnabled", "rag.intent", ConfigValueType.BOOLEAN, "false",
