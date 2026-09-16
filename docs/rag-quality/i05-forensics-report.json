@@ -1,0 +1,38 @@
+{
+  "suiteVersion" : "2.0",
+  "generatedAt" : "2026-09-16T12:29:34.006599100Z",
+  "metrics" : {
+    "caseCount" : 1,
+    "meanRecallAtK" : 1.0,
+    "meanPrecisionAtK" : 0.2,
+    "mrr" : 0.3333333333333333,
+    "hitRate" : 1.0,
+    "meanCitationPrecision" : 0.0,
+    "meanAnswerConsistency" : 1.0,
+    "meanTtftMs" : 1053.0,
+    "meanTotalLatencyMs" : 2991.0,
+    "totalTokens" : 1078,
+    "failureRate" : 0.0
+  },
+  "cases" : [ {
+    "id" : "I-05",
+    "category" : "IMAGE",
+    "recallAtK" : 1.0,
+    "precisionAtK" : 0.2,
+    "reciprocalRank" : 0.3333333333333333,
+    "hit" : true,
+    "citationPrecision" : 0.0,
+    "answerConsistency" : 1.0,
+    "ttftMs" : 1053,
+    "totalLatencyMs" : 2991,
+    "tokens" : 1078,
+    "success" : true
+  } ],
+  "runProfile" : "V1",
+  "runChunking" : "fixed",
+  "runConfig" : {
+    "sparseOn" : false,
+    "contextOn" : false,
+    "matrix" : { }
+  }
+}
