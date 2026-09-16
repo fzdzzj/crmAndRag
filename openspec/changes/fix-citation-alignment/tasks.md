@@ -47,6 +47,6 @@
 
 ## 5. 收尾
 
-- [ ] 5.1 更新 `HANDOFF.md`（引用对齐已落地 + after-citation 锚点状态；任务组 4 未授权则标注待补跑）
-- [ ] 5.2 随手带：`openspec/changes/expand-rag-benchmark/tasks.md` 4.1–4.3 补勾（v2 锚点已在 `0501722` 合入，只补 checkbox）
-- [ ] 5.3 git：分支 `feature/fix-citation-alignment`（本机无 `git switch`，用 `checkout -b`）；提交按任务组；提案三件套随首个提交入库；亲验全绿 + `git status` 干净（已知未跟踪 `_rag优化交接.md` / `_vlm_transcribe.py` / `_技术深化交接.md` 勿提交勿删除）后 `--no-ff` 合入 master；**不 push**
+- [x] 5.1 更新 `HANDOFF.md`（引用对齐已落地 + after-citation 锚点状态；任务组 4 未授权则标注待补跑）
+- [x] 5.2 随手带：`openspec/changes/expand-rag-benchmark/tasks.md` 4.1–4.3 补勾（v2 锚点已在 `0501722` 合入，只补 checkbox）
+- [x] 5.3 git：分支 `feature/fix-citation-alignment`（本机无 `git switch`，用 `checkout -b`）；提交按任务组；提案三件套随首个提交入库；亲验全绿 + `git status` 干净（已知未跟踪 `_rag优化交接.md` / `_vlm_transcribe.py` / `_技术深化交接.md` 勿提交勿删除）后 `--no-ff` 合入 master；**不 push**
