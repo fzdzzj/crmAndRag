@@ -41,5 +41,5 @@
 
 ## 6. 收尾
 
-- [ ] 6.1 HANDOFF：视觉 PDF 试点已落地、默认关；真 VLM 未授权则标明；三次 after-* 仍待授权
-- [ ] 6.2 git：`checkout -b feature/add-vision-pdf-ingest-pilot`；提案三件套随首个提交；亲验全绿 + status 干净（三个未跟踪件勿提交勿删除）后 `--no-ff` 合入 master；**不 push**
+- [x] 6.1 HANDOFF：视觉 PDF 试点已落地、默认关；真 VLM 未授权则标明；三次 after-* 仍待授权
+- [x] 6.2 git：`checkout -b feature/add-vision-pdf-ingest-pilot`；提案三件套随首个提交；亲验全绿 + status 干净（三个未跟踪件勿提交勿删除）后 `--no-ff` 合入 master；**不 push**
