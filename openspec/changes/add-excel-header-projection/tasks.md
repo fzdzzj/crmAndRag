@@ -15,10 +15,10 @@
 
 ## 2. ¥0 单测
 
-- [ ] 2.1 `DocumentServiceTest` 新增多列表头用例：用「设备型号 / 维保周期 / 计划工时(人·时) / 参与人数」+ 两行数据（含 XR-500 季度 4 / 2）；断言数据行文本含「计划工时」、不含独立表头块、rowIndex 为 2 和 3（表头是第 1 行）
-- [ ] 2.2 既有 `semanticStrategyPreservesRowIndexAnchorsOnExcel` 继续绿（单列不投影）
-- [ ] 2.3 新增「首行超长不投影」用例：首行某格 > 32 字，行文本仍为原值拼接、首行仍入库
-- [ ] 2.4 `RagBenchmarkDataPreparerTest`：`maintenance-schedule.xlsx` / `regional-sales-q3.xlsx` 黄金行索引文本分别含「计划工时」与「销售额」（GOLD 标记仍剥离）
+- [x] 2.1 `DocumentServiceTest` 新增多列表头用例：用「设备型号 / 维保周期 / 计划工时(人·时) / 参与人数」+ 两行数据（含 XR-500 季度 4 / 2）；断言数据行文本含「计划工时」、不含独立表头块、rowIndex 为 2 和 3（表头是第 1 行）
+- [x] 2.2 既有 `semanticStrategyPreservesRowIndexAnchorsOnExcel` 继续绿（单列不投影）
+- [x] 2.3 新增「首行超长不投影」用例：首行某格 > 32 字，行文本仍为原值拼接、首行仍入库
+- [x] 2.4 `RagBenchmarkDataPreparerTest`：`maintenance-schedule.xlsx` / `regional-sales-q3.xlsx` 黄金行索引文本分别含「计划工时」与「销售额」（GOLD 标记仍剥离）
 
 ## 3. ¥0 回归与 CI 基线
 

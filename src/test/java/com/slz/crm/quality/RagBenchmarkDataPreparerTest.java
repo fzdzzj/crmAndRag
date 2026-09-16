@@ -123,6 +123,37 @@ class RagBenchmarkDataPreparerTest {
                 "黄金片段过于集中，请检查语料段落长度: " + preparation.goldenToChunkId());
     }
 
+    /**
+     * add-excel-header-projection 任务 2.4：维保/销售黄金行索引文本含列名；GOLD 标记仍剥离。
+     */
+    @Test
+    void excelGoldenRowsIndexedTextContainsProjectedColumnNames() {
+        InMemoryVectorStore store = new InMemoryVectorStore();
+        RagBenchmarkDataPreparer.Preparation preparation =
+                RagBenchmarkDataPreparer.prepare(store, RagBenchmarkDataPreparerTest::fakeEmbed, EVAL_KB_ID);
+
+        String maintChunkId = preparation.goldenToChunkId().get("maint-xr500-q");
+        String salesChunkId = preparation.goldenToChunkId().get("sales-q3-华东");
+        assertTrue(maintChunkId != null, "维保黄金占位 id 必须对齐");
+        assertTrue(salesChunkId != null, "销售黄金占位 id 必须对齐");
+
+        String maintText = preparation.chunks().stream()
+                .filter(c -> c.chunkId().equals(maintChunkId))
+                .map(RagBenchmarkDataPreparer.BenchmarkChunk::text)
+                .findFirst()
+                .orElseThrow();
+        String salesText = preparation.chunks().stream()
+                .filter(c -> c.chunkId().equals(salesChunkId))
+                .map(RagBenchmarkDataPreparer.BenchmarkChunk::text)
+                .findFirst()
+                .orElseThrow();
+
+        assertTrue(maintText.contains("计划工时"), "维保黄金行索引文本须含列名「计划工时」: " + maintText);
+        assertTrue(salesText.contains("销售额"), "销售黄金行索引文本须含列名「销售额」: " + salesText);
+        assertFalse(maintText.contains("【GOLD"), "GOLD 标记必须已剥离: " + maintText);
+        assertFalse(salesText.contains("【GOLD"), "GOLD 标记必须已剥离: " + salesText);
+    }
+
     @Test
     void indexedTextIsCleanAndMetadataMatchesRetrievalFilter() {
         InMemoryVectorStore store = new InMemoryVectorStore();
