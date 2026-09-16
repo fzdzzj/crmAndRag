@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 数据准备 runner 单测（add-rag-quality-baseline 任务 2.3/2.4）。
+ * 数据准备 runner 单测（add-rag-quality-baseline 任务 2.3/2.4；expand-rag-benchmark 任务 3.1 扩容）。
  *
  * <p>用确定性 fake embedder 驱动<b>真实 fixtures + 真实 {@code DocumentService} 分块</b>，
  * 不需要模型 key 与外网：幂等性、对齐拒绝、套件占位 id 与语料 GOLD 标记的同步关系
@@ -62,8 +62,8 @@ class RagBenchmarkDataPreparerTest {
                 RagBenchmarkDataPreparer.prepare(new InMemoryVectorStore(), RagBenchmarkDataPreparerTest::fakeEmbed, EVAL_KB_ID);
         assertEquals(firstChunkIds, fresh.chunkIds(), "全新向量库产出的 chunkId 集合必须一致");
 
-        // 六份语料全部产出了切片
-        assertEquals(6, first.chunkIds().stream().map(id -> id.substring(0, id.lastIndexOf('-'))).distinct().count());
+        // 十一份语料全部产出了切片
+        assertEquals(11, first.chunkIds().stream().map(id -> id.substring(0, id.lastIndexOf('-'))).distinct().count());
     }
 
     @Test
@@ -82,6 +82,20 @@ class RagBenchmarkDataPreparerTest {
     }
 
     @Test
+    void expandedSuiteV2SizeAndCategoryBreakdown() {
+        // 扩容后基准集规模与分类配比（expand-rag-benchmark 任务 3.1）：总数 54，五类 17/13/6/14/4
+        List<RagBenchmarkCase> suite = RagBenchmarkSuite.standard();
+        assertEquals(54, suite.size(), "扩容后基准集总条数必须为 54");
+        Map<Category, Long> categoryCounts = suite.stream()
+                .collect(Collectors.groupingBy(RagBenchmarkCase::category, Collectors.counting()));
+        assertEquals(17L, categoryCounts.get(Category.TEXT), "TEXT 分类条数");
+        assertEquals(13L, categoryCounts.get(Category.TABLE), "TABLE 分类条数");
+        assertEquals(6L, categoryCounts.get(Category.IMAGE), "IMAGE 分类条数");
+        assertEquals(14L, categoryCounts.get(Category.LEXICAL), "LEXICAL 分类条数");
+        assertEquals(4L, categoryCounts.get(Category.EDGE), "EDGE 分类条数");
+    }
+
+    @Test
     void standardSuitePlaceholdersAllAlignToRealFixtureChunks() {
         InMemoryVectorStore store = new InMemoryVectorStore();
         RagBenchmarkDataPreparer.Preparation preparation =
@@ -90,7 +104,7 @@ class RagBenchmarkDataPreparerTest {
         Set<String> placeholders = RagBenchmarkSuite.standard().stream()
                 .flatMap(c -> c.expectedChunkIds().stream())
                 .collect(Collectors.toSet());
-        // 套件与语料同步：16 条用例的全部占位 id 都能在语料 GOLD 标记里找到
+        // 套件与语料同步：全部占位 id 都能在语料 GOLD 标记里找到，且一一对应（多、少、拼错都算失败）
         assertEquals(Set.copyOf(preparation.goldenToChunkId().keySet()), placeholders,
                 "基准集占位 id 必须与语料 GOLD 标记一一对应（多、少、拼错都算失败）");
 
@@ -104,8 +118,8 @@ class RagBenchmarkDataPreparerTest {
             assertTrue(preparation.chunkIds().containsAll(c.expectedChunkIds()),
                     "改写后的黄金 id 必须都是真实入库 chunkId: " + c.id());
         }
-        // 黄金片段分布健康度：16 个占位 id 至少映射到 12 个不同切片，防止全部挤在同一切片让 recall 失真
-        assertTrue(new HashSet<>(preparation.goldenToChunkId().values()).size() >= 12,
+        // 黄金片段分布健康度：44 个占位 id 至少映射到 30 个不同切片，防止全部挤在同一切片让 recall 失真
+        assertTrue(new HashSet<>(preparation.goldenToChunkId().values()).size() >= 30,
                 "黄金片段过于集中，请检查语料段落长度: " + preparation.goldenToChunkId());
     }
 

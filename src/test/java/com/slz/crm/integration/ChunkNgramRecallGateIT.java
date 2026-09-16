@@ -26,44 +26,70 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * ngram 召回质量闸门（complete-hybrid-retrieval-and-rerank 任务 1.2）。
+ * ngram 召回质量闸门（complete-hybrid-retrieval-and-rerank 任务 1.2；expand-rag-benchmark 任务 3.2 扩 L-14）。
  *
  * <p>目的：在真 MySQL（与生产同版本 8.0.36）上验证 V22 的 ngram 全文索引能把
  * LEXICAL 型查询（型号/编号/专有名词）的黄金切片召回进 top-5——这是「选项 A
  * （FULLTEXT ngram）能否作为稀疏召回路载体」的实测决策点：不达标则切换方案 B
  * （内存倒排索引），结论写回 tasks.md 验证记录。</p>
  *
- * <p>方法：把 rag-quality/fixtures 的 LEXICAL 相关语料（产品型号目录 + 合同代号登记册，
- * 其余 fixtures 作干扰项）经真实 {@link DocumentService} 分块后灌入 document_vector_chunk
- * （剥离 GOLD 标记，与基准数据准备同口径），用生产同语义的
- * {@code MATCH...AGAINST IN NATURAL LANGUAGE MODE} 整句查询（不做关键词抽取），
- * 断言每个 LEXICAL 用例的黄金切片都进入 top-5。</p>
+ * <p>方法：把 rag-quality/fixtures 的 LEXICAL 相关语料（型号目录/代号登记册 + 扩容新增的
+ * 客户 SOP/价格政策/区域政策/SLA/维保周期表，其余 fixtures 作干扰项）经真实
+ * {@link DocumentService} 分块后灌入 document_vector_chunk（剥离 GOLD 标记，与基准数据准备
+ * 同口径），用生产同语义的 {@code MATCH...AGAINST IN NATURAL LANGUAGE MODE} 整句查询
+ * （不做关键词抽取），断言每个 LEXICAL 用例（L-01～L-14）的黄金切片都进入 top-5。</p>
+ *
+ * <p>FTS 刷盘（expand-rag-benchmark 任务 3.2 实测）：InnoDB FULLTEXT 索引对批量插入的
+ * 更新先进内存 index cache，刷盘完成前查询过滤正确但相关度全为 0（ORDER BY 退化）。
+ * 闸门在入库后执行 {@code OPTIMIZE TABLE} 强制把缓存刷进磁盘索引，保证相关度排序确定；
+ * 生产路径由自然的时间间隔（入库与查询不同秒）覆盖，本实测结论记入 tasks.md 验证记录。</p>
  *
  * <p>Docker 门禁：无 Docker 时 assumeTrue 跳过（本地开发机）；CI 真跑。</p>
  */
 class ChunkNgramRecallGateIT {
 
-    /** LEXICAL 用例（与 RagBenchmarkSuite L-01～L-06 对齐）：问题 → 黄金切片正文必含的词法锚点。 */
+    /** LEXICAL 用例（与 RagBenchmarkSuite L-01～L-14 对齐）：问题 → 黄金切片正文必含的词法锚点。 */
     private static final List<String[]> LEXICAL_CASES = List.of(
             new String[]{"L-01", "XR-500 设备的售后对接人是谁", "XR-500"},
             new String[]{"L-02", "ZB-220 的备件放在哪个库位", "ZB-220"},
             new String[]{"L-03", "合同编号 HT-2024-0889 签的是哪个项目", "HT-2024-0889"},
             new String[]{"L-04", "凤凰计划由哪个交付组实施", "凤凰计划"},
             new String[]{"L-05", "KQ-9000 的固件应该升级到哪个版本", "KQ-9000"},
-            new String[]{"L-06", "内部代号 BK-2024 对应哪个项目", "BK-2024"});
+            new String[]{"L-06", "内部代号 BK-2024 对应哪个项目", "BK-2024"},
+            // expand-rag-benchmark 任务 3.2：新增 L-07～L-14（编号/人名/版本号）
+            new String[]{"L-07", "政策 RSP-2024-04 保护的是哪类业务", "RSP-2024-04"},
+            new String[]{"L-08", "客户编号 CUS-2026-0088 的客户经理是谁", "CUS-2026-0088"},
+            new String[]{"L-09", "工单 WO-2026-0521 是哪台设备的维保工单", "WO-2026-0521"},
+            new String[]{"L-10", "价格政策的负责人是谁", "孙丽华"},
+            new String[]{"L-11", "SLA 责任工程师是谁", "何建军"},
+            new String[]{"L-12", "华东区的区域经理是谁", "吴国强"},
+            new String[]{"L-13", "客户管理 SOP 当前是哪个版本", "v4.2"},
+            new String[]{"L-14", "价格政策的版本号是多少", "v2.7"});
 
     /** LEXICAL 黄金标记全集：入库后必须都能被发现，否则语料装配有问题，闸门断言对象不成立。 */
     private static final Set<String> EXPECTED_GOLD_IDS = Set.of(
-            "model-xr500", "model-zb220", "model-kq9000", "code-ht0889", "code-fenghuang", "code-bluewhale");
+            "model-xr500", "model-zb220", "model-kq9000", "code-ht0889", "code-fenghuang", "code-bluewhale",
+            // expand-rag-benchmark 任务 3.2：新增 LEXICAL 语料的黄金标记
+            "policy-004", "customer-code-0088", "maint-xr500-q", "price-owner", "sla-owner",
+            "policy-001", "customer-version");
 
-    /** LEXICAL 语料：型号目录 + 代号登记册；其余 fixtures 作干扰项一并入库，检验排名而非单纯命中。 */
+    /** LEXICAL 语料：型号目录 + 代号登记册 + 扩容新增 5 语料；其余 fixtures 作干扰项一并入库，检验排名而非单纯命中。 */
     private static final List<String[]> GATE_FIXTURES = List.of(
             new String[]{"models", "product-model-catalog.md"},
             new String[]{"codes", "contract-code-registry.txt"},
             new String[]{"sales-flow", "sales-contract-flow.md"},
-            new String[]{"payment-plan", "payment-plan.md"});
+            new String[]{"payment-plan", "payment-plan.md"},
+            // expand-rag-benchmark 任务 3.2：新增 5 语料（L-07～L-14 的黄金锚点所在）
+            new String[]{"customer-sop", "customer-sop.md"},
+            new String[]{"pricing", "pricing-policy.md"},
+            new String[]{"regional-policy", "regional-policy.txt"},
+            new String[]{"sla", "sla-terms.md"},
+            new String[]{"maint", "maintenance-schedule.xlsx"});
 
     private static final Pattern GOLD_MARKER = Pattern.compile("【GOLD:([A-Za-z0-9_\\-\\u4e00-\\u9fff]+)】");
+
+    /** 剥离用宽松模式（expand-rag-benchmark 任务 3.2）：兼容滑窗把标记切半的残段，保持索引文本干净。 */
+    private static final Pattern GOLD_MARKER_FRAGMENT = Pattern.compile("【GOLD:[^】]*】?");
 
     /** recall@k 截断与生产 topK 默认值同口径。 */
     private static final int TOP_K = 5;
@@ -94,6 +120,11 @@ class ChunkNgramRecallGateIT {
                 mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword())) {
             migrate(connection);
             Set<String> discoveredGoldIds = ingestLexicalCorpus(connection);
+            // FTS 刷盘（expand-rag-benchmark 任务 3.2）：批量插入后 index cache 未刷盘时相关度全 0，
+            // OPTIMIZE TABLE 强制把缓存写进磁盘索引，使相关度排序确定可断言
+            try (PreparedStatement optimize = connection.prepareStatement("OPTIMIZE TABLE document_vector_chunk")) {
+                optimize.execute();
+            }
             // 干扰项 fixtures（sales-flow/payment-plan）与基准套件共用、自带各自 GOLD 标记，
             // 发现集必然超集；闸门只要求 LEXICAL 黄金标记全部被发现（语料装配哨兵）
             List<String> missingGoldIds = EXPECTED_GOLD_IDS.stream()
@@ -144,7 +175,7 @@ class ChunkNgramRecallGateIT {
                     while (marker.find()) {
                         discoveredGoldIds.add(marker.group(1));
                     }
-                    String indexedText = GOLD_MARKER.matcher(chunk.text()).replaceAll("").strip();
+                    String indexedText = GOLD_MARKER_FRAGMENT.matcher(chunk.text()).replaceAll("").strip();
                     insert.setString(1, "gate-" + fixture[0]);
                     insert.setInt(2, chunk.chunkIndex());
                     insert.setString(3, indexedText);
