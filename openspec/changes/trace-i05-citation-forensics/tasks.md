@@ -16,8 +16,8 @@
 
 ## 2. ¥0 单测
 
-- [ ] 2.1 only 过滤单测（I-05 / 空属性 / 未知 id 失败）
-- [ ] 2.2 旁路 JSON 字段单测（假数据含 rawAnswer、alignedAnswer、citationsBefore/After、excerpts）
+- [x] 2.1 only 过滤单测（I-05 / 空属性 / 未知 id 失败）
+- [x] 2.2 旁路 JSON 字段单测（假数据含 rawAnswer、alignedAnswer、citationsBefore/After、excerpts）
 
 ## 3. CI
 
