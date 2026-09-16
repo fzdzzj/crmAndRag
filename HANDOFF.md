@@ -9,7 +9,7 @@
 
 - **是什么**：一个 Java/Spring Boot **单体**，把原 CRM 系统与原 RAG 系统融合成一个产品。
 - **架构定位（关键，D11）**：**不是**"两个对等系统拼接"，而是 **CRM 为基座** + **AI 助手吸收 RAG 的对话能力** + **知识库能力移植为 `com.slz.crm.knowledge` 模块**。原 RAG 的独立对话层（`chat_*` 表 / `RagChatPipeline` / 匿名问答）**已丢弃**，对话统一走 CRM 的 `ai_session`/`ai_message`。
-- **当前状态**：`master` = 完整融合产品 + **检索链路优化 5 提案已全部落地**（混合检索/上下文压缩/语义切分/查询增强，见 §2.5 与 `openspec/`）；**surefire 644 绿**、真库迁移链 V1..V26 已通；**schema 漂移 7 项遗留已全部定夺豁免**（Known/NEW 二分机制上线，见 §3）；**RAG 基准集已扩容 18→54 条（SUITE_VERSION 2.0）且 v2 锚点已跑**（见 §3）；**未 push**（推送需显式授权）。
+- **当前状态**：`master` = 完整融合产品 + **检索链路优化 5 提案已全部落地**（混合检索/上下文压缩/语义切分/查询增强，见 §2.5 与 `openspec/`）；**surefire 645 绿**、真库迁移链 V1..V26 已通；**schema 漂移 7 项遗留已全部定夺豁免**（Known/NEW 二分机制上线，见 §3）；**RAG 基准集已扩容 18→54 条（SUITE_VERSION 2.0）且 v2 锚点已跑**（见 §3）；**未 push**（推送需显式授权）。
 - **怎么建的**：OpenSpec 规范驱动 + **多 agent 并行**：Wave 0 基座串行（契约冻结）→ Wave 1 四 lane 并行（A 数据权限/B 知识库/C 助手/D 治理）→ Wave 2 E 动态配置 → Wave 3 串行集成。理解这个波次结构对理解代码归属很重要（见 §1/§2）。
 
 ---
@@ -77,8 +77,9 @@ com.slz.crm
 ## 3. 当前 git 状态与未决事项
 
 - **图像 PDF 视觉转写试点已落地（add-vision-pdf-ingest-pilot，默认关）**：`PdfVisionTranscriber` + `DocumentService.parsePdf` 可选接入；三键 `rag.retrieval.vision-pdf.*`（enabled=false / min-text-chars=80 / max-pages=3）；失败回退文本层；pageNo 不变。真 VLM 试点（任务组 5）**未授权、未跑**。
+- **I-05 图注黄金块切分对齐（fix-i05-caption-chunk，已合入）**：`sla-arch-diagram.md` 独立 fixture（key=`sla-arch`），从 `sla-terms.md` 删图注段；FIXTURES 11→12；`RagBenchmarkDataPreparerTest` 词面断言（含接入层/台账与预警引擎，不含何建军/赔偿当月服务费）；`SUITE_VERSION` 仍 2.0；禁改 CitationAligner/FixedChunkingStrategy 320/40/Evaluator。surefire **645**（=644+图注词面断言1）。**I-05 取证重跑待授权**（全量 fixtures 嵌入 + 1 条生成判卷；输出 `docs/rag-quality/i05-after-caption-chunk*.json`，禁止覆盖 v1/v2/after-quality-loop/i05-forensics.json）。
 - 工作树干净（仅三个未跟踪的 rag 工作区暂存件 `_rag优化交接.md`/`_vlm_transcribe.py`/`_技术深化交接.md`，属另一工作区，勿提交勿删除）；**未 push**（硬约束：推送需你显式授权）。
-- **surefire 639 全绿（本地亲验，2026-09-16，add-vision-pdf-ingest-pilot 合入后；=634+视觉PDF单测5）**；真库迁移链 V1..V26 已在本机 Docker 完整应用（FlywayMigrationIT 3 绿）。
+- **surefire 645 全绿（本地亲验，2026-09-16，fix-i05-caption-chunk 合入后；=644+图注词面断言1；此前 644=639+I-05取证5，639=634+视觉PDF5）**；真库迁移链 V1..V26 已在本机 Docker 完整应用（FlywayMigrationIT 3 绿）。
 - **WriteChainRegressionIT 双红灯已修复（V24 补 approval_attachment.uploader_id + 种子修正）**；**全量实体↔表列漂移审计（P1）已完成（audit-entity-table-drift 合入）**：新增 `SchemaDriftAuditIT` 永久门禁（真 MySQL CRITICAL 非空即 fail）根修 `V25__invoice_info_add_remark.sql` 补 `invoice_info.remark` 列，审计报告见 `docs/schema-drift-audit.md`。
 - **schema 漂移 7 项遗留已全部定夺豁免（drift-disposition 合入，零行为变更）**：新增 `KnownDriftRegistry`（W1-W5 类型不亲和 + I1 生成列 + I2 预留表，2026-09-14 拍板"登记豁免、不动表结构"），审计 KNOWN/NEW 二分上线（KNOWN=7 / NEW=0 / CRITICAL=0，IT 真库实测）；单测防呆 `unmatchedKnownDrifts` 保证登记项必须仍产出真实漂移，新漂移走 NEW 登记流程。
 - **权限读取缺口已闭合（close-permission-read-gap 合入）**：`GET /permission/list` 与 `GET /permission/getByRole` 已加 `@RequirePermission(PermissionOperates.SYSTEM_ASSIGN_PERMISSION)`（复用 606，读写同权，未新增 608）；`PermissionControllerIT` 两个 `@Disabled` 已移除并新增 1 正向用例（本地 Docker 实测 3 绿）；surefire 602 不变。AGENTS.md「未闭合的授权缺口」章节已改写为闭合记录。
@@ -115,7 +116,7 @@ com.slz.crm
 - `project.md` —— 17 方案处置总表 + 硬约束（**改检索链路前必读**）
 - `git-workflow.md` —— 分支/提交/合并/CI 基线/成本闸门契约
 - `changes/archive/` —— 六案：add-rag-quality-baseline（评估基线）/ complete-hybrid-retrieval-and-rerank（混合检索+重排）/ add-context-compression-and-enrichment（压缩+邻居）/ upgrade-semantic-chunking-and-index（语义切分+双粒度）/ enhance-query-transformation（查询增强，默认关）/ run-baseline-ladder（基线阶梯五回）
-- `changes/`（进行中/待归档）—— audit-permission-matrix（端点权限矩阵审计，已合入，映射表待拍板）；drift-disposition（schema 漂移 7 项定夺豁免 + KNOWN/NEW 二分，已合入，待授权清零）；expand-rag-benchmark（基准集 18→54 条 + SUITE_VERSION 2.0，已合入；v2 锚点已授权跑完，baseline-v2.json + baseline-v2-anchor.md 于 feature/rag-v2-anchor 合入）；fix-citation-alignment（生成后引用编号对齐，已合入；after-quality-loop 已合并复测，I-05 citP 仍 0）；add-excel-header-projection（Excel 表头投影，已合入；after-quality-loop 已合并复测，TB-01/TB-10 升 1）；fix-multicondition-recall（多条件拆路，已合入；after-quality-loop 已合并复测，T-14 仍 0.5）；research-visual-ingest（视觉摄取差距对照，已合入；实现另案，见 docs/ingest-gap-map.md）；trace-i05-citation-forensics（I-05 引用取证 only 过滤+旁路 JSON，已合入；结论 KEEP 错号，见 docs/rag-quality/i05-forensics.md，不改对齐器）
+- `changes/`（进行中/待归档）—— audit-permission-matrix（端点权限矩阵审计，已合入，映射表待拍板）；drift-disposition（schema 漂移 7 项定夺豁免 + KNOWN/NEW 二分，已合入，待授权清零）；expand-rag-benchmark（基准集 18→54 条 + SUITE_VERSION 2.0，已合入；v2 锚点已授权跑完，baseline-v2.json + baseline-v2-anchor.md 于 feature/rag-v2-anchor 合入）；fix-citation-alignment（生成后引用编号对齐，已合入；after-quality-loop 已合并复测，I-05 citP 仍 0）；add-excel-header-projection（Excel 表头投影，已合入；after-quality-loop 已合并复测，TB-01/TB-10 升 1）；fix-multicondition-recall（多条件拆路，已合入；after-quality-loop 已合并复测，T-14 仍 0.5）；research-visual-ingest（视觉摄取差距对照，已合入；实现另案，见 docs/ingest-gap-map.md）；trace-i05-citation-forensics（I-05 引用取证 only 过滤+旁路 JSON，已合入；结论 KEEP 错号，见 docs/rag-quality/i05-forensics.md，不改对齐器）；fix-i05-caption-chunk（图注独立语料对齐黄金块，已合入；I-05 重跑待授权）
 
 摄取：`docs/ingest-gap-map.md`（调研）+ `openspec/changes/add-vision-pdf-ingest-pilot/`（试点实现，默认关；真 VLM 待授权）。
 
@@ -125,12 +126,12 @@ com.slz.crm
 
 ## 5. 接手后的第一步 / 常见任务怎么做
 
-1. **先跑** `mvn test`（应 644 绿）+ 看 `git status`（工作树应干净，已知未跟踪件见 §3）。
+1. **先跑** `mvn test`（应 645 绿）+ 看 `git status`（工作树应干净，已知未跟踪件见 §3）。
 2. **理解助手**：读 `server/ai/` + `assistant-decision-tree.md` + SSE 契约（`SseEventName` + `SseContractTest`）。改事件/payload = 契约变更，同步前端 + 测试。
 3. **理解知识库**：`knowledge/` + `contracts-frozen.md §2`；检索管线 = 授权过滤→查询改写→向量/稀疏双路召回→RRF 融合→rerank→ContextBuilder 邻居增强+预算压缩（`KnowledgeRetrievalServiceImpl`；开关矩阵见 §2.5 与 `docs/dynamic-config-keys.md`）。
 4. **改契约**：`contracts-frozen.md` 是权威；改 `platform/contract` 要同步所有消费方 + `SseContractTest`。
 5. **发布/回退**：`release-runbook.md`（灰度开关、4 层回退、权限矩阵）。
-6. **质量**：`com.slz.crm.quality`(RagQualityEvaluator) 是 RAG 评估 harness（五类 **54 条**基准集 SUITE_VERSION 2.0，recall/MRR/citationPrecision + JSON 报告）；真检索基准 `RagRealRetrievalBenchmarkIT` 走 InMemory+DashScope（跑法铁律见 §3），既有基线在 `docs/rag-quality/`：v2 锚点（`baseline-v2.json`）+ **after-quality-loop**（质量闭环三单合并复测，`baseline-after-quality-loop.json`，recall@5 0.9475 / MRR 0.9136 / hitRate 1.0 / citP 0.8302 / failureRate 0；I-05 citP 仍 0，T-14 recall 仍 0.5；I-05 引用取证已落地见 `docs/rag-quality/i05-forensics.md`，结论 **KEEP 错号**——对齐前后均为 `[1]`→非黄金 `sla-3`，黄金 `sla-2` 在 rank3，raw==aligned，未改对齐器）。
+6. **质量**：`com.slz.crm.quality`(RagQualityEvaluator) 是 RAG 评估 harness（五类 **54 条**基准集 SUITE_VERSION 2.0，recall/MRR/citationPrecision + JSON 报告）；真检索基准 `RagRealRetrievalBenchmarkIT` 走 InMemory+DashScope（跑法铁律见 §3），既有基线在 `docs/rag-quality/`：v2 锚点（`baseline-v2.json`）+ **after-quality-loop**（质量闭环三单合并复测，`baseline-after-quality-loop.json`，recall@5 0.9475 / MRR 0.9136 / hitRate 1.0 / citP 0.8302 / failureRate 0；I-05 citP 仍 0，T-14 recall 仍 0.5；I-05 引用取证已落地见 `docs/rag-quality/i05-forensics.md`，结论 **KEEP 错号**——对齐前后均为 `[1]`→非黄金 `sla-3`，黄金 `sla-2` 在 rank3，raw==aligned，未改对齐器；根因对症 **fix-i05-caption-chunk** 已把图注拆为独立 fixture，黄金块词面 ¥0 断言绿，**I-05 真外呼重跑仍待授权**）。
 
 ---
 

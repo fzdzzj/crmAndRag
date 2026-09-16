@@ -34,5 +34,5 @@
 
 ## 5. 收尾
 
-- [ ] 5.1 HANDOFF
-- [ ] 5.2 `feature/fix-i05-caption-chunk`；`--no-ff`；不 push；三未跟踪件勿动
+- [x] 5.1 HANDOFF
+- [x] 5.2 `feature/fix-i05-caption-chunk`；`--no-ff`；不 push；三未跟踪件勿动
