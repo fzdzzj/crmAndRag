@@ -65,7 +65,7 @@ public final class CitationAligner {
         while (matcher.find()) {
             out.append(answer, last, matcher.start());
             int original = Integer.parseInt(matcher.group(1));
-            String clause = clauseBefore(answer, matcher.start());
+            String clause = clauseAround(answer, matcher.start(), matcher.end());
             int decided = decide(original, clause, sources);
             if (decided > 0) {
                 out.append('[').append(decided).append(']');
@@ -115,51 +115,67 @@ public final class CitationAligner {
     }
 
     /**
-     * 取引用编号前的子句（按 。！？；\\n 切分；编号挂在其前子句上）。
-     * 若编号紧贴分隔符导致子句为空，回退到再前一子句。
+     * 取引用编号所在子句（按 。！？；\n 切分；含编号前与编号后至下一分隔/下一引用）。
+     * 中置编号如「依据[2]结论」会得到「依据结论」，避免只取前缀导致二字 bigram 为空。
      */
-    static String clauseBefore(String answer, int citationStart) {
-        int end = citationStart;
-        while (end > 0 && Character.isWhitespace(answer.charAt(end - 1))) {
-            end--;
+    static String clauseAround(String answer, int citationStart, int citationEnd) {
+        int leftEnd = citationStart;
+        while (leftEnd > 0 && Character.isWhitespace(answer.charAt(leftEnd - 1))) {
+            leftEnd--;
         }
-        int start = end;
+        int start = leftEnd;
         while (start > 0) {
             char c = answer.charAt(start - 1);
             if (isClauseDelimiter(c)) {
                 break;
             }
-            // 上一处引用闭合后重新起句，避免把多个 [n] 糊成一段
             if (c == ']' && looksLikeCitationClose(answer, start - 1)) {
                 break;
             }
             start--;
         }
-        String clause = answer.substring(start, end).trim();
-        if (!clause.isEmpty()) {
-            return clause;
+
+        int end = citationEnd;
+        while (end < answer.length() && Character.isWhitespace(answer.charAt(end))) {
+            end++;
         }
-        // 空子句：再向前取一段
-        int prevEnd = start;
-        while (prevEnd > 0 && (isClauseDelimiter(answer.charAt(prevEnd - 1))
-                || Character.isWhitespace(answer.charAt(prevEnd - 1)))) {
-            prevEnd--;
-        }
-        int prevStart = prevEnd;
-        while (prevStart > 0) {
-            char c = answer.charAt(prevStart - 1);
+        int right = end;
+        while (right < answer.length()) {
+            char c = answer.charAt(right);
             if (isClauseDelimiter(c)) {
                 break;
             }
-            if (c == ']' && looksLikeCitationClose(answer, prevStart - 1)) {
+            // 下一处引用 [n] 起边界
+            if (c == '[' && looksLikeCitationOpen(answer, right)) {
                 break;
             }
-            prevStart--;
+            right++;
         }
-        return answer.substring(prevStart, prevEnd).trim();
+
+        String left = answer.substring(start, leftEnd).trim();
+        String rightPart = answer.substring(end, right).trim();
+        if (left.isEmpty()) {
+            return rightPart;
+        }
+        if (rightPart.isEmpty()) {
+            return left;
+        }
+        return left + rightPart;
     }
 
-    private static boolean looksLikeCitationClose(String answer, int closeIdx) {
+    private static boolean looksLikeCitationOpen(String answer, int openIdx) {
+        if (openIdx + 1 >= answer.length() || !Character.isDigit(answer.charAt(openIdx + 1))) {
+            return false;
+        }
+        int i = openIdx + 1;
+        int digits = 0;
+        while (i < answer.length() && Character.isDigit(answer.charAt(i)) && digits < 3) {
+            i++;
+            digits++;
+        }
+        return digits > 0 && i < answer.length() && answer.charAt(i) == ']';
+    }
+private static boolean looksLikeCitationClose(String answer, int closeIdx) {
         // 形如 [12] 的 ] 
         int i = closeIdx - 1;
         while (i >= 0 && Character.isDigit(answer.charAt(i))) {
