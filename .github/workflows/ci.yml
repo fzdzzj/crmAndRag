@@ -38,8 +38,8 @@ jobs:
         run: mvn -B -ntp verify
 
       # 阶段3：回归基线阈值——两个报告目录分开裁决，防止合并悄悄丢测试
-      #   口径A surefire = target/surefire-reports（pom 的 **/*Test.java，显式 exclude **/*IT.java），基线 644
-      #   实测：2026-09-16 本机 mvn -B -ntp test，Tests run 合计 644（=639 + trace-i05-citation-forensics 新增5：BenchmarkOnlyFilterTest only过滤3+旁路JSON1+enrich回填1；上一版 639 =634 + add-vision-pdf-ingest-pilot 新增5：
+      #   口径A surefire = target/surefire-reports（pom 的 **/*Test.java，显式 exclude **/*IT.java），基线 645
+      #   实测：2026-09-16 本机 mvn -B -ntp test，Tests run 合计 645（=644 + fix-i05-caption-chunk 新增1：RagBenchmarkDataPreparerTest 图注黄金词面断言1；上一版 644 =639 + trace-i05-citation-forensics 新增5：BenchmarkOnlyFilterTest only过滤3+旁路JSON1+enrich回填1；再上一版 639 =634 + add-vision-pdf-ingest-pilot 新增5：
       #     DocumentServiceTest 视觉PDF默认关/开+mock/失败回退/富文本不走VLM/无参构造 5；上一版 634 =628 + fix-multicondition-recall 新增6：
       #     ConstraintQuerySplitterTest 6；上一版 628 =625 + add-excel-header-projection 新增3：
       #     DocumentServiceTest 多列表头投影+首行超长不投影 2 + RagBenchmarkDataPreparerTest 黄金行列名断言 1；上一版 625 =619 + fix-citation-alignment 新增6：
@@ -49,7 +49,7 @@ jobs:
       #     PermissionCoverageScannerTest 7 + PermissionCoverageComparatorTest 6；更上一版 602 = 590 +
       #     audit-entity-table-drift 新增12：SchemaDriftAuditorTest 5 + SchemaDriftComparatorTest 7）。
       #     此前基线 590（=555 + 提案5新增30 + 基线阶梯 runner 泛化新增5；明细见上一版注释）。
-      #   单测不依赖 Docker，CI 与本机同口径，因此 644 对两边都成立；只增不减。
+      #   单测不依赖 Docker，CI 与本机同口径，因此 645 对两边都成立；只增不减。
       #     V6 保留字缺陷已于 2026-09-12 获授权就地修复：真库迁移链 V1..V23 首次完整应用，
       #       failsafe 真跑口径 24 = 15 绿 + 7 门控跳过 + 2 红（WriteChainRegressionIT 为 task18 时代
       #       存量测试缺陷另案登记，见 openspec/changes/complete-hybrid-retrieval-and-rerank/tasks.md §0）。
@@ -107,10 +107,10 @@ jobs:
           }
 
           rc=0
-          check_baseline target/surefire-reports 644 "surefire 单元测试" || rc=1
+          check_baseline target/surefire-reports 645 "surefire 单元测试" || rc=1
           check_baseline target/failsafe-reports 13 "failsafe 集成测试" || rc=1
           if [ "$rc" -ne 0 ]; then
-            echo "::error::回归基线阈值校验未通过（surefire 基线 644 / failsafe 基线 13）"
+            echo "::error::回归基线阈值校验未通过（surefire 基线 645 / failsafe 基线 13）"
           fi
           exit "$rc"
 

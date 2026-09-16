@@ -4,7 +4,7 @@
 
 ## 0. 执行记录
 
-- fixture=sla-arch-diagram.md key=sla-arch；前缀去重 12（待 surefire 实测）；I-05 重跑 citP 待授权
+- fixture=sla-arch-diagram.md key=sla-arch；前缀去重 12（RagBenchmarkDataPreparerTest 绿）；surefire 实测 645；I-05 重跑 citP 待授权
 
 ## 1. 语料拆出（¥0）
 
@@ -19,11 +19,11 @@
 
 ## 3. CI
 
-- [ ] 3.1 `mvn -B -ntp test` 全绿，实测改 ci.yml 三处
+- [x] 3.1 `mvn -B -ntp test` 全绿，实测改 ci.yml 三处
 
 ## 4. 授权：仅 I-05 取证重跑
 
-- [ ] 4.1 **停下**报成本（同 I-05 取证：全量 fixtures 嵌入 + 1 条生成判卷）
+- [x] 4.1 **停下**报成本（同 I-05 取证：全量 fixtures 嵌入 + 1 条生成判卷）——待授权，未跑
 - [ ] 4.2 （授权后）
   ```
   $env:RAG_BENCHMARK_REAL='1'
