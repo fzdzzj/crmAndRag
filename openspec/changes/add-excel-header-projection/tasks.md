@@ -39,5 +39,5 @@
 
 ## 5. 收尾
 
-- [ ] 5.1 更新 `HANDOFF.md`（Excel 表头投影已落地；after-excel-header 待授权则标明；after-citation 仍待授权）
-- [ ] 5.2 git：`git checkout -b feature/add-excel-header-projection`（无 switch）；提交按任务组；提案三件套随首个提交入库；亲验全绿 + status 干净（三个已知未跟踪件勿提交勿删除）后 `--no-ff` 合入 master；**不 push**
+- [x] 5.1 更新 `HANDOFF.md`（Excel 表头投影已落地；after-excel-header 待授权则标明；after-citation 仍待授权）
+- [x] 5.2 git：`git checkout -b feature/add-excel-header-projection`（无 switch）；提交按任务组；提案三件套随首个提交入库；亲验全绿 + status 干净（三个已知未跟踪件勿提交勿删除）后 `--no-ff` 合入 master；**不 push**
