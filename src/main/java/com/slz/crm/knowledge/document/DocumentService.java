@@ -30,16 +30,19 @@ import java.util.regex.Pattern;
  * <p>按页保留 pageNo；Excel 按行保留 rowIndex，满足 D15 来源锚点要求——锚点按页统一附加，
  * 任何切分策略（{@link ChunkingStrategy}）都不跨页聚合，页级引用语义不受策略影响。</p>
  *
- * <p>切分策略经动态配置切换（提案4 任务 1.1）：{@code rag.chunking.strategy = fixed | semantic}
- * （默认 fixed = 升级前行为）；semantic 的段长上限走 {@code rag.chunking.max-chunk-size}。
- * 无参构造（测试/评测数据准备用）固定走 fixed。</p>
+ * <p>切分策略经动态配置切换（提案4 任务 1.1 + add-paragraph-chunking）：
+ * {@code rag.chunking.strategy = fixed | semantic | paragraph}
+ * （默认 fixed = 升级前行为）；semantic 的段长上限走 {@code rag.chunking.max-chunk-size}；
+ * paragraph 同窗 320/40 但优先在段落界收刀。无参构造（测试/评测数据准备用）固定走 fixed。</p>
  */
 @Service
 public class DocumentService {
-    /** 切分策略配置键：fixed（升级前滑窗）| semantic（标题/段落/转折词边界）。 */
+    /** 切分策略配置键：fixed（升级前滑窗）| semantic（标题/段落/转折词边界）| paragraph（段落感知滑窗，add-paragraph-chunking）。 */
     public static final String STRATEGY_KEY = "rag.chunking.strategy";
     public static final String STRATEGY_FIXED = "fixed";
     public static final String STRATEGY_SEMANTIC = "semantic";
+    /** 段落感知切分（add-paragraph-chunking）：320/40 窗口，优先在段落界收刀；默认不启用。 */
+    public static final String STRATEGY_PARAGRAPH = "paragraph";
     /** 语义切分单块上限配置键。 */
     public static final String MAX_CHUNK_SIZE_KEY = "rag.chunking.max-chunk-size";
     static final int DEFAULT_MAX_CHUNK_SIZE = 480;
@@ -122,10 +125,16 @@ public class DocumentService {
         return SUPPORTED_EXTENSIONS.contains(fileType(filename));
     }
 
-    /** 策略解析：semantic 显式开启才生效，其余（含未配置/非法值）一律 fixed 现行为回退。 */
+    /**
+     * 策略解析（add-paragraph-chunking）：{@code paragraph} / {@code semantic} 显式开启才生效，
+     * 其余（含未配置/非法值/空）一律 {@code fixed} 现行为回退；无参构造无配置源 → fixed。
+     */
     private ChunkingStrategy resolveStrategy() {
         DynamicConfigService config = dynamicConfigProvider == null ? null : dynamicConfigProvider.getIfAvailable();
         String strategy = config == null ? null : config.get(STRATEGY_KEY, String.class, STRATEGY_FIXED);
+        if (strategy != null && STRATEGY_PARAGRAPH.equalsIgnoreCase(strategy.strip())) {
+            return ParagraphChunkingStrategy.INSTANCE;
+        }
         if (strategy != null && STRATEGY_SEMANTIC.equalsIgnoreCase(strategy.strip())) {
             return new SemanticChunkingStrategy(resolveMaxChunkSize(config));
         }
