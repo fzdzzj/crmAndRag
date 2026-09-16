@@ -150,7 +150,7 @@ mvn -B -ntp -Dtest=PerfBaselineSmokeTest test
 | 提案 | 关系 |
 |---|---|
 | **本单 measure-perf-baseline** | 只产出本文 + `PerfBaselineSmokeTest`；热路径零 diff |
-| `add-paragraph-chunking` | **尚未改默认切分策略**；须在本基线合入**之后**再动，避免污染首测对照 |
+| `add-paragraph-chunking` | 已可选用 `rag.chunking.strategy=paragraph`（同窗同重叠、段落界收刀）；**yml 默认仍 fixed**，本基线微基准数字仍对 fixed，勿拿 paragraph 切片数冒充 |
 | 任意调 `crm.ai.thread-pool.*` / `platform.async.*` / `sse-timeout-seconds` | 必须先有 §3 对应运行期证据，再开变更单 |
 
 ### 热路径未改核对（合入时亲验）
