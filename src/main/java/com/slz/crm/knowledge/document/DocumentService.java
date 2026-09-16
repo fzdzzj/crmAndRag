@@ -48,6 +48,12 @@ public class DocumentService {
     private static final Set<String> STOP_WORDS = Set.of("我们", "你们", "他们", "是否", "已经", "进行", "可以",
             "需要", "因为", "所以", "为了", "如果", "或者", "以及", "其中", "通过", "对于", "相关");
 
+    /** 表头启发式：首行非空格数下限（add-excel-header-projection 任务 1.1）。 */
+    private static final int HEADER_MIN_NON_EMPTY = 2;
+    /** 表头启发式：单个非空单元格长度上限；超长视为数据长句而非列名。 */
+    private static final int HEADER_CELL_MAX_LEN = 32;
+
+
     private final ObjectProvider<DynamicConfigService> dynamicConfigProvider;
 
     /** 兼容构造（评测数据准备/单测）：无动态配置，固定 fixed 策略。 */
@@ -144,17 +150,32 @@ public class DocumentService {
         }
     }
 
-    /** 使用 EasyExcel 同步读取首个工作表；每行单独保留 rowIndex。 */
+    /**
+     * 使用 EasyExcel 同步读取首个工作表；每行单独保留 rowIndex。
+     *
+     * <p>add-excel-header-projection 任务 1.1：首行像表头时把列名投影进数据行（{@code 列名：值} tab 拼接），
+     * 表头行本身不再入库；不满足启发式则与升级前逐字一致（含单列长句表）。</p>
+     */
     private ParsedDocument parseExcel(InputStream content) {
         List<Map<Integer, String>> rows = EasyExcel.read(content)
                 .headRowNumber(0)
                 .sheet()
                 .doReadSync();
         List<DocumentPage> pages = new ArrayList<>();
+        if (rows.isEmpty()) {
+            return new ParsedDocument("excel", pages);
+        }
+        Map<Integer, String> firstRow = rows.get(0);
+        boolean projectHeaders = looksLikeHeaderRow(firstRow);
+        Map<Integer, String> headers = projectHeaders ? buildHeaderNames(firstRow) : Map.of();
+
         int rowIndex = 0;
         for (Map<Integer, String> row : rows) {
             rowIndex++;
-            String text = normalizeRow(row);
+            if (projectHeaders && rowIndex == 1) {
+                continue; // 列名已投影到数据行，独立表头块会占 top-K
+            }
+            String text = projectHeaders ? projectRow(headers, row) : normalizeRow(row);
             if (!text.isEmpty()) {
                 pages.add(new DocumentPage(1, rowIndex, text));
             }
@@ -162,6 +183,75 @@ public class DocumentService {
         return new ParsedDocument("excel", pages);
     }
 
+    /**
+     * 表头启发式（add-excel-header-projection 任务 1.2）：非空格 ≥ 2 且每格长度 ≤ 32。
+     */
+    private boolean looksLikeHeaderRow(Map<Integer, String> row) {
+        if (row == null || row.isEmpty()) {
+            return false;
+        }
+        int nonEmpty = 0;
+        for (String raw : row.values()) {
+            if (raw == null) {
+                continue;
+            }
+            String value = raw.strip();
+            if (value.isEmpty()) {
+                continue;
+            }
+            if (value.length() > HEADER_CELL_MAX_LEN) {
+                return false;
+            }
+            nonEmpty++;
+        }
+        return nonEmpty >= HEADER_MIN_NON_EMPTY;
+    }
+
+    /**
+     * 为表头行建立列下标 → 列名；空列名回退 {@code 列{1-based}}，重名加 {@code _2} 后缀。
+     */
+    private Map<Integer, String> buildHeaderNames(Map<Integer, String> headerRow) {
+        Map<Integer, String> names = new HashMap<>();
+        Map<String, Integer> occurrence = new HashMap<>();
+        for (Integer col : headerRow.keySet().stream().sorted().toList()) {
+            String raw = headerRow.get(col);
+            String base = (raw == null || raw.strip().isEmpty()) ? ("列" + (col + 1)) : raw.strip();
+            int seen = occurrence.merge(base, 1, Integer::sum);
+            names.put(col, seen == 1 ? base : base + "_" + seen);
+        }
+        return names;
+    }
+
+    /**
+     * 把列名投影进数据行（add-excel-header-projection 任务 1.1）：{@code 列名：值}，空值省略，tab 拼接。
+     * 数据行多出的无表头列回退 {@code 列{1-based}}。
+     */
+    private String projectRow(Map<Integer, String> headers, Map<Integer, String> row) {
+        if (row == null || row.isEmpty()) {
+            return "";
+        }
+        return row.keySet().stream().sorted()
+                .map(col -> {
+                    String raw = row.get(col);
+                    if (raw == null) {
+                        return null;
+                    }
+                    String value = raw.strip();
+                    if (value.isEmpty()) {
+                        return null;
+                    }
+                    String name = headers.get(col);
+                    if (name == null || name.isEmpty()) {
+                        name = "列" + (col + 1);
+                    }
+                    return name + "：" + value;
+                })
+                .filter(Objects::nonNull)
+                .reduce((left, right) -> left + "\t" + right)
+                .orElse("");
+    }
+
+    /** 升级前行为：单元格值 strip 后按列下标 tab 拼接（无列名）。 */
     private String normalizeRow(Map<Integer, String> row) {
         if (row == null || row.isEmpty()) {
             return "";
