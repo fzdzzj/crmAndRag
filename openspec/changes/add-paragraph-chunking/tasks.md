@@ -26,4 +26,4 @@
 
 ## 4. 收尾
 - [x] 4.1 HANDOFF
-- [ ] 4.2 `feature/add-paragraph-chunking`；`--no-ff`；不 push；三未跟踪件勿动
+- [x] 4.2 `feature/add-paragraph-chunking`；`--no-ff`；不 push；三未跟踪件勿动
