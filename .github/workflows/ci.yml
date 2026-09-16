@@ -38,8 +38,9 @@ jobs:
         run: mvn -B -ntp verify
 
       # 阶段3：回归基线阈值——两个报告目录分开裁决，防止合并悄悄丢测试
-      #   口径A surefire = target/surefire-reports（pom 的 **/*Test.java，显式 exclude **/*IT.java），基线 628
-      #   实测：2026-09-16 本机 mvn -B -ntp test，Tests run 合计 628（=625 + add-excel-header-projection 新增3：
+      #   口径A surefire = target/surefire-reports（pom 的 **/*Test.java，显式 exclude **/*IT.java），基线 634
+      #   实测：2026-09-16 本机 mvn -B -ntp test，Tests run 合计 634（=628 + fix-multicondition-recall 新增6：
+      #     ConstraintQuerySplitterTest 6；上一版 628 =625 + add-excel-header-projection 新增3：
       #     DocumentServiceTest 多列表头投影+首行超长不投影 2 + RagBenchmarkDataPreparerTest 黄金行列名断言 1；上一版 625 =619 + fix-citation-alignment 新增6：
       #     CitationAlignerTest 6；上一版 619 = 618 + expand-rag-benchmark 新增1：
       #     RagBenchmarkDataPreparerTest.expandedSuiteV2SizeAndCategoryBreakdown；上一版 618 = 615 + drift-disposition 新增3：
@@ -47,7 +48,7 @@ jobs:
       #     PermissionCoverageScannerTest 7 + PermissionCoverageComparatorTest 6；更上一版 602 = 590 +
       #     audit-entity-table-drift 新增12：SchemaDriftAuditorTest 5 + SchemaDriftComparatorTest 7）。
       #     此前基线 590（=555 + 提案5新增30 + 基线阶梯 runner 泛化新增5；明细见上一版注释）。
-      #   单测不依赖 Docker，CI 与本机同口径，因此 628 对两边都成立；只增不减。
+      #   单测不依赖 Docker，CI 与本机同口径，因此 634 对两边都成立；只增不减。
       #     V6 保留字缺陷已于 2026-09-12 获授权就地修复：真库迁移链 V1..V23 首次完整应用，
       #       failsafe 真跑口径 24 = 15 绿 + 7 门控跳过 + 2 红（WriteChainRegressionIT 为 task18 时代
       #       存量测试缺陷另案登记，见 openspec/changes/complete-hybrid-retrieval-and-rerank/tasks.md §0）。
@@ -105,10 +106,10 @@ jobs:
           }
 
           rc=0
-          check_baseline target/surefire-reports 628 "surefire 单元测试" || rc=1
+          check_baseline target/surefire-reports 634 "surefire 单元测试" || rc=1
           check_baseline target/failsafe-reports 13 "failsafe 集成测试" || rc=1
           if [ "$rc" -ne 0 ]; then
-            echo "::error::回归基线阈值校验未通过（surefire 基线 628 / failsafe 基线 13）"
+            echo "::error::回归基线阈值校验未通过（surefire 基线 634 / failsafe 基线 13）"
           fi
           exit "$rc"
 
