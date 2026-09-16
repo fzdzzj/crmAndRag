@@ -9,7 +9,9 @@
 - 阈值最终值：KEEP_MIN=0.12 / REMAP_MIN=0.22 / TIE_MARGIN=0.08（类内常量，未外置）
 - 计分：CJK 二字**子句覆盖率**（clause bigrams ∩ excerpt / |clause|）+ ASCII/数字 token 加成 0.25；相对 proposal 的对称 Jaccard 改为覆盖率，避免长 excerpt 稀释 I-05 形支撑分（单测夹住）
 - surefire：任务组 1 局部 `CitationAlignerTest` 6 绿；全量计数见任务组 3
-- 任务组 4：待授权，未跑
+- 任务组 4（2026-09-16 授权合并复测）：三单任务组4合并为一次默认矩阵真跑；产物=`docs/rag-quality/baseline-after-quality-loop.json` + `baseline-after-quality-loop.md`（不是 after-citation / after-excel-header / after-multicondition 三个分文件）。failsafe：Tests run 1 Failures 0 Errors 0，elapsed 197.0s；suiteVersion=2.0；failureRate=0。
+  - 全套 citationPrecision 0.7843→**0.8302**（≥ v2）；recall@5 0.9105→0.9475；MRR 0.8210→0.9136；hitRate 0.96→1.0；failureRate=0
+  - **I-05 citP 仍为 0**（recall=1/ansC=1 持平）——对齐目标未达，按契约不调阈值、不改黄金；记下残留
 
 
 ## 1. 对齐器纯函数 + 单测（¥0）
@@ -31,19 +33,19 @@
 
 ## 4. 真基准复测（授权节点，未授权禁止执行）
 
-- [ ] 4.1 **停下（本轮已停等授权）**：向用户报告成本预估（与 v2 锚点同量级，54 条真外呼，¥ 个位数）与跑法，等待授权
-- [ ] 4.2 （授权后，纯默认矩阵，禁止注入任何 `rag.*`）
+- [x] 4.1 授权已获（质量闭环三单合并复测）；成本与 v2 同量级
+- [x] 4.2 已跑纯默认矩阵（合并产物 `baseline-after-quality-loop.json`，非单独 after-citation；未注入 rag.*；未覆盖 v1/v2）
   ```
   $env:RAG_BENCHMARK_REAL='1'
   mvn -B -ntp test-compile failsafe:integration-test "-Dit.test=RagRealRetrievalBenchmarkIT" "-Drag.benchmark.out=docs/rag-quality/baseline-after-citation.json"
   ```
   key 从仓库根 `.env` 解析。禁止覆盖 v1/v2 JSON
-- [ ] 4.3 对照 `baseline-v2.json` 写差异（至少 I-05 citP、全套 citationPrecision / recall@5 / MRR / hitRate / failureRate）。验收：
+- [x] 4.3 已对照 v2：I-05 citP **仍 0**（记下残留、不调阈值）；全套 citP 0.8302 ≥ 0.7843；recall/MRR/hitRate 相对 v2 上升；suiteVersion=2.0，failureRate=0。详见 `baseline-after-quality-loop.md`。原验收细则：
   - I-05 citP 应升（目标 1.0；未到则记下对齐前后编号与答案原文，**停下不调阈值**）
   - 全套 citationPrecision ≥ v2 的 0.7843
   - recall@5 / MRR / hitRate 与 v2 同量级（本单不改检索）
   - `suiteVersion` 仍为 2.0，failureRate=0
-- [ ] 4.4 `baseline-after-citation.json` 入库；差异摘要写入本节执行记录
+- [x] 4.4 合并产物 JSON+MD 入库；差异写入 §0（注明非 after-citation 分文件）
 
 ## 5. 收尾
 
