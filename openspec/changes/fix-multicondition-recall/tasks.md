@@ -25,7 +25,7 @@
 
 ## 4. 真基准复测（授权节点）
 
-- [ ] 4.1 **停下**报成本（v2 同量级 + 拆句查询多 2 次 embed，仍 ¥ 个位数）
+- [x] 4.1 **停下**报成本（v2 同量级 + 拆句查询多 2 次 embed，仍 ¥ 个位数）——已停等授权，4.2–4.4 未跑
 - [ ] 4.2 （授权后，纯默认矩阵）
   ```
   $env:RAG_BENCHMARK_REAL='1'
@@ -37,5 +37,5 @@
 
 ## 5. 收尾
 
-- [ ] 5.1 HANDOFF：拆句召回已落地；after-multicondition / after-citation / after-excel-header 未跑则都标待授权
-- [ ] 5.2 git：`checkout -b feature/fix-multicondition-recall`；提案三件套随首个提交；亲验全绿 + status 干净（三个未跟踪件勿提交勿删除）后 `--no-ff` 合入 master；**不 push**
+- [x] 5.1 HANDOFF：拆句召回已落地；after-multicondition / after-citation / after-excel-header 未跑则都标待授权
+- [x] 5.2 git：`checkout -b feature/fix-multicondition-recall`；提案三件套随首个提交；亲验全绿 + status 干净（三个未跟踪件勿提交勿删除）后 `--no-ff` 合入 master；**不 push**
