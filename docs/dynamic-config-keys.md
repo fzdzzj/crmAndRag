@@ -61,11 +61,11 @@
 
 > 计量口径：LLM 压缩调用 token 挂 `TokenUsageRecorder`（type=SUMMARY，`TokenUsageType` 为冻结契约无压缩枚举值，语义最近者为摘要旁路）。
 
-## rag.chunking.* —— 切分策略（提案4 新增，upgrade-semantic-chunking-and-index）
+## rag.chunking.* —— 切分策略（提案4 + add-paragraph-chunking）
 
 | 键 | 类型 | 默认值 | 语义与回退 |
 |---|---|---|---|
-| `rag.chunking.strategy` | String | `fixed` | 切分策略：`fixed`（升级前 320/40 滑窗，现行为回退）\| `semantic`（标题/段落/转折词边界，段长受 max-chunk-size 约束）。其他值一律按 fixed 处理。策略只影响新摄取/重建的切片；页锚点（D15）任何策略都按页附加 |
+| `rag.chunking.strategy` | String | `fixed` | 切分策略：`fixed`（升级前 320/40 滑窗，现行为回退）\| `semantic`（标题/段落/转折词边界，段长受 max-chunk-size 约束）\| `paragraph`（add-paragraph-chunking：同窗 320/40，优先在 `\n\n`/`\n` 段落界收刀，避免图注横切；**默认仍为 fixed**，生产要生效须显式设为 paragraph）。其他值一律按 fixed 处理。策略只影响新摄取/重建的切片；页锚点（D15）任何策略都按页附加 |
 | `rag.chunking.max-chunk-size` | Integer | 480 | semantic 策略单块字符上限；超上限段落按句界二次切分。&lt;1 回落默认 |
 
 ## rag.context.parent-expand —— 双粒度父块展开（提案4 新增，upgrade-semantic-chunking-and-index）
