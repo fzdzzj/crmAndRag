@@ -20,9 +20,9 @@
 
 ## 2. 接入生产落库与评测抽取（¥0）
 
-- [ ] 2.1 `AiChatStreamLifecycle` `doOnComplete`（现 L151–161）：`extractCitations` 之前调用 `CitationAligner.align`；`persistAssistantMessage` / `toReferencesJson` / `toAuditJson` 使用对齐后 `content` 与 citations。**禁止改构造器签名**
-- [ ] 2.2 `RagRealRetrievalBenchmarkIT.evaluateCase`（现 L204–207）：生成后先 align 再 `extractCitations`；判卷用对齐后文本。评测与生产必须调用同一个 `CitationAligner`，禁止复制一套计分
-- [ ] 2.3 既有 `AiChatStreamLifecycleHeartbeatTest`、`AiChatServiceImplTest`、`SseContractTest`、`RagQualityEvaluatorTest` 不改全绿（构造器、SSE 字段集、citationPrecision 公式均不动）
+- [x] 2.1 `AiChatStreamLifecycle` `doOnComplete`（现 L151–161）：`extractCitations` 之前调用 `CitationAligner.align`；`persistAssistantMessage` / `toReferencesJson` / `toAuditJson` 使用对齐后 `content` 与 citations。**禁止改构造器签名**
+- [x] 2.2 `RagRealRetrievalBenchmarkIT.evaluateCase`（现 L204–207）：生成后先 align 再 `extractCitations`；判卷用对齐后文本。评测与生产必须调用同一个 `CitationAligner`，禁止复制一套计分
+- [x] 2.3 既有 `AiChatStreamLifecycleHeartbeatTest`、`AiChatServiceImplTest`、`SseContractTest`、`RagQualityEvaluatorTest` 不改全绿（构造器、SSE 字段集、citationPrecision 公式均不动）
 
 ## 3. ¥0 回归与 CI 基线
 
