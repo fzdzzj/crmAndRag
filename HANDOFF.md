@@ -76,7 +76,7 @@ com.slz.crm
 
 ## 3. 当前 git 状态与未决事项
 
-- **图像 PDF 视觉转写试点已落地（add-vision-pdf-ingest-pilot，默认关）**：`PdfVisionTranscriber` + `DocumentService.parsePdf` 可选接入；三键 `rag.retrieval.vision-pdf.*`（enabled=false / min-text-chars=80 / max-pages=3）；失败回退文本层；pageNo 不变。真 VLM 试点（任务组 5）**未授权、未跑**。
+- **图像 PDF 视觉转写试点已落地（add-vision-pdf-ingest-pilot，默认关）**：`PdfVisionTranscriber` + `DocumentService.parsePdf` 可选接入；三键 `rag.retrieval.vision-pdf.*`（enabled=false / min-text-chars=80 / max-pages=3）；失败回退文本层；pageNo 不变。**真 VLM 1 页试点已授权跑完（2026-09-17）**：`VisionPdfRealPilotIT`（failsafe，`RAG_VISION_PDF_REAL=1` 门控）**1 次 vision** 全绿——无文本层 PDF（文本层 0 字符）→ 渲染 → `qwen-vl-plus` 转写 **112 字**、关键词 **6/6** 命中、**闸门通过**、chunks=1 / pageNo=1；未跑 54 条、未跑 132 页全量；记录见 `docs/ingest-vision-pdf-pilot.md`。生产打开 `enabled=true` 仍需单独授权。
 - **I-05 图注黄金块切分对齐（fix-i05-caption-chunk，已合入）**：`sla-arch-diagram.md` 独立 fixture（key=`sla-arch`），从 `sla-terms.md` 删图注段；FIXTURES 11→12；`RagBenchmarkDataPreparerTest` 词面断言（含接入层/台账与预警引擎，不含何建军/赔偿当月服务费）；`SUITE_VERSION` 仍 2.0；禁改 CitationAligner/FixedChunkingStrategy 320/40/Evaluator。surefire **645**（=644+图注词面断言1）。**I-05 取证重跑已授权完成（2026-09-16）**：citP **1.0**（was 0.0）；黄金 `sla-arch-0` rank1 被 `[1]` KEEP；见 `docs/rag-quality/i05-after-caption-chunk.md`；未覆盖 v1/v2/after-quality-loop/i05-forensics.json。
 - **性能与并发基线（measure-perf-baseline，已合入）**：只测不改热路径。`docs/perf-baseline.md` 盘点 AiChatMetrics / 平台与助手线程池拒绝策略 / actuator 保护；`PerfBaselineSmokeTest` 4 条 ¥0 微基准（FixedChunking 10KB/100KB、CitationAligner×1e4、ConstraintQuerySplitter×1e4），本机 ns 表入文档**不**入 ci 阈值。surefire **649**（=645+4）。**未**改 `FixedChunkingStrategy` / 线程池大小 / SSE 超时；**尚未**开始 `add-paragraph-chunking`（切分默认策略仍为 fixed）。
 - 工作树干净（仅三个未跟踪的 rag 工作区暂存件 `_rag优化交接.md`/`_vlm_transcribe.py`/`_技术深化交接.md`，属另一工作区，勿提交勿删除）；**未 push**（硬约束：推送需你显式授权）。
@@ -93,7 +93,7 @@ com.slz.crm
 - **生成后引用编号对齐（fix-citation-alignment，已合入）**：`CitationAligner` 零外呼 KEEP/REMAP/DROP；生产 `AiChatStreamLifecycle` 落库前对齐、评测 `RagRealRetrievalBenchmarkIT` 共用同一实现对齐后再抽 citations。阈值 KEEP_MIN=0.12 / REMAP_MIN=0.22 / TIE_MARGIN=0.08；计分子句 CJK 二字覆盖率。surefire 619→625（+CitationAlignerTest 6）。**after-quality-loop 已跑**（2026-09-16 授权，三单合并一次默认矩阵；产物 `docs/rag-quality/baseline-after-quality-loop.json` + `.md`，**未**覆盖 v1/v2；全套 recall@5 **0.9475** / MRR **0.9136** / hitRate **1.0** / citP **0.8302** / failureRate **0** / suiteVersion **2.0**；I-05 citP **仍 0**——对齐目标未达，不调阈值）。
 - **Excel 多列表头投影（add-excel-header-projection，已合入）**：`DocumentService.parseExcel` 在首行非空格≥2 且每格≤32 时把列名投影为「列名：值」进数据行，表头行不入库；单列/超长首行保持原行为。¥0 单测 + 语料黄金行列名断言已绿（surefire 625→628）。**after-quality-loop 已覆盖本单复测**（非单独 after-excel-header 文件）：TB-01/TB-10 recall **0→1.0**，其余 11 条 TABLE recall 无回退。生产已入库 xlsx 需另授权 reingest，本单不触发。
 - **多条件查询零 LLM 拆路召回（fix-multicondition-recall，已合入）**：`ConstraintQuerySplitter` 确定性拆「A后B/且/并且/同时」为原查询+左右路；`KnowledgeRetrievalServiceImpl.retrieve` 每路 embed+recallTextRoute，>1 路用本地 `new RrfFusion().fuseAll`（V1 六参 this.rrfFusion==null 也可融）。**禁止改构造器**；**不打开** multi-query 默认。surefire 628→634（+ConstraintQuerySplitterTest 6）。**任务组4 已并入 after-quality-loop 复测**：T-14 recall **仍 0.5**（目标 1.0 未达）；T-15/T-17 recall 未回退；三单合并一次跑，产物 after-quality-loop，不是三个分文件。
-- **视觉摄取适用性调研（research-visual-ingest，已合入）**：对照文档 `docs/ingest-gap-map.md`（本仓 PDFBox 文本层现状 × 学习工作区 PNG+VLM 做法 × 差距表 × 成本粗估）。**试点已落地**（`add-vision-pdf-ingest-pilot`，默认 `vision-pdf.enabled=false`）：`PdfVisionTranscriber` + parsePdf 可选接入，失败回退文本层，pageNo 不变。**真 VLM 任务组 5 未授权未跑**（视觉 PDF 真 VLM 仍待授权）。质量闭环三单 54 条 after-quality-loop 已跑完。本调研/试点合入路径 ¥0、零外呼；`_vlm_transcribe.py` 等仍未跟踪不提交。
+- **视觉摄取适用性调研（research-visual-ingest，已合入）**：对照文档 `docs/ingest-gap-map.md`（本仓 PDFBox 文本层现状 × 学习工作区 PNG+VLM 做法 × 差距表 × 成本粗估）。**试点已落地**（`add-vision-pdf-ingest-pilot`，默认 `vision-pdf.enabled=false`）：`PdfVisionTranscriber` + parsePdf 可选接入，失败回退文本层，pageNo 不变。**任务组 5 真 VLM 1 页试点已授权跑完（2026-09-17，1 次 vision，闸门通过，见 `docs/ingest-vision-pdf-pilot.md`）**；生产打开开关仍待授权。质量闭环三单 54 条 after-quality-loop 已跑完。本调研/试点合入路径 ¥0、零外呼；`_vlm_transcribe.py` 等仍未跟踪不提交。
 
 
 ---
@@ -121,7 +121,7 @@ com.slz.crm
 
 性能基线：`docs/perf-baseline.md`（measure-perf-baseline）。
 
-摄取：`docs/ingest-gap-map.md`（调研）+ `openspec/changes/add-vision-pdf-ingest-pilot/`（试点实现，默认关；真 VLM 待授权）。
+摄取：`docs/ingest-gap-map.md`（调研）+ `docs/ingest-vision-pdf-pilot.md`（1 页真 VLM 试点记录，1 次 vision）+ `openspec/changes/add-vision-pdf-ingest-pilot/`（试点实现，默认关；生产打开待授权）。
 
 代码入口：`src/main/java/com/slz/crm/{server,knowledge,platform}`；测试：`src/test/java/com/slz/crm/{unit,integration,contract,quality}`。
 
