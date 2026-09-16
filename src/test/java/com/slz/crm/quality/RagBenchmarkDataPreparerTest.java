@@ -62,8 +62,8 @@ class RagBenchmarkDataPreparerTest {
                 RagBenchmarkDataPreparer.prepare(new InMemoryVectorStore(), RagBenchmarkDataPreparerTest::fakeEmbed, EVAL_KB_ID);
         assertEquals(firstChunkIds, fresh.chunkIds(), "全新向量库产出的 chunkId 集合必须一致");
 
-        // 十一份语料全部产出了切片
-        assertEquals(11, first.chunkIds().stream().map(id -> id.substring(0, id.lastIndexOf('-'))).distinct().count());
+        // 十二份语料全部产出了切片（fix-i05-caption-chunk：sla-arch 独立图注）
+        assertEquals(12, first.chunkIds().stream().map(id -> id.substring(0, id.lastIndexOf('-'))).distinct().count());
     }
 
     @Test
@@ -86,6 +86,7 @@ class RagBenchmarkDataPreparerTest {
         // 扩容后基准集规模与分类配比（expand-rag-benchmark 任务 3.1）：总数 54，五类 17/13/6/14/4
         List<RagBenchmarkCase> suite = RagBenchmarkSuite.standard();
         assertEquals(54, suite.size(), "扩容后基准集总条数必须为 54");
+        assertEquals("2.0", RagBenchmarkSuite.SUITE_VERSION, "fix-i05-caption-chunk：SUITE_VERSION 必须仍为 2.0");
         Map<Category, Long> categoryCounts = suite.stream()
                 .collect(Collectors.groupingBy(RagBenchmarkCase::category, Collectors.counting()));
         assertEquals(17L, categoryCounts.get(Category.TEXT), "TEXT 分类条数");
@@ -121,6 +122,32 @@ class RagBenchmarkDataPreparerTest {
         // 黄金片段分布健康度：44 个占位 id 至少映射到 30 个不同切片，防止全部挤在同一切片让 recall 失真
         assertTrue(new HashSet<>(preparation.goldenToChunkId().values()).size() >= 30,
                 "黄金片段过于集中，请检查语料段落长度: " + preparation.goldenToChunkId());
+    }
+
+    /**
+     * fix-i05-caption-chunk 任务 2.1：sla-arch-diagram 黄金块含完整图注词面，且不与责任/赔偿段粘连。
+     */
+    @Test
+    void slaArchDiagramGoldenChunkContainsCaptionWithoutOwnerOrCreditBleed() {
+        InMemoryVectorStore store = new InMemoryVectorStore();
+        RagBenchmarkDataPreparer.Preparation preparation =
+                RagBenchmarkDataPreparer.prepare(store, RagBenchmarkDataPreparerTest::fakeEmbed, EVAL_KB_ID);
+
+        String chunkId = preparation.goldenToChunkId().get("sla-arch-diagram");
+        assertTrue(chunkId != null, "sla-arch-diagram 黄金占位 id 必须对齐");
+        String text = preparation.chunks().stream()
+                .filter(c -> c.chunkId().equals(chunkId))
+                .map(RagBenchmarkDataPreparer.BenchmarkChunk::text)
+                .findFirst()
+                .orElseThrow();
+
+        assertTrue(text.contains("接入层") || text.contains("四层"),
+                "图注黄金块须含接入层/四层: " + text);
+        assertTrue(text.contains("台账与预警引擎"), "图注黄金块须含台账与预警引擎: " + text);
+        assertFalse(text.contains("何建军"), "图注黄金块不得粘连责任工程师何建军: " + text);
+        assertFalse(text.contains("赔偿当月服务费"), "图注黄金块不得粘连赔偿条款: " + text);
+        assertTrue(chunkId.startsWith("sla-arch-"),
+                "独立图注语料 key 应为 sla-arch，实际 chunkId=" + chunkId);
     }
 
     /**

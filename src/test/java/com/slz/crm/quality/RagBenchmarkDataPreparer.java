@@ -112,6 +112,8 @@ public final class RagBenchmarkDataPreparer {
             new FixtureDocument("pricing", "pricing-policy.md"),
             new FixtureDocument("regional-policy", "regional-policy.txt"),
             new FixtureDocument("sla", "sla-terms.md"),
+            // fix-i05-caption-chunk 任务 1.3：图注独立成文件，避免 320 滑窗与赔偿/责任段粘连
+            new FixtureDocument("sla-arch", "sla-arch-diagram.md"),
             new FixtureDocument("maint", "maintenance-schedule.xlsx"));
 
     /**
