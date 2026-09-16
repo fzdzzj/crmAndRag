@@ -5,7 +5,10 @@
 
 ## 0. 执行记录（执行 agent 填写）
 
-- （分支、启发式最终阈值、surefire 实测、授权复测对照）
+- 任务组 4（2026-09-16 授权合并复测）：三单任务组4合并为一次默认矩阵真跑；产物=`docs/rag-quality/baseline-after-quality-loop.json` + `baseline-after-quality-loop.md`（不是 after-citation / after-excel-header / after-multicondition 三个分文件）。failsafe：Tests run 1 Failures 0 Errors 0，elapsed 197.0s；suiteVersion=2.0；failureRate=0。
+  - TB-01 recall 0→**1.0**（citP 0→0.5，ansC 0→1）；TB-10 recall 0→**1.0**（citP 0→0.333，ansC 0→1）
+  - 其余 11 条 TABLE recall **无回退**（全 SAME）
+  - 全套 recall@5 0.9105→0.9475 / MRR 0.8210→0.9136 / hitRate 0.96→1.0
 
 ## 1. 表头投影（¥0）
 
@@ -27,15 +30,15 @@
 
 ## 4. 真基准复测（授权节点，未授权禁止执行）
 
-- [ ] 4.1 **停下**：报成本预估（与 v2 同量级，¥ 个位数）与命令，等授权
-- [ ] 4.2 （授权后，纯默认矩阵）
+- [x] 4.1 授权已获（质量闭环三单合并复测）
+- [x] 4.2 已跑纯默认矩阵（合并产物 `baseline-after-quality-loop.json`，非单独 after-excel-header；未覆盖 v1/v2；未注入 rag.*）
   ```
   $env:RAG_BENCHMARK_REAL='1'
   mvn -B -ntp test-compile failsafe:integration-test "-Dit.test=RagRealRetrievalBenchmarkIT" "-Drag.benchmark.out=docs/rag-quality/baseline-after-excel-header.json"
   ```
   禁止覆盖 v1 / v2 / after-citation；禁止注入 `rag.*`
-- [ ] 4.3 对照 v2：TB-01、TB-10 的 recall@5；其余 11 条 TABLE recall 不回退；全套 recall/MRR/hitRate；suiteVersion=2.0。TB-01/TB-10 仍为 0 则停下，不放宽启发式
-- [ ] 4.4 JSON 入库；差异写入 §0
+- [x] 4.3 已对照 v2：TB-01/TB-10 recall 均 0→1；其余 TABLE 无回退；suiteVersion=2.0。详见 `baseline-after-quality-loop.md`
+- [x] 4.4 合并产物 JSON+MD 入库；差异写入 §0
 
 ## 5. 收尾
 

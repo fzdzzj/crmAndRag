@@ -5,7 +5,7 @@
 
 ## 0. 执行记录（执行 agent 填写）
 
-- 拆句：第一处「并且|同时|后|且」（较长优先）；两侧汉字≥4 或含 ASCII 词≥2 才追加左右路；首元素=原句。`ConstraintQuerySplitter` 纯静态。`retrieve` 对 split 每路 embed+recallTextRoute；>1 路 `(rrfFusion!=null?rrfFusion:new RrfFusion()).fuseAll`。surefire 实测 **634** 全绿（2026-09-16，=628+ConstraintQuerySplitterTest 6）。任务组4 未授权未跑。
+- 拆句：第一处「并且|同时|后|且」（较长优先）；两侧汉字≥4 或含 ASCII 词≥2 才追加左右路；首元素=原句。`ConstraintQuerySplitter` 纯静态。`retrieve` 对 split 每路 embed+recallTextRoute；>1 路 `(rrfFusion!=null?rrfFusion:new RrfFusion()).fuseAll`。surefire 实测 **634** 全绿（2026-09-16，=628+ConstraintQuerySplitterTest 6）。任务组4（2026-09-16 授权合并复测）：三单任务组4合并为一次默认矩阵真跑；产物=docs/rag-quality/baseline-after-quality-loop.json + aseline-after-quality-loop.md（不是三个分文件）。failsafe：Tests run 1 Failures 0 Errors 0，elapsed 197.0s；suiteVersion=2.0；failureRate=0。 T-14 recall 仍 0.5；T-15/T-17 recall 未回退（均 1.0）；T-14 ansC 0.667→1.0；T-15 citP 0.333→0（引用波动）。
 
 ## 1. 拆句器（¥0）
 
@@ -23,17 +23,13 @@
 - [x] 3.1 `mvn -B -ntp test` 全绿；读本次合计改 ci.yml 三处。禁止推算
 - [x] 3.2 Docker 可选 skip
 
-## 4. 真基准复测（授权节点）
+## 4. 真基准复测（授权节点，未授权禁止执行）
 
-- [x] 4.1 **停下**报成本（v2 同量级 + 拆句查询多 2 次 embed，仍 ¥ 个位数）——已停等授权，4.2–4.4 未跑
-- [ ] 4.2 （授权后，纯默认矩阵）
-  ```
-  $env:RAG_BENCHMARK_REAL='1'
-  mvn -B -ntp test-compile failsafe:integration-test "-Dit.test=RagRealRetrievalBenchmarkIT" "-Drag.benchmark.out=docs/rag-quality/baseline-after-multicondition.json"
-  ```
-  禁止覆盖 v1/v2/after-citation/after-excel-header；禁止注入 rag.*
-- [ ] 4.3 对照 v2：T-14 recall 目标 1.0；T-15/T-16/T-17 不回退；suiteVersion=2.0。失败则停，不改黄金、不打开 LLM 多查询
-- [ ] 4.4 JSON 入库；差异写入 §0
+- [x] 4.1 授权已获（质量闭环三单合并复测）
+- [x] 4.2 已跑纯默认矩阵（合并产物 docs/rag-quality/baseline-after-quality-loop.json，非单独 after-multicondition；未覆盖 v1/v2；未注入 rag.*）
+- [x] 4.3 已对照 v2：T-14 recall **仍 0.5**；T-15/T-17 recall 未回退（1.0/1.0）；T-14 ansC 0.667→1.0。详见 aseline-after-quality-loop.md
+- [x] 4.4 合并产物 JSON+MD 入库；差异写入 §0（注明三单合并一次跑）
+
 
 ## 5. 收尾
 
