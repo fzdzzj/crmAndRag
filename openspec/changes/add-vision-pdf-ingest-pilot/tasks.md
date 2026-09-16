@@ -5,7 +5,10 @@
 
 ## 0. 执行记录（执行 agent 填写）
 
-- （阈值最终值、surefire 实测、是否误外呼）
+- 阈值：min-text-chars=80 / max-pages=3 / enabled 默认 **false**（未改）
+- surefire 实测：2026-09-16 `mvn -B -ntp test`，Tests run **639**（=634+5），Failures=0 Errors=0；`DASHSCOPE_API_KEY=''`
+- 误外呼：**无**（未设 API key，未跑任务组 5，未设 RAG_BENCHMARK_REAL=1）
+- 任务组 5：停等授权（1 页图像 PDF ≈1 次 vision）
 
 ## 1. 转写器（¥0）
 
@@ -16,7 +19,7 @@
 
 - [x] 2.1 `DocumentService.parsePdf`：开关开且转写成功则替换该页文本，pageNo 不变；失败保留文本层。无参/单参构造不注入 transcriber = 旧行为
 - [x] 2.2 注册 `rag.retrieval.vision-pdf.enabled`（false）/ `min-text-chars`（80）/ `max-pages`（3）到 `DynamicConfigKeyRegistry`（命名空间 `rag.retrieval`，不扩 NAMESPACES）
-- [ ] 2.3 更新 `docs/dynamic-config-keys.md`
+- [x] 2.3 更新 `docs/dynamic-config-keys.md`
 
 ## 3. ¥0 单测
 
@@ -28,8 +31,8 @@
 
 ## 4. ¥0 回归与 CI
 
-- [ ] 4.1 `mvn -B -ntp test` 全绿；读本次合计改 ci.yml 三处
-- [ ] 4.2 Docker 可选 skip
+- [x] 4.1 `mvn -B -ntp test` 全绿；读本次合计改 ci.yml 三处
+- [x] 4.2 Docker 可选 skip
 
 ## 5. 真 VLM 试点（授权节点，非合入前置）
 

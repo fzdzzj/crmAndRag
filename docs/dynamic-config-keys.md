@@ -40,6 +40,16 @@
 | `rag.retrieval.image-text-route-weight` | Double | 0.70 | 文本路权重（0~1） |
 | `rag.retrieval.image-vector-route-weight` | Double | 0.30 | 图片路权重（0~1） |
 
+## rag.retrieval.vision-pdf.* —— 图像 PDF 视觉转写试点（add-vision-pdf-ingest-pilot）
+
+| 键 | 类型 | 默认值 | 语义与回退 |
+|---|---|---|---|
+| `rag.retrieval.vision-pdf.enabled` | Boolean | **false** | 总开关；关/未配/转写器未装配 = 仅文本层（与升级前一致） |
+| `rag.retrieval.vision-pdf.min-text-chars` | Integer | 80 | normalize 后文本短于此值才尝试 VLM；范围 1~2000 |
+| `rag.retrieval.vision-pdf.max-pages` | Integer | 3 | 单文档最多视觉转写页数；范围 1~20；超出保留文本层 |
+
+> 失败回退：渲染失败 / vision 抛错 / 转写 blank 或 &lt;40 字 / 「（截图不清）」÷汉字 &gt;0.4 → 保留该页文本层，不使整篇 ingest 抛视觉异常。真 VLM 外呼须另授权。
+
 ## rag.context.* —— 上下文组装：邻居增强与压缩（提案3 新增，add-context-compression-and-enrichment）
 
 | 键 | 类型 | 默认值 | 语义与回退 |
