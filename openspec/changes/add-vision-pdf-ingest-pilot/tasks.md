@@ -20,11 +20,11 @@
 
 ## 3. ¥0 单测
 
-- [ ] 3.1 默认关：无文本 PDF 不调 vision；整篇空仍抛「文档解析结果为空」
-- [ ] 3.2 开 + mock：无文本页得到转写，pageNo=1
-- [ ] 3.3 开 + 抛错 / 低质量转写：回退，不炸
-- [ ] 3.4 `semanticStrategyPreservesPageNoAnchorsOnPdf` 在 enabled=true 时仍绿（富文本不走 VLM）
-- [ ] 3.5 无参 `new DocumentService()` 不调 vision
+- [x] 3.1 默认关：无文本 PDF 不调 vision；整篇空仍抛「文档解析结果为空」
+- [x] 3.2 开 + mock：无文本页得到转写，pageNo=1
+- [x] 3.3 开 + 抛错 / 低质量转写：回退，不炸
+- [x] 3.4 `semanticStrategyPreservesPageNoAnchorsOnPdf` 在 enabled=true 时仍绿（富文本不走 VLM）
+- [x] 3.5 无参 `new DocumentService()` 不调 vision
 
 ## 4. ¥0 回归与 CI
 

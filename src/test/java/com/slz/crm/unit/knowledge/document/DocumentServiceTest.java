@@ -3,7 +3,11 @@ package com.slz.crm.unit.knowledge.document;
 import com.alibaba.excel.EasyExcel;
 import com.slz.crm.knowledge.document.DocumentChunk;
 import com.slz.crm.knowledge.document.DocumentService;
+import com.slz.crm.knowledge.document.PdfVisionTranscriber;
 import com.slz.crm.platform.contract.DynamicConfigService;
+import com.slz.crm.platform.contract.ModelCallOptions;
+import com.slz.crm.platform.contract.ModelCallResult;
+import com.slz.crm.platform.contract.ModelProvider;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -14,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.beans.factory.ObjectProvider;
 
 import java.io.ByteArrayInputStream;
@@ -25,10 +30,15 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -262,6 +272,191 @@ class DocumentServiceTest {
         assertTrue(fixed.stream().anyMatch(c -> c.text().contains("安装") && c.text().contains("卸载")),
                 "fixed 滑窗必然存在跨小节混片的切片（话题断裂）");
     }
+
+
+    // ---------- add-vision-pdf-ingest-pilot 任务 3.1–3.5 ----------
+
+    /** 3.1 默认关：无文本 PDF 不调 vision；整篇空仍抛「文档解析结果为空」。 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void visionPdfDisabledDoesNotCallVisionOnEmptyPdf() throws Exception {
+        ModelProvider model = mock(ModelProvider.class);
+        ObjectProvider<DynamicConfigService> configProvider = mock(ObjectProvider.class);
+        DynamicConfigService config = mock(DynamicConfigService.class);
+        when(configProvider.getIfAvailable()).thenReturn(config);
+        when(config.get(eq(PdfVisionTranscriber.ENABLED_KEY), eq(Boolean.class), any()))
+                .thenReturn(false);
+        // 即使装配了 transcriber，开关关也不应触达 model.vision
+        PdfVisionTranscriber transcriber = new PdfVisionTranscriber(model, configProvider, null);
+        ObjectProvider<PdfVisionTranscriber> visionProvider = mock(ObjectProvider.class);
+        when(visionProvider.getIfAvailable()).thenReturn(transcriber);
+
+        DocumentService service = new DocumentService(configProvider, visionProvider);
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> service.process(new ByteArrayInputStream(blankPdfBytes()), "empty.pdf", "crm"));
+        assertTrue(ex.getMessage().contains("文档解析结果为空"), ex.getMessage());
+        verifyNoInteractions(model);
+    }
+
+    /** 3.2 开 + mock：无文本页得到转写，pageNo=1。 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void visionPdfEnabledMockTranscriptFillsEmptyPageWithPageNo() throws Exception {
+        ModelProvider model = mock(ModelProvider.class);
+        String transcript = "这是视觉转写得到的课件正文内容，包含标题与要点说明，以及架构图节点关系描述，长度足够通过质量闸门校验。";
+        when(model.vision(any(Prompt.class), any(ModelCallOptions.class)))
+                .thenReturn(ModelCallResult.ofText(transcript, "mock-vl", 10L, 20L, 30L));
+
+        ObjectProvider<DynamicConfigService> configProvider = mock(ObjectProvider.class);
+        DynamicConfigService config = mock(DynamicConfigService.class);
+        when(configProvider.getIfAvailable()).thenReturn(config);
+        when(config.get(eq(PdfVisionTranscriber.ENABLED_KEY), eq(Boolean.class), any()))
+                .thenReturn(true);
+        when(config.get(eq(PdfVisionTranscriber.MIN_TEXT_CHARS_KEY), eq(Integer.class), any()))
+                .thenReturn(80);
+        when(config.get(eq(PdfVisionTranscriber.MAX_PAGES_KEY), eq(Integer.class), any()))
+                .thenReturn(3);
+        // chunking 默认 fixed
+        when(config.get(eq(DocumentService.STRATEGY_KEY), eq(String.class), any()))
+                .thenReturn(DocumentService.STRATEGY_FIXED);
+
+        PdfVisionTranscriber transcriber = new PdfVisionTranscriber(model, configProvider, null);
+        ObjectProvider<PdfVisionTranscriber> visionProvider = mock(ObjectProvider.class);
+        when(visionProvider.getIfAvailable()).thenReturn(transcriber);
+
+        DocumentService service = new DocumentService(configProvider, visionProvider);
+        List<DocumentChunk> chunks = service.process(
+                new ByteArrayInputStream(blankPdfBytes()), "image-page.pdf", "crm");
+
+        assertFalse(chunks.isEmpty());
+        assertTrue(chunks.stream().anyMatch(c -> c.text().contains("视觉转写")), chunks.toString());
+        assertTrue(chunks.stream().allMatch(c -> c.pageNo() != null && c.pageNo() == 1),
+                "转写页 pageNo 必须为 1: " + chunks);
+        verify(model, times(1)).vision(any(Prompt.class), any(ModelCallOptions.class));
+    }
+
+    /** 3.3 开 + 抛错 / 低质量转写：回退文本层，process 不因 VLM 失败而炸。 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void visionPdfFailureFallsBackWithoutThrowingVisionError() throws Exception {
+        ModelProvider throwing = mock(ModelProvider.class);
+        when(throwing.vision(any(Prompt.class), any(ModelCallOptions.class)))
+                .thenThrow(new RuntimeException("simulated vision outage"));
+
+        ModelProvider lowQuality = mock(ModelProvider.class);
+        // 大量「（截图不清）」相对汉字占比过高 → 闸门失败
+        String bad = "（截图不清）（截图不清）（截图不清）字";
+        when(lowQuality.vision(any(Prompt.class), any(ModelCallOptions.class)))
+                .thenReturn(ModelCallResult.ofText(bad, "mock-vl", 1L, 1L, 2L));
+
+        for (ModelProvider model : List.of(throwing, lowQuality)) {
+            ObjectProvider<DynamicConfigService> configProvider = mock(ObjectProvider.class);
+            DynamicConfigService config = mock(DynamicConfigService.class);
+            when(configProvider.getIfAvailable()).thenReturn(config);
+            when(config.get(eq(PdfVisionTranscriber.ENABLED_KEY), eq(Boolean.class), any()))
+                    .thenReturn(true);
+            when(config.get(eq(PdfVisionTranscriber.MIN_TEXT_CHARS_KEY), eq(Integer.class), any()))
+                    .thenReturn(80);
+            when(config.get(eq(PdfVisionTranscriber.MAX_PAGES_KEY), eq(Integer.class), any()))
+                    .thenReturn(3);
+            when(config.get(eq(DocumentService.STRATEGY_KEY), eq(String.class), any()))
+                    .thenReturn(DocumentService.STRATEGY_FIXED);
+
+            PdfVisionTranscriber transcriber = new PdfVisionTranscriber(model, configProvider, null);
+            ObjectProvider<PdfVisionTranscriber> visionProvider = mock(ObjectProvider.class);
+            when(visionProvider.getIfAvailable()).thenReturn(transcriber);
+            DocumentService service = new DocumentService(configProvider, visionProvider);
+
+            // 回退空文本层 → 与默认关相同，整篇空；不得抛出 vision 相关异常信息
+            IllegalStateException ex = assertThrows(IllegalStateException.class,
+                    () -> service.process(new ByteArrayInputStream(blankPdfBytes()), "fail.pdf", "crm"));
+            assertTrue(ex.getMessage().contains("文档解析结果为空"), ex.getMessage());
+            assertFalse(ex.getMessage().toLowerCase().contains("vision"), ex.getMessage());
+            assertFalse(ex.getCause() != null && ex.getCause().getMessage() != null
+                            && ex.getCause().getMessage().contains("simulated vision"),
+                    "不得把 vision 异常冒泡为 process 失败原因");
+        }
+    }
+
+    /**
+     * 3.4 semanticStrategyPreservesPageNoAnchorsOnPdf 在 enabled=true 时仍绿：
+     * 富文本页不走 VLM（pageNo 锚点保持）。
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void semanticStrategyPreservesPageNoAnchorsOnPdfEvenWhenVisionEnabled() throws Exception {
+        ModelProvider model = mock(ModelProvider.class);
+
+        ByteArrayOutputStream pdf = new ByteArrayOutputStream();
+        try (PDDocument document = new PDDocument()) {
+            for (String marker : List.of("pageone", "pagetwo")) {
+                PDPage page = new PDPage(PDRectangle.A4);
+                document.addPage(page);
+                try (PDPageContentStream content = new PDPageContentStream(document, page)) {
+                    content.beginText();
+                    content.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 10);
+                    content.newLineAtOffset(40, 750);
+                    // 重复足够多，文本层长度 ≥ min-text-chars，不应触发 vision
+                    String line = marker + " contract clause anchor text for page level citation ";
+                    for (int i = 0; i < 20; i++) {
+                        content.showText(line);
+                        content.newLineAtOffset(0, -14);
+                    }
+                    content.endText();
+                }
+            }
+            document.save(pdf);
+        }
+
+        ObjectProvider<DynamicConfigService> configProvider = mock(ObjectProvider.class);
+        DynamicConfigService config = mock(DynamicConfigService.class);
+        when(configProvider.getIfAvailable()).thenReturn(config);
+        when(config.get(eq(DocumentService.STRATEGY_KEY), eq(String.class), any())).thenReturn("semantic");
+        when(config.get(eq(DocumentService.MAX_CHUNK_SIZE_KEY), eq(Integer.class), any())).thenReturn(480);
+        when(config.get(eq(PdfVisionTranscriber.ENABLED_KEY), eq(Boolean.class), any())).thenReturn(true);
+        when(config.get(eq(PdfVisionTranscriber.MIN_TEXT_CHARS_KEY), eq(Integer.class), any())).thenReturn(80);
+        when(config.get(eq(PdfVisionTranscriber.MAX_PAGES_KEY), eq(Integer.class), any())).thenReturn(3);
+
+        PdfVisionTranscriber transcriber = new PdfVisionTranscriber(model, configProvider, null);
+        ObjectProvider<PdfVisionTranscriber> visionProvider = mock(ObjectProvider.class);
+        when(visionProvider.getIfAvailable()).thenReturn(transcriber);
+
+        DocumentService service = new DocumentService(configProvider, visionProvider);
+        List<DocumentChunk> chunks = service.process(
+                new ByteArrayInputStream(pdf.toByteArray()), "contract.pdf", "crm");
+        assertTrue(chunks.size() > 2, "两页文档应产出多切片: " + chunks.size());
+        for (DocumentChunk chunk : chunks) {
+            if (chunk.text().contains("pageone")) {
+                assertEquals(1, chunk.pageNo(), "第 1 页内容必须携带 pageNo=1: " + chunk.text());
+            }
+            if (chunk.text().contains("pagetwo")) {
+                assertEquals(2, chunk.pageNo(), "第 2 页内容必须携带 pageNo=2: " + chunk.text());
+            }
+        }
+        verify(model, never()).vision(any(Prompt.class), any(ModelCallOptions.class));
+        verify(model, never()).vision(any(Prompt.class));
+    }
+
+    /** 3.5 无参 new DocumentService() 不调 vision。 */
+    @Test
+    void noArgDocumentServiceNeverInvokesVision() throws Exception {
+        // 无参构造不注入 transcriber；空 PDF 走旧行为
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> documentService.process(
+                        new ByteArrayInputStream(blankPdfBytes()), "blank.pdf", "crm"));
+        assertTrue(ex.getMessage().contains("文档解析结果为空"), ex.getMessage());
+    }
+
+    /** 单页空白 PDF（无文本层），供视觉路径夹具。 */
+    private static byte[] blankPdfBytes() throws Exception {
+        ByteArrayOutputStream pdf = new ByteArrayOutputStream();
+        try (PDDocument document = new PDDocument()) {
+            document.addPage(new PDPage(PDRectangle.A4));
+            document.save(pdf);
+        }
+        return pdf.toByteArray();
+    }
+
 
     /** semantic 配置下的 DocumentService（mock 动态配置，上限 480）。 */
     @SuppressWarnings("unchecked")
