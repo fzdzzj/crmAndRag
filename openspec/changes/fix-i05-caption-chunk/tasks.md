@@ -4,7 +4,7 @@
 
 ## 0. 执行记录
 
-- fixture=sla-arch-diagram.md key=sla-arch；前缀去重 12（RagBenchmarkDataPreparerTest 绿）；surefire 实测 645；I-05 重跑 citP 待授权
+- fixture=sla-arch-diagram.md key=sla-arch；前缀去重 12；surefire 645；I-05 重跑 citP=**1.0**（golden=sla-arch-0 rank1，KEEP [1]）
 
 ## 1. 语料拆出（¥0）
 
@@ -23,14 +23,14 @@
 
 ## 4. 授权：仅 I-05 取证重跑
 
-- [x] 4.1 **停下**报成本（同 I-05 取证：全量 fixtures 嵌入 + 1 条生成判卷）——待授权，未跑
-- [ ] 4.2 （授权后）
+- [x] 4.1 **停下**报成本（同 I-05 取证：全量 fixtures 嵌入 + 1 条生成判卷）——已授权并完成，citP=1.0
+- [x] 4.2 （授权后）
   ```
   $env:RAG_BENCHMARK_REAL='1'
   mvn -B -ntp test-compile failsafe:integration-test "-Dit.test=RagRealRetrievalBenchmarkIT" "-Drag.benchmark.only=I-05" "-Drag.benchmark.out=docs/rag-quality/i05-after-caption-chunk-report.json" "-Drag.benchmark.trace.out=docs/rag-quality/i05-after-caption-chunk.json"
   ```
   禁止覆盖 v1/v2/after-quality-loop/i05-forensics.json
-- [ ] 4.3 结论写入 `docs/rag-quality/i05-after-caption-chunk.md`：citP 目标 1.0；仍 0 则停，不改对齐器
+- [x] 4.3 结论写入 `docs/rag-quality/i05-after-caption-chunk.md`：citP 目标 1.0；仍 0 则停，不改对齐器
 
 ## 5. 收尾
 
