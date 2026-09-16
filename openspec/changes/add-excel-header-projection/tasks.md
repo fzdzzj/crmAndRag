@@ -22,8 +22,8 @@
 
 ## 3. ¥0 回归与 CI 基线
 
-- [ ] 3.1 `mvn -B -ntp test` 全绿；**读本次 surefire 合计** 同步 ci.yml 三处。禁止推算
-- [ ] 3.2 Docker 可选：未开 Desktop 记 skip，禁止把 Tests run: 0 报绿
+- [x] 3.1 `mvn -B -ntp test` 全绿；**读本次 surefire 合计** 同步 ci.yml 三处。禁止推算
+- [x] 3.2 Docker 可选：未开 Desktop 记 skip，禁止把 Tests run: 0 报绿
 
 ## 4. 真基准复测（授权节点，未授权禁止执行）
 
