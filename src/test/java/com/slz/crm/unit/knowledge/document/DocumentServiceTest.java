@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -178,6 +179,67 @@ class DocumentServiceTest {
                 assertEquals(3, chunk.rowIndex(), "第 3 行内容必须携带 rowIndex=3");
             }
         }
+    }
+
+    /**
+     * add-excel-header-projection 任务 2.1：多列短表头投影到数据行；
+     * 表头行不入库，rowIndex 仍为工作表原始行号。
+     */
+    @Test
+    void multiColumnShortHeaderProjectsIntoDataRows() throws Exception {
+        ByteArrayOutputStream xlsx = new ByteArrayOutputStream();
+        List<List<String>> rows = List.of(
+                List.of("设备型号", "维保周期", "计划工时(人·时)", "参与人数"),
+                List.of("XR-500", "季度", "4", "2"),
+                List.of("KQ-9000", "月度", "3", "1"));
+        EasyExcel.write(xlsx).sheet("data").doWrite(rows);
+
+        List<DocumentChunk> chunks = documentService.process(
+                new ByteArrayInputStream(xlsx.toByteArray()), "maint.xlsx", "crm");
+
+        assertEquals(2, chunks.size(), "投影启用后仅数据行入库，不得含独立表头块: " + chunks);
+        assertTrue(chunks.stream().noneMatch(c ->
+                        c.text().contains("设备型号") && !c.text().contains("XR-500") && !c.text().contains("KQ-9000")),
+                "不得存在仅由表头组成的独立切片: " + chunks);
+
+        DocumentChunk xr = chunks.stream().filter(c -> c.text().contains("XR-500")).findFirst().orElseThrow();
+        DocumentChunk kq = chunks.stream().filter(c -> c.text().contains("KQ-9000")).findFirst().orElseThrow();
+        assertEquals(2, xr.rowIndex(), "表头是第 1 行，XR-500 数据行 rowIndex 必须为 2");
+        assertEquals(3, kq.rowIndex(), "KQ-9000 数据行 rowIndex 必须为 3");
+        assertTrue(xr.text().contains("计划工时"), "数据行必须含列名「计划工时」: " + xr.text());
+        assertTrue(xr.text().contains("计划工时(人·时)：4"), "投影格式应为 列名：值: " + xr.text());
+        assertTrue(xr.text().contains("设备型号：XR-500"), xr.text());
+        assertTrue(xr.text().contains("维保周期：季度"), xr.text());
+        assertTrue(xr.text().contains("参与人数：2"), xr.text());
+    }
+
+    /**
+     * add-excel-header-projection 任务 2.3：首行某格超长（>32）不投影，行为与升级前一致。
+     */
+    @Test
+    void longFirstRowCellSkipsHeaderProjection() throws Exception {
+        String longCell = "这是一段超过三十二个字的首行单元格内容用来阻止表头启发式触发ABC";
+        assertTrue(longCell.length() > 32, "夹具本身必须超长: " + longCell.length());
+
+        ByteArrayOutputStream xlsx = new ByteArrayOutputStream();
+        List<List<String>> rows = List.of(
+                List.of(longCell, "短列"),
+                List.of("数据甲", "数据乙"));
+        EasyExcel.write(xlsx).sheet("data").doWrite(rows);
+
+        List<DocumentChunk> chunks = documentService.process(
+                new ByteArrayInputStream(xlsx.toByteArray()), "long-header.xlsx", "crm");
+
+        assertTrue(chunks.stream().anyMatch(c -> c.rowIndex() != null && c.rowIndex() == 1 && c.text().contains(longCell)),
+                "首行仍应作为切片入库: " + chunks);
+        DocumentChunk data = chunks.stream()
+                .filter(c -> c.rowIndex() != null && c.rowIndex() == 2)
+                .findFirst()
+                .orElseThrow();
+        assertTrue(data.text().contains("数据甲") && data.text().contains("数据乙"),
+                "数据行仍为原值拼接: " + data.text());
+        assertFalse(data.text().contains("："),
+                "未投影时不应出现「列名：值」冒号格式: " + data.text());
     }
 
     /** 任务 1.4 质量对比：小节内容装得下时 semantic 保持小节完整，fixed 滑窗会切在段中间。 */
