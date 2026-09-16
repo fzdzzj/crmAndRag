@@ -90,6 +90,7 @@ com.slz.crm
 - **生成后引用编号对齐（fix-citation-alignment，已合入）**：`CitationAligner` 零外呼 KEEP/REMAP/DROP；生产 `AiChatStreamLifecycle` 落库前对齐、评测 `RagRealRetrievalBenchmarkIT` 共用同一实现对齐后再抽 citations。阈值 KEEP_MIN=0.12 / REMAP_MIN=0.22 / TIE_MARGIN=0.08；计分子句 CJK 二字覆盖率。surefire 619→625（+CitationAlignerTest 6）。**after-citation 真基准复测待授权**（禁止覆盖 v1/v2 JSON，输出 `docs/rag-quality/baseline-after-citation.json`）。
 - **Excel 多列表头投影（add-excel-header-projection，已合入）**：`DocumentService.parseExcel` 在首行非空格≥2 且每格≤32 时把列名投影为「列名：值」进数据行，表头行不入库；单列/超长首行保持原行为。¥0 单测 + 语料黄金行列名断言已绿（surefire 625→628）。**after-excel-header 真基准复测待授权**（输出 `docs/rag-quality/baseline-after-excel-header.json`，禁止覆盖 v1/v2/after-citation；盯 TB-01/TB-10 recall，其余 TABLE 不回退）。生产已入库 xlsx 需另授权 reingest，本单不触发。
 - **多条件查询零 LLM 拆路召回（fix-multicondition-recall，已合入）**：`ConstraintQuerySplitter` 确定性拆「A后B/且/并且/同时」为原查询+左右路；`KnowledgeRetrievalServiceImpl.retrieve` 每路 embed+recallTextRoute，>1 路用本地 `new RrfFusion().fuseAll`（V1 六参 this.rrfFusion==null 也可融）。**禁止改构造器**；**不打开** multi-query 默认。surefire 628→634（+ConstraintQuerySplitterTest 6）。**任务组4 真基准复测待授权**（输出 `docs/rag-quality/baseline-after-multicondition.json`，禁止覆盖 v1/v2/after-citation/after-excel-header；盯 T-14 recall 目标 1.0，T-15/T-16/T-17 不回退）。**after-multicondition / after-citation / after-excel-header 三项均待授权，本会话均未跑。**
+- **视觉摄取适用性调研（research-visual-ingest，已合入）**：对照文档 `docs/ingest-gap-map.md`（本仓 PDFBox 文本层现状 × 学习工作区 PNG+VLM 做法 × 差距表 × 成本粗估）。**实现未立项**；推荐下一切口见 gap-map §5（图像 PDF 检测 + 单页 VLM 转写试点，默认关，失败回退文本层）。本调研 ¥0、零外呼；`_vlm_transcribe.py` 等仍未跟踪不提交。
 
 
 ---
@@ -113,7 +114,9 @@ com.slz.crm
 - `project.md` —— 17 方案处置总表 + 硬约束（**改检索链路前必读**）
 - `git-workflow.md` —— 分支/提交/合并/CI 基线/成本闸门契约
 - `changes/archive/` —— 六案：add-rag-quality-baseline（评估基线）/ complete-hybrid-retrieval-and-rerank（混合检索+重排）/ add-context-compression-and-enrichment（压缩+邻居）/ upgrade-semantic-chunking-and-index（语义切分+双粒度）/ enhance-query-transformation（查询增强，默认关）/ run-baseline-ladder（基线阶梯五回）
-- `changes/`（进行中/待归档）—— audit-permission-matrix（端点权限矩阵审计，已合入，映射表待拍板）；drift-disposition（schema 漂移 7 项定夺豁免 + KNOWN/NEW 二分，已合入，待授权清零）；expand-rag-benchmark（基准集 18→54 条 + SUITE_VERSION 2.0，已合入；v2 锚点已授权跑完，baseline-v2.json + baseline-v2-anchor.md 于 feature/rag-v2-anchor 合入）；fix-citation-alignment（生成后引用编号对齐，已合入；after-citation 锚点待授权补跑）；add-excel-header-projection（Excel 表头投影到数据行，已合入；after-excel-header 锚点待授权补跑）；fix-multicondition-recall（多条件拆路召回，已合入；after-multicondition 锚点待授权补跑）
+- `changes/`（进行中/待归档）—— audit-permission-matrix（端点权限矩阵审计，已合入，映射表待拍板）；drift-disposition（schema 漂移 7 项定夺豁免 + KNOWN/NEW 二分，已合入，待授权清零）；expand-rag-benchmark（基准集 18→54 条 + SUITE_VERSION 2.0，已合入；v2 锚点已授权跑完，baseline-v2.json + baseline-v2-anchor.md 于 feature/rag-v2-anchor 合入）；fix-citation-alignment（生成后引用编号对齐，已合入；after-citation 锚点待授权补跑）；add-excel-header-projection（Excel 表头投影到数据行，已合入；after-excel-header 锚点待授权补跑）；fix-multicondition-recall（多条件拆路召回，已合入；after-multicondition 锚点待授权补跑）；research-visual-ingest（视觉摄取差距对照，已合入；实现另案，见 docs/ingest-gap-map.md）
+
+摄取调研：`docs/ingest-gap-map.md` —— 视觉摄取适用性对照（实现未立项）。
 
 代码入口：`src/main/java/com/slz/crm/{server,knowledge,platform}`；测试：`src/test/java/com/slz/crm/{unit,integration,contract,quality}`。
 
