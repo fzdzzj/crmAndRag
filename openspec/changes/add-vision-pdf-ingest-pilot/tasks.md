@@ -8,7 +8,7 @@
 - 阈值：min-text-chars=80 / max-pages=3 / enabled 默认 **false**（未改）
 - surefire 实测：2026-09-16 `mvn -B -ntp test`，Tests run **639**（=634+5），Failures=0 Errors=0；`DASHSCOPE_API_KEY=''`
 - 误外呼：**无**（未设 API key，未跑任务组 5，未设 RAG_BENCHMARK_REAL=1）
-- 任务组 5：停等授权（1 页图像 PDF ≈1 次 vision）
+- 任务组 5：**已授权执行（2026-09-17，`feature/vision-pdf-real-pilot`）**——1 页无文本层 PDF 真 VLM 实测 **1 次 vision**，测试绿（Tests run 1 / Failures 0 / Errors 0 / Skipped 0）；转写 112 字、关键词 6/6 命中、闸门通过、chunks=1 pageNo=1；未跑 54 条、未跑 132 页全量；记录见 `docs/ingest-vision-pdf-pilot.md`
 
 ## 1. 转写器（¥0）
 
@@ -36,8 +36,9 @@
 
 ## 5. 真 VLM 试点（授权节点，非合入前置）
 
-- [ ] 5.1 **停下**报：1 页图像 PDF 约 1 次 vision，成本远小于 54 条基准，仍须授权
-- [ ] 5.2 （授权后）enabled=true 跑 1 页试点，记录转写长度与是否过闸门；失败回退则记下原因。禁止 132 页全量
+- [x] 5.1 **停下**报：1 页图像 PDF 约 1 次 vision，成本远小于 54 条基准，仍须授权 —— 用户已授权（2026-09-17）
+- [x] 5.2 （授权后）enabled=true 跑 1 页试点，记录转写长度与是否过闸门；失败回退则记下原因。禁止 132 页全量
+  - 实测：`VisionPdfRealPilotIT`（failsafe，`RAG_VISION_PDF_REAL=1` 门控）绿，**1 次 vision**；转写 112 字（汉字 63，无「（截图不清）」），闸门**通过**，关键词 6/6，chunks=1 / pageNo=1；未触发回退（回退链由任务 3.1–3.5 ¥0 单测覆盖）；记录 `docs/ingest-vision-pdf-pilot.md`
 
 ## 6. 收尾
 
