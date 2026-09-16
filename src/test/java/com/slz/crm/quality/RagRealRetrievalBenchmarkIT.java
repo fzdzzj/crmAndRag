@@ -39,13 +39,20 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -65,6 +72,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * TTFT 取流式答案首 chunk 时延；总延迟覆盖 检索+生成+判卷 全程。
  * 向量库用 InMemory（评测环境无 Qdrant 依赖），检索算法与生产同源
  * （{@link KnowledgeRetrievalServiceImpl} 全链路，仅授权换成评测桩）。</p>
+ *
+ * <p><b>取证旁路</b>（trace-i05-citation-forensics）：{@code -Drag.benchmark.only} 过滤单条；
+ * {@code -Drag.benchmark.trace.out} 落盘对齐前后答案与 [n]/召回 excerpt。不改 CaseScore /
+ * CitationAligner / citationPrecision 公式。单条报告禁止当锚点。</p>
  */
 class RagRealRetrievalBenchmarkIT {
 
@@ -82,6 +93,22 @@ class RagRealRetrievalBenchmarkIT {
     private static final String RUN_PROP = "rag.benchmark.run";
     /** 报告输出路径覆盖：{@code -Drag.benchmark.out=docs/rag-quality/<name>.json}。 */
     private static final String OUT_PROP = "rag.benchmark.out";
+    /**
+     * 用例 id 过滤（trace-i05-citation-forensics 任务 1.1）：{@code -Drag.benchmark.only=I-05}，
+     * 逗号分隔多 id；未设置=全套。过滤后报告不是可比锚点。
+     */
+    static final String ONLY_PROP = "rag.benchmark.only";
+    /**
+     * 取证旁路 JSON（任务 1.2）：默认 {@code docs/rag-quality/i05-forensics.json}，
+     * 可用 {@code -Drag.benchmark.trace.out} 覆盖。不进 CaseScore。
+     */
+    static final String TRACE_OUT_PROP = "rag.benchmark.trace.out";
+    static final Path DEFAULT_TRACE_PATH = Path.of("docs", "rag-quality", "i05-forensics.json");
+    /** excerpt 截断长度（字）。 */
+    private static final int EXCERPT_LIMIT = 400;
+
+    /** 本轮 evaluateCase 采集的取证旁路（不进 CaseScore）。 */
+    private final List<ForensicCase> forensicCases = new ArrayList<>();
 
     private static final String KB_ANSWER_SYSTEM_PROMPT = """
             你是 CRM 知识库助手。仅依据下方编号资料回答用户问题，作答时用 [n] 标注所引用资料的编号。
@@ -129,6 +156,9 @@ class RagRealRetrievalBenchmarkIT {
         System.out.println("[rag-benchmark] 语料入库完成：chunks=" + preparation.chunkIds().size()
                 + " goldens=" + preparation.goldenToChunkId().size());
         List<RagBenchmarkCase> suite = RagBenchmarkDataPreparer.rewriteSuite(RagBenchmarkSuite.standard(), preparation);
+        // trace-i05-citation-forensics 1.1：按 -Drag.benchmark.only 过滤（未知 id / 空套件失败）
+        suite = applyOnlyFilter(suite, System.getProperty(ONLY_PROP));
+        System.out.println("[rag-benchmark] suite size after only-filter=" + suite.size());
 
         // 2) 真检索管线：真改写 + 真嵌入 + 真召回融合重排（授权为评测桩：固定放行评测库）
         KnowledgeRetrievalPort retrievalPort = RagBenchmarkPipelineFactory.build(
@@ -138,6 +168,7 @@ class RagRealRetrievalBenchmarkIT {
         UserContext evaluator = new UserContext(EVAL_USER_ID, EVAL_USER_ID + 1, EVAL_USER_ID + 2,
                 DataScopeLevel.NONE, "rag-benchmark-runner");
         Report report;
+        forensicCases.clear();
         try {
             UserContextHolder.set(evaluator);
             report = RagQualityEvaluator.evaluate(suite, c -> evaluateCase(retrievalPort, provider, c), TOP_K);
@@ -159,6 +190,124 @@ class RagRealRetrievalBenchmarkIT {
         Files.writeString(outPath, withRunConfig(report.toJson(), run), StandardCharsets.UTF_8);
         System.out.println("[rag-benchmark] 基线已落盘: " + outPath.toAbsolutePath());
         System.out.println("[rag-benchmark] metrics=" + report.metrics());
+
+        // 4) 取证旁路（trace-i05-citation-forensics 1.2）：对齐前后答案/[n]/召回/excerpt，不进 CaseScore
+        Path tracePath = resolveTraceOutPath();
+        writeForensicsTrace(tracePath, enrichForensicsWithScores(forensicCases, report));
+        System.out.println("[rag-benchmark] 取证旁路已落盘: " + tracePath.toAbsolutePath());
+    }
+
+    /** 解析取证旁路输出路径。 */
+    static Path resolveTraceOutPath() {
+        String override = System.getProperty(TRACE_OUT_PROP);
+        if (override == null || override.isBlank()) {
+            return DEFAULT_TRACE_PATH;
+        }
+        return Path.of(override);
+    }
+
+    /**
+     * only 过滤（任务 1.1）：{@code only} 为空不滤；逗号分隔 id；未知 id 或结果空套件失败。
+     * package-private 供 {@code BenchmarkOnlyFilterTest} 单测。
+     */
+    static List<RagBenchmarkCase> applyOnlyFilter(List<RagBenchmarkCase> suite, String only) {
+        Objects.requireNonNull(suite, "suite");
+        if (only == null || only.isBlank()) {
+            return suite;
+        }
+        Set<String> wanted = Arrays.stream(only.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        assertFalse(wanted.isEmpty(), "rag.benchmark.only 解析后为空");
+
+        Set<String> available = suite.stream().map(RagBenchmarkCase::id).collect(Collectors.toSet());
+        Set<String> unknown = new LinkedHashSet<>();
+        for (String id : wanted) {
+            if (!available.contains(id)) {
+                unknown.add(id);
+            }
+        }
+        assertTrue(unknown.isEmpty(),
+                "rag.benchmark.only 含未知 id: " + unknown + "（套件已知 id 数=" + available.size() + "）");
+
+        List<RagBenchmarkCase> filtered = suite.stream()
+                .filter(c -> wanted.contains(c.id()))
+                .toList();
+        assertFalse(filtered.isEmpty(), "rag.benchmark.only 过滤后套件为空: " + wanted);
+        return filtered;
+    }
+
+    /** 把报告里的 citP/recall/ansC 回填到取证记录（不改 CaseScore 字段集）。 */
+    static List<ForensicCase> enrichForensicsWithScores(List<ForensicCase> traces, Report report) {
+        Map<String, RagQualityReport.CaseScore> byId = new LinkedHashMap<>();
+        if (report != null && report.cases() != null) {
+            for (RagQualityReport.CaseScore score : report.cases()) {
+                byId.put(score.id(), score);
+            }
+        }
+        List<ForensicCase> enriched = new ArrayList<>(traces.size());
+        for (ForensicCase trace : traces) {
+            RagQualityReport.CaseScore score = byId.get(trace.id());
+            if (score == null) {
+                enriched.add(trace);
+                continue;
+            }
+            enriched.add(new ForensicCase(
+                    trace.id(),
+                    trace.question(),
+                    trace.goldenIds(),
+                    trace.retrievedChunkIds(),
+                    trace.excerpts(),
+                    trace.rawAnswer(),
+                    trace.alignedAnswer(),
+                    trace.citationsBefore(),
+                    trace.citationsAfter(),
+                    score.citationPrecision(),
+                    score.answerConsistency(),
+                    score.recallAtK()));
+        }
+        return enriched;
+    }
+
+    /** 取证 JSON 落盘（字段齐全；假数据单测可直接调 {@link #forensicsToJson}）。 */
+    static void writeForensicsTrace(Path path, List<ForensicCase> cases) throws Exception {
+        Files.createDirectories(path.getParent() == null ? Path.of(".") : path.getParent());
+        Files.writeString(path, forensicsToJson(cases), StandardCharsets.UTF_8);
+    }
+
+    /** 序列化取证旁路 JSON（任务 2.2 单测入口）。 */
+    static String forensicsToJson(List<ForensicCase> cases) throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper mapper =
+                new com.fasterxml.jackson.databind.ObjectMapper()
+                        .enable(com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT);
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("caseCount", cases == null ? 0 : cases.size());
+        root.put("cases", cases == null ? List.of() : cases);
+        return mapper.writeValueAsString(root);
+    }
+
+    /**
+     * 取证单条（不进 CaseScore）。excerpts 含 1-based n / chunkId / 截断 excerpt。
+     * package-private 供单测构造假数据。
+     */
+    record ForensicCase(
+            String id,
+            String question,
+            List<String> goldenIds,
+            List<String> retrievedChunkIds,
+            List<ExcerptTrace> excerpts,
+            String rawAnswer,
+            String alignedAnswer,
+            List<Integer> citationsBefore,
+            List<Integer> citationsAfter,
+            Double citationPrecision,
+            Double answerConsistency,
+            Double recallAtK) {
+    }
+
+    /** 召回来源 excerpt 追踪行。 */
+    record ExcerptTrace(int n, String chunkId, String excerpt) {
     }
 
     /** 在报告 JSON 末尾附当跑矩阵快照（凭报告可复现该跑）；不影响 RAG 指标字段。 */
@@ -186,6 +335,7 @@ class RagRealRetrievalBenchmarkIT {
         // 闲聊（KB OFF）：真系统不检索，直接对话生成；无检索无引用 = 诚实满分口径
         if (!c.useKnowledgeBase()) {
             Generated reply = generate(provider, CHAT_SYSTEM_PROMPT, c.question(), 256);
+            recordForensics(c, List.of(), List.of(), reply.text(), reply.text(), List.of(), List.of());
             return new CaseOutcome(List.of(), List.of(), 1.0, reply.ttftMs(),
                     System.currentTimeMillis() - startedAt, reply.tokens(), !reply.text().isBlank());
         }
@@ -199,6 +349,7 @@ class RagRealRetrievalBenchmarkIT {
             Generated reply = generate(provider, NO_HIT_SYSTEM_PROMPT, c.question(), 256);
             boolean declined = isDecline(reply.text());
             double coverage = c.expectedAnswerPoints().isEmpty() ? (declined ? 1.0 : 0.0) : 0.0;
+            recordForensics(c, List.of(), List.of(), reply.text(), reply.text(), List.of(), List.of());
             return new CaseOutcome(List.of(), List.of(), coverage,
                     reply.ttftMs(), System.currentTimeMillis() - startedAt, reply.tokens(), true);
         }
@@ -206,10 +357,13 @@ class RagRealRetrievalBenchmarkIT {
         // 有命中：资料编号注入 → 流式生成带 [n] 引用的答案 → 抽取真实引用编号
         String userContent = "资料：\n" + result.context() + "\n\n问题：" + c.question();
         Generated answer = generate(provider, KB_ANSWER_SYSTEM_PROMPT, userContent, 512);
+        // trace-i05-citation-forensics 1.2：对齐前先 extract，再 align，再 extract
+        List<Integer> citationsBefore = extractCitations(answer.text(), retrieved.size());
         // fix-citation-alignment 任务 2.2：评测抽取与生产共用 CitationAligner
         CitationAligner.Alignment aligned = CitationAligner.align(answer.text(), result.sources());
         String alignedText = aligned.text();
         List<Integer> citations = extractCitations(alignedText, retrieved.size());
+        recordForensics(c, retrieved, result.sources(), answer.text(), alignedText, citationsBefore, citations);
 
         // 答案要点覆盖：期望要点非空时由模型判卷；EDGE（期望空）看是否诚实拒答（对齐只改编号）
         double coverage;
@@ -220,6 +374,44 @@ class RagRealRetrievalBenchmarkIT {
         }
         return new CaseOutcome(retrieved, citations, coverage,
                 answer.ttftMs(), System.currentTimeMillis() - startedAt, answer.tokens(), true);
+    }
+
+    /** 采集对齐前后答案、引用、召回与 excerpt（截断），稍后与评分回填合并写旁路文件。 */
+    private void recordForensics(
+            RagBenchmarkCase c,
+            List<String> retrieved,
+            List<SourceReference> sources,
+            String rawAnswer,
+            String alignedAnswer,
+            List<Integer> citationsBefore,
+            List<Integer> citationsAfter) {
+        List<ExcerptTrace> excerpts = new ArrayList<>();
+        if (sources != null) {
+            for (int i = 0; i < sources.size(); i++) {
+                SourceReference source = sources.get(i);
+                String excerpt = source.excerpt() == null ? "" : source.excerpt();
+                if (excerpt.length() > EXCERPT_LIMIT) {
+                    excerpt = excerpt.substring(0, EXCERPT_LIMIT);
+                }
+                excerpts.add(new ExcerptTrace(i + 1, source.chunkId(), excerpt));
+            }
+        }
+        List<String> goldens = c.expectedChunkIds() == null
+                ? List.of()
+                : c.expectedChunkIds().stream().sorted().toList();
+        forensicCases.add(new ForensicCase(
+                c.id(),
+                c.question(),
+                goldens,
+                retrieved == null ? List.of() : List.copyOf(retrieved),
+                List.copyOf(excerpts),
+                rawAnswer == null ? "" : rawAnswer,
+                alignedAnswer == null ? "" : alignedAnswer,
+                citationsBefore == null ? List.of() : List.copyOf(citationsBefore),
+                citationsAfter == null ? List.of() : List.copyOf(citationsAfter),
+                null,
+                null,
+                null));
     }
 
     /** 流式生成：TTFT=首个 chunk 时延；tokens=流中最后一次 usage；文本按增量拼接。 */
