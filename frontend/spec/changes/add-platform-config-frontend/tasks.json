@@ -1,0 +1,100 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：权限核验与契约同步",
+    "task": "核验后端 /platform/config 权限状态并同步契约。",
+    "steps": [
+      {
+        "step": "核对 DynamicConfigAdminController 端点的 @RequirePermission 与权限矩阵登记状态，有缺口则停下回主仓",
+        "completed": true,
+        "evidence": "Controller read + grep: NO @RequirePermission on class or any method (all 7 endpoints). But: 1. Registered in PermissionCoverageScanner.CONTROLLER_REGISTRY (28 total incl. this). 2. All 7 endpoints (GET/POST/DELETE /platform/config/* ) explicitly listed in OpenEndpointRegistry.INTENTIONAL_OPEN with reason '服务层已强制 roleId=1 抛 96005（登记避免双重鉴权漂移）'. 3. PermissionCoverageAuditIT classifies as INTENTIONAL_OPEN (not CRITICAL/WARN/pending). Design choice per apply-permission-matrix: service layer gate instead of interceptor annotation. No gap per registry. Proceed (no stop).",
+        "inProgress": false
+      },
+      {
+        "step": "从后端 /v3/api-docs.yaml 同步 openapi.yaml 并执行 pnpm gen:api",
+        "completed": true,
+        "evidence": "openapi.yaml 已含 /platform/config 5 路径 + ConfigItemView/ConfigHistoryView/ConfigUpdateRequest/ConfigRollbackRequest/Result* schemas（后端未运行，以磁盘 yaml 为契约源）。gen:api 首跑失败并修复：L179 YAML 粘连行、悬空 $ref ResultList/Result 按后端 AiChatController 真实签名补定义（ResultListAiSessionVO/AiMessageVO/ResultAiChatImageUploadVO/ResultAiPendingActionVO + VO schemas）。pnpm install 恢复 node_modules 链接后 pnpm gen:api Done (4 files)。",
+        "inProgress": false
+      },
+      {
+        "step": "确认生成目录含 /platform/config 端点且类型完整",
+        "completed": true,
+        "evidence": "src/api/axios/sdk.gen.ts L1051-1069 生成 7 个 platformConfig 函数；types.gen.ts L1519+ ConfigItemView/Result* 与 L5589+ Data/Responses 类型齐全；type-check exit 0。",
+        "inProgress": false
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：hooks 层",
+    "task": "新增 usePlatformConfig.ts。",
+    "steps": [
+      {
+        "step": "实现配置键列表/搜索、当前值读取、修改保存（mutation）",
+        "completed": true,
+        "evidence": "src/hooks/usePlatformConfig.ts：useConfigItems(分组+搜索)/useConfigDetail/useConfigHistory/useConfigUpdate/useConfigRollback/useConfigReset/useConfigCacheRefresh + validateNumericRange/validateStringList/useConfigEditor；走生成 SDK，组件不直调 API。"
+      },
+      {
+        "step": "Vitest 覆盖加载、错误与保存成功后刷新",
+        "completed": true,
+        "evidence": "src/hooks/__tests__/usePlatformConfig.test.ts 9 用例全绿（加载分组、搜索过滤、接口错误态、保存成功 invalidate、校验失败抛错、恢复默认 DELETE path/query、数值/列表校验、queryKey 常量）。vitest run 7 files 39 tests 全过。"
+      }
+    ],
+    "passes": true,
+    "inProgress": false
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：页面与交互",
+    "task": "新增配置管理页。",
+    "steps": [
+      {
+        "step": "命名空间分组键列表 + 搜索，展示类型/当前值/默认值/范围/影响面描述",
+        "completed": true,
+        "evidence": "src/pages/(dashboard)/privilege/platform-config.page.vue：五命名空间分组表格 + a-input-search 过滤键名/描述/命名空间 + 敏感键掩码禁编辑 + 刷新缓存按钮。"
+      },
+      {
+        "step": "按类型出表单控件，保存前确认弹窗回显旧值→新值+影响面描述",
+        "completed": true,
+        "evidence": "编辑 a-modal 按 valueType 出 BOOLEAN 开关/INTEGER-LONG 整数 min-max/DOUBLE/STRING_LIST 多行序列化/STRING 枚举下拉或文本域，draftError 红字 + ok 禁用；confirmSave 用 Modal.confirm 回显「旧值 → 新值」+ 橙色影响面 + 热生效警示；恢复默认同规格确认。"
+      },
+      {
+        "step": "遵循 Tailwind-only / PascalCase",
+        "completed": true,
+        "evidence": "页面无 <style> 标签，纯 Tailwind 类；文件名/definePage 命名符合 unplugin-vue-router 约定。"
+      }
+    ],
+    "passes": true,
+    "inProgress": false
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：验证与交付",
+    "task": "质量门禁与检查点收尾。",
+    "steps": [
+      {
+        "step": "pnpm lint 与 type-check 通过",
+        "completed": true,
+        "evidence": "pnpm lint:check exit 0（0 errors，20 条既有 warnings）；pnpm type-check exit 0。顺带清零 gen:api 重生成暴露的既有 error：useKnowledge 改走生成 SDK、useAiAction/useAiChat/useAiSession/AiAssistantDrawer 收敛 any 与 unknown 安全访问、knowledge page unused import/$refs 修复。"
+      },
+      {
+        "step": "Vitest 全绿",
+        "completed": true,
+        "evidence": "pnpm exec vitest run：7 files / 39 tests 全过（vite.config.ts 增加 test.exclude e2e/**，Playwright spec 不再被 vitest 误收）。"
+      },
+      {
+        "step": "docs/test-checkpoints.md 记录新检查点",
+        "completed": true,
+        "evidence": "add-platform-config-frontend 段落盘：9 条 Playwright 待验证 + 契约/权限核验/门禁 3 条已核 + 顺带修复执行记录。"
+      },
+      {
+        "step": "spec/specs/platform-config-frontend/spec.md 落盘，按 git 流程合入",
+        "completed": true,
+        "evidence": "frontend/spec/specs/platform-config-frontend/spec.md 已落盘（5 Requirements/8 Scenarios）；git：feature/add-platform-config-frontend 分支 --no-ff 合并，不 push。"
+      }
+    ],
+    "passes": true,
+    "inProgress": false
+  }
+]

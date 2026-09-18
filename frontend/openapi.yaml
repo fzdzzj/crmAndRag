@@ -1,0 +1,8016 @@
+openapi: 3.1.0
+info:
+  title: API Documentation
+  version: "1.0"
+servers:
+- url: http://localhost:8080
+  description: Generated server url
+paths:
+  /ai/chat/stream:
+    post:
+      tags:
+      - ai-chat-controller
+      summary: AI chat stream (SSE)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            text/event-stream:
+              schema:
+                type: string
+  /ai/chat/cancel:
+    post:
+      tags:
+      - ai-chat-controller
+      summary: Cancel AI chat
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /ai/sessions:
+    post:
+      tags:
+      - ai-chat-controller
+      summary: Create AI session
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultString"
+    get:
+      tags:
+      - ai-chat-controller
+      summary: List AI sessions
+      parameters:
+      - name: cursorTime
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: cursorId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 10
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListAiSessionVO"
+  /ai/sessions/{id}/messages:
+    get:
+      tags:
+      - ai-chat-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListAiMessageVO"
+    delete:
+      tags:
+      - ai-chat-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /ai/sessions/{sessionId}/images:
+    post:
+      tags:
+      - ai-chat-controller
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultAiChatImageUploadVO"
+  /ai/actions/{pendingId}:
+    get:
+      tags:
+      - ai-action-controller
+      parameters:
+      - name: pendingId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultAiPendingActionVO"
+    post:
+      tags:
+      - ai-action-controller
+      parameters:
+      - name: pendingId
+        in: path
+        required: true
+        schema:
+          type: string
+      summary: confirm or cancel etc
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+    put:
+      tags:
+      - ai-action-controller
+      parameters:
+      - name: pendingId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /taskComment/update:
+    put:
+      tags:
+      - task-comment-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskCommentDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /sales:
+    get:
+      tags:
+      - sales-opportunity-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: pageSize
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageSalesOpportunityVO"
+    put:
+      tags:
+      - sales-opportunity-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SalesOpportunityDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+    post:
+      tags:
+      - sales-opportunity-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SalesOpportunityDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultSalesOpportunityVO"
+  /sales/stage:
+    get:
+      tags:
+      - sales-stage-approval-controller
+      parameters:
+      - name: dto.id
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: dto.opportunityId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: dto.opportunityName
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: dto.currentStage
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - name: dto.targetStage
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - name: dto.approverId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: dto.approverName
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: dto.approvalStatus
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            type: integer
+            format: int32
+      - name: dto.approvalOpinion
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: dto.message
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: dto.applyTime
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: dto.assistUserId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: pageNum
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageSalesStageApprovalVO"
+    put:
+      tags:
+      - sales-stage-approval-controller
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  format: int64
+                approvalStatus:
+                  type: integer
+                  format: int32
+                approvalOpinion:
+                  type: string
+                applyTime:
+                  type: string
+        required: false
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+    delete:
+      tags:
+      - sales-stage-approval-controller
+      parameters:
+      - name: ids
+        in: query
+        required: true
+        schema:
+          type: array
+          items:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /payment/record:
+    put:
+      tags:
+      - payment-record-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentRecordDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+    post:
+      tags:
+      - payment-record-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentRecordDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+    delete:
+      tags:
+      - payment-record-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: integer
+                format: int64
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+  /payment/record/confirm/{id}:
+    put:
+      tags:
+      - payment-record-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /order:
+    get:
+      tags:
+      - contract-order-item-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: pageSize
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageOrderVO"
+    put:
+      tags:
+      - contract-order-item-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/OrderDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+    post:
+      tags:
+      - contract-order-item-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/OrderDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+    delete:
+      tags:
+      - contract-order-item-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: integer
+                format: int64
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+  /invoice/info:
+    put:
+      tags:
+      - invoice-info-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvoiceInfoDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+    post:
+      tags:
+      - invoice-info-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvoiceInfoDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+    delete:
+      tags:
+      - invoice-info-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: integer
+                format: int64
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+  /invoice/info/void/{id}:
+    put:
+      tags:
+      - invoice-info-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /dept:
+    put:
+      tags:
+      - sys-dept-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SysDeptDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+    post:
+      tags:
+      - sys-dept-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SysDeptDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /contract:
+    get:
+      tags:
+      - contract-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: pageSize
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageContractVO"
+    put:
+      tags:
+      - contract-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContractDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+    post:
+      tags:
+      - contract-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContractANDOrderDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultContractVO"
+    delete:
+      tags:
+      - contract-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: integer
+                format: int64
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+  /contact:
+    get:
+      tags:
+      - customer-contact-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: pageSize
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageCustomerContactVO"
+    put:
+      tags:
+      - customer-contact-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/CustomerContactDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+    post:
+      tags:
+      - customer-contact-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerContactDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+    delete:
+      tags:
+      - customer-contact-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: integer
+                format: int64
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+  /contactTask/update:
+    put:
+      tags:
+      - contact-task-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactTaskDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /contactTask/batch:
+    put:
+      tags:
+      - contact-task-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/ContactTaskDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+    delete:
+      tags:
+      - contact-task-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: integer
+                format: int64
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+  /contact/recover:
+    put:
+      tags:
+      - customer-contact-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: integer
+                format: int64
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+  /company:
+    get:
+      tags:
+      - customer-company-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: pageSize
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageCustomerCompanyVO"
+    put:
+      tags:
+      - customer-company-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/CustomerCompanyDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+    post:
+      tags:
+      - customer-company-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerCompanyDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+    delete:
+      tags:
+      - customer-company-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: integer
+                format: int64
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+  /company/recover:
+    put:
+      tags:
+      - customer-company-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: integer
+                format: int64
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+  /company/merge:
+    put:
+      tags:
+      - customer-company-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerMergeDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /company-group:
+    put:
+      tags:
+      - company-group-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompanyGroupDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultCompanyGroupEntity"
+    post:
+      tags:
+      - company-group-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompanyGroupDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultCompanyGroupEntity"
+  /company-group/{id}/status:
+    put:
+      tags:
+      - company-group-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: status
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /company-dept:
+    put:
+      tags:
+      - company-dept-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompanyDeptDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultCompanyDeptEntity"
+    post:
+      tags:
+      - company-dept-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompanyDeptDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultCompanyDeptEntity"
+  /company-dept/{id}/status:
+    put:
+      tags:
+      - company-dept-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: status
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /business/activity:
+    get:
+      tags:
+      - business-activity-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: pageSize
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListBusinessActivityVO"
+    put:
+      tags:
+      - business-activity-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/BusinessActivityDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+    post:
+      tags:
+      - business-activity-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BusinessActivityDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+    delete:
+      tags:
+      - business-activity-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: integer
+                format: int64
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+  /assist:
+    put:
+      tags:
+      - assist-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistHandleDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /user/update:
+    post:
+      tags:
+      - user-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultString"
+  /user/update/my:
+    post:
+      tags:
+      - user-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultString"
+  /user/password:
+    post:
+      tags:
+      - user-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: string
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /user/password/reset:
+    post:
+      tags:
+      - user-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetUserPasswordDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /user/login:
+    post:
+      tags:
+      - user-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultString"
+  /user/handover/query:
+    post:
+      tags:
+      - user-handover-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserHandoverQueryDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageUserHandoverVO"
+  /user/handover/execute:
+    post:
+      tags:
+      - user-handover-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserHandoverDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultUserHandoverVO"
+  /user/find:
+    post:
+      tags:
+      - user-controller
+      parameters:
+      - name: id
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            type: integer
+            format: int64
+      - name: realName
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: phone
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: email
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: roleId
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            type: integer
+            format: int64
+      - name: roleName
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            type: integer
+            format: int32
+      - name: creatorId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: creatorName
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: pageNum
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageUserVO"
+  /user/add:
+    post:
+      tags:
+      - user-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultString"
+  /taskComment/create:
+    post:
+      tags:
+      - task-comment-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskCommentDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /sales/stage/approval:
+    post:
+      tags:
+      - sales-stage-approval-controller
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                salesStageApproval.opportunityId:
+                  type: integer
+                  format: int64
+                salesStageApproval.targetStage:
+                  type: integer
+                  format: int32
+                salesStageApproval.approverId:
+                  type: integer
+                  format: int64
+                salesStageApproval.message:
+                  type: string
+                salesStageApproval.assistUserIds:
+                  type: array
+                  items:
+                    type: integer
+                    format: int32
+                salesStageApproval.applyPurpose:
+                  type: string
+                salesStageApproval.applyRequirement:
+                  type: string
+                approvalAttachment[0].id:
+                  type: integer
+                  format: int64
+                approvalAttachment[0].andId:
+                  type: integer
+                  format: int64
+                approvalAttachment[0].modelName:
+                  type: string
+                approvalAttachment[0].fileName:
+                  type: string
+                approvalAttachment[0].fileType:
+                  type: string
+                approvalAttachment[0].fileData:
+                  type: string
+                  format: binary
+                  description: 文件数据（使用 @ModelAttribute 上传文件）
+        required: false
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultSalesStageApprovalVO"
+  /role/add:
+    post:
+      tags:
+      - role-controller
+      parameters:
+      - name: roleName
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: roleDesc
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /project/file/upload/standalone:
+    post:
+      tags:
+      - project-file-controller
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files[0].category:
+                  type: string
+                files[0].theme:
+                  type: string
+                files[0].description:
+                  type: string
+                files[0].opportunityId:
+                  type: integer
+                  format: int64
+                files[0].fileData:
+                  type: string
+                  format: binary
+                  description: 文件数据
+        required: false
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /project/file/upload/order/{orderId}:
+    post:
+      tags:
+      - project-file-controller
+      parameters:
+      - name: orderId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files[0].category:
+                  type: string
+                files[0].theme:
+                  type: string
+                files[0].description:
+                  type: string
+                files[0].opportunityId:
+                  type: integer
+                  format: int64
+                files[0].fileData:
+                  type: string
+                  format: binary
+                  description: 文件数据
+        required: false
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /project/file/upload/activity/{activityId}:
+    post:
+      tags:
+      - project-file-controller
+      parameters:
+      - name: activityId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files[0].category:
+                  type: string
+                files[0].theme:
+                  type: string
+                files[0].description:
+                  type: string
+                files[0].opportunityId:
+                  type: integer
+                  format: int64
+                files[0].fileData:
+                  type: string
+                  format: binary
+                  description: 文件数据
+        required: false
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /project/file/query:
+    post:
+      tags:
+      - project-file-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 10
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectFileQueryDTO"
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageProjectFileVO"
+  /permission/addORDeletePermissionsToRole:
+    post:
+      tags:
+      - permission-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleANDPermissionDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /payment/record/query:
+    post:
+      tags:
+      - payment-record-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: pageSize
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentRecordDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPagePaymentRecordVO"
+  /order/query:
+    post:
+      tags:
+      - contract-order-item-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: pageSize
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageOrderVO"
+  /invoice/info/query:
+    post:
+      tags:
+      - invoice-info-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: pageSize
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvoiceInfoDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageInvoiceInfoVO"
+  /dataStatistics/summary:
+    post:
+      tags:
+      - data-statistics-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StatisticsRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultStatisticsSummaryVO"
+  /dataStatistics/chart:
+    post:
+      tags:
+      - data-statistics-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DataStatisticsDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: byte
+      deprecated: true
+  /dataStatistics/chartData:
+    post:
+      tags:
+      - data-statistics-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DataStatisticsDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultChartDataVO"
+  /contract/query:
+    post:
+      tags:
+      - contract-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: pageSize
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContractDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageContractVO"
+  /contactTask/{id}/attachments:
+    get:
+      tags:
+      - contact-task-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListApprovalAttachmentVO"
+    post:
+      tags:
+      - contact-task-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: attachments
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApprovalAttachmentDTO"
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+    delete:
+      tags:
+      - contact-task-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: attachmentIds
+        in: query
+        required: true
+        schema:
+          type: array
+          items:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /contactTask/query:
+    post:
+      tags:
+      - contact-task-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 10
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactTaskDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageContactTaskVO"
+  /contactTask/create:
+    post:
+      tags:
+      - contact-task-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactTaskDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /contact/list:
+    post:
+      tags:
+      - customer-contact-controller
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: 上传的 Excel 文件
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+  /company/list:
+    post:
+      tags:
+      - customer-company-controller
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: 客户公司列表文件
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+  /business/activity/{id}/attachments:
+    get:
+      tags:
+      - business-activity-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListApprovalAttachmentVO"
+    post:
+      tags:
+      - business-activity-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                attachments[0].id:
+                  type: integer
+                  format: int64
+                attachments[0].andId:
+                  type: integer
+                  format: int64
+                attachments[0].modelName:
+                  type: string
+                attachments[0].fileName:
+                  type: string
+                attachments[0].fileType:
+                  type: string
+                attachments[0].fileData:
+                  type: string
+                  format: binary
+                  description: 文件数据（使用 @ModelAttribute 上传文件）
+        required: false
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /business/activity/{activityId}/users:
+    post:
+      tags:
+      - business-activity-controller
+      parameters:
+      - name: activityId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/AddActivityUserRequestDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /business/activity/{activityId}/contacts:
+    post:
+      tags:
+      - business-activity-controller
+      parameters:
+      - name: activityId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/AddActivityContactRequestDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /business/activity/query:
+    post:
+      tags:
+      - business-activity-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: pageSize
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BusinessActivityQueryDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageBusinessActivityVO"
+  /assist/{id}/attachments:
+    get:
+      tags:
+      - assist-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListApprovalAttachmentVO"
+    post:
+      tags:
+      - assist-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: attachments
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApprovalAttachmentDTO"
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+    delete:
+      tags:
+      - assist-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: attachmentIds
+        in: query
+        required: true
+        schema:
+          type: array
+          items:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /assist/reapply:
+    post:
+      tags:
+      - assist-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistReapplyDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultLong"
+  /assist/append:
+    post:
+      tags:
+      - assist-controller
+      summary: 在同一业务记录上追加新的协助人
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistAppendDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /user:
+    get:
+      tags:
+      - user-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: pageSize
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageUserVO"
+    delete:
+      tags:
+      - user-controller
+      parameters:
+      - name: ids
+        in: query
+        required: true
+        schema:
+          type: array
+          items:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /user/options:
+    get:
+      tags:
+      - user-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListUserOptionVO"
+  /user/my:
+    get:
+      tags:
+      - user-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultUserVO"
+  /user/handover/statistics/{userId}:
+    get:
+      tags:
+      - user-handover-controller
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListHandoverStatisticsVO"
+  /taskComment/{id}:
+    get:
+      tags:
+      - task-comment-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultTaskCommentVO"
+    delete:
+      tags:
+      - task-comment-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /taskComment/task/{taskId}:
+    get:
+      tags:
+      - task-comment-controller
+      parameters:
+      - name: taskId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListTaskCommentVO"
+  /taskComment/task/{taskId}/page:
+    get:
+      tags:
+      - task-comment-controller
+      parameters:
+      - name: taskId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: pageNum
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 10
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageTaskCommentVO"
+  /taskComment/all:
+    get:
+      tags:
+      - task-comment-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 10
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageTaskCommentVO"
+  /sales/stage/attachment:
+    get:
+      tags:
+      - sales-stage-approval-controller
+      parameters:
+      - name: approvalIds
+        in: query
+        required: true
+        schema:
+          type: array
+          items:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListApprovalAttachmentVO"
+  /sales/query:
+    get:
+      tags:
+      - sales-opportunity-controller
+      parameters:
+      - name: opportunityName
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: companyName
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: contactName
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: ownerName
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: creatorName
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: approverName
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: source
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: description
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: stage
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - name: minAmount
+        in: query
+        required: false
+        schema:
+          type: number
+      - name: maxAmount
+        in: query
+        required: false
+        schema:
+          type: number
+      - name: minCreateTime
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: maxCreateTime
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: minExpectedCloseDate
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: maxExpectedCloseDate
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: ownerId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: ownerUserName
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: pageNum
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: pageSize
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageSalesOpportunityVO"
+  /sales/detail/{opportunityId}:
+    get:
+      tags:
+      - sales-opportunity-controller
+      parameters:
+      - name: opportunityId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultOpportunityDetailVO"
+  /sales/detail/by-contract/{contractId}:
+    get:
+      tags:
+      - sales-opportunity-controller
+      parameters:
+      - name: contractId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultOpportunityDetailVO"
+  /role:
+    get:
+      tags:
+      - role-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultRoleVO"
+    delete:
+      tags:
+      - role-controller
+      parameters:
+      - name: roleId
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /role/list:
+    get:
+      tags:
+      - role-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 10
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageRoleANDPermissionVO"
+  /report/contract:
+    get:
+      tags:
+      - report-controller
+      parameters:
+      - name: reportStartTime
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: reportEndTime
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultContractNumVO"
+  /report/business:
+    get:
+      tags:
+      - report-controller
+      parameters:
+      - name: reportStartTime
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: reportEndTime
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultSalesNumVO"
+  /public/attachment/download:
+    get:
+      tags:
+      - public-attachment-controller
+      parameters:
+      - name: token
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+  /project/file/list/order/{orderId}:
+    get:
+      tags:
+      - project-file-controller
+      parameters:
+      - name: orderId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListProjectFileVO"
+  /project/file/list/opportunity/{opportunityId}:
+    get:
+      tags:
+      - project-file-controller
+      parameters:
+      - name: opportunityId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListProjectFileVO"
+  /project/file/list/contract/{contractId}:
+    get:
+      tags:
+      - project-file-controller
+      parameters:
+      - name: contractId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListProjectFileVO"
+  /project/file/list/activity/{activityId}:
+    get:
+      tags:
+      - project-file-controller
+      parameters:
+      - name: activityId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListProjectFileVO"
+  /permission/getByRole:
+    get:
+      tags:
+      - permission-controller
+      parameters:
+      - name: roleId
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPermissionGroupedVO"
+  /permission/auditor:
+    get:
+      tags:
+      - permission-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListAuditorVO"
+  /payment/record/{id}:
+    get:
+      tags:
+      - payment-record-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPaymentRecordVO"
+  /payment/record/order-item/{orderItemId}:
+    get:
+      tags:
+      - payment-record-controller
+      parameters:
+      - name: orderItemId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListPaymentRecordVO"
+  /payment/record/contract/{contractId}:
+    get:
+      tags:
+      - payment-record-controller
+      parameters:
+      - name: contractId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListPaymentRecordVO"
+  /order/{id}:
+    get:
+      tags:
+      - contract-order-item-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultOrderVO"
+  /invoice/info/{id}:
+    get:
+      tags:
+      - invoice-info-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInvoiceInfoVO"
+  /invoice/info/payment/{paymentId}:
+    get:
+      tags:
+      - invoice-info-controller
+      parameters:
+      - name: paymentId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListInvoiceInfoVO"
+  /invoice/info/contract/{contractId}:
+    get:
+      tags:
+      - invoice-info-controller
+      parameters:
+      - name: contractId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListInvoiceInfoVO"
+  /health:
+    get:
+      tags:
+      - health-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: string
+  /dept/list:
+    get:
+      tags:
+      - sys-dept-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListSysDeptEntity"
+  /dept/all:
+    get:
+      tags:
+      - sys-dept-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListSysDeptEntity"
+  /dataStatistics/opportunityStageDistribution:
+    get:
+      tags:
+      - data-statistics-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultOpportunityStageDistributionVO"
+  /contract/{id}:
+    get:
+      tags:
+      - contract-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultContractANDOrderVO"
+  /contactTask/{id}:
+    get:
+      tags:
+      - contact-task-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultContactTaskVO"
+    delete:
+      tags:
+      - contact-task-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /contactTask/opportunity/{opportunityId}:
+    get:
+      tags:
+      - contact-task-controller
+      parameters:
+      - name: opportunityId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListContactTaskVO"
+  /contactTask/contact/{contactId}:
+    get:
+      tags:
+      - contact-task-controller
+      parameters:
+      - name: contactId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListContactTaskVO"
+  /contactTask/company/{companyId}:
+    get:
+      tags:
+      - contact-task-controller
+      parameters:
+      - name: companyId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListContactTaskVO"
+  /contactTask/assignee/{assigneeId}:
+    get:
+      tags:
+      - contact-task-controller
+      parameters:
+      - name: assigneeId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListContactTaskVO"
+  /contactTask/all:
+    get:
+      tags:
+      - contact-task-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 10
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageContactTaskVO"
+  /contact/template:
+    get:
+      tags:
+      - customer-contact-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultByte[]"
+  /contact/search:
+    get:
+      tags:
+      - customer-contact-controller
+      parameters:
+      - name: id
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: companyId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: companyName
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: name
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: position
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: dept
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: phone
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: mobile
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: email
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: gender
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - name: relationLevel
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - name: isDeleted
+        in: query
+        required: false
+        schema:
+          type: boolean
+      - name: remarks
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomerContactRemarkDTO"
+      - name: pageNum
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: pageSize
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageCustomerContactVO"
+  /contact/group:
+    get:
+      tags:
+      - customer-contact-controller
+      parameters:
+      - name: field
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultGroupResultVO"
+  /contact/getContactByCompanyId:
+    get:
+      tags:
+      - customer-contact-controller
+      parameters:
+      - name: companyName
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: industry
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: customerType
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: belongGroup
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: dept
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: address
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: phone
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: website
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: description
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: grade
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - name: ownerId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: id
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: isDeleted
+        in: query
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListCustomerContactVO"
+  /contact/excel:
+    get:
+      tags:
+      - customer-contact-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultByte[]"
+  /contact/birthday-message/{id}:
+    get:
+      tags:
+      - customer-contact-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListString"
+  /contact/auditor:
+    get:
+      tags:
+      - customer-contact-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListUserVO"
+  /company/{id}:
+    get:
+      tags:
+      - customer-company-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: pageNum
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: pageSize
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultMapStringObject"
+    delete:
+      tags:
+      - customer-company-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /company/template:
+    get:
+      tags:
+      - customer-company-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultByte[]"
+  /company/group:
+    get:
+      tags:
+      - customer-company-controller
+      parameters:
+      - name: field
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultGroupResultVO"
+  /company/group/find:
+    get:
+      tags:
+      - customer-company-controller
+      parameters:
+      - name: belongGroup
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: pageNum
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 10
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageCustomerCompanyVO"
+  /company/getCompanyByCondition/{id}:
+    get:
+      tags:
+      - customer-company-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultCustomerCompanyVO"
+  /company/find:
+    get:
+      tags:
+      - customer-company-controller
+      parameters:
+      - name: companyName
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: pageNum
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: pageSize
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageCustomerCompanyVO"
+  /company/excel:
+    get:
+      tags:
+      - customer-company-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultByte[]"
+  /company/custom:
+    get:
+      tags:
+      - customer-company-controller
+      parameters:
+      - name: companyName
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: industry
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: customerType
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: belongGroup
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: dept
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: address
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: phone
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: website
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: description
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: grade
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - name: ownerId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: id
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: isDeleted
+        in: query
+        required: false
+        schema:
+          type: boolean
+      - name: pageNum
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: pageSize
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageCustomerCompanyVO"
+  /company-group/list:
+    get:
+      tags:
+      - company-group-controller
+      parameters:
+      - name: keyword
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListCompanyGroupEntity"
+  /company-dept/list:
+    get:
+      tags:
+      - company-dept-controller
+      parameters:
+      - name: groupId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: keyword
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListCompanyDeptEntity"
+  /business/activity/{id}:
+    get:
+      tags:
+      - business-activity-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBusinessActivityVO"
+  /assist/{id}/detail:
+    get:
+      tags:
+      - assist-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultAssistVO"
+  /assist/{id}/approval:
+    get:
+      tags:
+      - assist-controller
+      summary: 按协助记录读取审批详情
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultSalesStageApprovalVO"
+  /assist/{id}/activity:
+    get:
+      tags:
+      - assist-controller
+      summary: 按协助记录读取业务活动详情
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBusinessActivityVO"
+  /assist/{id}/task:
+    get:
+      tags:
+      - assist-controller
+      summary: 按协助记录读取联络任务详情
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultContactTaskVO"
+  /assist/my:
+    get:
+      tags:
+      - assist-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: pageSize
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: assistStatus
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageAssistVO"
+  /assist/applications:
+    get:
+      tags:
+      - assist-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: pageSize
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: assistStatus
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageAssistVO"
+  /taskComment/batch:
+    delete:
+      tags:
+      - task-comment-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: integer
+                format: int64
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+  /sales/{id}:
+    delete:
+      tags:
+      - sales-opportunity-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /project/file:
+    delete:
+      tags:
+      - project-file-controller
+      parameters:
+      - name: ids
+        in: query
+        required: true
+        schema:
+          type: array
+          items:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /dept/{id}:
+    delete:
+      tags:
+      - sys-dept-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /contact/logical/{id}:
+    delete:
+      tags:
+      - customer-contact-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+  /contact/logical/batch:
+    delete:
+      tags:
+      - customer-contact-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: integer
+                format: int64
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+  /company/logical/{id}:
+    delete:
+      tags:
+      - customer-company-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+  /company/logical/batch:
+    delete:
+      tags:
+      - customer-company-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: integer
+                format: int64
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+  /company-group/{id}:
+    delete:
+      tags:
+      - company-group-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /company-dept/{id}:
+    delete:
+      tags:
+      - company-dept-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /business/activity/{activityId}/associations:
+    delete:
+      tags:
+      - business-activity-controller
+      parameters:
+      - name: activityId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchDeleteActivityAssociationRequestDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /business/activity/attachments:
+    delete:
+      tags:
+      - business-activity-controller
+      parameters:
+      - name: attachmentIds
+        in: query
+        required: true
+        schema:
+          type: array
+          items:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /permission/list:
+    get:
+      tags:
+      - permission-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultMapStringPermissionGroupedVO"
+    put:
+      tags:
+      - permission-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultMapStringPermissionGroupedVO"
+    post:
+      tags:
+      - permission-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultMapStringPermissionGroupedVO"
+    delete:
+      tags:
+      - permission-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultMapStringPermissionGroupedVO"
+    options:
+      tags:
+      - permission-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultMapStringPermissionGroupedVO"
+    head:
+      tags:
+      - permission-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultMapStringPermissionGroupedVO"
+    patch:
+      tags:
+      - permission-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultMapStringPermissionGroupedVO"
+  /permission/getMyPermission:
+    get:
+      tags:
+      - permission-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPermissionGroupedVO"
+    put:
+      tags:
+      - permission-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPermissionGroupedVO"
+    post:
+      tags:
+      - permission-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPermissionGroupedVO"
+    delete:
+      tags:
+      - permission-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPermissionGroupedVO"
+    options:
+      tags:
+      - permission-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPermissionGroupedVO"
+    head:
+      tags:
+      - permission-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPermissionGroupedVO"
+    patch:
+      tags:
+      - permission-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPermissionGroupedVO"
+  /knowledge/bases:
+    get:
+      tags:
+      - knowledge-admin-controller
+      summary: 知识库列表（admin）
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/ResultListKnowledgeBaseVO"
+  /knowledge/files:
+    get:
+      tags:
+      - knowledge-admin-controller
+      summary: 文档列表（admin，支持按 kbId 过滤）
+      parameters:
+      - name: kbId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/ResultListKnowledgeFileVO"
+    post:
+      tags:
+      - knowledge-admin-controller
+      summary: 上传文档到知识库
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                kbId:
+                  type: integer
+                  format: int64
+              required:
+              - file
+              - kbId
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/ResultDocumentIngestionResult"
+  /knowledge/files/{id}:
+    get:
+      tags:
+      - knowledge-admin-controller
+      summary: 获取文档详情
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/ResultKnowledgeFileVO"
+    delete:
+      tags:
+      - knowledge-admin-controller
+      summary: 删除文档
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /knowledge/files/{id}/reingest:
+    post:
+      tags:
+      - knowledge-admin-controller
+      summary: 重新摄取文档
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/ResultDocumentIngestionResult"
+  /knowledge/retrieval/test:
+    post:
+      tags:
+      - knowledge-admin-controller
+      summary: 检索测试（dry-run，默认稀疏零外呼 useVector=false）
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KnowledgeAdminRetrievalRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/ResultKnowledgeAdminRetrievalResponse"
+
+  /platform/config/items:
+    get:
+      tags:
+      - dynamic-config-admin-controller
+      parameters:
+      - name: namespace
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListConfigItemView"
+    post:
+      tags:
+      - dynamic-config-admin-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigUpdateRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultConfigItemView"
+  /platform/config/items/{key}:
+    get:
+      tags:
+      - dynamic-config-admin-controller
+      parameters:
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultConfigItemView"
+    delete:
+      tags:
+      - dynamic-config-admin-controller
+      parameters:
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: remark
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultConfigItemView"
+  /platform/config/items/{key}/history:
+    get:
+      tags:
+      - dynamic-config-admin-controller
+      parameters:
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListConfigHistoryView"
+  /platform/config/items/{key}/rollback:
+    post:
+      tags:
+      - dynamic-config-admin-controller
+      parameters:
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigRollbackRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultConfigItemView"
+  /platform/config/cache/refresh:
+    post:
+      tags:
+      - dynamic-config-admin-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+components:
+  schemas:
+    TaskCommentDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        taskId:
+          type: integer
+          format: int64
+        content:
+          type: string
+    ResultBoolean:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: boolean
+    SalesOpportunityDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        opportunityName:
+          type: string
+        companyId:
+          type: integer
+          format: int64
+        contactId:
+          type: integer
+          format: int64
+        stage:
+          type: integer
+          format: int32
+        amount:
+          type: number
+        expectedCloseDate:
+          type: string
+          format: date-time
+        source:
+          type: string
+        description:
+          type: string
+        ownerId:
+          type: integer
+          format: int64
+        creatorId:
+          type: integer
+          format: int64
+        approverId:
+          type: integer
+          format: int64
+    PaymentRecordDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        contractId:
+          type: integer
+          format: int64
+        orderItemId:
+          type: integer
+          format: int64
+        paymentNo:
+          type: string
+        paymentAmount:
+          type: number
+        paymentDate:
+          type: string
+          format: date-time
+        paymentMethod:
+          type: string
+        paymentStatus:
+          type: integer
+          format: int32
+        paymentStatusStr:
+          type: string
+        remark:
+          type: string
+        creatorId:
+          type: integer
+          format: int64
+        createTime:
+          type: string
+          format: date-time
+        paymentDateStart:
+          type: string
+          format: date-time
+        paymentDateEnd:
+          type: string
+          format: date-time
+    OrderDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        contractId:
+          type: integer
+          format: int64
+        productName:
+          type: string
+        quantity:
+          type: number
+        unitPrice:
+          type: number
+        amount:
+          type: number
+        remark:
+          type: string
+    ResultInteger:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: integer
+          format: int32
+    InvoiceInfoDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        contractId:
+          type: integer
+          format: int64
+        paymentId:
+          type: integer
+          format: int64
+        invoiceNo:
+          type: string
+        invoiceAmount:
+          type: number
+        invoiceDate:
+          type: string
+          format: date-time
+        invoiceType:
+          type: string
+        status:
+          type: integer
+          format: int32
+        creatorId:
+          type: integer
+          format: int64
+        createTime:
+          type: string
+          format: date-time
+        remark:
+          type: string
+        minInvoiceDate:
+          type: string
+          format: date-time
+        maxInvoiceDate:
+          type: string
+          format: date-time
+        minInvoiceAmount:
+          type: number
+        maxInvoiceAmount:
+          type: number
+        minCreateTime:
+          type: string
+          format: date-time
+        maxCreateTime:
+          type: string
+          format: date-time
+    SysDeptDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        deptName:
+          type: string
+        parentId:
+          type: integer
+          format: int64
+        sort:
+          type: integer
+          format: int32
+        status:
+          type: integer
+          format: int32
+    ContractDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        contractNo:
+          type: string
+        opportunityId:
+          type: integer
+          format: int64
+        companyId:
+          type: integer
+          format: int64
+        contractName:
+          type: string
+        totalAmount:
+          type: number
+        signDate:
+          type: string
+          format: date-time
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        contractStatus:
+          type: integer
+          format: int32
+        ownerId:
+          type: integer
+          format: int64
+    CustomerContactDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        companyId:
+          type: integer
+          format: int64
+        companyName:
+          type: string
+        name:
+          type: string
+        position:
+          type: string
+        dept:
+          type: string
+        phone:
+          type: string
+        mobile:
+          type: string
+        email:
+          type: string
+        gender:
+          type: integer
+          format: int32
+        relationLevel:
+          type: integer
+          format: int32
+        isDeleted:
+          type: boolean
+        remarks:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomerContactRemarkDTO"
+    CustomerContactRemarkDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        contactId:
+          type: integer
+          format: int64
+        remarkType:
+          type: integer
+          format: int32
+        remarkContent:
+          type: string
+        remarkName:
+          type: string
+        remarkDate:
+          type: string
+          format: date
+    AssistApplyItem:
+      type: object
+      properties:
+        assistUserId:
+          type: integer
+          format: int64
+        applyPurpose:
+          type: string
+        applyRequirement:
+          type: string
+    ContactTaskDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        taskTitle:
+          type: string
+        companyId:
+          type: integer
+          format: int64
+        contactId:
+          type: integer
+          format: int64
+        opportunityId:
+          type: integer
+          format: int64
+        taskType:
+          type: string
+        taskContent:
+          type: string
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        priority:
+          type: integer
+          format: int32
+        priorityStr:
+          type: string
+        status:
+          type: integer
+          format: int32
+        statusStr:
+          type: string
+        assigneeId:
+          type: integer
+          format: int64
+        assignerId:
+          type: integer
+          format: int64
+        assistUserIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        assistApplyList:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistApplyItem"
+    CustomerCompanyDTO:
+      type: object
+      properties:
+        companyName:
+          type: string
+        industry:
+          type: string
+        customerType:
+          type: string
+        belongGroup:
+          type: string
+        dept:
+          type: string
+        address:
+          type: string
+        phone:
+          type: string
+        website:
+          type: string
+        description:
+          type: string
+        grade:
+          type: integer
+          format: int32
+        ownerId:
+          type: integer
+          format: int64
+        id:
+          type: integer
+          format: int64
+        isDeleted:
+          type: boolean
+    CustomerMergeDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        targetCompanyId:
+          type: integer
+          format: int64
+        mergedCompanyId:
+          type: integer
+          format: int64
+        remark:
+          type: string
+    CompanyGroupDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        groupName:
+          type: string
+    CompanyGroupEntity:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        groupName:
+          type: string
+        status:
+          type: integer
+          format: int32
+        createTime:
+          type: string
+          format: date-time
+        updateTime:
+          type: string
+          format: date-time
+    ResultCompanyGroupEntity:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/CompanyGroupEntity"
+    CompanyDeptDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        groupId:
+          type: integer
+          format: int64
+        deptName:
+          type: string
+    CompanyDeptEntity:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        groupId:
+          type: integer
+          format: int64
+        deptName:
+          type: string
+        status:
+          type: integer
+          format: int32
+        createTime:
+          type: string
+          format: date-time
+        updateTime:
+          type: string
+          format: date-time
+    ResultCompanyDeptEntity:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/CompanyDeptEntity"
+    BusinessActivityContactDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        activityId:
+          type: integer
+          format: int64
+        contactId:
+          type: integer
+          format: int64
+        contactRole:
+          type: string
+        creatorId:
+          type: integer
+          format: int64
+        createTime:
+          type: string
+          format: date-time
+    BusinessActivityDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        activityTitle:
+          type: string
+        activityContent:
+          type: string
+        activityTime:
+          type: string
+          format: date-time
+        activityType:
+          type: string
+        activityDuration:
+          type: integer
+          format: int32
+        opportunityId:
+          type: integer
+          format: int64
+        createTime:
+          type: string
+          format: date-time
+        remark:
+          type: string
+        creatorId:
+          type: integer
+          format: int64
+        userIdList:
+          type: array
+          items:
+            $ref: "#/components/schemas/BusinessActivityUserDTO"
+        contactIdList:
+          type: array
+          items:
+            $ref: "#/components/schemas/BusinessActivityContactDTO"
+        taskId:
+          type: integer
+          format: int64
+        nextTaskStatus:
+          type: integer
+          format: int32
+        assistUserIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        assistApplyList:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistApplyItem"
+        isAddUser:
+          type: boolean
+        isAddContact:
+          type: boolean
+    BusinessActivityUserDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        contactRole:
+          type: string
+        activityId:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        userRole:
+          type: string
+        creatorId:
+          type: integer
+          format: int64
+        createTime:
+          type: string
+          format: date-time
+    AssistHandleDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        assistStatus:
+          type: integer
+          format: int32
+        assistContent:
+          type: string
+        rejectReason:
+          type: string
+    UserDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        password:
+          type: string
+        realName:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        deptId:
+          type: integer
+          format: int64
+        roleId:
+          type: integer
+          format: int64
+        status:
+          type: integer
+          format: int32
+    ResultString:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: string
+    ResetUserPasswordDTO:
+      type: object
+      properties:
+        userId:
+          type: integer
+          format: int64
+        newPassword:
+          type: string
+    UserHandoverQueryDTO:
+      type: object
+      properties:
+        fromUserId:
+          type: integer
+          format: int64
+        toUserId:
+          type: integer
+          format: int64
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        pageNum:
+          type: integer
+          format: int32
+        pageSize:
+          type: integer
+          format: int32
+    OrderItem:
+      type: object
+      properties:
+        column:
+          type: string
+        asc:
+          type: boolean
+    PageUserHandoverVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserHandoverVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    ResultPageUserHandoverVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PageUserHandoverVO"
+    UserHandoverVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        fromUserId:
+          type: integer
+          format: int64
+        fromUserName:
+          type: string
+        toUserId:
+          type: integer
+          format: int64
+        toUserName:
+          type: string
+        taskCount:
+          type: integer
+          format: int32
+        customerCount:
+          type: integer
+          format: int32
+        opportunityCount:
+          type: integer
+          format: int32
+        handoverTime:
+          type: string
+          format: date-time
+        operatorId:
+          type: integer
+          format: int64
+        operatorName:
+          type: string
+        remark:
+          type: string
+    UserHandoverDTO:
+      type: object
+      properties:
+        fromUserId:
+          type: integer
+          format: int64
+        toUserId:
+          type: integer
+          format: int64
+        remark:
+          type: string
+    ResultUserHandoverVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/UserHandoverVO"
+    PageUserVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    ResultPageUserVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PageUserVO"
+    UserVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        realName:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        deptId:
+          type: integer
+          format: int64
+        deptName:
+          type: string
+        roleId:
+          type: integer
+          format: int64
+        roleName:
+          type: string
+        status:
+          type: integer
+          format: int32
+        statusDesc:
+          type: string
+        createTime:
+          type: string
+          format: date-time
+        updateTime:
+          type: string
+          format: date-time
+    ResultSalesOpportunityVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/SalesOpportunityVO"
+    SalesOpportunityVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        opportunityName:
+          type: string
+        companyId:
+          type: integer
+          format: int64
+        companyName:
+          type: string
+        contactId:
+          type: integer
+          format: int64
+        contactName:
+          type: string
+        stage:
+          type: integer
+          format: int32
+        amount:
+          type: number
+        expectedCloseDate:
+          type: string
+          format: date-time
+        source:
+          type: string
+        description:
+          type: string
+        ownerId:
+          type: integer
+          format: int64
+        ownerName:
+          type: string
+        creatorId:
+          type: integer
+          format: int64
+        creatorName:
+          type: string
+        approverId:
+          type: integer
+          format: int64
+        approverName:
+          type: string
+        createTime:
+          type: string
+          format: date-time
+        updateTime:
+          type: string
+          format: date-time
+        relatedUserIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+          uniqueItems: true
+    ApprovalAttachmentDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        andId:
+          type: integer
+          format: int64
+        modelName:
+          type: string
+        fileName:
+          type: string
+        fileType:
+          type: string
+        fileData:
+          type: string
+          format: binary
+        uploaderId:
+          type: integer
+          format: int64
+    AssistVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        modelName:
+          type: string
+        recordId:
+          type: integer
+          format: int64
+        applicantId:
+          type: integer
+          format: int64
+        applyPurpose:
+          type: string
+        applyRequirement:
+          type: string
+        applicantName:
+          type: string
+        assistUserId:
+          type: integer
+          format: int64
+        assistUserName:
+          type: string
+        assistUserDeptName:
+          type: string
+        assistStatus:
+          type: integer
+          format: int32
+        assistContent:
+          type: string
+        rejectReason:
+          type: string
+        parentId:
+          type: integer
+          format: int64
+        assistTime:
+          type: string
+          format: date-time
+        createTime:
+          type: string
+          format: date-time
+        recordTitle:
+          type: string
+        recordContent:
+          type: string
+        recordTime:
+          type: string
+          format: date-time
+        opportunityId:
+          type: integer
+          format: int64
+        opportunityName:
+          type: string
+        companyId:
+          type: integer
+          format: int64
+        companyName:
+          type: string
+        contactId:
+          type: integer
+          format: int64
+        contactName:
+          type: string
+        snapshot:
+          type: string
+    ResultSalesStageApprovalVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/SalesStageApprovalVO"
+    SalesStageApprovalVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        opportunityId:
+          type: integer
+          format: int64
+        opportunityName:
+          type: string
+        currentStage:
+          type: string
+        targetStage:
+          type: string
+        approverId:
+          type: integer
+          format: int64
+        approverName:
+          type: string
+        approvalStatus:
+          type: integer
+          format: int32
+        approvalStatusDesc:
+          type: string
+        approvalOpinion:
+          type: string
+        message:
+          type: string
+        applyTime:
+          type: string
+          format: date-time
+        assistUsers:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistVO"
+    ProjectFileDTO:
+      type: object
+      properties:
+        category:
+          type: string
+        theme:
+          type: string
+        description:
+          type: string
+        opportunityId:
+          type: integer
+          format: int64
+        contractId:
+          type: integer
+          format: int64
+        fileData:
+          type: string
+          format: binary
+    ProjectFileQueryDTO:
+      type: object
+      properties:
+        category:
+          type: string
+        theme:
+          type: string
+        description:
+          type: string
+        uploaderId:
+          type: integer
+          format: int64
+        activityId:
+          type: integer
+          format: int64
+        opportunityId:
+          type: integer
+          format: int64
+        contractId:
+          type: integer
+          format: int64
+        orderId:
+          type: integer
+          format: int64
+        minUploadTime:
+          type: string
+          format: date-time
+        maxUploadTime:
+          type: string
+          format: date-time
+    PageProjectFileVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectFileVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    ProjectFileVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        fileName:
+          type: string
+        fileType:
+          type: string
+        fileSize:
+          type: integer
+          format: int64
+        category:
+          type: string
+        uploadTime:
+          type: string
+          format: date-time
+        uploaderId:
+          type: integer
+          format: int64
+        uploaderName:
+          type: string
+        theme:
+          type: string
+        description:
+          type: string
+        activityId:
+          type: integer
+          format: int64
+        opportunityId:
+          type: integer
+          format: int64
+        contractId:
+          type: integer
+          format: int64
+        orderId:
+          type: integer
+          format: int64
+        downloadUrl:
+          type: string
+    ResultPageProjectFileVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PageProjectFileVO"
+    RoleANDPermissionDTO:
+      type: object
+      properties:
+        roleId:
+          type: integer
+          format: int32
+        permissionIds:
+          type: array
+          items:
+            type: integer
+            format: int32
+        isAdd:
+          type: boolean
+    PagePaymentRecordVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentRecordVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    PaymentRecordVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        contractId:
+          type: integer
+          format: int64
+        contractNo:
+          type: string
+        contractName:
+          type: string
+        orderItemId:
+          type: integer
+          format: int64
+        productName:
+          type: string
+        paymentNo:
+          type: string
+        paymentAmount:
+          type: number
+        paymentDate:
+          type: string
+          format: date-time
+        paymentMethod:
+          type: string
+        paymentStatus:
+          type: integer
+          format: int32
+        paymentStatusDesc:
+          type: string
+        remark:
+          type: string
+        creatorId:
+          type: integer
+          format: int64
+        creatorName:
+          type: string
+        createTime:
+          type: string
+          format: date-time
+    ResultPagePaymentRecordVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PagePaymentRecordVO"
+    OrderVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        contractId:
+          type: integer
+          format: int64
+        productName:
+          type: string
+        quantity:
+          type: number
+        unitPrice:
+          type: number
+        amount:
+          type: number
+        remark:
+          type: string
+    PageOrderVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    ResultPageOrderVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PageOrderVO"
+    InvoiceInfoVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        contractId:
+          type: integer
+          format: int64
+        contractNo:
+          type: string
+        contractName:
+          type: string
+        paymentId:
+          type: integer
+          format: int64
+        paymentNo:
+          type: string
+        paymentAmount:
+          type: number
+        invoiceNo:
+          type: string
+        invoiceAmount:
+          type: number
+        invoiceDate:
+          type: string
+          format: date-time
+        invoiceType:
+          type: string
+        status:
+          type: integer
+          format: int32
+        statusDesc:
+          type: string
+        creatorId:
+          type: integer
+          format: int64
+        creatorName:
+          type: string
+        createTime:
+          type: string
+          format: date-time
+        remark:
+          type: string
+    PageInvoiceInfoVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvoiceInfoVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    ResultPageInvoiceInfoVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PageInvoiceInfoVO"
+    StatisticsRequest:
+      type: object
+      properties:
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+    ResultStatisticsSummaryVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/StatisticsSummaryVO"
+    StatisticsSummaryVO:
+      type: object
+      properties:
+        totalOpportunities:
+          type: integer
+          format: int64
+        newOpportunities:
+          type: integer
+          format: int64
+        signedContracts:
+          type: integer
+          format: int64
+        totalContractAmount:
+          type: number
+        totalPaymentAmount:
+          type: number
+        paymentCount:
+          type: integer
+          format: int64
+    DataStatisticsDTO:
+      type: object
+      properties:
+        dataType:
+          type: string
+          enum:
+          - CONTRACT_NUM
+          - PERFORMANCE
+          - CUSTOMER_SOURCE
+          - PAYMENT_AMOUNT
+          - PAYMENT_COUNT
+          - PAYMENT_STATUS
+        timeRange:
+          type: string
+          enum:
+          - THIS_WEEK
+          - THIS_MONTH
+          - THIS_YEAR
+          - CUSTOM_RANGE
+        chartType:
+          type: string
+          enum:
+          - LINE_CHART
+          - PIE_CHART
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+    ChartDataVO:
+      type: object
+      properties:
+        title:
+          type: string
+        titleEn:
+          type: string
+        chartType:
+          type: string
+        data:
+          type: object
+          additionalProperties:
+            type: number
+        xAxisLabel:
+          type: string
+        yAxisLabel:
+          type: string
+    ResultChartDataVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/ChartDataVO"
+    ContractANDOrderDTO:
+      type: object
+      properties:
+        contract:
+          $ref: "#/components/schemas/ContractDTO"
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderDTO"
+    ContractVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        contractNo:
+          type: string
+        opportunityId:
+          type: integer
+          format: int64
+        opportunityName:
+          type: string
+        companyId:
+          type: integer
+          format: int64
+        companyName:
+          type: string
+        contractName:
+          type: string
+        totalAmount:
+          type: number
+        signDate:
+          type: string
+          format: date-time
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        contractStatus:
+          type: integer
+          format: int32
+        contractStatusDesc:
+          type: string
+        ownerId:
+          type: integer
+          format: int64
+        ownerName:
+          type: string
+        creatorId:
+          type: integer
+          format: int64
+        creatorName:
+          type: string
+        createTime:
+          type: string
+          format: date-time
+        updateTime:
+          type: string
+          format: date-time
+    ResultContractVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/ContractVO"
+    PageContractVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContractVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    ResultPageContractVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PageContractVO"
+    ActivityContactVO:
+      type: object
+      properties:
+        contactId:
+          type: integer
+          format: int64
+        contactName:
+          type: string
+        contactRole:
+          type: string
+    ActivityUserVO:
+      type: object
+      properties:
+        userId:
+          type: integer
+          format: int64
+        userName:
+          type: string
+        userRole:
+          type: string
+    BusinessActivityVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        activityTitle:
+          type: string
+        activityContent:
+          type: string
+        activityTime:
+          type: string
+          format: date-time
+        activityType:
+          type: string
+        activityDuration:
+          type: integer
+          format: int32
+        opportunityId:
+          type: integer
+          format: int64
+        createTime:
+          type: string
+          format: date-time
+        remark:
+          type: string
+        assistUsers:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistVO"
+        creatorId:
+          type: integer
+          format: int64
+        creatorName:
+          type: string
+        opportunityName:
+          type: string
+        taskId:
+          type: integer
+          format: int64
+        contacts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityContactVO"
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityUserVO"
+    ContactTaskVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        taskTitle:
+          type: string
+        companyId:
+          type: integer
+          format: int64
+        companyName:
+          type: string
+        contactId:
+          type: integer
+          format: int64
+        contactName:
+          type: string
+        opportunityId:
+          type: integer
+          format: int64
+        opportunityTitle:
+          type: string
+        taskType:
+          type: string
+        taskContent:
+          type: string
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        priority:
+          type: string
+        status:
+          type: string
+        assigneeId:
+          type: integer
+          format: int64
+        assigneeName:
+          type: string
+        assignerId:
+          type: integer
+          format: int64
+        assignerName:
+          type: string
+        creatorId:
+          type: integer
+          format: int64
+        creatorName:
+          type: string
+        createTime:
+          type: string
+          format: date-time
+        updateTime:
+          type: string
+          format: date-time
+        businessActivities:
+          type: array
+          items:
+            $ref: "#/components/schemas/BusinessActivityVO"
+        assistUsers:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistVO"
+    PageContactTaskVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContactTaskVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    ResultPageContactTaskVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PageContactTaskVO"
+    AddActivityUserRequestDTO:
+      type: object
+      properties:
+        userId:
+          type: integer
+          format: int64
+        userRole:
+          type: string
+    AddActivityContactRequestDTO:
+      type: object
+      properties:
+        contactId:
+          type: integer
+          format: int64
+        contactRole:
+          type: string
+    BusinessActivityQueryDTO:
+      type: object
+      properties:
+        activityTitle:
+          type: string
+        activityContent:
+          type: string
+        companyName:
+          type: string
+        activityType:
+          type: string
+        activityDuration:
+          type: integer
+          format: int32
+        opportunityName:
+          type: string
+        remark:
+          type: string
+        creatorName:
+          type: string
+        minCreateTime:
+          type: string
+          format: date-time
+        maxCreateTime:
+          type: string
+          format: date-time
+        minActivityTime:
+          type: string
+          format: date-time
+        maxActivityTime:
+          type: string
+          format: date-time
+    PageBusinessActivityVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/BusinessActivityVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    ResultPageBusinessActivityVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PageBusinessActivityVO"
+    AssistReapplyDTO:
+      type: object
+      properties:
+        originalAssistId:
+          type: integer
+          format: int64
+        assistApplyList:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistApplyItem"
+    AssistAppendDTO:
+      type: object
+      properties:
+        originalAssistId:
+          type: integer
+          format: int64
+        assistApplyList:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistApplyItem"
+    ResultLong:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: integer
+          format: int64
+    ResultListUserOptionVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserOptionVO"
+    UserOptionVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        realName:
+          type: string
+        deptId:
+          type: integer
+          format: int64
+        deptName:
+          type: string
+    ResultUserVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/UserVO"
+    HandoverStatisticsVO:
+      type: object
+      properties:
+        type:
+          type: string
+        typeName:
+          type: string
+        count:
+          type: integer
+          format: int32
+    ResultListHandoverStatisticsVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/HandoverStatisticsVO"
+    ResultTaskCommentVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/TaskCommentVO"
+    TaskCommentVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        taskId:
+          type: integer
+          format: int64
+        content:
+          type: string
+        creatorId:
+          type: integer
+          format: int64
+        creatorName:
+          type: string
+        createTime:
+          type: string
+          format: date-time
+    ResultListTaskCommentVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskCommentVO"
+    PageTaskCommentVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskCommentVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    ResultPageTaskCommentVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PageTaskCommentVO"
+    PageSalesOpportunityVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/SalesOpportunityVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    ResultPageSalesOpportunityVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PageSalesOpportunityVO"
+    PageSalesStageApprovalVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/SalesStageApprovalVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    ResultPageSalesStageApprovalVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PageSalesStageApprovalVO"
+    ApprovalAttachmentVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        andId:
+          type: integer
+          format: int64
+        modelName:
+          type: string
+        fileName:
+          type: string
+        filePath:
+          type: string
+        fileSize:
+          type: integer
+          format: int64
+        fileType:
+          type: string
+        uploadTime:
+          type: string
+          format: date-time
+        fileData:
+          type: string
+          format: byte
+        downloadUrl:
+          type: string
+        uploaderId:
+          type: integer
+          format: int64
+        uploaderName:
+          type: string
+    ResultListApprovalAttachmentVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApprovalAttachmentVO"
+    OpportunityDetailVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        opportunityName:
+          type: string
+        companyId:
+          type: integer
+          format: int64
+        companyName:
+          type: string
+        contactId:
+          type: integer
+          format: int64
+        contactName:
+          type: string
+        stage:
+          type: integer
+          format: int32
+        amount:
+          type: number
+        expectedCloseDate:
+          type: string
+          format: date-time
+        source:
+          type: string
+        description:
+          type: string
+        ownerId:
+          type: integer
+          format: int64
+        ownerName:
+          type: string
+        approverId:
+          type: integer
+          format: int64
+        approverName:
+          type: string
+        creatorId:
+          type: integer
+          format: int64
+        creatorName:
+          type: string
+        createTime:
+          type: string
+          format: date-time
+        updateTime:
+          type: string
+          format: date-time
+        activitiesByStage:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: "#/components/schemas/BusinessActivityVO"
+        stageChangeRecords:
+          type: array
+          items:
+            $ref: "#/components/schemas/SalesStageApprovalVO"
+        relatedUserIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+          uniqueItems: true
+    ResultOpportunityDetailVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/OpportunityDetailVO"
+    ResultRoleVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/RoleVO"
+    RoleVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        roleName:
+          type: string
+        roleDesc:
+          type: string
+    PageRoleANDPermissionVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoleANDPermissionVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    PermissionGroupedVO:
+      type: object
+      properties:
+        mainPermissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PermissionVO"
+        subPermissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubPermissionVO"
+    PermissionVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        permissionsName:
+          type: string
+        permissionsDesc:
+          type: string
+    ResultPageRoleANDPermissionVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PageRoleANDPermissionVO"
+    RoleANDPermissionVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        roleName:
+          type: string
+        roleDesc:
+          type: string
+        permissions:
+          $ref: "#/components/schemas/PermissionGroupedVO"
+    SubPermissionVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        permissionsName:
+          type: string
+        permissionsDesc:
+          type: string
+        parentPermissionId:
+          type: integer
+          format: int64
+    ContractNumVO:
+      type: object
+      properties:
+        totalSignAmount:
+          type: number
+        totalSignContractNum:
+          type: integer
+          format: int64
+        totalNewContractNum:
+          type: integer
+          format: int64
+        reportStartTime:
+          type: string
+          format: date-time
+        reportEndTime:
+          type: string
+          format: date-time
+    ResultContractNumVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/ContractNumVO"
+    ResultSalesNumVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/SalesNumVO"
+    SalesNumVO:
+      type: object
+      properties:
+        totalSalesOpportunityNum:
+          type: integer
+          format: int64
+        totalSignOpportunityNum:
+          type: integer
+          format: int64
+        totalNewSalesOpportunityNum:
+          type: integer
+          format: int64
+        reportStartTime:
+          type: string
+          format: date-time
+        reportEndTime:
+          type: string
+          format: date-time
+    ResultListProjectFileVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectFileVO"
+    ResultPermissionGroupedVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PermissionGroupedVO"
+    AuditorVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+    ResultListAuditorVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditorVO"
+    ResultPaymentRecordVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PaymentRecordVO"
+    ResultListPaymentRecordVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentRecordVO"
+    ResultOrderVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/OrderVO"
+    ResultInvoiceInfoVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/InvoiceInfoVO"
+    ResultListInvoiceInfoVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvoiceInfoVO"
+    ResultListSysDeptEntity:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SysDeptEntity"
+    SysDeptEntity:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        deptName:
+          type: string
+        parentId:
+          type: integer
+          format: int64
+        sort:
+          type: integer
+          format: int32
+        status:
+          type: integer
+          format: int32
+        createTime:
+          type: string
+          format: date-time
+        updateTime:
+          type: string
+          format: date-time
+    OpportunityStageDistributionVO:
+      type: object
+      properties:
+        stage0Count:
+          type: integer
+          format: int64
+        stage0Percentage:
+          type: number
+          format: double
+        stage1Count:
+          type: integer
+          format: int64
+        stage1Percentage:
+          type: number
+          format: double
+        stage2Count:
+          type: integer
+          format: int64
+        stage2Percentage:
+          type: number
+          format: double
+        stage3Count:
+          type: integer
+          format: int64
+        stage3Percentage:
+          type: number
+          format: double
+        stage4Count:
+          type: integer
+          format: int64
+        stage4Percentage:
+          type: number
+          format: double
+        stage5Count:
+          type: integer
+          format: int64
+        stage5Percentage:
+          type: number
+          format: double
+        totalCount:
+          type: integer
+          format: int64
+    ResultOpportunityStageDistributionVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/OpportunityStageDistributionVO"
+    ContractANDOrderVO:
+      type: object
+      properties:
+        contract:
+          $ref: "#/components/schemas/ContractVO"
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderVO"
+    ResultContractANDOrderVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/ContractANDOrderVO"
+    CustomerContactRemarkVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        contactId:
+          type: integer
+          format: int64
+        remarkType:
+          type: integer
+          format: int32
+        remarkTypeDesc:
+          type: string
+        remarkContent:
+          type: string
+        remarkName:
+          type: string
+        remarkDate:
+          type: string
+          format: date
+        creatorId:
+          type: integer
+          format: int64
+        createTime:
+          type: string
+          format: date-time
+        updateTime:
+          type: string
+          format: date-time
+    CustomerContactVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        companyId:
+          type: integer
+          format: int64
+        companyName:
+          type: string
+        name:
+          type: string
+        position:
+          type: string
+        dept:
+          type: string
+        phone:
+          type: string
+        mobile:
+          type: string
+        email:
+          type: string
+        gender:
+          type: integer
+          format: int32
+        relationLevel:
+          type: integer
+          format: int32
+        remarks:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomerContactRemarkVO"
+        createId:
+          type: integer
+          format: int64
+        creatorName:
+          type: string
+        isDeleted:
+          type: integer
+          format: int32
+        createTime:
+          type: string
+          format: date-time
+        updateTime:
+          type: string
+          format: date-time
+        relatedUserIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+          uniqueItems: true
+    PageCustomerContactVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomerContactVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    ResultPageCustomerContactVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PageCustomerContactVO"
+    ResultContactTaskVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/ContactTaskVO"
+    ResultListContactTaskVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContactTaskVO"
+    ResultByte[]:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: string
+          format: byte
+    GroupResultVO:
+      type: object
+      properties:
+        groupField:
+          type: string
+        groupData:
+          type: object
+          additionalProperties:
+            type: array
+            items: {}
+    ResultGroupResultVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/GroupResultVO"
+    ResultListCustomerContactVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomerContactVO"
+    ResultListString:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            type: string
+    ResultListUserVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserVO"
+    CustomerCompanyVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        companyName:
+          type: string
+        belongGroup:
+          type: string
+        dept:
+          type: string
+        industry:
+          type: string
+        customerType:
+          type: string
+        address:
+          type: string
+        phone:
+          type: string
+        website:
+          type: string
+        description:
+          type: string
+        creatorId:
+          type: integer
+          format: int64
+        grade:
+          type: integer
+          format: int32
+        creatorName:
+          type: string
+        ownerName:
+          type: string
+        ownerId:
+          type: integer
+          format: int64
+        createTime:
+          type: string
+          format: date-time
+        updateTime:
+          type: string
+          format: date-time
+        isDeleted:
+          type: boolean
+        relatedUserIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+          uniqueItems: true
+    PageCustomerCompanyVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomerCompanyVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    ResultPageCustomerCompanyVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PageCustomerCompanyVO"
+    ResultMapStringObject:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: object
+          additionalProperties: {}
+    ResultCustomerCompanyVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/CustomerCompanyVO"
+    ResultListCompanyGroupEntity:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CompanyGroupEntity"
+    ResultListCompanyDeptEntity:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CompanyDeptEntity"
+    ResultListBusinessActivityVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/BusinessActivityVO"
+    ResultBusinessActivityVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/BusinessActivityVO"
+    ResultAssistVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/AssistVO"
+    PageAssistVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    ResultPageAssistVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PageAssistVO"
+    BatchDeleteActivityAssociationRequestDTO:
+      type: object
+      properties:
+        contactIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        userIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+    ResultMapStringPermissionGroupedVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/PermissionGroupedVO"
+
+    KnowledgeBaseVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        displayName:
+          type: string
+        visibility:
+          type: string
+        ownerUserId:
+          type: string
+        createTime:
+          type: string
+          format: date-time
+    KnowledgeFileVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        documentId:
+          type: string
+        originalFilename:
+          type: string
+        fileType:
+          type: string
+        status:
+          type: string
+        segmentCount:
+          type: integer
+          format: int32
+        vectorCount:
+          type: integer
+          format: int32
+        knowledgeBaseId:
+          type: integer
+          format: int64
+        createTime:
+          type: string
+          format: date-time
+        errorMessage:
+          type: string
+    DocumentIngestionResult:
+      type: object
+      properties:
+        uploadedFileId:
+          type: integer
+          format: int64
+        documentId:
+          type: string
+        chunkCount:
+          type: integer
+          format: int32
+        vectorCount:
+          type: integer
+          format: int32
+    KnowledgeAdminRetrievalRequest:
+      type: object
+      properties:
+        kbId:
+          type: integer
+          format: int64
+          description: 知识库ID（可选，null 则按用户可见全部）
+        query:
+          type: string
+          description: 查询文本
+        topK:
+          type: integer
+          format: int32
+          default: 5
+        useVector:
+          type: boolean
+          default: false
+          description: 是否走真向量（默认 false 走稀疏/BM25，零外呼 embedding）
+    KnowledgeAdminRetrievalResponse:
+      type: object
+      properties:
+        query:
+          type: string
+        topK:
+          type: integer
+          format: int32
+        usedVector:
+          type: boolean
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnowledgeAdminRetrievalResponseCandidate"
+    KnowledgeAdminRetrievalResponseCandidate:
+      type: object
+      properties:
+        chunkId:
+          type: string
+        text:
+          type: string
+        score:
+          type: number
+          format: double
+        metadata:
+          type: object
+          additionalProperties: true
+        knowledgeBaseId:
+          type: integer
+          format: int64
+        filename:
+          type: string
+    ResultListKnowledgeBaseVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnowledgeBaseVO"
+    ResultListKnowledgeFileVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnowledgeFileVO"
+    ResultDocumentIngestionResult:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/DocumentIngestionResult"
+    ResultKnowledgeFileVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/KnowledgeFileVO"
+    ResultKnowledgeAdminRetrievalResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/KnowledgeAdminRetrievalResponse"
+
+    ResultListAiSessionVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiSessionVO"
+    ResultListAiMessageVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiMessageVO"
+    ResultAiChatImageUploadVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/AiChatImageUploadVO"
+    ResultAiPendingActionVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/AiPendingActionVO"
+    AiSessionVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        status:
+          type: integer
+          format: int32
+        createdTime:
+          type: string
+          format: date-time
+        updatedTime:
+          type: string
+          format: date-time
+    AiMessageVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        role:
+          type: string
+        msgType:
+          type: string
+        content:
+          type: string
+        payload:
+          type: string
+        createdTime:
+          type: string
+          format: date-time
+    AiChatImageUploadVO:
+      type: object
+      properties:
+        imageId:
+          type: integer
+          format: int64
+        imageHash:
+          type: string
+        imageRef:
+          type: string
+    AiPendingActionVO:
+      type: object
+      properties:
+        pendingId:
+          type: string
+        status:
+          type: string
+        actionType:
+          type: string
+        payload:
+          type: string
+        missingFields:
+          type: array
+          items:
+            type: string
+        preview:
+          type: string
+        expireTime:
+          type: string
+          format: date-time
+    ConfigItemView:
+      type: object
+      properties:
+        key:
+          type: string
+        namespace:
+          type: string
+        valueType:
+          type: string
+        value:
+          type: string
+        defaultValue:
+          type: string
+        description:
+          type: string
+        version:
+          type: integer
+          format: int32
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+        deleted:
+          type: boolean
+        sensitive:
+          type: boolean
+        minValue:
+          type: string
+        maxValue:
+          type: string
+        allowedValues:
+          type: array
+          items:
+            type: string
+    ConfigHistoryView:
+      type: object
+      properties:
+        version:
+          type: integer
+          format: int32
+        operationType:
+          type: string
+        oldValue:
+          type: string
+        newValue:
+          type: string
+        operatorRef:
+          type: string
+        remark:
+          type: string
+        createTime:
+          type: string
+          format: date-time
+    ConfigUpdateRequest:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+        remark:
+          type: string
+    ConfigRollbackRequest:
+      type: object
+      properties:
+        version:
+          type: integer
+          format: int32
+        remark:
+          type: string
+    ResultListConfigItemView:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConfigItemView"
+    ResultConfigItemView:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/ConfigItemView"
+    ResultListConfigHistoryView:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConfigHistoryView"
