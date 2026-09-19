@@ -1,0 +1,160 @@
+/* 使用教程气泡主题：覆盖 driver.js 默认样式（更柔和的视觉与更宽松的排版） */
+
+/* webview 处于 hidden 状态时 rAF 暂停，driver 无法标记高亮元素；
+   交互放行与描边由引擎同步添加的 tutorial-active-target 类保证 */
+.driver-active .tutorial-active-target {
+  outline: 2px solid rgba(22, 119, 255, 0.6) !important;
+  outline-offset: 2px;
+}
+
+.driver-active .tutorial-active-target.tutorial-clickable,
+.driver-active .tutorial-active-target.tutorial-clickable * {
+  pointer-events: auto !important;
+}
+
+.tutorial-active-target.tutorial-clickable {
+  cursor: pointer;
+}
+
+/* 自由操作步骤（freeInteract）：保持气泡与高亮，但放开全页交互，
+   供用户在引导中真实填写表单/提交数据。
+   driver 会给遮罩 path 写内联 pointer-events:auto（遮罩正是靠它挡住挖孔外区域），
+   必须用 !important 压过内联样式才能让整页可点 */
+.driver-active.tutorial-allow-all :not(.driver-overlay, .driver-overlay *) {
+  pointer-events: auto;
+}
+
+.driver-active.tutorial-allow-all .driver-overlay path {
+  pointer-events: none !important;
+}
+
+.tutorial-popover.driver-popover {
+  max-width: 360px;
+  padding: 18px 20px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+}
+
+.tutorial-popover .driver-popover-title {
+  padding-right: 56px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: #1f2937;
+}
+
+.tutorial-popover .driver-popover-description {
+  margin-top: 8px;
+  font-size: 13px;
+  /* 放宽行距，缓解长文案的密集感 */
+  line-height: 1.9;
+  color: #4b5563;
+}
+
+.tutorial-popover.tutorial-loading .driver-popover-description {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.tutorial-content-item {
+  display: flex;
+  gap: 6px;
+}
+.tutorial-content-item::before {
+  content: '•';
+  color: #1677ff;
+}
+
+.tutorial-popover .driver-popover-close-btn {
+  top: 10px;
+  right: 10px;
+  font-size: 16px;
+  color: #9ca3af;
+}
+
+.tutorial-popover .driver-popover-footer {
+  margin-top: 14px;
+  align-items: center;
+}
+
+.tutorial-popover .driver-popover-progress-text {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.tutorial-popover .driver-popover-footer-btn {
+  border: none;
+  border-radius: 6px;
+  padding: 5px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.tutorial-popover .driver-popover-footer-btn:hover,
+.tutorial-popover .driver-popover-footer-btn:focus {
+  background-color: #f3f4f6;
+}
+
+/* 上一步为幽灵按钮，下一步/完成为主题蓝实心按钮 */
+.tutorial-popover .driver-popover-navigation-btns button:last-child {
+  background-color: #1677ff;
+  color: #fff;
+}
+
+.tutorial-popover .driver-popover-navigation-btns button:last-child:hover,
+.tutorial-popover .driver-popover-navigation-btns button:last-child:focus {
+  background-color: #4096ff;
+}
+
+/* 跳过此步：气泡页脚的幽灵按钮（复用 driver 页脚按钮基础样式） */
+.tutorial-popover .driver-popover-footer .tutorial-skip-btn {
+  background-color: transparent;
+  color: #6b7280;
+}
+.tutorial-popover .driver-popover-footer .tutorial-skip-btn:hover,
+.tutorial-popover .driver-popover-footer .tutorial-skip-btn:focus {
+  background-color: #f3f4f6;
+  color: #374151;
+}
+
+/* 收起/展开：挂在气泡右上角、关闭按钮左侧 */
+.tutorial-collapse-btn {
+  position: absolute;
+  top: 10px;
+  right: 34px;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #9ca3af;
+  cursor: pointer;
+}
+.tutorial-collapse-btn:hover,
+.tutorial-collapse-btn:focus {
+  color: #4b5563;
+  background: #f3f4f6;
+}
+
+/* 收起态：只保留标题与关闭/展开按钮，不遮挡操作区域 */
+.tutorial-popover.tutorial-minimized {
+  max-width: 240px;
+  padding: 10px 14px;
+}
+.tutorial-popover.tutorial-minimized .driver-popover-description,
+.tutorial-popover.tutorial-minimized .driver-popover-footer {
+  display: none;
+}
+.tutorial-popover.tutorial-minimized .driver-popover-title {
+  padding-right: 64px;
+}
+
+/* 小屏：气泡宽度自适应视口 */
+@media (max-width: 768px) {
+  .tutorial-popover.driver-popover {
+    max-width: calc(100vw - 32px);
+  }
+}

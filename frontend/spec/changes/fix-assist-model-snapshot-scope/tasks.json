@@ -1,0 +1,64 @@
+[
+  {
+    "number": 1,
+    "category": "契约同步",
+    "task": "把后端 OpenAPI 导出接入前端生成流程。",
+    "steps": [
+      { "step": "确认后端 /v3/api-docs.yaml 可在本地和 CI 访问", "completed": false },
+      { "step": "新增同步脚本，将导出的 YAML 写入 openapi.yaml", "completed": false },
+      { "step": "执行 pnpm gen:api 并确认生成 SDK 包含协助详情、交付物和快照字段", "completed": false },
+      { "step": "新增 verify:api，检查重新生成后 git diff 为空", "completed": false },
+      { "step": "在 CI 中执行契约同步与漂移检查", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "快照展示",
+    "task": "按来源模型渲染协助终态快照。",
+    "steps": [
+      { "step": "审批推进协助展示整条商机及全部活动", "completed": false },
+      { "step": "业务活动协助只展示当前活动和当前活动附件", "completed": false },
+      { "step": "联络任务协助展示当前任务及明确关联活动", "completed": false },
+      { "step": "快照缺失时显示历史不可用提示，禁止回退实时全部活动", "completed": false },
+      { "step": "终态详情不再用实时接口覆盖 recordSnapshot", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "协助字段",
+    "task": "修正 hasAssistant 和协助入口的记录匹配。",
+    "steps": [
+      { "step": "所有协助入口按 modelName + recordId 绑定", "completed": false },
+      { "step": "验证同商机其他活动的协助不会污染当前记录状态", "completed": false },
+      { "step": "区分申请人、协助人和无关用户可见的协助字段", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 4,
+    "category": "交付物附件",
+    "task": "改为按 assistId 实时加载交付物，并兼容终态只读。",
+    "steps": [
+      { "step": "移除对 recordSnapshot.deliveryAttachments 的依赖", "completed": false },
+      { "step": "申请人和协助人在所有状态下显示交付物查看/下载", "completed": false },
+      { "step": "根据后端写权限隐藏或显示上传、删除操作", "completed": false },
+      { "step": "下载 URL 只在当前响应中使用，不永久缓存", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 5,
+    "category": "回归验证",
+    "task": "验证三类协助展示边界和 API 生成结果。",
+    "steps": [
+      { "step": "补充审批全活动、活动单条、任务关联活动的组件测试", "completed": false },
+      { "step": "补充跨 modelName/recordId 的 hasAssistant 负向测试", "completed": false },
+      { "step": "补充终态交付物可读、陌生用户不可读测试", "completed": false },
+      { "step": "执行 pnpm lint:check、pnpm type-check:check、pnpm verify:api", "completed": false }
+    ],
+    "passes": false
+  }
+]
+

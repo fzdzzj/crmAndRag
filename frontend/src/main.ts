@@ -1,0 +1,13 @@
+import { createApp } from 'vue';
+import App from './App.vue';
+import router from './router/index-pages';
+import { VueQueryPlugin } from '@tanstack/vue-query';
+import { queryClient } from './api/queryClient';
+import dayjs from 'dayjs';
+import 'dayjs/locale/zh-cn';
+import './tailwindcss.css';
+dayjs.locale('zh-cn');
+const app = createApp(App);
+app.use(VueQueryPlugin, { queryClient });
+app.use(router);
+app.mount('#app');

@@ -1,0 +1,49 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：契约与后端草稿更新",
+    "task": "补充销售阶段审批草稿更新契约及服务端实现。",
+    "steps": [
+      { "step": "定义按草稿 ID 更新备注、协助申请内容和附件的契约", "completed": true },
+      { "step": "校验草稿归属、未提交审批和销售阶段仍可推进", "completed": true },
+      { "step": "实现协助申请的新增与已有项更新，不实现删除协助人", "completed": true },
+      { "step": "补充重复保存、非法草稿和已提交草稿测试", "completed": true }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：前端草稿编辑",
+    "task": "让申请推进弹窗支持草稿继续编辑和重复保存。",
+    "steps": [
+      { "step": "保存成功后保留草稿 ID 和服务端数据", "completed": true },
+      { "step": "将保存按钮切换为保存修改并提交完整草稿内容", "completed": true },
+      { "step": "保留现有追加协助入口，不增加删除协助人控件", "completed": true },
+      { "step": "更新失败时保留输入并展示后端错误", "completed": true }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：提交审批交互",
+    "task": "降低正式提交审批的误触风险。",
+    "steps": [
+      { "step": "将确定按钮改为提交审批并根据是否存在草稿调用对应接口", "completed": true },
+      { "step": "提交审批前展示明确的二次确认文案", "completed": true },
+      { "step": "确认保存草稿不会调用审批提交接口", "completed": true }
+    ],
+    "passes": false
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：验证与验收",
+    "task": "验证草稿生命周期、追加协助和提交审批边界。",
+    "steps": [
+      { "step": "执行契约生成、lint 和 type-check", "completed": true },
+      { "step": "手工验证草稿修改后再次保存", "completed": false },
+      { "step": "手工验证追加协助仍可用且删除协助人未实现", "completed": false },
+      { "step": "手工验证提交审批确认和保存草稿不进审批队列", "completed": false }
+    ],
+    "passes": false
+  }
+]

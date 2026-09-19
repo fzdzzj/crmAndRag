@@ -18,6 +18,7 @@ import com.slz.crm.server.service.DataStatisticsService;
 import org.jfree.chart.ChartUtils;
 import org.jfree.chart.JFreeChart;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
@@ -42,17 +43,19 @@ public class DataStatisticsServiceImpl implements DataStatisticsService {
     private SalesOpportunityMapper salesOpportunityMapper;
 
     @Override
+    // TASK-001：缓存自 Controller 下沉；key 覆盖 DTO 全部影响结果的字段（dataType/timeRange/chartType/startTime/endTime）
+    @Cacheable(value = "chartDataCache", key = "#dataStatisticsDTO.dataType + '|' + #dataStatisticsDTO.timeRange + '|' + #dataStatisticsDTO.chartType + '|' + #dataStatisticsDTO.startTime + '|' + #dataStatisticsDTO.endTime", condition = "#dataStatisticsDTO != null && #dataStatisticsDTO.dataType != null")
     public ChartDataVO getChartData(DataStatisticsDTO dataStatisticsDTO) throws IOException {
         // 参数校验
         if (dataStatisticsDTO.getDataType() == null) {
             throw new IllegalArgumentException("数据类型不能为空");
         }
 
-        // 计算时间范围
+        // 计算时间范围（timeRange 为 null 时默认使用本周）
         LocalDateTime[] calculatedTimeRange = DataChartUtils.calculateDateRange(
                 dataStatisticsDTO.getEndTime(),
                 dataStatisticsDTO.getStartTime(),
-                dataStatisticsDTO.getTimeRange()
+                dataStatisticsDTO.getTimeRange() != null ? dataStatisticsDTO.getTimeRange() : TimeRangeOperate.THIS_WEEK
         );
         // 设置时间范围
         dataStatisticsDTO.setEndTime(calculatedTimeRange[1]);
@@ -251,6 +254,8 @@ public class DataStatisticsServiceImpl implements DataStatisticsService {
 
     @Override
     @Deprecated
+    // TASK-001：缓存自 Controller 下沉；key 覆盖 DTO 全部影响结果的字段（dataType/timeRange/chartType/startTime/endTime）
+    @Cacheable(value = "chartCache", key = "#dataStatisticsDTO.dataType + '|' + #dataStatisticsDTO.timeRange + '|' + #dataStatisticsDTO.chartType + '|' + #dataStatisticsDTO.startTime + '|' + #dataStatisticsDTO.endTime", condition = "#dataStatisticsDTO != null && #dataStatisticsDTO.dataType != null")
     public byte[] generateChart(DataStatisticsDTO dataStatisticsDTO) throws IOException {
         // 使用新的 getChartData 方法
         ChartDataVO chartData = getChartData(dataStatisticsDTO);

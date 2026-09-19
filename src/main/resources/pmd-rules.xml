@@ -1,0 +1,83 @@
+<?xml version="1.0"?>
+<!--
+  PMD 规则集（maven-pmd-plugin:3.26.0）
+  仅开启 HIGH/DEFAULT 级别规则，阈值≤5 violations 通过
+-->
+<ruleset name="PMD Custom Rules"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
+
+    <!-- 代码异味检测 -->
+    <rule ref="category/java/codestyle.xml/MultipleStringLiterals">
+        <properties>
+            <property name="ignoreOccurrenceContext" value="false"/>
+            <property name="minThreshold" value="4"/>
+        </properties>
+    </rule>
+
+    <rule ref="category/java/codestyle.xml/UnnecessaryImport"/>
+    <rule ref="category/java/codestyle.xml/TooManyStaticImports"/>
+    <rule ref="category/java/codestyle.xml/UnusedImports"/>
+    <rule ref="category/java/codestyle.xml/OnlyOneReturn"/>
+    <rule ref="category/java/codestyle.xml/FieldNamingConventions"/>
+    <rule ref="category/java/codestyle.xml/ClassNamingConventions"/>
+    <rule ref="category/java/codestyle.java/LocalVariableNamingConventions"/>
+    <rule ref="category/java/bestpractices.xml/MethodReturnsNewArray"/>
+    <rule ref="category/java/bestpractices.xml/AvoidPrintStackTrace"/>
+    <rule ref="category/java/bestpractices.xml/SystemPrintln"/>
+    <rule ref="category/java/bestpractices.xml/UnusedLocalVariable"/>
+    <rule ref="category/java/bestpractices.xml/UnusedFormalParameter"/>
+    <rule ref="category/java/bestpractices.xml/UseTryWithResources"/>
+    
+    <!-- 安全漏洞检测 -->
+    <rule ref="category/java/security.xml/HardCodedCrypto"/>
+    <rule ref="category/java/security.xml/InsecureCryptoWithIV"/>
+    
+    <!-- 性能问题 -->
+    <rule ref="category/java/performance.xml/InsufficientStringBufferDeclaration"/>
+    <rule ref="category/java/performance.xml/UseArrayListInsteadOfVector"/>
+    <rule ref="category/java/performance.xml/SimplifyStartsWith"/>
+    
+    <!-- 异常处理 -->
+    <rule ref="category/java/errorprone.xml/AvoidCatchingGenericException"/>
+    <rule ref="category/java/errorprone.xml/EmptyCatchBlock"/>
+    <rule ref="category/java/errorprone.xml/DetectedEmptyClause"/>
+    <rule ref="category/java/errorprone.xml/CheckResultSet"/>
+    
+    <!-- 设计问题 -->
+    <rule ref="category/java/design.xml/CognitiveComplexity">
+        <properties>
+            <property name="classMax" value="75"/>
+            <property name="methodMax" value="25"/>
+        </properties>
+    </rule>
+    
+    <rule ref="category/java/design.xml/CyclomaticComplexity">
+        <properties>
+            <property name="classMax" value="75"/>
+            <property name="methodMax" value="15"/>
+        </properties>
+    </rule>
+    
+    <rule ref="category/java/design.xml/NcssCount">
+        <properties>
+            <property name="classMax" value="150"/>
+            <property name="methodMax" value="75"/>
+        </properties>
+    </rule>
+    
+    <rule ref="category/java/design.xml/TooManyMethods">
+        <properties>
+            <property name="maxMethods" value="30"/>
+        </properties>
+    </rule>
+    
+    <rule ref="category/java/documentation.xml/CommentSize">
+        <properties>
+            <property name="minLines" value="1"/>
+            <property name="maxLines" value="20"/>
+        </properties>
+    </rule>
+
+</ruleset>

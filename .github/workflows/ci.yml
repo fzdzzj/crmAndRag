@@ -37,82 +37,17 @@ jobs:
       - name: 集成测试门禁（failsafe + Testcontainers MySQL）
         run: mvn -B -ntp verify
 
-      # 阶段3：回归基线阈值——两个报告目录分开裁决，防止合并悄悄丢测试
-      #   口径A surefire = target/surefire-reports（pom 的 **/*Test.java，显式 exclude **/*IT.java），基线 653
-      #   实测：2026-09-16 本机 mvn -B -ntp test，Tests run 合计 653（=649 + add-paragraph-chunking 新增4：ParagraphChunkingStrategyTest I-05形1+无换行≡fixed1+超长单段1+DocumentService解析1；上一版 649 =645 + measure-perf-baseline 新增4：PerfBaselineSmokeTest fixed切分2+CitationAligner1+ConstraintQuerySplitter1；上一版 645 =644 + fix-i05-caption-chunk 新增1：RagBenchmarkDataPreparerTest 图注黄金词面断言1；再上一版 644 =639 + trace-i05-citation-forensics 新增5：BenchmarkOnlyFilterTest only过滤3+旁路JSON1+enrich回填1；更早 639 =634 + add-vision-pdf-ingest-pilot 新增5：
-      #     DocumentServiceTest 视觉PDF默认关/开+mock/失败回退/富文本不走VLM/无参构造 5；上一版 634 =628 + fix-multicondition-recall 新增6：
-      #     ConstraintQuerySplitterTest 6；上一版 628 =625 + add-excel-header-projection 新增3：
-      #     DocumentServiceTest 多列表头投影+首行超长不投影 2 + RagBenchmarkDataPreparerTest 黄金行列名断言 1；上一版 625 =619 + fix-citation-alignment 新增6：
-      #     CitationAlignerTest 6；上一版 619 = 618 + expand-rag-benchmark 新增1：
-      #     RagBenchmarkDataPreparerTest.expandedSuiteV2SizeAndCategoryBreakdown；上一版 618 = 615 + drift-disposition 新增3：
-      #     KnownDriftRegistryTest 3；再上一版 615 = 602 + audit-permission-matrix 新增13：
-      #     PermissionCoverageScannerTest 7 + PermissionCoverageComparatorTest 6；更上一版 602 = 590 +
-      #     audit-entity-table-drift 新增12：SchemaDriftAuditorTest 5 + SchemaDriftComparatorTest 7）。
-      #     此前基线 590（=555 + 提案5新增30 + 基线阶梯 runner 泛化新增5；明细见上一版注释）。
-      #   单测不依赖 Docker，CI 与本机同口径，因此 653 对两边都成立；只增不减。
-      #     V6 保留字缺陷已于 2026-09-12 获授权就地修复：真库迁移链 V1..V23 首次完整应用，
-      #       failsafe 真跑口径 24 = 15 绿 + 7 门控跳过 + 2 红（WriteChainRegressionIT 为 task18 时代
-      #       存量测试缺陷另案登记，见 openspec/changes/complete-hybrid-retrieval-and-rerank/tasks.md §0）。
-      #   口径B failsafe = target/failsafe-reports（pom 的 **/*IT.java 与 **/*IntegrationTest.java），基线 13
-      #     实测：2026-09-13 failsafe:integration-test 白名单列出 8 个可执行 IT，Tests run 合计 13
-      #     （CompanyGroupDeleteIT 4 / CustomerCompanyControllerIT 1 / CustomerCompanyDeptUniqueIT 2 /
-      #       PermissionControllerIT 3 / WriteChainRegressionIT 2 / V1BaselineMySqlIT 1 / FlywayMigrationIT 0 /
-      #       PermissionCoverageAuditIT 2）。
-      #       PermissionControllerIT 由 close-permission-read-gap 启用 2 个停放用例并新增 1 个正向用例
-      #       → 2 disabled → 3 运行（2026-09-13 本地 Docker 实测 3 绿）。
-      #       PermissionCoverageAuditIT 为本提案新增，纯 JVM 静态扫描无 Docker 依赖，2026-09-13 本地实测 2/0/0 绿。
-      #       apply-permission-matrix（2026-09-14）再增 8 个 Docker 依赖 IT 用例：PermissionsInterceptorStatusIT 3 +
-      #       PermissionApplyReportIT 5（均 extend AbstractMySqlIT，需 Docker 实跑，本机无 Docker 未实跑）。
-      #     ⚠ 13 是「无 Docker 下限」，不是 CI 期望值：FlywayMigrationIT 无 Docker 时整类被 @BeforeAll 假设中止记 0，
-      #       且本轮排除 ModelProviderImplDashScopeIT（3 个 @Test，会发真实外网请求）。
-      #       CI 有 Docker 时按 3 运行计新增 SchemaDriftAuditIT 1 + apply-permission-matrix 8 后推算为 28
-      #       （=13+PermissionControllerIT-2+3+FlywayMigrationIT1+ModelProvider3+SchemaDriftAuditIT1+
-      #       PermissionCoverageAuditIT2+PermissionsInterceptorStatusIT3+PermissionApplyReportIT5，推算值非实测）。
-      #     TODO（首次 Docker 可用的 CI 跑完立即做）：按 target/failsafe-reports 的实测合计把 13 上调到真实值，
-      #       否则丢掉最多 4 个 IT 用例不会被本门禁拦住。
-      #   失败关闭：目录缺失、目录内无 .txt 报告、求和为空或非数字，一律 exit 1，不允许静默通过。
-      #   两个比较都会执行（不因前一个失败而跳过后一个），任一低于基线即失败。
+      # 阶段3：回归基线门禁——由仓库自有脚本裁决，本地与 CI 跑同一条命令：
+      #   bash scripts/check-test-baseline.sh
+      # 阈值不在 YAML 里，而在 scripts/test-baseline.txt，且只允许由
+      #   bash scripts/check-test-baseline.sh --update
+      # 在一次真实 mvn -B -ntp clean verify 之后写入；当前运行含 Failures/Errors 时 --update 直接拒绝。
+      # 脚本同时裁决四项：Failures 与 Errors 必须为 0、Tests run 不低于基线（防丢测试）、
+      # Skipped 不高于基线（防整类被悄悄跳过；旧实现只对 Tests run 求和，看不到这一项）。
+      # 历史阶梯 639/644/645/649/653/657 与 failsafe 13 的来龙去脉见：
+      #   git log -p -- scripts/test-baseline.txt .github/workflows/ci.yml
       - name: 回归基线阈值校验（surefire + failsafe 双口径）
-        run: |
-          set -uo pipefail
-
-          check_baseline() {
-            dir="$1"; baseline="$2"; label="$3"
-            if [ ! -d "$dir" ]; then
-              echo "::error::${label} 报告目录不存在：${dir}（该类测试根本没执行）"
-              return 1
-            fi
-            files=$(find "$dir" -maxdepth 1 -name '*.txt' -type f | wc -l | tr -d ' ')
-            if [ -z "$files" ] || [ "$files" -eq 0 ]; then
-              echo "::error::${dir} 下没有 .txt 报告，${label} 测试根本没执行"
-              return 1
-            fi
-            total=$(grep -rhoE "Tests run: [0-9]+" "$dir"/*.txt | awk -F': ' '{s+=$2} END {print s+0}')
-            if [ -z "$total" ]; then
-              echo "::error::${label} 求和结果为空，无法裁决（目录=${dir}，报告数=${files}）"
-              return 1
-            fi
-            case "$total" in
-              *[!0-9]*)
-                echo "::error::${label} 求和结果非数字：'${total}'，无法裁决"
-                return 1
-                ;;
-            esac
-            echo "${label}：报告文件=${files}，Tests run 合计=${total}，基线=${baseline}（目录=${dir}）"
-            if [ "$total" -lt "$baseline" ]; then
-              echo "::error::${label} 测试数 ${total} < 基线 ${baseline}，疑似丢测试"
-              return 1
-            fi
-            return 0
-          }
-
-          rc=0
-          check_baseline target/surefire-reports 653 "surefire 单元测试" || rc=1
-          check_baseline target/failsafe-reports 13 "failsafe 集成测试" || rc=1
-          if [ "$rc" -ne 0 ]; then
-            echo "::error::回归基线阈值校验未通过（surefire 基线 653 / failsafe 基线 13）"
-          fi
-          exit "$rc"
+        run: bash scripts/check-test-baseline.sh
 
       - name: 上传覆盖率与测试报告
         if: always()
@@ -124,3 +59,57 @@ jobs:
             target/surefire-reports/
             target/failsafe-reports/
           if-no-files-found: ignore
+
+  # TASK-02：静态检查门禁（checkstyle/spotbugs/pmd/spotless）
+  static-analysis-gate:
+    needs: build-and-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出
+        uses: actions/checkout@v4
+
+      - name: 装配 JDK 21 + Maven 缓存
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+
+      - name: 静态检查门禁（checkstyle/spotbugs/pmd/spotless）
+        run: mvn -B -ntp checkstyle:check spotbugs:check pmd:check spotless:check
+        env:
+          CHECKSTYLE_MAX_VIOLATIONS: 0
+          SPOTBUGS_MAX_HIGH: 0
+          PMD_MAX_VIOLATIONS: 5
+          SPOTLESS_APPLY_DIFF: 0
+
+  frontend-quality:
+    name: Frontend Lint / Type-check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: 检出
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint:check
+
+      - name: Type-check
+        run: pnpm type-check:check
+

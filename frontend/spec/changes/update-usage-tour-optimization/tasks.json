@@ -1,0 +1,163 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：引擎体验（P0）",
+    "task": "锚点等待加载提示与超时用户选择，替代静默超时行为。",
+    "steps": [
+      { "step": "waitForAnchor 等待期间渲染「正在加载…」气泡提示，锚点就绪后切换为正常步骤气泡", "completed": true },
+      { "step": "超时后弹出用户选择（跳过此步 / 结束教程），覆盖 route 与无 route 两类步骤", "completed": true },
+      { "step": "跳过计入 skippedAnchors 汇总，结束前统一提示", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 1：引擎体验（P0）",
+    "task": "气泡增加「跳过此步」入口。",
+    "steps": [
+      { "step": "popover 增加跳过按钮（最后一步隐藏），点击立即进入下一步并计入跳过统计", "completed": true },
+      { "step": "跳过与上一步/下一步按钮样式统一，放入 driver-theme.css", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 1：引擎体验（P0）",
+    "task": "中途退出前增加确认。",
+    "steps": [
+      { "step": "onCloseClick 与 ESC 关闭路径接入 Modal.confirm，说明将退出教程与演示模式", "completed": true },
+      { "step": "正常完成与系统收尾（isFinishing 守卫）不弹确认", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 1：引擎体验（P0）",
+    "task": "气泡支持收起与恢复。",
+    "steps": [
+      { "step": "气泡增加收起控件，收起为不遮挡内容的悬浮标记，点击恢复", "completed": true },
+      { "step": "收起状态仅存活当前步骤，切步后自动恢复完整气泡", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 2：内容与路径（P1）",
+    "task": "长文案分点渲染与文案精简。",
+    "steps": [
+      { "step": "TourStep.content 支持 string 或 string[]，气泡按要点分行展示", "completed": true },
+      { "step": "筛选/编辑/推进/审批/回收站等实操长文案改写为分点并精简", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 6,
+    "category": "阶段 2：内容与路径（P1）",
+    "task": "教程抽屉学习路径与预计时长。",
+    "steps": [
+      { "step": "条目按推荐顺序标注序号，展示预计时长（按步骤数估算）", "completed": true },
+      { "step": "快速上手最后一步文案衔接「下一步学什么」指向基础教程", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 7,
+    "category": "阶段 2：内容与路径（P1）",
+    "task": "教程条目展开步骤列表并支持点击直跳。",
+    "steps": [
+      { "step": "TutorialDrawer 条目增加展开/收起控件，展开显示全部步骤（序号 + 标题）", "completed": true },
+      { "step": "startTutorial 支持 startStep 参数，点击步骤从该步开始引导并启用演示模式", "completed": true },
+      { "step": "依赖前序操作产生数据的步骤跳转时以演示种子数据兜底，开始后清除该教程中断记录", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 8,
+    "category": "阶段 2：内容与路径（P1）",
+    "task": "断点续学。",
+    "steps": [
+      { "step": "tutorialStorage 增加按用户 + 教程记录中断步骤序号", "completed": true },
+      { "step": "finish(false) 写入中断记录，抽屉显示「继续（第 N 步）」，开始后清除", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 9,
+    "category": "阶段 2：内容与路径（P1）",
+    "task": "完成教程结果反馈。",
+    "steps": [
+      { "step": "完成时展示结果弹层：教程标题、步骤数、推荐下一篇", "completed": true },
+      { "step": "替代现有 message.success，保留已完成标记逻辑", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 10,
+    "category": "阶段 3：健壮性（P1）",
+    "task": "自由操作跑偏提示。",
+    "steps": [
+      { "step": "freeInteract 步骤注册路由监听，离开步骤路由时提示返回当前页", "completed": true },
+      { "step": "切步与结束时清理监听，避免泄漏", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 11,
+    "category": "阶段 3：健壮性（P2）",
+    "task": "删除 advanceOnRoute 死代码。",
+    "steps": [
+      { "step": "移除 TourStep.advanceOnRoute、routeWatcher 及相关分支", "completed": true },
+      { "step": "tourConfig 测试同步更新", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 12,
+    "category": "阶段 3：健壮性（P2）",
+    "task": "小屏适配核对。",
+    "steps": [
+      { "step": "气泡 max-width 小屏自适应，验证 768px 以下布局", "completed": true },
+      { "step": "聚光灯描边与遮罩在小屏可读性核对", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 13,
+    "category": "阶段 4：测试与验收",
+    "task": "tourConfig 测试增强。",
+    "steps": [
+      { "step": "断言 content 非空（字符串或非空数组）与 title 非空", "completed": true },
+      { "step": "保留锚点唯一、route 白名单、三分类齐全既有断言", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 14,
+    "category": "阶段 4：测试与验收",
+    "task": "useTutorial 引擎单测。",
+    "steps": [
+      { "step": "覆盖跳过统计、超时选择分支、断点写入/清除、步骤直跳 startStep 分支、完成反馈触发（mock driver）", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 15,
+    "category": "阶段 4：测试与验收",
+    "task": "手工走查与检查点文档。",
+    "steps": [
+      { "step": "docs/test-checkpoints.md 补充加载提示/跳过/退出确认/续学/完成反馈/步骤展开直跳检查点", "completed": true },
+      { "step": "dev 环境走查新建客户、阶段推进、回收站三篇重点教程", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 16,
+    "category": "阶段 4：测试与验收",
+    "task": "全量验证与提交。",
+    "steps": [
+      { "step": "pnpm precommit:check 与相关 vitest 用例全绿", "completed": true },
+      { "step": "分批提交过 pre-commit 并清理临时文件", "completed": true }
+    ],
+    "passes": true
+  }
+]

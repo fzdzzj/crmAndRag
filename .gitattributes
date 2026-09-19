@@ -1,0 +1,4 @@
+# 本机 core.autocrlf=true，Windows checkout 会把文本转成 CRLF。
+# shell 脚本与 git 钩子必须保持 LF，否则 bash 会以 $'\r' 语法错误直接失败。
+*.sh text eol=lf
+.githooks/* text eol=lf

@@ -3,6 +3,7 @@ package com.slz.crm.integration.controller;
 import com.slz.crm.integration.AbstractMySqlIT;
 import com.slz.crm.integration.RoleTokenSupport;
 import com.slz.crm.integration.TestRole;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

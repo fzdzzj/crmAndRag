@@ -1,0 +1,47 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：关联详情契约",
+    "task": "确认协助关联详情接口和返回字段，避免前端继续调用普通列表/详情路由。",
+    "steps": [
+      { "step": "核对 /assist/{id}/opportunity、/company、/contact 的权限和响应结构", "completed": false },
+      { "step": "补充或确认按 assistId 获取审批详情的受控接口", "completed": false },
+      { "step": "明确 403、记录不存在和终态快照缺失的响应语义", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：详情容器",
+    "task": "在协助页内实现统一的关联详情弹窗/抽屉。",
+    "steps": [
+      { "step": "新增关联详情状态、加载状态和错误状态管理", "completed": false },
+      { "step": "按关联类型渲染商机、公司、联系人、审批、活动和任务详情", "completed": false },
+      { "step": "关闭详情后保留原协助处理弹窗和表单状态", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：链接与权限",
+    "task": "替换普通 RouterLink，统一入口样式并处理无权限场景。",
+    "steps": [
+      { "step": "将关联入口改为按钮/标签式触发器，不再跳列表页", "completed": false },
+      { "step": "请求失败时在弹窗内展示后端 msg，不跳转或改变当前页面", "completed": false },
+      { "step": "终态记录禁止回查实时业务，优先展示快照详情", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：验证与拆分",
+    "task": "补充回归测试并拆成可独立 review 的提交。",
+    "steps": [
+      { "step": "测试联系人、公司、商机和审批均在当前页打开详情", "completed": false },
+      { "step": "测试 403 和不存在记录不会跳列表且保留协助弹窗", "completed": false },
+      { "step": "执行 pnpm lint:check、pnpm type-check:check 和关键 Playwright 链路", "completed": false },
+      { "step": "按接口契约、详情容器、样式与测试拆分提交", "completed": false }
+    ],
+    "passes": false
+  }
+]

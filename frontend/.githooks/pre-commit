@@ -1,0 +1,27 @@
+#!/usr/bin/env sh
+set -eu
+
+# 本目录以子目录形式落在 crmAndRag 仓内，frontend/ 自身没有 .git，
+# 所以不能用 `git rev-parse --show-toplevel` 定位工作目录（那样会返回 Java 仓根，根上没有 package.json）。
+hook_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+frontend_dir=$(CDPATH= cd -- "$hook_dir/.." && pwd)
+
+staged=$(git -C "$frontend_dir" diff --cached --name-only --diff-filter=ACMR -- .)
+if [ -z "$staged" ]; then
+  exit 0
+fi
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "pnpm is required to run frontend pre-commit checks." >&2
+  exit 1
+fi
+
+if [ ! -d "$frontend_dir/node_modules" ]; then
+  echo "frontend/node_modules 不存在，先在 frontend/ 跑一次 pnpm install 再提交。" >&2
+  exit 1
+fi
+
+count=$(printf '%s\n' "$staged" | wc -l)
+echo "Running frontend pre-commit checks ($count staged file(s) under frontend/)..."
+cd "$frontend_dir"
+pnpm precommit:check

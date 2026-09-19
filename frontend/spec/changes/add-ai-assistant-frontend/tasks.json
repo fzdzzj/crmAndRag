@@ -1,0 +1,242 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：分支与契约",
+    "task": "重建基于最新主线的 AI 前端分支",
+    "steps": [
+      {
+        "step": "备份 ac254ae、1e7fa19、cb4c014 三个提交",
+        "completed": true
+      },
+      {
+        "step": "从最新 origin/main 创建 add-ai-assistant-frontend 分支",
+        "completed": true
+      },
+      {
+        "step": "按 PR3、PR5、最终分支顺序 cherry-pick",
+        "completed": true
+      },
+      {
+        "step": "解决 openapi.yaml 与主数据契约冲突",
+        "completed": true
+      },
+      {
+        "step": "执行 pnpm gen:api 并检查生成目录未被提交",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 1：分支与契约",
+    "task": "冻结并验证 AI 前后端契约",
+    "steps": [
+      {
+        "step": "确认 /ai/chat/stream 事件类型与 payload schema",
+        "completed": true
+      },
+      {
+        "step": "确认 /ai/chat/cancel 与 /ai/actions/* 请求响应",
+        "completed": true
+      },
+      {
+        "step": "确认 actionCard、draftProgress、references 是否由后端真实下发",
+        "completed": true
+      },
+      {
+        "step": "为未支持事件定义前端降级策略",
+        "completed": true
+      },
+      {
+        "step": "把契约结论同步到提案和测试检查点",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 2：核心修复",
+    "task": "修复 SSE 消费与停止输出",
+    "steps": [
+      {
+        "step": "统一跨 chunk 缓冲和流结束 flush",
+        "completed": true
+      },
+      {
+        "step": "停止时立即标记 interrupted 并调用取消接口",
+        "completed": true
+      },
+      {
+        "step": "忽略或降级未知 SSE 事件",
+        "completed": true
+      },
+      {
+        "step": "处理 401、403、限流和网络异常",
+        "completed": true
+      },
+      {
+        "step": "组件卸载或切换会话时中断并清理 AbortController",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 2：核心修复",
+    "task": "修复确认卡片状态与 payload 编辑",
+    "steps": [
+      {
+        "step": "确认后使用接口返回状态，不硬编码 CONFIRMED",
+        "completed": true
+      },
+      {
+        "step": "候选编辑在既有 payload 上合并字段",
+        "completed": true
+      },
+      {
+        "step": "区分 CREATE_CONTRACT 与 CREATE_ORDER 的字段路径",
+        "completed": true
+      },
+      {
+        "step": "终态卡片禁止再次确认、取消和编辑",
+        "completed": true
+      },
+      {
+        "step": "失败时展示业务错误并保持可重试状态",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 2：核心修复",
+    "task": "收口 AI API 调用",
+    "steps": [
+      {
+        "step": "移除组件内动态导入生成客户端的直接调用",
+        "completed": true
+      },
+      {
+        "step": "在 useAiAction 暴露状态刷新或复用 useAiActionStatus",
+        "completed": true
+      },
+      {
+        "step": "统一 mutation 错误转换",
+        "completed": true
+      },
+      {
+        "step": "确认所有组件仅调用 hooks",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 6,
+    "category": "阶段 3：体验完善",
+    "task": "完善会话与消息渲染",
+    "steps": [
+      {
+        "step": "校验会话游标和历史消息分页",
+        "completed": true
+      },
+      {
+        "step": "确保新会话、切换会话和归档互不污染消息",
+        "completed": true
+      },
+      {
+        "step": "优化长文本、图表、卡片在移动端的滚动",
+        "completed": true
+      },
+      {
+        "step": "为入口、发送、停止和引用标签保留触控目标",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 7,
+    "category": "阶段 4：质量验证",
+    "task": "补充单元与组件测试",
+    "steps": [
+      {
+        "step": "保留并扩展 SSE 解析测试",
+        "completed": true
+      },
+      {
+        "step": "新增 actionCard 状态与 payload 合并测试",
+        "completed": true
+      },
+      {
+        "step": "新增 references 路由与无效引用测试",
+        "completed": true
+      },
+      {
+        "step": "新增停止、卸载和错误映射测试",
+        "completed": true
+      },
+      {
+        "step": "覆盖未知事件降级场景",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 8,
+    "category": "阶段 4：质量验证",
+    "task": "接入 CI 与端到端检查点",
+    "steps": [
+      {
+        "step": "在 CI 中运行 pnpm test",
+        "completed": true
+      },
+      {
+        "step": "运行 pnpm precommit:check",
+        "completed": true
+      },
+      {
+        "step": "运行生产构建",
+        "completed": true
+      },
+      {
+        "step": "更新 docs/test-checkpoints.md 桌面与移动端场景",
+        "completed": true
+      },
+      {
+        "step": "联调真实 SSE、确认卡片和引用跳转",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 9,
+    "category": "阶段 5：交付",
+    "task": "整理交付与合并材料",
+    "steps": [
+      {
+        "step": "确认只保留本提案相关改动",
+        "completed": true
+      },
+      {
+        "step": "更新分支交接文档中的最新提交与风险",
+        "completed": true
+      },
+      {
+        "step": "准备 PR 描述、测试证据和已知限制",
+        "completed": true
+      },
+      {
+        "step": "请求前端与后端共同评审契约",
+        "completed": true
+      }
+    ],
+    "passes": true
+  }
+]

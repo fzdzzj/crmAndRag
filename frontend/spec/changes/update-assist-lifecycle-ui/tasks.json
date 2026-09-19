@@ -1,0 +1,58 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：契约同步",
+    "task": "从后端 OpenAPI 导出并生成前端客户端，消除手写类型漂移。",
+    "steps": [
+      { "step": "确认消息、任务来源附件、快照、已取消状态和附件删除结果都出现在后端 OpenAPI", "completed": false },
+      { "step": "替换 openapi.yaml 并执行 pnpm gen:api", "completed": false },
+      { "step": "清理不再使用的 assistUserIds 前端字段", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：终态历史展示",
+    "task": "让协助详情在终态只读取冻结快照，避免回读实时业务。",
+    "steps": [
+      { "step": "扩展快照组件支持 business_activity、contact_task、sales_stage_approval", "completed": false },
+      { "step": "展示 snapshotMissing 提示和已取消原因", "completed": false },
+      { "step": "终态隐藏实时跳转、上传和删除入口", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：协助过程对话",
+    "task": "在详情内提供可审计的文本沟通，严格遵守待协助窗口和联络任务参与人边界。",
+    "steps": [
+      { "step": "实现可复用消息时间线，展示 senderName、创建时间、正文，并区分系统消息和人工消息", "completed": false },
+      { "step": "在待我协助、我的申请、联络任务协助详情三个入口复用消息面板", "completed": false },
+      { "step": "仅 status=0 显示输入框和发送按钮；后端仍是申请人、协助人或任务创建/指派/执行人的最终授权方", "completed": false },
+      { "step": "发送成功后刷新消息；失败保留输入内容并展示后端 msg", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：申请与附件结果",
+    "task": "在客户端提前阻止可确定的错误，并正确展示服务端的逐项删除结果。",
+    "steps": [
+      { "step": "申请编辑器按协助人 ID 去重且保留每人的目的与要求", "completed": false },
+      { "step": "附件删除后仅从列表移除 deletedIds", "completed": false },
+      { "step": "汇总 denied 和 notFoundIds 为可读提示", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：手工验收与拆分",
+    "task": "按可独立合并的顺序进行手工验收并拆分前端链式 PR，不新增自动化回归测试。",
+    "steps": [
+      { "step": "执行 pnpm lint:check 和 pnpm type-check:check", "completed": false },
+      { "step": "手工验收发送者姓名、系统消息、终态只读、任务执行人发送成功及无权用户发送失败", "completed": false },
+      { "step": "按终态展示、对话、附件契约三段拆分提交", "completed": false }
+    ],
+    "passes": false
+  }
+]

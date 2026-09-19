@@ -1,0 +1,206 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：分支基线",
+    "task": "基于远程 main 最新状态建立功能分支。",
+    "steps": [
+      {
+        "step": "git fetch origin main 重试（沙箱网络受限失败，以本地 origin/main 为基线并向用户说明）",
+        "completed": true
+      },
+      {
+        "step": "经用户确认：先在当前分支 feature/ai-assistant-final 上做演示（后端已切到 main 等价分支，协助功能可用）",
+        "completed": true
+      },
+      {
+        "step": "教程内容不包含尚未合入 main 的 AI 助手功能，锚点以 main 等价代码为准",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：基础设施",
+    "task": "搭建教程功能的存储、依赖与配置骨架。",
+    "steps": [
+      {
+        "step": "pnpm add driver.js 并验证可导入",
+        "completed": true
+      },
+      {
+        "step": "新建 src/utils/tutorialStorage.ts：按 userID 记录首次弹出标记与各教程完成标记（仿 token.ts 静态类风格）",
+        "completed": true
+      },
+      {
+        "step": "新建 src/constants/tour/index.ts：教程/步骤类型定义与分类常量（快速上手/基础教程/进阶教程）",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：教程内容",
+    "task": "按 main 真实功能与多入口用法编写全部教程步骤文案。",
+    "steps": [
+      {
+        "step": "快速上手主链路：认识侧边菜单 → 新建客户 → 新增联系人 → 创建销售订单（必选审批人）→ 行内推进提交阶段审批 → 审批页处理",
+        "completed": true
+      },
+      {
+        "step": "基础教程约 10 篇：新建客户（手动/Excel 导入）、客户列表功能（筛选/分组/回收站/批量/导出）、管理联系人（列表新增+客户弹窗查看）、创建销售订单、阶段推进与审批、联络任务状态流转、业务活动（挂订单/关联任务/参与人）、合同与回款开票、商机详情页导览、组织架构与权限",
+        "completed": true
+      },
+      {
+        "step": "进阶教程 3 篇：协助功能全解（创建表单申请/待我协助/我的申请重新申请与追加/详情查看四种入口）、回收站与批量管理、数据范围权限与角色配置",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：引导引擎与抽屉 UI",
+    "task": "实现分步高亮引导引擎与教程抽屉。",
+    "steps": [
+      {
+        "step": "新建 src/hooks/useTutorial.ts：router.push → 轮询等待 [data-tour] 锚点 → driver.js 高亮，支持上一步/下一步/结束与缺失步骤跳过统计",
+        "completed": true
+      },
+      {
+        "step": "新建 src/components/tutorial/TutorialDrawer.vue：antd Drawer + 三分类 Tabs + 教程条目（标题/简介/步骤数/已完成标识/开始按钮），Tailwind 样式",
+        "completed": true
+      },
+      {
+        "step": "Header.vue 增加“使用教程”入口按钮；(dashboard).page.vue 挂载抽屉并实现按 userID 首次自动弹出",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：页面锚点铺点",
+    "task": "在真实页面关键元素上添加 data-tour 锚点（仅加属性）。",
+    "steps": [
+      {
+        "step": "客户域：client/list（新建客户/回收站/批量管理/导出/分组切换）、client/contacts（新增联系人）、SideBarNav 菜单项",
+        "completed": true
+      },
+      {
+        "step": "销售域：sale/list（创建订单/行内推进）、sale/stage-approval（待审批 Tab/同意/拒绝）、sale/detail/[id]（StageFlow/项目文件/变更记录）、sale/contract（快速创建合同）、sale/contract-details/[id]（添加回款/添加开票）",
+        "completed": true
+      },
+      {
+        "step": "联络与财务：contact/task（新增任务）、contact/activity（新增活动/协助申请区）、finance（发票/回款 Tab）",
+        "completed": true
+      },
+      {
+        "step": "支撑域：org/index、privilege/role、privilege/user、assist/index（处理）、assist-applications/index（重新申请/追加协助）",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 6,
+    "category": "阶段 6：测试与验收",
+    "task": "自动化测试、检查点文档与全量校验。",
+    "steps": [
+      {
+        "step": "src/utils/__tests__/tutorialStorage.test.ts：标记读写与按用户隔离",
+        "completed": true
+      },
+      {
+        "step": "教程配置完整性测试：步骤 route 在已知路由清单、anchor 非空且教程内唯一、三分类均有教程",
+        "completed": true
+      },
+      {
+        "step": "docs/test-checkpoints.md 追加 Playwright 检查点（打开抽屉/开始快速上手/跨页高亮/完成标记/无权限降级）",
+        "completed": true
+      },
+      {
+        "step": "pnpm lint:check、pnpm type-check:check、pnpm exec vitest run 全绿并分批提交（过 pre-commit 钩子）",
+        "completed": true
+      },
+      {
+        "step": "dev 环境手工走查快速上手全链路与协助进阶教程",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 7,
+    "category": "阶段 7：第二轮反馈（演示数据真实增删查改）",
+    "task": "教程带领用户对演示数据真实增删查改，种子字段补全与实体引用对齐。",
+    "steps": [
+      {
+        "step": "种子数据字段补全：联系人补性别/创建人/类型化备注，任务字段对齐列定义（status/opportunityTitle/deadline/creatorName），协助与申请补 recordId 及公司/联系人/商机关联，新增内部部门与项目文件种子",
+        "completed": true
+      },
+      {
+        "step": "新增 mock 处理器：/sales 全量、/dept 系列、/permission/auditor、/contactTask/all、任务评论、活动附件、发票/回款详情、协助关联业务、项目文件按商机/合同读取；集团与部门搜索支持 keyword+status",
+        "completed": true
+      },
+      {
+        "step": "教程改为真实操作引导：列头筛选（查）、编辑联系人（改）、推进+审批闭环（审）、回收站删除与恢复（删）、销售订单/任务/活动/合同/集团/用户创建（增）均实操",
+        "completed": true
+      },
+      {
+        "step": "引擎与适配器修复：replaceRow 不可变替换、PUT /contact 数组载荷兼容、推进扁平点号键解析、freeInteract 不禁点高亮元素、气泡 side:top",
+        "completed": true
+      },
+      {
+        "step": "新增锚点 contact-edit/contact-form-name/advance-remark/approval-approve，docs/test-checkpoints.md 补充 7 条增删查改检查点",
+        "completed": true
+      },
+      {
+        "step": "验证：增删查改四流程脚本 3 轮稳定、新建客户实操回归 2 轮通过、lint/type-check/vitest 12/12 全绿，提交 eea769b + 8597920 过 pre-commit",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 8,
+    "category": "阶段 8：第三轮反馈（教程体验优化）",
+    "task": "沉淀引擎体验、步骤直达、断点续学与内容渲染优化。",
+    "steps": [
+      {
+        "step": "锚点等待展示加载气泡，10 秒超时改为用户选择跳过或结束；跳过结果计入汇总提示",
+        "completed": true
+      },
+      {
+        "step": "气泡新增跳过此步与收起/展开控件，退出、超时与跑偏均接入确认弹窗",
+        "completed": true
+      },
+      {
+        "step": "TourStep.content 支持 string/string[] 并安全分点渲染，实操长文案精简为要点",
+        "completed": true
+      },
+      {
+        "step": "教程抽屉增加推荐序号、预计时长、展开步骤目录与任意步骤直跳，直跳启用演示模式",
+        "completed": true
+      },
+      {
+        "step": "新增按用户与教程隔离的断点续学记录，抽屉提供继续和从头开始",
+        "completed": true
+      },
+      {
+        "step": "完成教程改为结果弹层并推荐下一篇；freeInteract 离开路由时允许返回或结束",
+        "completed": true
+      },
+      {
+        "step": "移除 advanceOnRoute 死代码，优化小屏气泡宽度，新增内容/存储/配置单测与体验检查点",
+        "completed": true
+      },
+      {
+        "step": "验证：pnpm precommit:check 通过，相关 vitest 22/22 全绿",
+        "completed": true
+      }
+    ],
+    "passes": true
+  }
+]
