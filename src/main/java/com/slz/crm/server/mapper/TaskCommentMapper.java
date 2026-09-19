@@ -5,7 +5,4 @@ import com.slz.crm.pojo.entity.TaskCommentEntity;
 import org.apache.ibatis.annotations.Mapper;
 
 @Mapper
-public interface TaskCommentMapper extends BaseMapper<TaskCommentEntity> {
-
-
-}
+public interface TaskCommentMapper extends BaseMapper<TaskCommentEntity> {}

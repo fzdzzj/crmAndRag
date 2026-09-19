@@ -10,21 +10,20 @@ import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-@EnableAutoTable  // 暂时禁用自动建表
+@EnableAutoTable // 暂时禁用自动建表
 @EnableScheduling
 @SpringBootApplication
 @MapperScan("com.slz.crm.server.mapper")
 @EntityScan("com.slz.crm.pojo.entity")
 public class CrmApplication {
 
-    public static void main(String[] args) {
-        ConfigurableApplicationContext context = SpringApplication.run(CrmApplication.class, args);
+  public static void main(String[] args) {
+    ConfigurableApplicationContext context = SpringApplication.run(CrmApplication.class, args);
 
-        //同步数据库权限
-        context.getBean(PermissionSyncRunner.class).start();
+    // 同步数据库权限
+    context.getBean(PermissionSyncRunner.class).start();
 
-        //初始化管理员角色、账号与权限绑定
-        context.getBean(DataInitializer.class).start();
-    }
-
+    // 初始化管理员角色、账号与权限绑定
+    context.getBean(DataInitializer.class).start();
+  }
 }

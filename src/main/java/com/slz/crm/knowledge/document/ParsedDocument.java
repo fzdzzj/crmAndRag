@@ -6,7 +6,6 @@ import java.util.List;
  * 文档解析结果。
  *
  * @param fileType 小写文件类型
- * @param pages    页级文本
+ * @param pages 页级文本
  */
-public record ParsedDocument(String fileType, List<DocumentPage> pages) {
-}
+public record ParsedDocument(String fileType, List<DocumentPage> pages) {}

@@ -7,5 +7,5 @@ package com.slz.crm.platform.lifecycle;
  * @param duplicate 是否因幂等键重复跳过
  * @param event 已存在或新建的事件
  */
-public record LifecycleEventResult(boolean created, boolean duplicate, PlatformLifecycleEventEntity event) {
-}
+public record LifecycleEventResult(
+    boolean created, boolean duplicate, PlatformLifecycleEventEntity event) {}

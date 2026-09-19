@@ -1,0 +1,48 @@
+# ================================================================
+# 构建上下文排除项（根 Dockerfile）
+# 目标：上下文最小化 + 严禁把密钥/本机产物带进镜像
+# ================================================================
+
+# ---- 构建产物（镜像内由 build 阶段重新生成）----
+target/
+build/
+build-tmp/
+*.class
+*.jar
+*.jar.original
+
+# ---- VCS / 工具目录 ----
+.git
+.gitignore
+.github
+.idea
+.vscode
+.qoder
+.worktrees
+
+# ---- 本任务与 agent 工作区（无需进镜像）----
+work/
+spike/
+docs/
+spec/
+
+# ---- 日志 / 本地数据 ----
+logs/
+*.log
+uploads/
+file/
+
+# ---- 密钥与环境文件（只经 compose 运行时注入，禁止入镜像）----
+.env
+.env.*
+!.env.example
+
+# ---- 前端（有独立 nginx 体系，不归本镜像）----
+frontend/node_modules
+frontend/dist
+frontend/.env
+frontend/.env.*
+
+# ---- OS ----
+.DS_Store
+Thumbs.db

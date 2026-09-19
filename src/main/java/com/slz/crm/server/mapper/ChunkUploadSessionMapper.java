@@ -6,5 +6,4 @@ import org.apache.ibatis.annotations.Mapper;
 
 /** 分片上传会话表 Mapper。 */
 @Mapper
-public interface ChunkUploadSessionMapper extends BaseMapper<ChunkUploadSessionEntity> {
-}
+public interface ChunkUploadSessionMapper extends BaseMapper<ChunkUploadSessionEntity> {}

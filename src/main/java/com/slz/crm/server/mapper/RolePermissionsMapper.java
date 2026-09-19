@@ -5,5 +5,4 @@ import com.slz.crm.pojo.entity.RolePermissionsEntity;
 import org.apache.ibatis.annotations.Mapper;
 
 @Mapper
-public interface RolePermissionsMapper extends BaseMapper<RolePermissionsEntity> {
-}
+public interface RolePermissionsMapper extends BaseMapper<RolePermissionsEntity> {}

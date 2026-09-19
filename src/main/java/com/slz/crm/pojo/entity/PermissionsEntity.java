@@ -13,20 +13,16 @@ import lombok.Data;
 @Table(value = "permissions", comment = "权限表")
 @TableName("permissions")
 public class PermissionsEntity {
-    /**
-     * 权限ID
-     */
-    @TableId(type = IdType.AUTO)
-    @Column(comment = "权限ID，唯一标识")
-    private Long id;
-    /**
-     * 权限名字
-     */
-    @Column(comment = "权限名字", type = "varchar(50)", notNull = true)
-    private String permissionsName;
-    /**
-     * 权限描述
-     */
-    @Column(comment = "权限描述", type = "varchar(50)")
-    private String permissionsDesc;
+  /** 权限ID */
+  @TableId(type = IdType.AUTO)
+  @Column(comment = "权限ID，唯一标识")
+  private Long id;
+
+  /** 权限名字 */
+  @Column(comment = "权限名字", type = "varchar(50)", notNull = true)
+  private String permissionsName;
+
+  /** 权限描述 */
+  @Column(comment = "权限描述", type = "varchar(50)")
+  private String permissionsDesc;
 }

@@ -8,9 +8,11 @@ import org.apache.ibatis.annotations.Param;
 @Mapper
 public interface BusinessActivityContactMapper extends BaseMapper<BusinessActivityContactEntity> {
 
-    int existsByActivityIdAndContactId(@Param("activityId") Long activityId, @Param("contactId") Long contactId);
+  int existsByActivityIdAndContactId(
+      @Param("activityId") Long activityId, @Param("contactId") Long contactId);
 
-    void deleteByActivityIdAndContactId(@Param("activityId") Long activityId, @Param("contactId") Long contactId);
+  void deleteByActivityIdAndContactId(
+      @Param("activityId") Long activityId, @Param("contactId") Long contactId);
 
-    void deleteByActivityId(@Param("activityId") Long activityId);
+  void deleteByActivityId(@Param("activityId") Long activityId);
 }

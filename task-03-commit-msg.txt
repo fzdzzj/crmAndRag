@@ -1,0 +1,14 @@
+fix(TASK-03): @Transactional rollbackFor completeness
+
+补齐 17 处缺失 rollbackFor 的@Transactional 注解，统一使用 rollbackFor = Exception.class，确保 Checked Exception 也能触发事务回滚。
+
+修改文件：
+- SalesStageApprovalController: 4 处 (updateStage, saveDraft, updateDraft, deleteStage)
+- AiSessionServiceImpl: 1 处 (archiveSession)
+- BusinessActivityContactServiceImpl: 1 处 (updateList)
+- BusinessActivityUserServiceImpl: 1 处 (updateList)
+- CustomerCompanyServiceImpl: 3 处 (updateList, deleteOrRecoverByIds, merge)
+- PendingActionServiceImpl: 4 处 (submitDraft, mergeDraft, confirm, edit)
+- SalesOpportunityServiceImpl: 1 处 (delete)
+
+测试验证：mvn test → Tests run: 669, Failures: 0

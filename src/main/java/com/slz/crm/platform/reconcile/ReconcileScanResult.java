@@ -8,6 +8,5 @@ import java.util.List;
  * @param report 对账报告
  * @param items 差异明细
  */
-public record ReconcileScanResult(PlatformReconcileReportEntity report,
-                                  List<PlatformReconcileItemEntity> items) {
-}
+public record ReconcileScanResult(
+    PlatformReconcileReportEntity report, List<PlatformReconcileItemEntity> items) {}

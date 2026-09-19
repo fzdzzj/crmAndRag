@@ -6,5 +6,4 @@ import org.apache.ibatis.annotations.Mapper;
 
 /** 批量上传任务表 Mapper。 */
 @Mapper
-public interface BatchTaskMapper extends BaseMapper<BatchTaskEntity> {
-}
+public interface BatchTaskMapper extends BaseMapper<BatchTaskEntity> {}

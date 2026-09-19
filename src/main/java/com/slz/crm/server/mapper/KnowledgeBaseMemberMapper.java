@@ -6,5 +6,4 @@ import org.apache.ibatis.annotations.Mapper;
 
 /** 知识库成员表 Mapper。 */
 @Mapper
-public interface KnowledgeBaseMemberMapper extends BaseMapper<KnowledgeBaseMemberEntity> {
-}
+public interface KnowledgeBaseMemberMapper extends BaseMapper<KnowledgeBaseMemberEntity> {}

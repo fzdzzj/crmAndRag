@@ -10,9 +10,4 @@ package com.slz.crm.platform.quota;
  * @param reason 机器可读原因
  */
 public record QuotaDecision(
-        boolean allowed,
-        long used,
-        long limit,
-        long retryAfterSeconds,
-        String reason) {
-}
+    boolean allowed, long used, long limit, long retryAfterSeconds, String reason) {}

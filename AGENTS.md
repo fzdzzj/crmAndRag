@@ -2,12 +2,12 @@
 
 适用于本目录及其所有子目录。目标：多步任务自己推进到干完，只在真正需要用户拍板时停下。
 
-## 规则 1 · 多步任务必须先 `update_plan`
+## 规则 1 · 多步任务必须先建计划
 
-- 任务需要 2 个以上动作（读 → 改 → 验证 算一条链）时，第一个动作就是调用 `update_plan`，列出步骤，每步 5-7 词。
-- 每完成一步立刻调用 `update_plan`：该步标 `completed`，下一步标 `in_progress`。全程只能有一个 `in_progress`。
+- 任务需要 2 个以上动作（读 → 改 → 验证 算一条链）时，第一个动作就是用你当前会话里实际可用的规划 / 任务清单能力登记步骤，每步 5-7 词。
+- 每完成一步立刻更新那份清单：该步标 `completed`，下一步标 `in_progress`。全程只能有一个 `in_progress`。
 - 没实际执行完的步骤不准标 `completed`。
-- 中途换路线，再调一次 `update_plan` 并写 `explanation` 说明原因。
+- 中途换路线，重写这份计划并说明改动原因。
 - 例外：纯问答、或一条命令就能答完的事，不建计划。
 
 ## 规则 2 · 严禁用"我接下来去做 X"结束 turn
@@ -24,7 +24,7 @@
 
 - 说"X 为空 / 不存在 / 失败了"之前，本 turn 必须有对应的工具输出支撑。上一轮的推断不算本轮验证。
 - 写完文件必须在同 turn 读回来或列目录确认它真的存在，否则不算写完。
-- 写大文件（如 `application.yml`）用一次 `apply_patch` 写整份，不要分段拼接，避免分段写入未持久化。
+- 写大文件（如 `application.yml`）用一次整体写入写完，不要分段拼接，避免分段写入未持久化。
 
 ## 收尾自检（每次想结束 turn 前逐条过）
 
@@ -37,16 +37,22 @@
 ### 构建与校验
 
 - `mvn -B -ntp test` —— surefire，只跑 `**/*Test.java`（排除 `**/*IT.java`），不需 Docker，不访问外网。
-- `mvn -B -ntp verify` —— 再追加 failsafe，跑 `**/*IT.java` 与 `**/*IntegrationTest.java`，其中 Testcontainers MySQL 系列**需本地 Docker**。
-- 两者与 `.github/workflows/ci.yml` 的三段门禁同源（阶段1 surefire → 阶段2 failsafe → 阶段3 回归基线阈值），命令以那里为准。
+- `mvn -B -ntp verify` —— 再追加 failsafe，跑 `**/*IT.java` 与 `**/*IntegrationTest.java`，其中 Testcontainers MySQL 系列**需本地 Docker**。真外发 IT 需显式 opt-in（`RAG_BENCHMARK_REAL=1`），详见 runbook §6.3。
+- 两者与 `.github/workflows/ci.yml` 的三段门禁同源（阶段1 surefire → 阶段2 failsafe → 阶段3 回归基线）。阶段3 的判定逻辑与阈值不在 YAML 里：本地直接跑 `bash scripts/check-test-baseline.sh` 就能复现 CI 结论，阈值存 `scripts/test-baseline.txt`，只允许用 `--update` 从一次真实运行写入。
 - 坑：`-Dit.test=...` 会**覆盖** pom 里 failsafe 的 `<includes>`。写成 `-Dit.test=!XxxIT` 不是“排除一个”，而是让 failsafe 把全量单测再跑一遍。
 - 本地无 Docker 时 `mvn verify` 的真实结果、哪些用例会跳、哪些会直接报错，读 `docs/migration-runbook.md` 第 6 节。**先读它再下“已验证”结论**。
 
 ### 环境与迁移入口
 
-- `docs/migration-runbook.md`：`.env.example` → `.env`、`SPRING_PROFILES_ACTIVE=prod`、Flyway 号段归属（V1 基座 / V2x Lane A / V3x Lane B / V4x Lane C / V5x Lane D / V6x Lane E）。
+- `docs/migration-runbook.md`：`.env.example` → `.env`、`SPRING_PROFILES_ACTIVE=prod`、Flyway 号段归属。
+- **Flyway 号段现状（以 `ls src/main/resources/db/migration` 实测为准）**：`V1__baseline` 基座 + 个位数历史段 `V3`/`V4`/`V4_1`/`V5`/`V6`（早期 lane 的 `V2x`/`V3x`/`V4x`/`V5x`/`V6x` 十位号段规划**从未启用**，lane 归属见 runbook §1 与 `spec/.../agent-execution-plan.md §5`）；自 V21 起改用顺序号，当前最高 `V27__knowledge_admin_permission_seed.sql`，**下一可用号以目录实测为准**（不要照抄本文档）。
 - 库结构唯一真相源 = `src/main/resources/db/migration`；**禁改已合入脚本**（Flyway 校 checksum），改错出 `V(n+1)__fix_xxx.sql`。
 - 回退：**不提供 DROP 回滚**，回退 = 恢复迁移前的数据库快照（runbook 第 4.1 步的 dump）。
+
+### 前端与在途变更规格
+
+- 前端（`frontend/`）的 pnpm 命令、pre-commit 钩子与代码约定见 `frontend/AGENTS.md`；CI 里 `frontend-quality` job 跑 `pnpm lint:check` + `pnpm type-check:check`。
+- 在途变更规格位于 `openspec/changes/`（提案/tasks/验收三件套，归档在 `openspec/changes/archive/`）；与 `spec/changes/` 的分工**待 owner 确认**，改检索链路前两个目录都先看。
 
 ### 权威上下文 owner
 
@@ -86,4 +92,4 @@
   - **KNOWN**：WARN/INFO 命中 `KnownDriftRegistry`（7 项已定夺豁免，2026-09-14，W1-W5 类型不亲和 + I1 生成列 + I2 预留表），仅计数；
   - **NEW**：未命中登记的 WARN/INFO，显式打印提醒定夺（不失败）。
 - **新漂移处置契约**：新出现的 WARN/INFO 漂移走 NEW 登记流程——要么修订 `KnownDriftRegistry` 登记豁免，要么先停下向用户要授权处置；**禁任其累积**。单测防呆 `SchemaDriftComparator.unmatchedKnownDrifts` 保证每项登记必须仍产出真实漂移，登记过期/写错即报错。
-- **边界**：不做任何类型对齐改造、不删生成列/预留表、不为预留表补实体、不动 CRITICAL 门禁语义与迁移链（V1..V26 均禁改）。
+- **边界**：不做任何类型对齐改造、不删生成列/预留表、不为预留表补实体、不动 CRITICAL 门禁语义与迁移链（**一切已合入 master 的脚本禁改**，含 V27 及之后新增者）。

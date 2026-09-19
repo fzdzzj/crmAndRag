@@ -24,3 +24,7 @@ logging:
   level:
     root: info
     com.slz.crm: info
+
+# 生产禁止开启 mybatis-plus log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+# （SQL 直接写 stdout，绕过日志级别控制与日志文件，性能损耗 + 业务数据外泄）；
+# SQL 日志统一走默认 SLF4J 路由，由上方 logging.level 控制。

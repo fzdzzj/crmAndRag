@@ -30,19 +30,23 @@ measure() {
   if [ ! -d "$dir" ]; then
     return 1
   fi
-  local files
+  local files sums
   files=$(find "$dir" -maxdepth 1 -name '*.txt' -type f | wc -l | tr -d ' ')
   if [ -z "$files" ] || [ "$files" -eq 0 ]; then
     return 1
   fi
   # 每个 .txt 只取第一条 Tests run 行，避免同一文件多行时重复计数
-  find "$dir" -maxdepth 1 -name '*.txt' -type f -print0 \
+  sums=$(find "$dir" -maxdepth 1 -name '*.txt' -type f -print0 \
     | xargs -0 awk -F'[:,]' '
         /^Tests run:/ && !seen[FILENAME]++ {
           tests += $2; failures += $4; errors += $6; skipped += $8
         }
         END { printf "%d %d %d %d", tests, failures, errors, skipped }
-      '
+      ')
+  if [ -z "$sums" ]; then
+    return 1
+  fi
+  printf '%s %s' "$files" "$sums"
 }
 
 read_baseline() {

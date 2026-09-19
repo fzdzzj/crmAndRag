@@ -6,5 +6,4 @@ package com.slz.crm.integration.schema;
  * @param dataType MySQL data_type 原文（如 bigint / varchar / datetime），不含长度与精度
  * @param nullable 是否可空（is_nullable = YES）
  */
-public record DbColumn(String dataType, boolean nullable) {
-}
+public record DbColumn(String dataType, boolean nullable) {}

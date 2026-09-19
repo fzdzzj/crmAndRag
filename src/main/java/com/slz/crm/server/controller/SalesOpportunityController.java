@@ -12,119 +12,121 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-/**
- * 销售机会
- */
+/** 销售机会 */
 @RestController
 @RequestMapping("/sales")
 @Slf4j
 public class SalesOpportunityController {
 
-    @Autowired
-    private SalesOpportunityService salesOpportunityService;
+  @Autowired private SalesOpportunityService salesOpportunityService;
 
+  /**
+   * 修改销售机会
+   *
+   * @param salesOpportunityDTO 销售机会DTO
+   * @return 是否修改成功
+   */
+  @PutMapping
+  @RequirePermission(PermissionOperates.SALES_UPDATE_SALE_OPPORTUNITY)
+  public Result<Boolean> update(@RequestBody SalesOpportunityDTO salesOpportunityDTO) {
+    return Result.success(salesOpportunityService.update(salesOpportunityDTO));
+  }
 
-    /**
-     * 修改销售机会
-     *
-     * @param salesOpportunityDTO 销售机会DTO
-     * @return 是否修改成功
-     */
-    @PutMapping
-    @RequirePermission(PermissionOperates.SALES_UPDATE_SALE_OPPORTUNITY)
-    public Result<Boolean> update(@RequestBody SalesOpportunityDTO salesOpportunityDTO) {
-        return Result.success(salesOpportunityService.update(salesOpportunityDTO));
+  /**
+   * 删除销售机会
+   *
+   * @param id 销售机会ID
+   * @return 是否删除成功
+   */
+  @DeleteMapping("/{id}")
+  @RequirePermission(PermissionOperates.SALES_DELETE_SALE_OPPORTUNITY)
+  public Result<Boolean> delete(@PathVariable("id") Long id) {
+    try {
+      return Result.success(salesOpportunityService.delete(id));
+    } catch (RuntimeException e) {
+      return Result.error(e.getMessage());
     }
+  }
 
-    /**
-     * 删除销售机会
-     *
-     * @param id 销售机会ID
-     * @return 是否删除成功
-     */
-    @DeleteMapping("/{id}")
-    @RequirePermission(PermissionOperates.SALES_DELETE_SALE_OPPORTUNITY)
-    public Result<Boolean> delete(@PathVariable("id") Long id) {
-        try {
-            return Result.success(salesOpportunityService.delete(id));
-        } catch (RuntimeException e) {
-            return Result.error(e.getMessage());
-        }
+  /**
+   * 获取所有销售机会
+   *
+   * @param pageNum 页码
+   * @param pageSize 每页数量
+   * @return 销售机会VO列表
+   */
+  @GetMapping
+  @RequirePermission(PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY)
+  public Result<Page<SalesOpportunityVO>> getAllSalesOpportunity(
+      @RequestParam Integer pageNum, @RequestParam Integer pageSize) {
+    if (pageNum == null || pageSize == null || pageNum <= 0 || pageSize <= 0) {
+      pageNum = 1;
+      pageSize = 10;
     }
+    return Result.success(salesOpportunityService.getAllSalesOpportunity(pageNum, pageSize));
+  }
 
-    /**
-     * 获取所有销售机会
-     *
-     * @param pageNum  页码
-     * @param pageSize 每页数量
-     * @return 销售机会VO列表
-     */
-    @GetMapping
-    @RequirePermission(PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY)
-    public Result<Page<SalesOpportunityVO>> getAllSalesOpportunity(@RequestParam Integer pageNum, @RequestParam Integer pageSize) {
-        if (pageNum == null || pageSize == null || pageNum <= 0 || pageSize <= 0) {
-            pageNum = 1;
-            pageSize = 10;
-        }
-        return Result.success(salesOpportunityService.getAllSalesOpportunity(pageNum, pageSize));
+  /**
+   * 创建销售机会
+   *
+   * @param dto 销售机会DTO
+   * @return 销售机会VO
+   */
+  @PostMapping
+  @RequirePermission(PermissionOperates.SALES_CREATE_SALE_OPPORTUNITY)
+  public Result<SalesOpportunityVO> create(@RequestBody SalesOpportunityDTO dto) {
+    return Result.success(salesOpportunityService.create(dto));
+  }
+
+  /**
+   * 自定义查询销售机会
+   *
+   * @param queryDTO 查询条件
+   * @param pageNum 页码
+   * @param pageSize 每页数量
+   * @return 销售机会VO列表
+   */
+  @GetMapping("/query")
+  @RequirePermission(PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY)
+  public Result<Page<SalesOpportunityVO>> getSalesOpportunityByQuery(
+      @ModelAttribute SalesOpportunityQueryDTO queryDTO,
+      @RequestParam Integer pageNum,
+      @RequestParam Integer pageSize) {
+    return Result.success(
+        salesOpportunityService.getSalesOpportunityByQuery(queryDTO, pageNum, pageSize));
+  }
+
+  /**
+   * 根据销售机会ID查询商机详情（包含商机信息、业务活动和状态变更记录）
+   *
+   * @param opportunityId 销售机会ID
+   * @return 商机详情VO（包含商机信息、按商机状态分组的业务活动列表、状态变更记录）
+   */
+  @GetMapping("/detail/{opportunityId}")
+  @RequirePermission(PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY)
+  public Result<com.slz.crm.pojo.vo.OpportunityDetailVO> getOpportunityDetailById(
+      @PathVariable("opportunityId") Long opportunityId) {
+    try {
+      return Result.success(salesOpportunityService.getOpportunityDetailById(opportunityId));
+    } catch (RuntimeException e) {
+      return Result.error(e.getMessage());
     }
+  }
 
-    /**
-     * 创建销售机会
-     *
-     * @param dto 销售机会DTO
-     * @return 销售机会VO
-     */
-    @PostMapping
-    @RequirePermission(PermissionOperates.SALES_CREATE_SALE_OPPORTUNITY)
-    public Result<SalesOpportunityVO> create(@RequestBody SalesOpportunityDTO dto) {
-        return Result.success(salesOpportunityService.create(dto));
+  /**
+   * 根据合同ID查询商机详情（包含商机信息、业务活动和状态变更记录）
+   *
+   * @param contractId 合同ID
+   * @return 商机详情VO（包含商机信息、按商机状态分组的业务活动列表、状态变更记录）
+   */
+  @GetMapping("/detail/by-contract/{contractId}")
+  @RequirePermission(PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY)
+  public Result<com.slz.crm.pojo.vo.OpportunityDetailVO> getOpportunityDetailByContractId(
+      @PathVariable("contractId") Long contractId) {
+    try {
+      return Result.success(salesOpportunityService.getOpportunityDetailByContractId(contractId));
+    } catch (RuntimeException e) {
+      return Result.error(e.getMessage());
     }
-
-    /**
-     * 自定义查询销售机会
-     *
-     * @param queryDTO 查询条件
-     * @param pageNum  页码
-     * @param pageSize 每页数量
-     * @return 销售机会VO列表
-     */
-    @GetMapping("/query")
-    @RequirePermission(PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY)
-    public Result<Page<SalesOpportunityVO>> getSalesOpportunityByQuery(@ModelAttribute SalesOpportunityQueryDTO queryDTO, @RequestParam Integer pageNum, @RequestParam Integer pageSize) {
-        return Result.success(salesOpportunityService.getSalesOpportunityByQuery(queryDTO, pageNum, pageSize));
-    }
-
-    /**
-     * 根据销售机会ID查询商机详情（包含商机信息、业务活动和状态变更记录）
-     *
-     * @param opportunityId 销售机会ID
-     * @return 商机详情VO（包含商机信息、按商机状态分组的业务活动列表、状态变更记录）
-     */
-    @GetMapping("/detail/{opportunityId}")
-    @RequirePermission(PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY)
-    public Result<com.slz.crm.pojo.vo.OpportunityDetailVO> getOpportunityDetailById(@PathVariable("opportunityId") Long opportunityId) {
-        try {
-            return Result.success(salesOpportunityService.getOpportunityDetailById(opportunityId));
-        } catch (RuntimeException e) {
-            return Result.error(e.getMessage());
-        }
-    }
-
-    /**
-     * 根据合同ID查询商机详情（包含商机信息、业务活动和状态变更记录）
-     *
-     * @param contractId 合同ID
-     * @return 商机详情VO（包含商机信息、按商机状态分组的业务活动列表、状态变更记录）
-     */
-    @GetMapping("/detail/by-contract/{contractId}")
-    @RequirePermission(PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY)
-    public Result<com.slz.crm.pojo.vo.OpportunityDetailVO> getOpportunityDetailByContractId(@PathVariable("contractId") Long contractId) {
-        try {
-            return Result.success(salesOpportunityService.getOpportunityDetailByContractId(contractId));
-        } catch (RuntimeException e) {
-            return Result.error(e.getMessage());
-        }
-    }
-
+  }
 }

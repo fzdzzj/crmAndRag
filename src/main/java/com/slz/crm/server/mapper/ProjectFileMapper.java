@@ -5,6 +5,4 @@ import com.slz.crm.pojo.entity.ProjectFileEntity;
 import org.apache.ibatis.annotations.Mapper;
 
 @Mapper
-public interface ProjectFileMapper extends BaseMapper<ProjectFileEntity> {
-
-}
+public interface ProjectFileMapper extends BaseMapper<ProjectFileEntity> {}

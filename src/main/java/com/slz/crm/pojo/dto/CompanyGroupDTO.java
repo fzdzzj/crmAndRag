@@ -9,12 +9,9 @@ import lombok.Data;
  */
 @Data
 public class CompanyGroupDTO {
-    /**
-     * 集团ID（编辑时必填）
-     */
-    private Long id;
-    /**
-     * 集团名称
-     */
-    private String groupName;
+  /** 集团ID（编辑时必填） */
+  private Long id;
+
+  /** 集团名称 */
+  private String groupName;
 }

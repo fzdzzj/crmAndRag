@@ -10,9 +10,8 @@ package com.slz.crm.platform.lifecycle;
  * @param payload 事件扩展数据
  */
 public record LifecycleEventRequest(
-        String documentId,
-        LifecycleEventType eventType,
-        long statusVersion,
-        String idempotencyKey,
-        String payload) {
-}
+    String documentId,
+    LifecycleEventType eventType,
+    long statusVersion,
+    String idempotencyKey,
+    String payload) {}

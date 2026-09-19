@@ -9,8 +9,4 @@ package com.slz.crm.platform.reconcile;
  * @param retentionHours 差异报告保留小时数
  */
 public record ReconcileScanRequest(
-        String scanType,
-        boolean dryRun,
-        String operatorUserRef,
-        long retentionHours) {
-}
+    String scanType, boolean dryRun, String operatorUserRef, long retentionHours) {}

@@ -1,7 +1,7 @@
 # Git 工作流 — 检索链路优化提案执行契约（交接 agent 必读）
 
 > 适用：`openspec/changes/` 下剩余提案（2–5）的执行 agent。本文自包含，与本机环境（旧版 git + PowerShell）已对齐。
-> 当前基线：master @ `e24663a`（提案 1 已 `--no-ff` 合入）；CI surefire 基线 **473** / failsafe 基线 12；仓库**无 remote，禁止 push**（推送需用户显式授权）。
+> 当前基线：master @ `e24663a`（提案 1 已 `--no-ff` 合入）；**测试基线数字一律以 `.github/workflows/ci.yml` 为准（当前 surefire 657 / failsafe 13，截至 2026-09-19）**，本文不复制数字作验收口径；仓库**无 remote，禁止 push**（推送需用户显式授权）。
 
 ## 1. 分支模型
 
@@ -30,10 +30,11 @@
 
 ## 4. CI 基线 bump（凡新增测试的提案必做）
 
-- 分支收尾提交：`chore(ci): surefire回归基线473→N——锁住提案X新增Y测试（实测N绿）`。
-- 同步改 `.github/workflows/ci.yml` 三处：口径A 注释（含"=473+新增X"说明与实测日期）、`check_baseline target/surefire-reports` 数字、错误提示行数字。
-- failsafe 基线 12 仅在**新增 IT 且本地实测**后才上调（无 Docker 按 skip 口径，见 ci.yml 口径B 注释的坑）。
+- 分支收尾提交：`chore(ci): surefire回归基线上调至 N——锁住提案X新增Y测试（实测N绿）`（bump 前的当前值以 `.github/workflows/ci.yml` 为准，不在本文复制）。
+- 同步改 `.github/workflows/ci.yml` 三处：口径A 注释（写明新增来源测试类与实测日期，不写等式）、`check_baseline target/surefire-reports` 数字、错误提示行数字。
+- failsafe 基线（当前值以 ci.yml 为准）仅在**新增 IT 且本地实测**后才上调（无 Docker 按 skip 口径，见 ci.yml 口径B 注释的坑与 `docs/migration-runbook.md` §6.2 的红/跳分类）。
 - 基线 JSON（`baseline-after-*.json`）**入库**——它们是后续提案"不回退"验收的锚点。
+- **新增 `src/main/resources/db/migration/` 脚本必须在同一变更内更新 `FlywayMigrationIT` 的 `EXPECTED_VERSIONS`**（该类是迁移链全集门禁；版本表漏登记 = 新脚本对门禁完全失明，CI 下限口径也拦不住）。
 
 ## 5. 成本闸门（停下来向用户要授权，不许自作主张）
 

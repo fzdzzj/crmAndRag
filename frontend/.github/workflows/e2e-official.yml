@@ -1,0 +1,132 @@
+name: E2E Official
+
+on:
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    name: Playwright E2E（官方 Runner 自建后端）
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: crm_dev
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - name: Checkout frontend
+        uses: actions/checkout@v4
+
+      - name: Checkout backend
+        uses: actions/checkout@v4
+        with:
+          repository: 2024-shiliuzi/crm-back
+          ref: master
+          path: crm-back
+          token: ${{ secrets.BACKEND_REPO_TOKEN }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+
+      - name: Install MySQL client
+        run: sudo apt-get update && sudo apt-get install -y default-mysql-client
+
+      - name: Init database
+        run: |
+          mysql -h127.0.0.1 -P3306 -uroot -proot crm_dev < crm-back/script.sql
+          mysql -h127.0.0.1 -P3306 -uroot -proot crm_dev < crm-back/src/test/resources/init_data.sql
+          mysql -h127.0.0.1 -P3306 -uroot -proot crm_dev < e2e/ci/seed.sql
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate API client
+        run: pnpm gen:api
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build backend
+        working-directory: crm-back
+        run: mvn -B -ntp -DskipTests package
+
+      - name: Start backend
+        working-directory: crm-back
+        env:
+          SLZ_DATASOURCE_HOST: 127.0.0.1
+          SLZ_DATASOURCE_PORT: '3306'
+          SLZ_DATASOURCE_DATABASE: crm_dev
+          SLZ_DATASOURCE_USERNAME: root
+          SLZ_DATASOURCE_PASSWORD: root
+          SLZ_JWT_SECRET_KEY: slzslzslzslslslslslzslzslszlszlslzs
+          SLZ_JWT_TTL: '8640000000000'
+          SLZ_FILE_PATH: ./file
+        run: |
+          nohup java -jar target/crm-0.0.1-SNAPSHOT.jar --server.port=8080 > backend.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8080/health >/dev/null; then
+              echo "backend ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "backend not ready"
+          tail -50 backend.log
+          exit 1
+
+      - name: Write frontend env
+        run: |
+          echo "BASE_API=http://localhost:8080" > .env
+          echo "BASE_PATH=/CRM" >> .env
+
+      - name: Write e2e test env
+        run: |
+          cat > e2e/.env <<'EOF'
+          E2E_ADMIN_EMAIL=admin1@slz.com
+          E2E_ADMIN_PASSWORD=123456
+          E2E_DIRECTOR_EMAIL=admin@slz.com
+          E2E_DIRECTOR_PASSWORD=123456
+          E2E_MANAGER_EMAIL=zhangming@example.com
+          E2E_MANAGER_PASSWORD=123456
+          E2E_SALES_EMAIL=lihua@example.com
+          E2E_SALES_PASSWORD=123456
+          BASE_API=http://localhost:8080
+          BASE_PATH=/
+          EOF
+
+      - name: Run E2E（销售员权限菜单）
+        run: pnpm exec playwright test e2e/role-permission.spec.ts
+
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: |
+            test-results/
+            playwright-report/
+            crm-back/backend.log
+          retention-days: 7

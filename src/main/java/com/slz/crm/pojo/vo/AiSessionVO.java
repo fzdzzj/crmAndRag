@@ -1,16 +1,14 @@
 package com.slz.crm.pojo.vo;
 
-import lombok.Data;
 import java.time.LocalDateTime;
+import lombok.Data;
 
-/**
- * AI 会话 VO
- */
+/** AI 会话 VO */
 @Data
 public class AiSessionVO {
-    private Long id;
-    private String title;
-    private Integer status;
-    private LocalDateTime createdTime;
-    private LocalDateTime updatedTime;
+  private Long id;
+  private String title;
+  private Integer status;
+  private LocalDateTime createdTime;
+  private LocalDateTime updatedTime;
 }

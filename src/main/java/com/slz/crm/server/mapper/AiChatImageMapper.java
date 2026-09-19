@@ -6,5 +6,4 @@ import org.apache.ibatis.annotations.Mapper;
 
 /** AI 会话聊天图片 Mapper。 */
 @Mapper
-public interface AiChatImageMapper extends BaseMapper<AiChatImageEntity> {
-}
+public interface AiChatImageMapper extends BaseMapper<AiChatImageEntity> {}

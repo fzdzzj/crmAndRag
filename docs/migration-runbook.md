@@ -17,7 +17,8 @@
 | `V6x__*` | Lane E | 动态配置项 + 版本历史 |
 
 - 号段内递增（如 `V31__`、`V32__`）；跨 lane 依赖表由被依赖方建，消费方不重复建。
-- **禁止**修改已合入的脚本（Flyway 会校验 checksum）。改错必须出 `V(n+1)__fix_xxx.sql`。
+- **实际落地与本表不符（以 `ls src/main/resources/db/migration` 为准）**：Wave 1 未启用 `V2x`/`V3x`/`V4x`/`V5x`/`V6x` 十位号段，历史脚本用了个位数 `V1`/`V3`/`V4`/`V4_1`/`V5`/`V6`；自 V21 起改顺序号，快照截至 2026-09-19 最高为 `V27`，**下一可用号取目录实测**。本表只作 lane 归属溯源，不作取号依据。
+- **禁止**修改已合入 master 的脚本（Flyway 会校验 checksum）。改错必须出 `V(n+1)__fix_xxx.sql`；新增脚本必须同轮登记进 `FlywayMigrationIT` 的 `EXPECTED_VERSIONS`（见 `openspec/git-workflow.md` §4）。
 
 ## 2. 迁移步骤（新环境）
 
@@ -68,41 +69,71 @@
 ### 6.1 两类测试与命令
 
 - 单元测试：`mvn -B -ntp test`（surefire，`**/*Test.java`，不需要数据库也不需要 Docker）。
-  实测口径（2026-09-11，本机 `mvn -B -ntp verify`）：`target/surefire-reports` 下 93 个 `.txt` 报告，`Tests run` 合计 **467**。
-  此数不依赖 Docker，CI 同口径，即 `.github/workflows/ci.yml` 阶段3 的 surefire 基线。
-  （旧文档曾写「306 个 CRM 基线测试」，那是 V1 接管期的数字，已作废。）
+  **基线数字以 `.github/workflows/ci.yml` 为准（当前 surefire 657 / failsafe 13，截至 2026-09-19）**；本文不复制数字，历史快照（如"快照截至 2026-09-11 的 467"）一律以 ci.yml 注释为准，更早的"306 个 CRM 基线测试"口径已作废。
+  此数不依赖 Docker，CI 与本机同口径。
 - 集成测试：`mvn -B -ntp verify` 追加 failsafe（`**/*IT.java`、`**/*IntegrationTest.java`），报告写入 `target/failsafe-reports`。
-  可执行 IT 共 8 个类（`AbstractMySqlIT` 是抽象基类，不产出报告）；无 Docker 实测其中 7 个的 `Tests run` 合计 **12**。
+  可执行 IT 类共 **16 个**（`AbstractMySqlIT` 是抽象基类，不产出报告），声明用例 37 个；聚合口径与基线同样以 ci.yml 为准。
 
-### 6.2 覆盖边界：本地无 Docker 时 `mvn verify` 不是绿灯
+### 6.2 覆盖边界：本地无 Docker 时 `mvn verify` 的"绿"不代表验证过
 
-实测（2026-09-11，Docker Desktop 未运行）：`Tests run: 479, Failures: 0, Errors: 11, Skipped: 1` → **BUILD FAILURE**。
+按现存 `src/test/**/*IT.java` 全量分类（2026-09-19 逐类读文件头与 `@BeforeAll`；"用例"= 该类 `@Test` 数。TASK-003R 复核：原 D 组已整体并入 B 组）：
 
-- **会直接报错的**：`AbstractMySqlIT` 的 5 个子类共 11 个用例——`CompanyGroupDeleteIT` 4、`CustomerCompanyControllerIT` 1、
-  `CustomerCompanyDeptUniqueIT` 2、`PermissionControllerIT` 2、`WriteChainRegressionIT` 2。
-  根因：`AbstractMySqlIT` 第 24 行以静态字段急加载 `new MySQLContainer<>("mysql:8.0.36")`，**没有 `assumeTrue` 守卫**，
-  Docker 缺失时类初始化失败抛 `ExceptionInInitializerError`，同类其余用例接着报 `NoClassDefFoundError`。
-- **会优雅跳过的只有三处**：
-  1. `FlywayMigrationIT` 第 54 行 `assumeTrue(DockerClientFactory.instance().isDockerAvailable())` 在 `@BeforeAll`，
-     整类中止，报告记 `Tests run: 0`（该类只有 1 个 `@Test`）；
-  2. `V1BaselineMySqlIT` 需 `SLZ_MYSQL_VERIFY_DATABASE`，实测 `Tests run: 1, Skipped: 1`；
-  3. `ModelProviderImplDashScopeIT` 第 91 行 `assumeTrue(apiKey 非空)`（3 个 `@Test`），无 key 时全 skip。
+**A · 真跑（无 Docker、无 env 依赖，本地与 CI 同口径）**
 
-**因此：本地无 Docker 时，Flyway 真库迁移这条路径是被跳过（`Tests run: 0`）而不是通过。**
-不能用本地构建结果支撑「Flyway 迁移已验证」或「真机模型链路已验证」；这两条只在 CI（`ubuntu-latest` 自带 Docker）真跑。
+| 类 | 用例 | 说明 |
+|---|---|---|
+| `integration/permission/PermissionCoverageAuditIT` | 2 | 端点权限覆盖静态扫描门禁，纯 JVM |
 
-### 6.3 反向警告：本地 `mvn verify` 可能真的打外网
+**B · 优雅跳过（Docker `assumeTrue` 守卫 → 整类不执行，报告记 `Tests run: 0`）——共 11 类 / 29 用例**
 
-`ModelProviderImplDashScopeIT` 的 key 解析顺序是「环境变量 `DASHSCOPE_API_KEY` → 仓库根 `.env` 同名键」。
-**只要任一处有值，它就会真跑**，向 `https://dashscope.aliyuncs.com/compatible-mode/v1` 发真实 chat/stream/embed 请求并消耗额度。
-当前仓库根 `.env` 含该键（2026-09-11 实测命中 1 处），所以本地随手 `mvn verify` 会产生外发请求；
-不想打外网又不能用 `-Dit.test=!ModelProviderImplDashScopeIT`（见 6.4），需临时把 env 与 `.env` 两处都置空。
+守卫写在本类：
+
+| 类 | 用例 | 守卫位置 |
+|---|---|---|
+| `integration/FlywayMigrationIT` | 3 | `@BeforeAll` `assumeTrue(isDockerAvailable)`（真库迁移链全集门禁，`EXPECTED_VERSIONS` 需与迁移目录同步） |
+| `integration/SparseRecallServiceIT` | 4 | `@BeforeAll` 同上 |
+| `integration/ChunkNgramRecallGateIT` | 1 | `@BeforeAll` 同上 |
+| `integration/schema/SchemaDriftAuditIT` | 1 | `@BeforeAll` 同上 |
+
+守卫继承自 `AbstractMySqlIT`（基类 `@BeforeAll` + `assumeTrue(isDockerAvailable)` + `mysqlStarted` 幂等；7 个子类自身均无 `static {}`、无 `@BeforeAll`、不引用 `MYSQL`）：
+
+| 类 | 用例 |
+|---|---|
+| `integration/controller/CompanyGroupDeleteIT` | 4 |
+| `integration/controller/CustomerCompanyControllerIT` | 1 |
+| `integration/controller/CustomerCompanyDeptUniqueIT` | 2 |
+| `integration/controller/PermissionControllerIT` | 3 |
+| `integration/controller/PermissionsInterceptorStatusIT` | 3 |
+| `integration/controller/PermissionApplyReportIT` | 5 |
+| `integration/security/WriteChainRegressionIT` | 2 |
+
+**C · 优雅跳过（env 显式门控，与 Docker 无关）**
+
+| 类 | 用例 | 门控 |
+|---|---|---|
+| `unit/db/V1BaselineMySqlIT` | 1 | `@EnabledIfEnvironmentVariable(SLZ_MYSQL_VERIFY_DATABASE)` |
+| `platform/model/ModelProviderImplDashScopeIT` | 3 | `@BeforeEach assumeTrue(RAG_BENCHMARK_REAL==1)`，再要 `DASHSCOPE_API_KEY`（见 6.3） |
+| `quality/RagRealRetrievalBenchmarkIT` | 1 | `@Test assumeTrue(RAG_BENCHMARK_REAL==1)` + key |
+| `knowledge/document/VisionPdfRealPilotIT` | 1 | `@Test assumeTrue(RAG_VISION_PDF_REAL==1)` + key |
+
+**历史坑（已闭合，遇到旧日志时对照用）**：`AbstractMySqlIT` 曾在 `static {}` 里直接 `MYSQL.start()` 且无 `assumeTrue`，当时 Docker 缺失会让类初始化抛 `ExceptionInInitializerError`、同类其余用例连锁 `NoClassDefFoundError`——那 20 个用例整批变 Errors 把构建直接搞红。TASK-005（2026-09-19）把容器启动移到 `@BeforeAll` 的 `assumeTrue` 之后，并用 `mysqlStarted` 保证共享容器在同 JVM 内只启一次，故这 7 类改判为 B 组。⚠ "无 Docker 记 skipped"这一分支**尚未在无 Docker 的机器上实测**（本机 Docker 在线，Testcontainers 策略链无法用环境变量模拟缺失），依据是同构先例 + 静态成因已消除（见 `work/mailbox/tasks/TASK-005/handoff.md` 未完成 1）；真无 Docker 的 runner 复验前，B 组的跳过结论按"待复验"对待。
+
+**因此：本地无 Docker 时 `mvn verify` 大概率是"绿但不证明任何东西"**——B 组 29 个用例、C 组 6 个用例全记跳过，只剩 A 组 2 个真跑。不能用本地构建结果支撑「Flyway 真库迁移已验证」「真 MySQL 写链/数据权限已验证」或「真机模型链路已验证」；这三条只在 CI（`ubuntu-latest` 自带 Docker）真跑。
+
+### 6.3 反向警告：真外发 IT 一律需显式 opt-in
+
+三个真发模型请求的 IT 都走环境变量开关，**默认全关**：
+
+- `ModelProviderImplDashScopeIT` 与 `RagRealRetrievalBenchmarkIT` 共用 `RAG_BENCHMARK_REAL=1`；
+- `VisionPdfRealPilotIT` 用 `RAG_VISION_PDF_REAL=1`；
+- key 解析顺序都是「环境变量 `DASHSCOPE_API_KEY` → 仓库根 `.env` 同名键」，而 `.env` 常备该键。
+
+⚠ 因两个基准共用同一个开关名，**一旦 `RAG_BENCHMARK_REAL=1` 且不加过滤，`mvn verify` 会同时打真机模型 IT 与基准 IT**，两边都烧额度。跑基准仍按铁律只 `-Dit.test=RagRealRetrievalBenchmarkIT` 白名单过滤（见 6.4）；不想外发就别设该变量。
 
 ### 6.4 `-Dit.test` 的坑
 
 `-Dit.test=...` 会**覆盖** pom 里 failsafe 的 `<includes>`，而不是在其之上再过滤。
-实测：`mvn -B -ntp verify "-Dit.test=!ModelProviderImplDashScopeIT"` 让 failsafe 把 93 个单元类全部又跑了一遍，
-`target/failsafe-reports` 出现 100 个 `.txt`、`Tests run` 合计 479（= surefire 467 + IT 12）。
+实测：`mvn -B -ntp verify "-Dit.test=!ModelProviderImplDashScopeIT"` 让 failsafe 把全量单元类又跑了一遍（`target/failsafe-reports` 的报告数与 `Tests run` 合计因此会异常虚高——等于 surefire 口径 + IT 口径的和）。
 只想跑单个 IT 时用白名单写法，例如 `-Dit.test=V1BaselineMySqlIT`（见 6.5）。
 
 ### 6.5 V1 真库验证（可选、需本地 MySQL）
@@ -126,6 +157,4 @@ mysql -uroot -p -e "DROP DATABASE crm_v1_verify;"
 - **`X` 含 `W`**（skipped 也计入 `Tests run`），所以「总数没降」不等于「真跑了」，判断是否真跑要看 `W` 是否为 0；
 - surefire 侧同理读 `target/surefire-reports/<类全名>.txt`。
 
-CI 侧 failsafe 期望值推算为 12 + `FlywayMigrationIT` 1 + `ModelProviderImplDashScopeIT` 3 = **16**（推算值，非实测）。
-`.github/workflows/ci.yml` 阶段3 当前把 failsafe 基线保守设在实测下限 12；首次 Docker 可用的 CI 跑完后，
-应按 `target/failsafe-reports` 的实测合计把该数字上调。
+failsafe 侧的当前口径、CI 期望值与"无 Docker 下限"的含义一律看 `.github/workflows/ci.yml` 口径B 注释（该处有"首次 Docker 可用的 CI 跑完后按 `target/failsafe-reports` 实测合计上调"的 TODO）。本文不复制推算值。

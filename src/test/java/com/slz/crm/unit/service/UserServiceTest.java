@@ -1,5 +1,9 @@
 package com.slz.crm.unit.service;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.dto.UserDTO;
@@ -20,9 +24,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 /**
  * 用户登录服务测试。
  *
@@ -33,72 +34,69 @@ import static org.mockito.Mockito.*;
 @DisplayName("用户登录服务")
 class UserServiceTest {
 
-    @Mock
-    private UserMapper userMapper;
+  @Mock private UserMapper userMapper;
 
-    @Mock
-    private RoleMapper roleMapper;
+  @Mock private RoleMapper roleMapper;
 
-    @Mock
-    private SysDeptMapper sysDeptMapper;
+  @Mock private SysDeptMapper sysDeptMapper;
 
-    @Mock
-    private DataConvertService dataConvertService;
+  @Mock private DataConvertService dataConvertService;
 
-    @InjectMocks
-    private UserServiceImpl userService;
+  @InjectMocks private UserServiceImpl userService;
 
-    @AfterEach
-    void clearCurrentUser() {
-        BaseUnit.removeCurrentId();
-    }
+  @AfterEach
+  void clearCurrentUser() {
+    BaseUnit.removeCurrentId();
+  }
 
-    @Test
-    @DisplayName("新增用户时，应保留所选的初始账户状态")
-    void shouldPersistRequestedStatusWhenAddingUser() {
-        authenticateAs(9001L);
-        UserDTO request = validAddUserRequest();
-        request.setStatus(1);
-        lenient().when(roleMapper.selectById(request.getRoleId())).thenReturn(validRole(request.getRoleId()));
-        when(sysDeptMapper.selectById(request.getDeptId())).thenReturn(activeDept(request.getDeptId()));
-        when(userMapper.insert(any(UserEntity.class))).thenReturn(1);
+  @Test
+  @DisplayName("新增用户时，应保留所选的初始账户状态")
+  void shouldPersistRequestedStatusWhenAddingUser() {
+    authenticateAs(9001L);
+    UserDTO request = validAddUserRequest();
+    request.setStatus(1);
+    lenient()
+        .when(roleMapper.selectById(request.getRoleId()))
+        .thenReturn(validRole(request.getRoleId()));
+    when(sysDeptMapper.selectById(request.getDeptId())).thenReturn(activeDept(request.getDeptId()));
+    when(userMapper.insert(any(UserEntity.class))).thenReturn(1);
 
-        userService.addUser(request);
+    userService.addUser(request);
 
-        ArgumentCaptor<UserEntity> userCaptor = ArgumentCaptor.forClass(UserEntity.class);
-        verify(userMapper).insert(userCaptor.capture());
-        assertEquals(1, userCaptor.getValue().getStatus());
-    }
+    ArgumentCaptor<UserEntity> userCaptor = ArgumentCaptor.forClass(UserEntity.class);
+    verify(userMapper).insert(userCaptor.capture());
+    assertEquals(1, userCaptor.getValue().getStatus());
+  }
 
-    private UserDTO validAddUserRequest() {
-        UserDTO request = new UserDTO();
-        request.setRealName("Jane Doe");
-        request.setEmail("jane.doe@example.com");
-        request.setPhone("13800138000");
-        request.setDeptId(11L);
-        request.setRoleId(8L);
-        request.setStatus(1);
-        request.setPassword("client-controlled-password");
-        return request;
-    }
+  private UserDTO validAddUserRequest() {
+    UserDTO request = new UserDTO();
+    request.setRealName("Jane Doe");
+    request.setEmail("jane.doe@example.com");
+    request.setPhone("13800138000");
+    request.setDeptId(11L);
+    request.setRoleId(8L);
+    request.setStatus(1);
+    request.setPassword("client-controlled-password");
+    return request;
+  }
 
-    private RoleEntity validRole(Long roleId) {
-        RoleEntity role = new RoleEntity();
-        role.setId(roleId);
-        role.setIsDeleted(false);
-        return role;
-    }
+  private RoleEntity validRole(Long roleId) {
+    RoleEntity role = new RoleEntity();
+    role.setId(roleId);
+    role.setIsDeleted(false);
+    return role;
+  }
 
-    private SysDeptEntity activeDept(Long deptId) {
-        SysDeptEntity dept = new SysDeptEntity();
-        dept.setId(deptId);
-        dept.setStatus(1);
-        return dept;
-    }
+  private SysDeptEntity activeDept(Long deptId) {
+    SysDeptEntity dept = new SysDeptEntity();
+    dept.setId(deptId);
+    dept.setStatus(1);
+    return dept;
+  }
 
-    private void authenticateAs(Long userId) {
-        RoleAO role = new RoleAO();
-        role.setId(userId);
-        BaseUnit.setCurrentRole(role);
-    }
+  private void authenticateAs(Long userId) {
+    RoleAO role = new RoleAO();
+    role.setId(userId);
+    BaseUnit.setCurrentRole(role);
+  }
 }

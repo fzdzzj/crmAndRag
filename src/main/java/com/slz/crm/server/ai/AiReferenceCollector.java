@@ -7,72 +7,68 @@ import com.slz.crm.pojo.vo.InvoiceInfoVO;
 import com.slz.crm.pojo.vo.OrderVO;
 import com.slz.crm.pojo.vo.PaymentRecordVO;
 import com.slz.crm.pojo.vo.SalesOpportunityVO;
-
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * AI 回答实体引用采集器：每轮对话收集只读工具结果中的业务实体（type + id + name），
- * 去重后经 SSE references 事件下发，前端渲染为可跳转详情的引用条目。
+ * AI 回答实体引用采集器：每轮对话收集只读工具结果中的业务实体（type + id + name）， 去重后经 SSE references 事件下发，前端渲染为可跳转详情的引用条目。
  * 工具结果已按数据权限过滤，引用不引入新的数据暴露面。
  */
 public class AiReferenceCollector {
 
-    /** 实体引用（type 决定前端跳转目标） */
-    public record Reference(String type, Long id, String name) {
-    }
+  /** 实体引用（type 决定前端跳转目标） */
+  public record Reference(String type, Long id, String name) {}
 
-    /** type:id →  引用，去重且保持插入顺序 */
-    private final Map<String, Reference> references = Collections.synchronizedMap(new LinkedHashMap<>());
+  /** type:id → 引用，去重且保持插入顺序 */
+  private final Map<String, Reference> references =
+      Collections.synchronizedMap(new LinkedHashMap<>());
 
-    /**
-     * 从工具结果 VO 提取引用（非实体类型返回 null）
-     */
-    public static Reference fromVo(Object vo) {
-        if (vo instanceof ContractVO v) {
-            return new Reference("contract", v.getId(), v.getContractName());
-        }
-        if (vo instanceof CustomerCompanyVO v) {
-            return new Reference("customerCompany", v.getId(), v.getCompanyName());
-        }
-        if (vo instanceof CustomerContactVO v) {
-            return new Reference("contact", v.getId(), v.getName());
-        }
-        if (vo instanceof SalesOpportunityVO v) {
-            return new Reference("opportunity", v.getId(), v.getOpportunityName());
-        }
-        if (vo instanceof OrderVO v) {
-            return new Reference("order", v.getId(), v.getProductName());
-        }
-        if (vo instanceof PaymentRecordVO v) {
-            return new Reference("payment", v.getId(), v.getContractName());
-        }
-        if (vo instanceof InvoiceInfoVO v) {
-            return new Reference("invoice", v.getId(), v.getInvoiceNo());
-        }
-        return null;
+  /** 从工具结果 VO 提取引用（非实体类型返回 null） */
+  public static Reference fromVo(Object vo) {
+    if (vo instanceof ContractVO v) {
+      return new Reference("contract", v.getId(), v.getContractName());
     }
+    if (vo instanceof CustomerCompanyVO v) {
+      return new Reference("customerCompany", v.getId(), v.getCompanyName());
+    }
+    if (vo instanceof CustomerContactVO v) {
+      return new Reference("contact", v.getId(), v.getName());
+    }
+    if (vo instanceof SalesOpportunityVO v) {
+      return new Reference("opportunity", v.getId(), v.getOpportunityName());
+    }
+    if (vo instanceof OrderVO v) {
+      return new Reference("order", v.getId(), v.getProductName());
+    }
+    if (vo instanceof PaymentRecordVO v) {
+      return new Reference("payment", v.getId(), v.getContractName());
+    }
+    if (vo instanceof InvoiceInfoVO v) {
+      return new Reference("invoice", v.getId(), v.getInvoiceNo());
+    }
+    return null;
+  }
 
-    /**
-     * 采集单个 VO（非实体类型忽略）
-     */
-    public void collect(Object vo) {
-        Reference reference = fromVo(vo);
-        if (reference != null && reference.id() != null
-                && reference.name() != null && !reference.name().isBlank()) {
-            references.putIfAbsent(reference.type() + ":" + reference.id(), reference);
-        }
+  /** 采集单个 VO（非实体类型忽略） */
+  public void collect(Object vo) {
+    Reference reference = fromVo(vo);
+    if (reference != null
+        && reference.id() != null
+        && reference.name() != null
+        && !reference.name().isBlank()) {
+      references.putIfAbsent(reference.type() + ":" + reference.id(), reference);
     }
+  }
 
-    public List<Reference> getReferences() {
-        synchronized (references) {
-            return List.copyOf(references.values());
-        }
+  public List<Reference> getReferences() {
+    synchronized (references) {
+      return List.copyOf(references.values());
     }
+  }
 
-    public boolean isEmpty() {
-        return references.isEmpty();
-    }
+  public boolean isEmpty() {
+    return references.isEmpty();
+  }
 }

@@ -12,24 +12,24 @@ package com.slz.crm.platform.token;
  * @param reason 机器/人可读原因
  */
 public record TokenBudgetDecision(
-        boolean allowed,
-        long limit,
-        long used,
-        long requested,
-        long remaining,
-        long retryAfterSeconds,
-        String reason) {
+    boolean allowed,
+    long limit,
+    long used,
+    long requested,
+    long remaining,
+    long retryAfterSeconds,
+    String reason) {
 
-    /**
-     * 构造允许结果。
-     *
-     * @param limit 周期上限
-     * @param used 已用量
-     * @param requested 预估用量
-     * @param remaining 剩余额度
-     * @return 允许决策
-     */
-    public static TokenBudgetDecision allow(long limit, long used, long requested, long remaining) {
-        return new TokenBudgetDecision(true, limit, used, requested, remaining, 0, "OK");
-    }
+  /**
+   * 构造允许结果。
+   *
+   * @param limit 周期上限
+   * @param used 已用量
+   * @param requested 预估用量
+   * @param remaining 剩余额度
+   * @return 允许决策
+   */
+  public static TokenBudgetDecision allow(long limit, long used, long requested, long remaining) {
+    return new TokenBudgetDecision(true, limit, used, requested, remaining, 0, "OK");
+  }
 }

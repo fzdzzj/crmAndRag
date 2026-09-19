@@ -1,0 +1,202 @@
+# ================================================================
+# crm-platform 全栈：app + MySQL + Qdrant + MinIO
+# 用法（在项目根执行，compose 自动读根目录 .env）：
+#   docker compose -f deploy/docker-compose.yml --env-file .env up -d --build
+# 所有凭据/连接信息来自环境变量，禁止在此硬编码密钥。
+# 变量名与 application.yml / .env.example 完全一致（不新增键）。
+# ================================================================
+
+name: crm-platform
+
+services:
+  # ---------------- 应用 ----------------
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: crm-platform:local
+    container_name: crm-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-setup:
+        condition: service_completed_successfully
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8080
+      TZ: Asia/Shanghai
+      JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError}
+      # ---- MySQL（容器内互访，覆盖 .env 里的 127.0.0.1）----
+      SLZ_DATASOURCE_HOST: mysql
+      SLZ_DATASOURCE_PORT: "3306"
+      SLZ_DATASOURCE_DATABASE: ${SLZ_DATASOURCE_DATABASE:?set in .env}
+      SLZ_DATASOURCE_USERNAME: ${SLZ_DATASOURCE_USERNAME:?set in .env}
+      SLZ_DATASOURCE_PASSWORD: ${SLZ_DATASOURCE_PASSWORD:?set in .env}
+      # ---- Flyway / auto-table / actuator 生产约束 ----
+      SLZ_FLYWAY_ENABLED: ${SLZ_FLYWAY_ENABLED:-true}
+      SLZ_AUTO_TABLE_MODE: none
+      SLZ_ACTUATOR_PROTECTED: "true"
+      # ---- JWT / 附件令牌（prod guard 要求非默认强值）----
+      SLZ_JWT_SECRET_KEY: ${SLZ_JWT_SECRET_KEY:?set in .env}
+      SLZ_JWT_TTL: ${SLZ_JWT_TTL:-3600000}
+      SLZ_ATTACH_TOKEN_KEY: ${SLZ_ATTACH_TOKEN_KEY:?set in .env}
+      # ---- 管理员初始化（仅首启）----
+      SLZ_ADMIN_EMAIL: ${SLZ_ADMIN_EMAIL:-admin@slz.com}
+      SLZ_ADMIN_PASSWORD: ${SLZ_ADMIN_PASSWORD:?set in .env}
+      # ---- 模型 Provider ----
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      SLZ_AI_PROVIDER: ${SLZ_AI_PROVIDER:-dashscope}
+      SLZ_AI_BASE_URL: ${SLZ_AI_BASE_URL:-}
+      SLZ_AI_API_KEY: ${SLZ_AI_API_KEY:-${DASHSCOPE_API_KEY:-}}
+      SLZ_AI_CHAT_MODEL: ${SLZ_AI_CHAT_MODEL:-qwen-plus}
+      SLZ_AI_VISION_MODEL: ${SLZ_AI_VISION_MODEL:-qwen-vl-plus}
+      SLZ_AI_EMBEDDING_MODEL: ${SLZ_AI_EMBEDDING_MODEL:-text-embedding-v3}
+      # ---- Qdrant（gRPC 端口 6334）----
+      RAG_VECTOR_PROVIDER: qdrant
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: "6334"
+      QDRANT_TLS: "false"
+      # 留空 = Qdrant 侧与应用侧同时关闭鉴权；两边必须同步设置，否则 readiness 报 UNAUTHENTICATED
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-knowledge_chunk}
+      QDRANT_DIMS: ${QDRANT_DIMS:-1024}
+      # ---- MinIO（容器内互访）----
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?set in .env}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?set in .env}
+      MINIO_BUCKET: ${MINIO_BUCKET:-knowledge-files}
+      # ---- 本地附件回退目录（镜像内已建且可写）----
+      SLZ_FILE_PATH: /app/file
+    volumes:
+      - app-file:/app/file
+      - app-logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/actuator/health/liveness"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+
+  # ---------------- MySQL 8 ----------------
+  mysql:
+    image: mysql:8.0
+    container_name: crm-mysql
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_general_ci
+      - --default-time-zone=+08:00
+    environment:
+      MYSQL_ROOT_PASSWORD: ${SLZ_DATASOURCE_PASSWORD:?set in .env}
+      MYSQL_DATABASE: ${SLZ_DATASOURCE_DATABASE:?set in .env}
+      TZ: Asia/Shanghai
+    ports:
+      - "${MYSQL_PUBLISH_PORT:-3306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mysqladmin ping -h 127.0.0.1 -u root -p"$$MYSQL_ROOT_PASSWORD" --silent
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  # ---------------- Qdrant（向量库）----------------
+  qdrant:
+    # 与应用内 io.qdrant:client（pom: 1.13.0）保持同 minor。
+    # 历史：曾误判 readiness DOWN 为服务端版本问题，真因是应用侧 QdrantVectorStore
+    # 反射把 Builder 方法打到 protobuf 消息类上（TASK-008 已修复），与 qdrant 版本无关。
+    image: qdrant/qdrant:v1.13.4
+    container_name: crm-qdrant
+    restart: unless-stopped
+    # 注意：Qdrant 把「空字符串」的 QDRANT__SERVICE__API_KEY 也视为已配置密钥（实测匿名请求返回 401），
+    # 所以未设 QDRANT_API_KEY 时必须整条省略该变量，而不是注入空值。compose 无法条件删键，且镜像默认
+    # /bin/sh 是 dash（其 unset 去不掉 compose 注入的值），故用 bash + env -u 重建环境后再起 qdrant。
+    # 两个坑：① perl 不可用（compose 会把 $ENV{...} 当插值语法吃掉）；② 不能用 `bash -euc`，
+    # 因为 compose 把空值的 QDRANT_AUTH 整条省略，-u 会让脚本直接 "unbound variable" 退出。
+    # 两侧共用同一个 QDRANT_API_KEY，不会出现应用侧与向量库侧不一致。
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        cd /qdrant
+        if [ "$${QDRANT_AUTH:-off}" = "off" ]; then
+          exec env -u QDRANT__SERVICE__API_KEY -u QDRANT_AUTH ./qdrant
+        else
+          exec env -u QDRANT_AUTH ./qdrant
+        fi
+    environment:
+      # 无默认值的 ${VAR}：未设/空时 compose 整条省略该键（实测 config --no-interpolate 后仍会省略），
+      # 非空时才注入真实密钥 —— 这正是 Qdrant 需要的「要么有值、要么不存在」。
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
+      # `${VAR:+on}`：VAR 为空/未设 → 空串（compose 省略该键）；非空 → on，据此决定是否保留上面的密钥
+      QDRANT_AUTH: ${QDRANT_API_KEY:+on}
+    ports:
+      - "${QDRANT_HTTP_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - bash -c 'exec 3<>/dev/tcp/127.0.0.1/6334 && echo ok'
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  # ---------------- MinIO（对象存储）----------------
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: crm-minio
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?set in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?set in .env}
+      TZ: Asia/Shanghai
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  # ---------------- MinIO 桶初始化（一次性，复用 minio 镜像自带的 mc）----------------
+  # 应用侧从不建桶，MinIO 建好空桶前 minio 指示器恒 DOWN（readiness 随之 DOWN）
+  minio-setup:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: crm-minio-setup
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mc alias set local http://minio:9000 "$${MINIO_ACCESS_KEY}" "$${MINIO_SECRET_KEY}"
+        mc mb --ignore-existing "local/$${MINIO_BUCKET}"
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?set in .env}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?set in .env}
+      MINIO_BUCKET: ${MINIO_BUCKET:-knowledge-files}
+    depends_on:
+      minio:
+        condition: service_healthy
+
+volumes:
+  mysql-data:
+  qdrant-data:
+  minio-data:
+  app-file:
+  app-logs:

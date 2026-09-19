@@ -11,8 +11,4 @@ import com.slz.crm.platform.contract.TokenUsageType;
  * @param estimatedTokens 调用方给出的预估 token 数；未知可传 0
  */
 public record TokenBudgetRequest(
-        TokenBudgetScope scope,
-        String scopeId,
-        TokenUsageType usageType,
-        long estimatedTokens) {
-}
+    TokenBudgetScope scope, String scopeId, TokenUsageType usageType, long estimatedTokens) {}

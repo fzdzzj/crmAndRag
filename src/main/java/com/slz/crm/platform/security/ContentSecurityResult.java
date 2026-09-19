@@ -9,15 +9,12 @@ package com.slz.crm.platform.security;
  * @param reason 命中原因
  */
 public record ContentSecurityResult(
-        ContentRiskLevel riskLevel,
-        ContentSecurityAction action,
-        String matchedRule,
-        String reason) {
+    ContentRiskLevel riskLevel, ContentSecurityAction action, String matchedRule, String reason) {
 
-    /**
-     * @return true 表示必须停止进入系统提示、记忆或模型调用
-     */
-    public boolean isBlocked() {
-        return action == ContentSecurityAction.BLOCK;
-    }
+  /**
+   * @return true 表示必须停止进入系统提示、记忆或模型调用
+   */
+  public boolean isBlocked() {
+    return action == ContentSecurityAction.BLOCK;
+  }
 }

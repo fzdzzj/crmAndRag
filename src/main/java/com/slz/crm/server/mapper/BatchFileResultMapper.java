@@ -6,5 +6,4 @@ import org.apache.ibatis.annotations.Mapper;
 
 /** 批量上传文件结果表 Mapper。 */
 @Mapper
-public interface BatchFileResultMapper extends BaseMapper<BatchFileResultEntity> {
-}
+public interface BatchFileResultMapper extends BaseMapper<BatchFileResultEntity> {}

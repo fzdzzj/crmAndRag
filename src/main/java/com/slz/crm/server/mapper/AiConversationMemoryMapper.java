@@ -6,5 +6,4 @@ import org.apache.ibatis.annotations.Mapper;
 
 /** AI 会话持久记忆 Mapper。 */
 @Mapper
-public interface AiConversationMemoryMapper extends BaseMapper<AiConversationMemoryEntity> {
-}
+public interface AiConversationMemoryMapper extends BaseMapper<AiConversationMemoryEntity> {}

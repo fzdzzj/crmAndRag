@@ -14,9 +14,9 @@
 
 | 项 | 摸底（2026-09-13 手工） | 实测（扫描首跑） | 差异说明 |
 |---|---|---|---|
-| controller 数 | 26 | **27** | 摸底漏计 `DynamicConfigAdminController`（platform/config） |
-| 端点总数 | 227 | **208** | 摸底为手工估算；扫描实测为准 |
-| SECURED（已挂注解） | 172（估算） | **146** | 实测为准 |
+| controller 数 | 26 | **28** | 摸底漏计 `DynamicConfigAdminController`（platform/config） |
+| 端点总数 | 227 | **215** | 摸底为手工估算；扫描实测为准 |
+| SECURED（已挂注解） | 172（估算） | **153** | 实测为准 |
 | INTENTIONAL_OPEN（有意开放） | 若干 | **5** | /login、/health、/public/**、getMyPermission、auditor |
 | PENDING_DECISION（零注解待拍板） | 40 | **57** | 摸底 40 外**新发现 17**（User 6 / DynamicConfig 7 / template×2 / auditor / getMyRole） |
 | CRITICAL（写裸奔未登记） | — | **0** | 首轮全登记，门禁放行（显式知情制） |
@@ -35,7 +35,7 @@ RoleController#getMyRole 等 17 个零注解端点——这正是"无门禁时�
 **WARN 非空同样判 fail**（实现口径：零注解读端点若未登记进 PENDING/OPEN 即视为遗漏登记，一律报红）。
 controller 扫描数 ≠ 登记数（27）→ 抛错红。新 controller 必须同步登记，防漏审。
 
-## 3. 各 controller 端点矩阵（27 × 208）
+## 3. 各 controller 端点矩阵（28 × 215）
 
 | Controller | 端点数 | SECURED | INTENTIONAL_OPEN | PENDING_DECISION |
 |---|---:|---:|---:|---:|
@@ -66,7 +66,8 @@ controller 扫描数 ≠ 登记数（27）→ 抛错红。新 controller 必须�
 | SysDeptController | 5 | 5 | 0 | 0 |
 | TaskCommentController | 8 | 8 | 0 | 0 |
 | UserHandoverController | 3 | 3 | 0 | 0 |
-| **合计** | **208** | **146** | **5** | **57** |
+ | KnowledgeAdminController | 7 | 7 | 0 | 0 |
+| **合计** | **215** | **153** | **5** | **57** |
 
 ### 3.1 SECURED 146（合规，摘要）
 含 `close-permission-read-gap` 三端点自然校验：`ANY /permission/list`、`POST /permission/addORDeletePermissionsToRole`、

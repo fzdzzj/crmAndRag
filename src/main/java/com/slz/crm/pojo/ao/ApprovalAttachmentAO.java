@@ -5,6 +5,6 @@ import lombok.Data;
 
 @Data
 public class ApprovalAttachmentAO {
-    private ApprovalAttachmentEntity attachment;
-    private byte[] fileBytes;
+  private ApprovalAttachmentEntity attachment;
+  private byte[] fileBytes;
 }

@@ -12,11 +12,10 @@ package com.slz.crm.platform.audit;
  * @param detail 扩展信息；调用方需先脱敏
  */
 public record GovernanceAuditEvent(
-        String eventType,
-        String actorUserRef,
-        String targetType,
-        String targetId,
-        String action,
-        GovernanceAuditResult result,
-        String detail) {
-}
+    String eventType,
+    String actorUserRef,
+    String targetType,
+    String targetId,
+    String action,
+    GovernanceAuditResult result,
+    String detail) {}
