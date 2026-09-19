@@ -25,6 +25,14 @@ import com.slz.crm.server.properties.AiProperties;
 import com.slz.crm.server.service.PendingActionService;
 import com.slz.crm.server.service.PermissionService;
 import jakarta.annotation.PostConstruct;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ThreadLocalRandom;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,613 +43,519 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.Objects;
-
-/**
- * AI 待确认操作状态机服务实现
- * 校验与执行按 actionType 策略分发，扩展新操作类型只需新增 Validator/Executor Bean
- */
+/** AI 待确认操作状态机服务实现 校验与执行按 actionType 策略分发，扩展新操作类型只需新增 Validator/Executor Bean */
 @Slf4j
-
 @Service
-public class PendingActionServiceImpl extends ServiceImpl<AiPendingActionMapper, AiPendingActionEntity>
+public class PendingActionServiceImpl
+    extends ServiceImpl<AiPendingActionMapper, AiPendingActionEntity>
+    implements PendingActionService {
 
-        implements PendingActionService {
+  private static final DateTimeFormatter PENDING_ID_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
 
-    private static final DateTimeFormatter PENDING_ID_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
+  @Autowired private AiProperties aiProperties;
 
+  @Autowired private PermissionService permissionService;
 
-    @Autowired
-    private AiProperties aiProperties;
+  @Autowired private List<AiActionValidator> validators;
 
-    @Autowired
-    private PermissionService permissionService;
+  @Autowired private List<AiActionExecutor> executors;
 
-    @Autowired
-    private List<AiActionValidator> validators;
+  @Autowired @Lazy private PendingActionService self;
 
-    @Autowired
-    private List<AiActionExecutor> executors;
+  /** actionType → 校验器 */
+  private final Map<String, AiActionValidator> validatorMap = new HashMap<>();
 
-    @Autowired
-    @Lazy
-    private PendingActionService self;
+  /** actionType → 执行器 */
+  private final Map<String, AiActionExecutor> executorMap = new HashMap<>();
 
-    /**
-     * actionType → 校验器
-     */
-    private final Map<String, AiActionValidator> validatorMap = new HashMap<>();
+  private final ObjectMapper objectMapper = new ObjectMapper();
 
+  @PostConstruct
+  void initStrategyMaps() {
+    validators.forEach(v -> validatorMap.put(v.actionType(), v));
 
-    /**
-     * actionType → 执行器
-     */
-    private final Map<String, AiActionExecutor> executorMap = new HashMap<>();
+    executors.forEach(e -> executorMap.put(e.actionType(), e));
 
+    log.info(
+        "AI 操作策略注册完成: validators={}, executors={}", validatorMap.keySet(), executorMap.keySet());
+  }
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+  @Override
+  @Transactional(rollbackFor = Exception.class)
+  public AiDraftResult submitDraft(
+      Long sessionId, Long userId, String actionType, String payloadJson) {
+    AiActionValidator validator = requireValidator(actionType);
 
+    AiValidationResult vr = validator.validate(payloadJson);
 
-    @PostConstruct
-    void initStrategyMaps() {
-        validators.forEach(v -> validatorMap.put(v.actionType(), v));
+    AiPendingActionEntity entity = new AiPendingActionEntity();
 
-        executors.forEach(e -> executorMap.put(e.actionType(), e));
+    entity.setPendingId(generatePendingId());
 
-        log.info("AI 操作策略注册完成: validators={}, executors={}", validatorMap.keySet(), executorMap.keySet());
+    entity.setSessionId(sessionId);
 
+    entity.setUserId(userId);
+
+    entity.setActionType(actionType);
+
+    // 实体解析后的修正 payload 优先（名称→ID 解析结果落库）
+    String effectivePayload =
+        vr.getResolvedPayload() != null ? vr.getResolvedPayload() : payloadJson;
+
+    entity.setPayload(effectivePayload);
+
+    entity.setAskRound(0);
+
+    entity.setCreatedTime(LocalDateTime.now());
+
+    entity.setUpdatedTime(LocalDateTime.now());
+
+    entity.setExpireTime(LocalDateTime.now().plusMinutes(aiProperties.getPendingExpireMinutes()));
+
+    if (vr.isValid()) {
+
+      entity.setStatus(PendingActionStatus.PENDING.getValue());
+
+      entity.setPreview(buildPreview(effectivePayload));
+
+    } else {
+      entity.setStatus(PendingActionStatus.DRAFTING.getValue());
+
+      entity.setMissingFields(toJson(vr.getMissingFields()));
+    }
+    save(entity);
+
+    return toDraftResult(entity, vr);
+  }
+
+  @Override
+  @Transactional(rollbackFor = Exception.class)
+  public AiDraftResult mergeDraft(String pendingId, Long userId, String incrementJson) {
+    AiPendingActionEntity entity = getOwnedEntity(pendingId, userId);
+
+    if (!PendingActionStatus.DRAFTING.getValue().equals(entity.getStatus())) {
+
+      throw new BaseException(ErrorCode.PARAM_REQUIRED, "当前状态不可合并参数");
     }
 
+    // 合并增量参数到 payload（增量覆盖/补入）
+    String mergedPayload = mergePayload(entity.getPayload(), incrementJson);
 
-    @Override
-    @Transactional
-    public AiDraftResult submitDraft(Long sessionId, Long userId, String actionType, String payloadJson) {
-        AiActionValidator validator = requireValidator(actionType);
+    entity.setAskRound(entity.getAskRound() + 1);
 
-        AiValidationResult vr = validator.validate(payloadJson);
+    entity.setUpdatedTime(LocalDateTime.now());
 
+    // 全量重校验（实体解析后的修正 payload 优先）
+    AiValidationResult vr = requireValidator(entity.getActionType()).validate(mergedPayload);
 
-        AiPendingActionEntity entity = new AiPendingActionEntity();
+    String effectivePayload =
+        vr.getResolvedPayload() != null ? vr.getResolvedPayload() : mergedPayload;
 
-        entity.setPendingId(generatePendingId());
+    entity.setPayload(effectivePayload);
 
-        entity.setSessionId(sessionId);
+    if (vr.isValid()) {
 
-        entity.setUserId(userId);
+      entity.setStatus(PendingActionStatus.PENDING.getValue());
 
-        entity.setActionType(actionType);
+      entity.setMissingFields(null);
 
-        // 实体解析后的修正 payload 优先（名称→ID 解析结果落库）
-        String effectivePayload = vr.getResolvedPayload() != null ? vr.getResolvedPayload() : payloadJson;
+      entity.setExpireTime(LocalDateTime.now().plusMinutes(aiProperties.getPendingExpireMinutes()));
 
-        entity.setPayload(effectivePayload);
+      entity.setPreview(buildPreview(effectivePayload));
 
-        entity.setAskRound(0);
+    } else {
+      entity.setStatus(PendingActionStatus.DRAFTING.getValue());
 
-        entity.setCreatedTime(LocalDateTime.now());
+      entity.setMissingFields(toJson(vr.getMissingFields()));
+    }
+    updateById(entity);
 
-        entity.setUpdatedTime(LocalDateTime.now());
+    return toDraftResult(entity, vr);
+  }
 
-        entity.setExpireTime(LocalDateTime.now().plusMinutes(aiProperties.getPendingExpireMinutes()));
+  @Override
+  @Transactional(rollbackFor = Exception.class)
+  public AiConfirmResultVO confirm(String pendingId, Long userId) {
+    AiPendingActionEntity entity = getOwnedEntity(pendingId, userId);
 
+    // 终态幂等（本次未真实执行，不携带引用）
+    PendingActionStatus currentStatus = PendingActionStatus.fromValue(entity.getStatus());
+    if (currentStatus != null
+        && (currentStatus == PendingActionStatus.CONFIRMED
+            || currentStatus == PendingActionStatus.CANCELLED
+            || currentStatus == PendingActionStatus.EXPIRED)) {
 
-        if (vr.isValid()) {
+      String idempotentResult =
+          entity.getResult() != null ? entity.getResult() : "{\"message\":\"操作已处理\"}";
 
-            entity.setStatus(PendingActionStatus.PENDING.getValue());
-
-            entity.setPreview(buildPreview(effectivePayload));
-
-        } else {
-            entity.setStatus(PendingActionStatus.DRAFTING.getValue());
-
-            entity.setMissingFields(toJson(vr.getMissingFields()));
-
-        }
-        save(entity);
-
-
-        return toDraftResult(entity, vr);
-
+      return toConfirmResult(idempotentResult, List.of());
     }
 
-    @Override
-    @Transactional
-    public AiDraftResult mergeDraft(String pendingId, Long userId, String incrementJson) {
-        AiPendingActionEntity entity = getOwnedEntity(pendingId, userId);
+    // 运行时权限校验（按 actionType 映射）
+    requirePermission(entity.getActionType(), userId);
 
-        if (!PendingActionStatus.DRAFTING.getValue().equals(entity.getStatus())) {
+    if (!PendingActionStatus.PENDING.getValue().equals(entity.getStatus())
+        && !PendingActionStatus.FAILED.getValue().equals(entity.getStatus())) {
 
-            throw new BaseException(ErrorCode.PARAM_REQUIRED, "当前状态不可合并参数");
-
-        }
-
-        // 合并增量参数到 payload（增量覆盖/补入）
-        String mergedPayload = mergePayload(entity.getPayload(), incrementJson);
-
-        entity.setAskRound(entity.getAskRound() + 1);
-
-        entity.setUpdatedTime(LocalDateTime.now());
-
-
-        // 全量重校验（实体解析后的修正 payload 优先）
-        AiValidationResult vr = requireValidator(entity.getActionType()).validate(mergedPayload);
-
-        String effectivePayload = vr.getResolvedPayload() != null ? vr.getResolvedPayload() : mergedPayload;
-
-        entity.setPayload(effectivePayload);
-
-        if (vr.isValid()) {
-
-            entity.setStatus(PendingActionStatus.PENDING.getValue());
-
-            entity.setMissingFields(null);
-
-            entity.setExpireTime(LocalDateTime.now().plusMinutes(aiProperties.getPendingExpireMinutes()));
-
-            entity.setPreview(buildPreview(effectivePayload));
-
-        } else {
-            entity.setStatus(PendingActionStatus.DRAFTING.getValue());
-
-            entity.setMissingFields(toJson(vr.getMissingFields()));
-
-        }
-        updateById(entity);
-
-
-        return toDraftResult(entity, vr);
-
+      throw new BaseException(ErrorCode.AI_ACTION_PARAM_MISSING, "当前状态不可确认，请先补齐参数");
     }
 
-    @Override
-    @Transactional
-    public AiConfirmResultVO confirm(String pendingId, Long userId) {
-        AiPendingActionEntity entity = getOwnedEntity(pendingId, userId);
+    // 校验过期
+    if (entity.getExpireTime() != null && entity.getExpireTime().isBefore(LocalDateTime.now())) {
 
+      self.markExpired(pendingId);
 
-        // 终态幂等（本次未真实执行，不携带引用）
-        PendingActionStatus currentStatus = PendingActionStatus.fromValue(entity.getStatus());
-        if (currentStatus != null && (currentStatus == PendingActionStatus.CONFIRMED
-                || currentStatus == PendingActionStatus.CANCELLED
-                || currentStatus == PendingActionStatus.EXPIRED)) {
+      throw new BaseException(ErrorCode.AI_ACTION_TIMEOUT, "确认已超时，请重新发起");
+    }
 
-            String idempotentResult = entity.getResult() != null ? entity.getResult() : "{\"message\":\"操作已处理\"}";
-
-            return toConfirmResult(idempotentResult, List.of());
-
-        }
-
-        // 运行时权限校验（按 actionType 映射）
-        requirePermission(entity.getActionType(), userId);
-
-        if (!PendingActionStatus.PENDING.getValue().equals(entity.getStatus())
-                && !PendingActionStatus.FAILED.getValue().equals(entity.getStatus())) {
-
-            throw new BaseException(ErrorCode.AI_ACTION_PARAM_MISSING, "当前状态不可确认，请先补齐参数");
-
-        }
-
-        // 校验过期
-        if (entity.getExpireTime() != null && entity.getExpireTime().isBefore(LocalDateTime.now())) {
-
-            self.markExpired(pendingId);
-
-            throw new BaseException(ErrorCode.AI_ACTION_TIMEOUT, "确认已超时，请重新发起");
-
-        }
-
-        // 条件更新抢占执行权（防并发双击）
-        int affected = baseMapper.update(null, new UpdateWrapper<AiPendingActionEntity>()
-
+    // 条件更新抢占执行权（防并发双击）
+    int affected =
+        baseMapper.update(
+            null,
+            new UpdateWrapper<AiPendingActionEntity>()
                 .eq("pending_id", pendingId)
-
-                .and(w -> w.eq("status", PendingActionStatus.PENDING.getValue())
-
-                        .or().eq("status", PendingActionStatus.FAILED.getValue()))
-
+                .and(
+                    w ->
+                        w.eq("status", PendingActionStatus.PENDING.getValue())
+                            .or()
+                            .eq("status", PendingActionStatus.FAILED.getValue()))
                 .set("status", PendingActionStatus.CONFIRMED.getValue())
-
                 .set("confirmed_time", LocalDateTime.now())
-
                 .set("updated_time", LocalDateTime.now()));
 
-        if (affected == 0) {
+    if (affected == 0) {
 
-            throw new BaseException(ErrorCode.AI_ACTION_ALREADY_HANDLED, "操作已被处理");
-
-        }
-
-        // 策略分发执行（以库中 payload 为准，忽略请求体）
-        AiActionExecutor executor = executorMap.get(entity.getActionType());
-
-        if (executor == null) {
-
-            throw new BaseException(ErrorCode.AI_ACTION_PARAM_MISSING, "不支持的操作类型: " + entity.getActionType());
-
-        }
-        try {
-            AiExecutionResult execResult = executor.execute(entity.getPayload());
-
-            update(new UpdateWrapper<AiPendingActionEntity>()
-
-                    .eq("pending_id", pendingId)
-
-                    .set("result", execResult.getResult()));
-
-            return toConfirmResult(execResult.getResult(), execResult.getReferences());
-
-        } catch (Exception e) {
-
-            log.error("执行待确认操作失败, pendingId={}", pendingId, e);
-
-            markFailedAfterRollback(pendingId, buildErrorJson());
-
-            throw new BaseException(ErrorCode.AI_ACTION_EXECUTE_FAILED, "执行失败，请稍后重试");
-
-        }
+      throw new BaseException(ErrorCode.AI_ACTION_ALREADY_HANDLED, "操作已被处理");
     }
 
-    @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void markExpired(String pendingId) {
-        update(new UpdateWrapper<AiPendingActionEntity>()
+    // 策略分发执行（以库中 payload 为准，忽略请求体）
+    AiActionExecutor executor = executorMap.get(entity.getActionType());
 
-                .eq("pending_id", pendingId)
+    if (executor == null) {
 
-                .eq("status", PendingActionStatus.PENDING.getValue())
+      throw new BaseException(
+          ErrorCode.AI_ACTION_PARAM_MISSING, "不支持的操作类型: " + entity.getActionType());
+    }
+    try {
+      AiExecutionResult execResult = executor.execute(entity.getPayload());
 
-                .set("status", PendingActionStatus.EXPIRED.getValue())
+      update(
+          new UpdateWrapper<AiPendingActionEntity>()
+              .eq("pending_id", pendingId)
+              .set("result", execResult.getResult()));
 
-                .set("updated_time", LocalDateTime.now()));
+      return toConfirmResult(execResult.getResult(), execResult.getReferences());
+
+    } catch (Exception e) {
+
+      log.error("执行待确认操作失败, pendingId={}", pendingId, e);
+
+      markFailedAfterRollback(pendingId, buildErrorJson());
+
+      throw new BaseException(ErrorCode.AI_ACTION_EXECUTE_FAILED, "执行失败，请稍后重试");
+    }
+  }
+
+  @Override
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
+  public void markExpired(String pendingId) {
+    update(
+        new UpdateWrapper<AiPendingActionEntity>()
+            .eq("pending_id", pendingId)
+            .eq("status", PendingActionStatus.PENDING.getValue())
+            .set("status", PendingActionStatus.EXPIRED.getValue())
+            .set("updated_time", LocalDateTime.now()));
+  }
+
+  @Override
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
+  public void markFailed(String pendingId, String resultJson) {
+    update(
+        new UpdateWrapper<AiPendingActionEntity>()
+            .eq("pending_id", pendingId)
+            .and(
+                w ->
+                    w.eq("status", PendingActionStatus.PENDING.getValue())
+                        .or()
+                        .eq("status", PendingActionStatus.FAILED.getValue()))
+            .set("status", PendingActionStatus.FAILED.getValue())
+            .set("result", resultJson)
+            .set("updated_time", LocalDateTime.now()));
+  }
+
+  private void markFailedAfterRollback(String pendingId, String resultJson) {
+    if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+      self.markFailed(pendingId, resultJson);
+      return;
     }
 
-    @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void markFailed(String pendingId, String resultJson) {
-        update(new UpdateWrapper<AiPendingActionEntity>()
-
-                .eq("pending_id", pendingId)
-
-                .and(w -> w.eq("status", PendingActionStatus.PENDING.getValue())
-
-                        .or().eq("status", PendingActionStatus.FAILED.getValue()))
-
-                .set("status", PendingActionStatus.FAILED.getValue())
-
-                .set("result", resultJson)
-
-                .set("updated_time", LocalDateTime.now()));
-    }
-
-    private void markFailedAfterRollback(String pendingId, String resultJson) {
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            self.markFailed(pendingId, resultJson);
-            return;
-        }
-
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCompletion(int status) {
-                if (status != TransactionSynchronization.STATUS_ROLLED_BACK) {
-                    return;
-                }
-                try {
-                    self.markFailed(pendingId, resultJson);
-                } catch (Exception markFailedException) {
-                    log.error("回滚后写入执行失败状态异常, pendingId={}", pendingId, markFailedException);
-                }
+    TransactionSynchronizationManager.registerSynchronization(
+        new TransactionSynchronization() {
+          @Override
+          public void afterCompletion(int status) {
+            if (status != TransactionSynchronization.STATUS_ROLLED_BACK) {
+              return;
             }
+            try {
+              self.markFailed(pendingId, resultJson);
+            } catch (Exception markFailedException) {
+              log.error("回滚后写入执行失败状态异常, pendingId={}", pendingId, markFailedException);
+            }
+          }
         });
+  }
+
+  /** 失败结果持久化为稳定文案；异常细节只保留在服务端日志，避免后续查询接口透出。 */
+  private String buildErrorJson() {
+    return "{\"error\":\"执行失败\"}";
+  }
+
+  @Override
+  public void cancel(String pendingId, Long userId) {
+    AiPendingActionEntity entity = getOwnedEntity(pendingId, userId);
+
+    PendingActionStatus currentStatus = PendingActionStatus.fromValue(entity.getStatus());
+    if (currentStatus != null && currentStatus.isCancellable()) {
+
+      update(
+          new UpdateWrapper<AiPendingActionEntity>()
+              .eq("pending_id", pendingId)
+              .in(
+                  "status",
+                  PendingActionStatus.DRAFTING.getValue(),
+                  PendingActionStatus.PENDING.getValue())
+              .set("status", PendingActionStatus.CANCELLED.getValue())
+              .set("confirmed_time", LocalDateTime.now())
+              .set("updated_time", LocalDateTime.now()));
+    }
+  }
+
+  @Override
+  @Transactional(rollbackFor = Exception.class)
+  public AiPendingActionVO edit(String pendingId, Long userId, String payloadJson) {
+    AiPendingActionEntity entity = getOwnedEntity(pendingId, userId);
+
+    // 运行时权限校验（与 confirm 一致）
+    requirePermission(entity.getActionType(), userId);
+
+    PendingActionStatus currentStatus = PendingActionStatus.fromValue(entity.getStatus());
+    if (currentStatus != null && currentStatus.isTerminal()) {
+
+      throw new BaseException(ErrorCode.PARAM_REQUIRED, "操作已处理/已超时，不可编辑");
+    }
+    if (payloadJson == null || payloadJson.isBlank()) {
+
+      throw new BaseException(ErrorCode.PARAM_REQUIRED, "编辑参数不能为空");
     }
 
-    /**
-     * 失败结果持久化为稳定文案；异常细节只保留在服务端日志，避免后续查询接口透出。
-     */
-    private String buildErrorJson() {
-        return "{\"error\":\"执行失败\"}";
+    entity.setUpdatedTime(LocalDateTime.now());
+
+    // 重新校验（实体解析后的修正 payload 优先）
+    AiValidationResult vr = requireValidator(entity.getActionType()).validate(payloadJson);
+
+    String effectivePayload =
+        vr.getResolvedPayload() != null ? vr.getResolvedPayload() : payloadJson;
+
+    entity.setPayload(effectivePayload);
+
+    if (vr.isValid()) {
+
+      entity.setStatus(PendingActionStatus.PENDING.getValue());
+
+      entity.setMissingFields(null);
+
+      // expire_time 重算
+      entity.setExpireTime(LocalDateTime.now().plusMinutes(aiProperties.getPendingExpireMinutes()));
+
+      entity.setPreview(buildPreview(effectivePayload));
+
+    } else {
+      entity.setStatus(PendingActionStatus.DRAFTING.getValue());
+
+      entity.setMissingFields(toJson(vr.getMissingFields()));
     }
+    updateById(entity);
 
-    @Override
-    public void cancel(String pendingId, Long userId) {
-        AiPendingActionEntity entity = getOwnedEntity(pendingId, userId);
+    return toVO(entity);
+  }
 
-        PendingActionStatus currentStatus = PendingActionStatus.fromValue(entity.getStatus());
-        if (currentStatus != null && currentStatus.isCancellable()) {
+  @Override
+  public AiPendingActionVO getStatus(String pendingId, Long userId) {
+    AiPendingActionEntity entity = getByPendingId(pendingId);
 
-            update(new UpdateWrapper<AiPendingActionEntity>()
+    if (entity == null || !entity.getUserId().equals(userId)) {
 
-                    .eq("pending_id", pendingId)
-
-                    .in("status", PendingActionStatus.DRAFTING.getValue(), PendingActionStatus.PENDING.getValue())
-
-                    .set("status", PendingActionStatus.CANCELLED.getValue())
-
-                    .set("confirmed_time", LocalDateTime.now())
-
-                    .set("updated_time", LocalDateTime.now()));
-
-        }
+      return null;
     }
+    return toVO(entity);
+  }
 
+  @Override
+  public AiPendingActionEntity getByPendingId(String pendingId) {
+    return getOne(
+        new LambdaQueryWrapper<AiPendingActionEntity>()
+            .eq(AiPendingActionEntity::getPendingId, pendingId),
+        false);
+  }
 
-    @Override
-    @Transactional
-    public AiPendingActionVO edit(String pendingId, Long userId, String payloadJson) {
-        AiPendingActionEntity entity = getOwnedEntity(pendingId, userId);
+  @Override
+  public void cancelBySessionId(Long sessionId) {
+    update(
+        new UpdateWrapper<AiPendingActionEntity>()
+            .eq("session_id", sessionId)
+            .in(
+                "status",
+                PendingActionStatus.DRAFTING.getValue(),
+                PendingActionStatus.PENDING.getValue())
+            .set("status", PendingActionStatus.CANCELLED.getValue())
+            .set("confirmed_time", LocalDateTime.now())
+            .set("updated_time", LocalDateTime.now()));
+  }
 
-        // 运行时权限校验（与 confirm 一致）
-        requirePermission(entity.getActionType(), userId);
+  @Override
+  public int expireOverdue() {
+    return baseMapper.update(
+        null,
+        new UpdateWrapper<AiPendingActionEntity>()
+            .eq("status", PendingActionStatus.PENDING.getValue())
+            .lt("expire_time", LocalDateTime.now())
+            .set("status", PendingActionStatus.EXPIRED.getValue())
+            .set("updated_time", LocalDateTime.now()));
+  }
 
-        PendingActionStatus currentStatus = PendingActionStatus.fromValue(entity.getStatus());
-        if (currentStatus != null && currentStatus.isTerminal()) {
+  // ==================== 私有方法 ====================
 
-            throw new BaseException(ErrorCode.PARAM_REQUIRED, "操作已处理/已超时，不可编辑");
+  /** 组装确认结果（执行结果 + 新创建实体引用） */
+  private AiConfirmResultVO toConfirmResult(
+      String result, List<AiReferenceCollector.Reference> references) {
+    AiConfirmResultVO vo = new AiConfirmResultVO();
 
-        }
-        if (payloadJson == null || payloadJson.isBlank()) {
+    vo.setResult(result);
 
-            throw new BaseException(ErrorCode.PARAM_REQUIRED, "编辑参数不能为空");
+    List<AiConfirmResultVO.ReferenceItem> items = new ArrayList<>();
 
-        }
+    if (references != null) {
 
-        entity.setUpdatedTime(LocalDateTime.now());
+      for (AiReferenceCollector.Reference reference : references) {
 
+        AiConfirmResultVO.ReferenceItem item = new AiConfirmResultVO.ReferenceItem();
 
-        // 重新校验（实体解析后的修正 payload 优先）
-        AiValidationResult vr = requireValidator(entity.getActionType()).validate(payloadJson);
+        item.setType(reference.type());
 
-        String effectivePayload = vr.getResolvedPayload() != null ? vr.getResolvedPayload() : payloadJson;
+        item.setId(reference.id());
 
-        entity.setPayload(effectivePayload);
+        item.setName(reference.name());
 
-        if (vr.isValid()) {
-
-            entity.setStatus(PendingActionStatus.PENDING.getValue());
-
-            entity.setMissingFields(null);
-
-            // expire_time 重算
-            entity.setExpireTime(LocalDateTime.now().plusMinutes(aiProperties.getPendingExpireMinutes()));
-
-            entity.setPreview(buildPreview(effectivePayload));
-
-        } else {
-            entity.setStatus(PendingActionStatus.DRAFTING.getValue());
-
-            entity.setMissingFields(toJson(vr.getMissingFields()));
-
-        }
-        updateById(entity);
-
-        return toVO(entity);
-
+        items.add(item);
+      }
     }
+    vo.setReferences(items);
 
-    @Override
-    public AiPendingActionVO getStatus(String pendingId, Long userId) {
-        AiPendingActionEntity entity = getByPendingId(pendingId);
+    return vo;
+  }
 
-        if (entity == null || !entity.getUserId().equals(userId)) {
-
-            return null;
-
-        }
-        return toVO(entity);
-
+  /** 按 actionType 校验当前用户是否有对应写权限 */
+  private void requirePermission(String actionType, Long userId) {
+    PermissionOperates required = ActionTypeEnum.getRequiredPermission(actionType);
+    if (required == null) {
+      throw new BaseException(ErrorCode.PARAM_REQUIRED, "不支持的操作类型: " + actionType);
     }
-
-    @Override
-    public AiPendingActionEntity getByPendingId(String pendingId) {
-        return getOne(new LambdaQueryWrapper<AiPendingActionEntity>()
-
-                .eq(AiPendingActionEntity::getPendingId, pendingId), false);
-
+    if (!permissionService.hasPermission(userId, required)) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "无权限执行此操作: " + actionType);
     }
+  }
 
-    @Override
-    public void cancelBySessionId(Long sessionId) {
-        update(new UpdateWrapper<AiPendingActionEntity>()
+  private AiActionValidator requireValidator(String actionType) {
+    AiActionValidator validator = validatorMap.get(actionType);
 
-                .eq("session_id", sessionId)
+    if (validator == null) {
 
-                .in("status", PendingActionStatus.DRAFTING.getValue(), PendingActionStatus.PENDING.getValue())
-
-                .set("status", PendingActionStatus.CANCELLED.getValue())
-
-                .set("confirmed_time", LocalDateTime.now())
-
-                .set("updated_time", LocalDateTime.now()));
-
+      throw new BaseException(ErrorCode.PARAM_REQUIRED, "不支持的操作类型: " + actionType);
     }
+    return validator;
+  }
 
+  /** 生成 pendingId（PA + 日期 + 8位随机字符） */
+  private String generatePendingId() {
+    String date = LocalDateTime.now().format(PENDING_ID_FMT);
 
-    @Override
-    public int expireOverdue() {
-        return baseMapper.update(null, new UpdateWrapper<AiPendingActionEntity>()
+    String random =
+        Long.toHexString(ThreadLocalRandom.current().nextLong()).substring(0, 8).toUpperCase();
 
-                .eq("status", PendingActionStatus.PENDING.getValue())
+    return "PA" + date + random;
+  }
 
-                .lt("expire_time", LocalDateTime.now())
+  /** 获取实体（不存在则抛异常） */
+  private AiPendingActionEntity getOwnedEntity(String pendingId, Long userId) {
+    AiPendingActionEntity entity = getByPendingId(pendingId);
 
-                .set("status", PendingActionStatus.EXPIRED.getValue())
+    if (entity == null || !Objects.equals(entity.getUserId(), userId)) {
 
-                .set("updated_time", LocalDateTime.now()));
-
+      throw new BaseException(ErrorCode.PARAM_REQUIRED, "操作不存在");
     }
+    return entity;
+  }
 
-    // ==================== 私有方法 ====================
+  /** 合并 payload（增量覆盖/补入） */
+  private String mergePayload(String existingPayload, String incrementJson) {
+    try {
+      Map<String, Object> existing =
+          objectMapper.readValue(existingPayload, new TypeReference<Map<String, Object>>() {});
 
-    /**
-     * 组装确认结果（执行结果 + 新创建实体引用）
-     */
-    private AiConfirmResultVO toConfirmResult(String result, List<AiReferenceCollector.Reference> references) {
-        AiConfirmResultVO vo = new AiConfirmResultVO();
+      Map<String, Object> increment =
+          objectMapper.readValue(incrementJson, new TypeReference<Map<String, Object>>() {});
 
-        vo.setResult(result);
+      increment.remove("pendingId"); // pendingId 不属于业务参数
 
-        List<AiConfirmResultVO.ReferenceItem> items = new ArrayList<>();
+      existing.putAll(increment);
 
-        if (references != null) {
+      return objectMapper.writeValueAsString(existing);
 
-            for (AiReferenceCollector.Reference reference : references) {
+    } catch (JsonProcessingException e) {
 
-                AiConfirmResultVO.ReferenceItem item = new AiConfirmResultVO.ReferenceItem();
+      log.error("合并 payload 失败", e);
 
-                item.setType(reference.type());
-
-                item.setId(reference.id());
-
-                item.setName(reference.name());
-
-                items.add(item);
-
-            }
-        }
-        vo.setReferences(items);
-
-        return vo;
-
+      return incrementJson;
     }
+  }
 
-    /**
-     * 按 actionType 校验当前用户是否有对应写权限
-     */
-    private void requirePermission(String actionType, Long userId) {
-        PermissionOperates required = ActionTypeEnum.getRequiredPermission(actionType);
-        if (required == null) {
-            throw new BaseException(ErrorCode.PARAM_REQUIRED, "不支持的操作类型: " + actionType);
-        }
-        if (!permissionService.hasPermission(userId, required)) {
-            throw new BaseException(ErrorCode.PERMISSION_DENIED, "无权限执行此操作: " + actionType);
-        }
+  /** 构建确认卡片预览摘要（以 payload 为准，不依赖模型总结） */
+  private String buildPreview(String payloadJson) {
+    Map<String, Object> preview = new HashMap<>();
+
+    preview.put("summary", "请确认以下操作参数");
+
+    preview.put("payload", payloadJson);
+
+    return toJson(preview);
+  }
+
+  private AiDraftResult toDraftResult(AiPendingActionEntity entity, AiValidationResult vr) {
+    return AiDraftResult.builder()
+        .pendingId(entity.getPendingId())
+        .status(entity.getStatus())
+        .missingFields(vr.getMissingFields())
+        .questions(vr.getQuestions())
+        .askRound(entity.getAskRound())
+        .preview(entity.getPreview())
+        .build();
+  }
+
+  private AiPendingActionVO toVO(AiPendingActionEntity entity) {
+    AiPendingActionVO vo = new AiPendingActionVO();
+
+    BeanUtils.copyProperties(entity, vo);
+
+    return vo;
+  }
+
+  private String toJson(Object obj) {
+    try {
+      return objectMapper.writeValueAsString(obj);
+
+    } catch (JsonProcessingException e) {
+
+      return "[]";
     }
-
-    private AiActionValidator requireValidator(String actionType) {
-        AiActionValidator validator = validatorMap.get(actionType);
-
-        if (validator == null) {
-
-            throw new BaseException(ErrorCode.PARAM_REQUIRED, "不支持的操作类型: " + actionType);
-
-        }
-        return validator;
-
-    }
-
-    /**
-     * 生成 pendingId（PA + 日期 + 8位随机字符）
-     */
-    private String generatePendingId() {
-        String date = LocalDateTime.now().format(PENDING_ID_FMT);
-
-        String random = Long.toHexString(ThreadLocalRandom.current().nextLong()).substring(0, 8).toUpperCase();
-
-        return "PA" + date + random;
-
-    }
-
-    /**
-     * 获取实体（不存在则抛异常）
-     */
-    private AiPendingActionEntity getOwnedEntity(String pendingId, Long userId) {
-        AiPendingActionEntity entity = getByPendingId(pendingId);
-
-        if (entity == null || !Objects.equals(entity.getUserId(), userId)) {
-
-            throw new BaseException(ErrorCode.PARAM_REQUIRED, "操作不存在");
-
-        }
-        return entity;
-
-    }
-
-    /**
-     * 合并 payload（增量覆盖/补入）
-     */
-    private String mergePayload(String existingPayload, String incrementJson) {
-        try {
-            Map<String, Object> existing = objectMapper.readValue(existingPayload,
-
-                    new TypeReference<Map<String, Object>>() {
-                    });
-
-            Map<String, Object> increment = objectMapper.readValue(incrementJson,
-
-                    new TypeReference<Map<String, Object>>() {
-                    });
-
-            increment.remove("pendingId"); // pendingId 不属于业务参数
-
-            existing.putAll(increment);
-
-            return objectMapper.writeValueAsString(existing);
-
-        } catch (JsonProcessingException e) {
-
-            log.error("合并 payload 失败", e);
-
-            return incrementJson;
-
-        }
-    }
-
-    /**
-     * 构建确认卡片预览摘要（以 payload 为准，不依赖模型总结）
-     */
-    private String buildPreview(String payloadJson) {
-        Map<String, Object> preview = new HashMap<>();
-
-        preview.put("summary", "请确认以下操作参数");
-
-        preview.put("payload", payloadJson);
-
-        return toJson(preview);
-
-    }
-
-    private AiDraftResult toDraftResult(AiPendingActionEntity entity, AiValidationResult vr) {
-        return AiDraftResult.builder()
-
-                .pendingId(entity.getPendingId())
-
-                .status(entity.getStatus())
-
-                .missingFields(vr.getMissingFields())
-
-                .questions(vr.getQuestions())
-
-                .askRound(entity.getAskRound())
-
-                .preview(entity.getPreview())
-
-                .build();
-
-    }
-
-    private AiPendingActionVO toVO(AiPendingActionEntity entity) {
-        AiPendingActionVO vo = new AiPendingActionVO();
-
-        BeanUtils.copyProperties(entity, vo);
-
-        return vo;
-
-    }
-
-    private String toJson(Object obj) {
-        try {
-            return objectMapper.writeValueAsString(obj);
-
-        } catch (JsonProcessingException e) {
-
-            return "[]";
-
-        }
-    }
+  }
 }
