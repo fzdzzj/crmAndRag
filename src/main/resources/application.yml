@@ -24,8 +24,6 @@ spring:
         model: qwen-plus
         temperature: 0.3        # 业务场景偏低，保证参数提取稳定
         max-tokens: 2048
-  main:
-    allow-circular-references: true
   # ---------------- 数据源（MySQL；连接参数全部外置） ----------------
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -77,14 +75,14 @@ crm:
     pending-expire-minutes: 30      # 确认卡片超时时间（分钟）
     rate-limit-per-minute: 10       # 每用户每分钟 AI 请求上限
     entity-query-page-size: 1000    # 实体解析查询页大小（合同/商机候选列表全量返回）
-    llm-timeout-seconds: 60         # LLM 调用超时（秒）
+    llm-timeout-seconds: 60         # 默认：60 秒；建议范围：30~120；LLM 调用超时，超过则降级或重试
     max-fix-rounds: 2               # 工具调用失败修复重试上限（有限次修复）
     fallback-model: qwen-turbo      # 降级备用模型（主模型失败时切换，留空则不降级）
     static-fallback-message: AI 服务暂时不可用，请稍后再试
     heartbeat-enabled: true         # SSE 心跳（长生成或工具调用期间保持连接）
     heartbeat-interval-seconds: 15  # SSE 心跳间隔（秒）
     heartbeat-pool-size: 4          # SSE 心跳调度线程池（多会话互不阻塞）
-    sse-timeout-seconds: 300        # SSE 服务端超时（秒）
+    sse-timeout-seconds: 300        # 默认：300 秒；建议范围：180~600；SSE 长连接断开阈值，避免网络抖动导致中断
     # 知识库检索端口：B 生产实现(KnowledgeRetrievalServiceImpl)已并入，关闭 C 的 Mock 端口，避免 KnowledgeRetrievalPort 双 bean
     knowledge-retrieval:
       mock-enabled: false
@@ -118,7 +116,7 @@ platform:
       vision-model: ${SLZ_AI_VISION_MODEL:qwen-vl-plus}
       embedding-model: ${SLZ_AI_EMBEDDING_MODEL:text-embedding-v3}
       # 单次调用超时（秒）；0 表示不限（不建议）
-      timeout-seconds: 60
+      timeout-seconds: 60         # 默认：60 秒；建议范围：30~120；AI 模型单次调用超时阈值
   # ---------------- Actuator 端点保护开关（ActuatorProtectionFilter 读取） ----------------
   actuator:
     # 总开关：为 false 时 /actuator/** 全放行——仅允许本地/测试显式关闭，生产 profile 强制 true
@@ -161,9 +159,9 @@ knowledge:
     # 原始文件桶名（上传件）
     bucket: ${MINIO_BUCKET:knowledge-files}
     # 连接超时（毫秒）
-    connect-timeout-ms: 10000
+    connect-timeout-ms: 10000     # 默认：10000 毫秒；建议范围：5000~30000；MinIO 连接建立超时
     # 读取超时（毫秒）
-    read-timeout-ms: 30000
+    read-timeout-ms: 30000        # 默认：30000 毫秒；建议范围：15000~60000；MinIO 数据读取超时
 
 # ---------------- 平台异步 / 依赖韧性（Lane D 实现，基座预留键） ----------------
 app:
@@ -192,10 +190,8 @@ springdoc:
   default-flat-param-object: true
 
 mybatis-plus:
-  configuration:
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  # SQL 日志回退默认 SLF4J 路由，受 logging.level 控制；生产禁止开启 StdOutImpl
   mapper-locations: classpath*:mapper/**/*.xml
-  type-aliases-package: com.slz.crm.server.entity
 
 slz:
   jwt:
