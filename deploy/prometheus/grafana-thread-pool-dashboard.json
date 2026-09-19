@@ -1,0 +1,116 @@
+{
+  "dashboard": {
+    "title": "线程池拒绝策略监控面板",
+    "tags": ["thread-pool", "rejection", "platform"],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "version": 1,
+    "panels": [
+      {
+        "id": 1,
+        "title": "异步任务拒绝计数趋势",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "increase(async_task_rejected[5m])",
+            "legendFormat": "{{executor}} - {{policy}}",
+            "refId": "A"
+          }
+        ],
+        "annotations": {
+          "list": [
+            {
+              "enabled": true,
+              "name": "告警事件",
+              "icon": "fa-exclamation-triangle"
+            }
+          ]
+        },
+        "thresholds": [
+          {"color": "green", "value": 0},
+          {"color": "#E0B400", "value": 10},
+          {"color": "#BF1B00", "value": 50}
+        ]
+      },
+      {
+        "id": 2,
+        "title": "各执行器拒绝次数排名",
+        "type": "bargauge",
+        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(increase(async_task_rejected[1h])) by (executor)",
+            "legendFormat": "{{executor}}",
+            "refId": "A"
+          }
+        ],
+        "thresholds": [
+          {"color": "green", "value": 0},
+          {"color": "#E0B400", "value": 100},
+          {"color": "#BF1B00", "value": 500}
+        ]
+      },
+      {
+        "id": 3,
+        "title": "当前活跃线程数",
+        "type": "gauge",
+        "gridPos": {"x": 0, "y": 8, "w": 6, "h": 6},
+        "targets": [
+          {
+            "expr": "executor_threads_active",
+            "legendFormat": "{{executor}}",
+            "refId": "A"
+          }
+        ],
+        "max": 100
+      },
+      {
+        "id": 4,
+        "title": "队列等待任务数",
+        "type": "gauge",
+        "gridPos": {"x": 6, "y": 8, "w": 6, "h": 6},
+        "targets": [
+          {
+            "expr": "executor_queue_size",
+            "legendFormat": "{{executor}}",
+            "refId": "A"
+          }
+        ],
+        "max": 200
+      },
+      {
+        "id": 5,
+        "title": "拒绝策略分布",
+        "type": "piechart",
+        "gridPos": {"x": 12, "y": 8, "w": 6, "h": 6},
+        "targets": [
+          {
+            "expr": "sum(increase(async_task_rejected[24h])) by (policy)",
+            "legendFormat": "{{policy}}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "平台线程池状态总览",
+        "type": "table",
+        "gridPos": {"x": 18, "y": 8, "w": 6, "h": 6},
+        "targets": [
+          {
+            "expr": "executor_threads_active + executor_threads_max + executor_queue_remaining",
+            "format": "table",
+            "instant": true,
+            "refId": "A"
+          }
+        ],
+        "transformations": [
+          {"id": "organize", "options": {"renameByName": {"Value": "线程数", "__name__": "指标名称"}}}
+        ]
+      }
+    ],
+    "time": {"from": "now-1h", "to": "now"},
+    "refresh": "30s"
+  }
+}

@@ -1,0 +1,45 @@
+# ================================================================
+# 线程池拒绝策略可观测性告警规则
+# ================================================================
+# 目标：监控异步任务执行器的拒绝计数，提供分级告警
+# 阈值配置：
+#   - warning: rejected_count > 10/min
+#   - critical: rejected_count > 50/min
+# ================================================================
+
+groups:
+  - name: thread-pool-rejection-alerts
+    interval: 30s
+    rules:
+      # 警告级别：每分钟拒绝次数超过 10
+      - alert: ThreadPoolRejectionWarning
+        expr: |
+          increase(async_task_rejected[1m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "线程池拒绝率警告 - {{ $labels.executor }}"
+          description: "异步任务执行器 {{ $labels.executor }} (策略：{{ $labels.policy }}) 在过去 2 分钟内每分钟拒绝次数超过 10 次。当前值：{{ $value }} 次/分钟"
+
+      # 严重级别：每分钟拒绝次数超过 50
+      - alert: ThreadPoolRejectionCritical
+        expr: |
+          increase(async_task_rejected[1m]) > 50
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "线程池拒绝率严重告警 - {{ $labels.executor }}"
+          description: "异步任务执行器 {{ $labels.executor }} (策略：{{ $labels.policy }}) 在过去 1 分钟内每分钟拒绝次数超过 50 次。当前值：{{ $value }} 次/分钟\n\n建议操作：\n1. 检查系统负载和队列容量\n2. 考虑增加最大线程数或队列容量\n3. 查看是否有慢任务阻塞执行器\n4. 检查拒绝策略是否为预期行为（discard-log 可能丢失任务）"
+
+      # 指标可用性告警
+      - alert: ThreadPoolMetricsMissing
+        expr: |
+          absent(async_task_rejected{executor=""})
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "线程池指标缺失"
+          description: "未检测到 async_task_rejected 指标，请检查 PlatformAsyncConfig 是否正确注册到 Micrometer"
