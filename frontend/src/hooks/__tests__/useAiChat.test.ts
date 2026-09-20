@@ -153,7 +153,7 @@ describe('useAiChat SSE 重连', () => {
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(chat.errorCode.value).toBe('RATE_LIMITED');
-    expect(chat.error.value).toBe('操作过于频繁，请稍后再试');
+    expect(chat.error.value).toBe('请求过于频繁，请稍后再试');
     unmount();
   });
 
