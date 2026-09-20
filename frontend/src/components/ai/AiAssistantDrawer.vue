@@ -62,7 +62,7 @@
         <Button @click="toggleKb">{{ useKb ? 'KB:开' : 'KB:关' }}</Button>
       </div>
 
-      <div v-if="chat.error" class="error">{{ chat.error }}</div>
+      <ErrorFeedbackButton v-if="errorMsg" class="ai-error-feedback" :code="errorCodeText" :message="errorMsg" />
     </div>
   </Drawer>
 </template>
@@ -73,6 +73,8 @@ import { Drawer, Button, Input, Tag, message as antdMessage } from 'ant-design-v
 import { useAiChat, type ChatMessage } from '@/hooks/useAiChat';
 import { useAiSessions, useCreateAiSession, useDeleteAiSession, useAiSessionMessages } from '@/hooks/useAiSession';
 import { useAiAction } from '@/hooks/useAiAction';
+import { showErrorToast } from '@/utils/error-toast';
+import ErrorFeedbackButton from '@/components/ai/ErrorFeedbackButton.vue';
 
 const props = defineProps<{ open?: boolean }>();
 const emit = defineEmits(['update:open']);
@@ -91,6 +93,8 @@ const messagesRef = ref<HTMLElement | null>(null);
 const chat = useAiChat();
 const chatMessages = computed<ChatMessage[]>(() => chat.messages.value ?? []);
 const isStreaming = computed(() => Boolean(chat.isStreaming.value));
+const errorMsg = computed(() => chat.error.value ?? '');
+const errorCodeText = computed(() => chat.errorCode.value ?? '');
 const { sessions, refetch: refetchSessions } = useAiSessions();
 const createSession = useCreateAiSession();
 const deleteSessionMut = useDeleteAiSession();
@@ -138,8 +142,8 @@ async function newSession() {
     currentSessionId.value = String(s?.id ?? '');
     chat.reset();
     await refetchSessions();
-  } catch {
-    antdMessage.error('创建会话失败');
+  } catch (e: unknown) {
+    showErrorToast(e);
   }
 }
 
@@ -156,9 +160,11 @@ async function deleteSession(id: string) {
       currentSessionId.value = '';
       chat.reset();
     }
+  } catch (e: unknown) {
+    showErrorToast(e);
+  } finally {
+    // 无论成败都刷新列表：失败时以服务端状态为准
     await refetchSessions();
-  } catch {
-    /* 删除失败静默：列表刷新兜底 */
   }
 }
 
@@ -262,6 +268,5 @@ defineExpose({ open: () => { visible.value = true; } });
 .refs .ant-tag { cursor: pointer; }
 .action-card { border: 1px dashed #faad14; padding: 4px; margin-top: 4px; font-size: 12px; }
 .input-bar { display: flex; gap: 8px; padding: 8px; border-top: 1px solid #f0f0f0; }
-.error { color: red; padding: 4px; font-size: 12px; }
 .streaming { color: #888; }
 </style>

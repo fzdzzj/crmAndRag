@@ -180,3 +180,17 @@
 
 ### 执行记录
 - 顺带修复（gen:api 重生成暴露的既有欠账）：openapi.yaml 第179行 YAML 粘连、ResultList/Result 悬空 $ref 补定义（AiSessionVO/AiMessageVO/AiChatImageUploadVO/AiPendingActionVO + Result 包装）；useKnowledge/useAiAction/useAiChat/useAiSession/AiAssistantDrawer/knowledge page 由裸 axios 调用改走生成 SDK 或收敛 any，消除全部 lint error 与 tsc error；vite.config.ts 增加 vitest exclude e2e/**（Playwright spec 不再被 vitest 误收）。
+
+## TASK-08 前端 AI 交互优化（SSE 重连 + 错误文案 + 反馈埋点，2026-09-20）
+
+### 待验证（Playwright）
+- [ ] 抽屉 | 对话中途断流（服务端无 `done` 事件即结束）→ 出现 `网络连接不稳定，正在重试... (n/5)` Toast，重连请求头带 `Last-Event-ID`，续传后已生成文本不重复
+- [ ] 抽屉 | 连续 5 次重连失败 → Toast 与错误区显示按技术码映射的中文文案（不是 `93001` / `HTTP 503` 裸码），错误区出现"有用/无用"两个按钮
+- [ ] 抽屉 | 流内 `error` 事件（如 `RATE_LIMITED`）→ 不自动重试，直接出"操作过于频繁，请稍后再试"+ 反馈按钮；点击后按钮收起为"感谢反馈"，`console.info` 打印 `[track] ai_error_feedback`
+- [ ] 抽屉 | 新建/删除会话接口失败 → 走同一 showErrorToast 通道（同 key 复用一条 toast，不堆叠）
+- [ ] 边界 | 用户点"停止"（AbortError）→ 不重试、不弹错误提示，消息标记"已中断"
+
+### 执行记录
+- [x] 门禁 | `pnpm exec vitest run` 15 files / 150 tests 全绿；`pnpm lint:check` 0 errors（22 条既有 warning）；`pnpm exec playwright test e2e/sse-reconnect.spec.ts` 2 passed
+- [x] 单测 | 新增 backoff.test.ts 3 用例（1s±10% / multiplier 2.0 / 30s 封顶）、retryWithBackoff.test.ts 8 用例、error-toast.test.ts 8 用例、log.test.ts 3 用例、ErrorFeedbackButton.test.ts 3 用例、useAiChat.test.ts 6 用例
+- [ ] 待拍板 | `useAiChat` 仍请求 `/ai/chat/stream`，而 dev 代理与 nginx 只转发 `/api/` 前缀 → 直连必然 404（本次未改，改后 E2E 桩路径需同步）

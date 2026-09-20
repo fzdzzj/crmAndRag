@@ -41,3 +41,16 @@ export const logOnResponseError = (error: AxiosError) => {
   console.error('请求失败：', JSON.stringify(error));
   return error;
 };
+
+/**
+ * 前端埋点出口。当前后端没有接收端点，先以结构化日志落地，
+ * 后续接入采集接口时只需替换这里，调用方不变。
+ */
+export const trackEvent = (name: string, payload: Record<string, unknown> = {}) => {
+  console.info(`[track] ${name}`, payload);
+};
+
+/** 用户对错误处理的满意度投票（有用/无用） */
+export const logErrorFeedback = (errorCode: string, helpful: boolean) => {
+  trackEvent('ai_error_feedback', { code: errorCode, helpful });
+};

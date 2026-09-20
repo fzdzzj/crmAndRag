@@ -1,6 +1,8 @@
 import { ref, computed, onUnmounted } from 'vue';
 import { axiosInstance } from '@/api/apiClient';
 import { message as antdMessage } from 'ant-design-vue';
+import { describeError, friendlyMessage, showErrorToast } from '@/utils/error-toast';
+import { isRetryableStatus, retryWithBackoff } from '@/utils/retryWithBackoff';
 import { TokenManager } from '@/utils/token';
 
 export interface ChatMessage {
@@ -17,6 +19,55 @@ export interface ChatMessage {
 export interface SseEvent {
   event: string;
   data: Record<string, unknown> | string | null;
+  /** SSE id（`generationId:sequence`），断线重连时作为 Last-Event-ID 续传游标 */
+  id: string | null;
+}
+
+export const NETWORK_ERROR_CODE = 'NETWORK_ERROR';
+const STREAM_URL = '/ai/chat/stream';
+const MAX_STREAM_RETRIES = 5;
+const RETRY_TOAST_KEY = 'ai-retry';
+
+/** 流式链路上的统一错误载体：code 供文案映射，status 供重试判定 */
+export class AiStreamError extends Error {
+  readonly code: string;
+  readonly status?: number;
+
+  constructor(code: string, message: string, status?: number) {
+    super(message);
+    this.name = 'AiStreamError';
+    this.code = code;
+    this.status = status;
+  }
+}
+
+function networkError(): AiStreamError {
+  return new AiStreamError(NETWORK_ERROR_CODE, '网络连接中断');
+}
+
+function isRetryableStreamError(err: unknown): boolean {
+  if (err instanceof AiStreamError) {
+    return err.status === undefined ? err.code === NETWORK_ERROR_CODE : isRetryableStatus(err.status);
+  }
+  return err instanceof TypeError;
+}
+
+async function toHttpError(resp: Response): Promise<AiStreamError> {
+  const raw = await resp.text().catch(() => '');
+  let code: string | null = null;
+  let msg = '';
+  try {
+    const parsed = JSON.parse(raw) as { code?: unknown; msg?: unknown };
+    if (typeof parsed?.code === 'string' || typeof parsed?.code === 'number') {
+      code = String(parsed.code);
+    }
+    if (typeof parsed?.msg === 'string') {
+      msg = parsed.msg;
+    }
+  } catch {
+    /* 非 JSON 响应体，退化为状态码 */
+  }
+  return new AiStreamError(code ?? `HTTP_${resp.status}`, msg || `HTTP ${resp.status}`, resp.status);
 }
 
 const KNOWN_EVENTS = ['start', 'meta', 'sources', 'thinking', 'delta', 'references', 'title', 'done', 'cancelled', 'stopped', 'error', 'ping'] as const;
@@ -33,6 +84,7 @@ async function* parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>):
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
   let currentEvent: string | null = null;
+  let currentId: string | null = null;
   let currentDataLines: string[] = [];
 
   try {
@@ -59,13 +111,14 @@ async function* parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>):
               }
             }
             if (isKnownEvent(currentEvent)) {
-              yield { event: currentEvent, data };
+              yield { event: currentEvent, data, id: currentId };
             } else {
               // 降级：未知事件（包括 actionCard/draftProgress 如果以事件形式下发）忽略，不中断流
               console.debug('[SSE] ignored unknown event:', currentEvent);
             }
           }
           currentEvent = null;
+          currentId = null;
           currentDataLines = [];
           continue;
         }
@@ -75,11 +128,11 @@ async function* parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>):
         } else if (line.startsWith('data:')) {
           currentDataLines.push(line.slice(5).trimStart());
         } else if (line.startsWith('id:')) {
-          // 可用于断线续传，当前简化忽略
+          currentId = line.slice(3).trim();
         } else if (line.startsWith(':')) {
           // comment ping
           if (line.includes('ping')) {
-            yield { event: 'ping', data: null };
+            yield { event: 'ping', data: null, id: null };
           }
         }
       }
@@ -96,7 +149,7 @@ async function* parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>):
         /* 保留原始文本 */
       }
       if (isKnownEvent(currentEvent)) {
-        yield { event: currentEvent, data };
+        yield { event: currentEvent, data, id: currentId };
       }
     }
   } finally {
@@ -109,6 +162,8 @@ export function useAiChat() {
   const isStreaming = ref(false);
   const sessionId = ref<string | null>(null);
   const error = ref<string | null>(null);
+  /** 与 error 对应的原始技术码，供反馈埋点使用 */
+  const errorCode = ref<string | null>(null);
   let abortCtrl: AbortController | null = null;
   let currentAssistantMsg: ChatMessage | null = null;
 
@@ -117,11 +172,19 @@ export function useAiChat() {
     isStreaming.value = false;
     sessionId.value = null;
     error.value = null;
+    errorCode.value = null;
     currentAssistantMsg = null;
     if (abortCtrl) {
       abortCtrl.abort();
       abortCtrl = null;
     }
+  }
+
+  function setError(err: unknown): void {
+    const { code, msg } = describeError(err);
+    errorCode.value = code;
+    error.value = friendlyMessage(code, msg);
+    showErrorToast(err);
   }
 
   function addMessage(msg: Partial<ChatMessage>) {
@@ -138,6 +201,7 @@ export function useAiChat() {
     if (!text.trim() || isStreaming.value) return;
 
     error.value = null;
+    errorCode.value = null;
     isStreaming.value = true;
 
     // 添加用户消息
@@ -156,25 +220,29 @@ export function useAiChat() {
     };
 
     abortCtrl = new AbortController();
+    const signal = abortCtrl.signal;
+    /** 续传游标：跨重连保留，服务端按它做排他重放，因此不会重复输出 */
+    let lastEventId: string | null = null;
 
-    try {
+    const openAndConsume = async () => {
       const token = TokenManager.getAccessToken();
-      const resp = await fetch('/ai/chat/stream', {
+      const resp = await fetch(STREAM_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'token': token || '',
           'Accept': 'text/event-stream',
+          ...(lastEventId ? { 'Last-Event-ID': lastEventId } : {}),
         },
         body: JSON.stringify(body),
-        signal: abortCtrl.signal,
+        signal,
       });
 
       if (!resp.ok) {
-        const txt = await resp.text().catch(() => '');
-        throw new Error(`HTTP ${resp.status}: ${txt || resp.statusText}`);
+        throw await toHttpError(resp);
       }
 
+      let terminalReached = false;
       const reader = resp.body!.getReader();
       const evtStr = (evt: SseEvent, field: string): string | null => {
         const d = evt.data;
@@ -184,6 +252,9 @@ export function useAiChat() {
       };
 
       for await (const evt of parseSSEStream(reader)) {
+        if (evt.id) {
+          lastEventId = evt.id;
+        }
         if (!currentAssistantMsg) continue;
         const d = evt.data && typeof evt.data === 'object' ? evt.data : null;
 
@@ -229,21 +300,21 @@ export function useAiChat() {
             // 标题异步，当前忽略或存
             break;
           case 'done': {
-            isStreaming.value = false;
+            terminalReached = true;
             const sid = evtStr(evt, 'sessionId');
             if (sid) sessionId.value = sid;
             currentAssistantMsg = null;
             break;
           }
           case 'error':
-            error.value = evtStr(evt, 'msg') || '流式错误';
-            antdMessage.error(error.value);
-            isStreaming.value = false;
+            // 服务端终态错误：出友好文案并交给用户判断，不自动重试（重试会重复生成）
+            terminalReached = true;
+            setError(new AiStreamError(evtStr(evt, 'code') || 'AI_STREAM_ERROR', evtStr(evt, 'msg') || '流式错误'));
             currentAssistantMsg = null;
             break;
           case 'cancelled':
           case 'stopped':
-            isStreaming.value = false;
+            terminalReached = true;
             if (currentAssistantMsg) currentAssistantMsg.interrupted = true;
             currentAssistantMsg = null;
             break;
@@ -255,12 +326,31 @@ export function useAiChat() {
             break;
         }
       }
+
+      if (!terminalReached) {
+        // 连接被静默切断（无 done/error）：按网络中断处理以触发续传
+        throw networkError();
+      }
+    };
+
+    try {
+      await retryWithBackoff(openAndConsume, {
+        maxRetries: MAX_STREAM_RETRIES,
+        isRetryable: isRetryableStreamError,
+        signal,
+        onRetry: (retry) => {
+          antdMessage.warning({
+            content: `网络连接不稳定，正在重试... (${retry}/${MAX_STREAM_RETRIES})`,
+            key: RETRY_TOAST_KEY,
+          });
+        },
+      });
+      antdMessage.destroy(RETRY_TOAST_KEY);
     } catch (e: unknown) {
       if ((e as Error)?.name === 'AbortError') {
         if (currentAssistantMsg) currentAssistantMsg.interrupted = true;
       } else {
-        error.value = (e as Error)?.message || '发送失败';
-        antdMessage.error(error.value);
+        setError(e instanceof TypeError ? networkError() : e);
       }
       isStreaming.value = false;
       currentAssistantMsg = null;
@@ -303,6 +393,7 @@ export function useAiChat() {
     isStreaming: computed(() => isStreaming.value),
     sessionId: computed(() => sessionId.value),
     error: computed(() => error.value),
+    errorCode: computed(() => errorCode.value),
     sendMessage,
     stop,
     loadHistory,
