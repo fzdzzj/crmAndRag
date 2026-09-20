@@ -1,0 +1,46 @@
+{
+  "$comment": [
+    "gzip 体积预算：由 node scripts/check-bundle-budget.mjs --update 从一次真实 pnpm build 写入，禁止手改。",
+    "口径：zlib level 9，只统计 dist 下的 js/mjs/css；预算 = 写入时现值 x 1.02（留 2% 重构余量）。",
+    "桶：entry=dist/index.html 直接引用的 chunk，vendor-antd/vendor-echarts/vendor=manualChunks 三组，",
+    "    app=其余（路由页与组件 chunk），total=以上全部之和。",
+    "字段：maxGzipBytes=门禁上限（字节），measuredGzipBytes=写入时的真实值（仅备查，不参与裁决）。",
+    "改 vite.config.ts 的 manualChunks 分桶名时，必须同步改 check-bundle-budget.mjs 的 VENDOR_BUCKETS。"
+  ],
+  "sourceRevision": "606164c",
+  "measuredAt": "2026-09-20T16:00:01Z",
+  "gzipLevel": 9,
+  "headroom": 1.02,
+  "buckets": {
+    "entry": {
+      "maxGzipBytes": 10219,
+      "measuredGzipBytes": 10018,
+      "files": 3
+    },
+    "vendor-antd": {
+      "maxGzipBytes": 283687,
+      "measuredGzipBytes": 278124,
+      "files": 1
+    },
+    "vendor-echarts": {
+      "maxGzipBytes": 205253,
+      "measuredGzipBytes": 201228,
+      "files": 1
+    },
+    "vendor": {
+      "maxGzipBytes": 115105,
+      "measuredGzipBytes": 112848,
+      "files": 1
+    },
+    "app": {
+      "maxGzipBytes": 176573,
+      "measuredGzipBytes": 173110,
+      "files": 62
+    },
+    "total": {
+      "maxGzipBytes": 790835,
+      "measuredGzipBytes": 775328,
+      "files": 68
+    }
+  }
+}
