@@ -26,8 +26,8 @@ import org.yaml.snakeyaml.Yaml;
 /**
  * 前后端 API 契约一致性门禁：把 {@code frontend/openapi.yaml} 钉死为后端 springdoc 的<b>当前</b>导出。
  *
- * <p>做法是启动完整上下文（H2 + test profile，不依赖 Docker/Qdrant/MinIO），用 MockMvc 打 {@code
- * /v3/api-docs.yaml} 拿到后端真实契约，落盘到 {@code target/openapi/openapi.yaml} 后与仓库里 提交的前端契约逐字比对。控制器新增/改名/改结构都会在此变红。
+ * <p>做法是启动完整上下文（H2 + test profile，不依赖 Docker/Qdrant/MinIO），用 MockMvc 打 {@code /v3/api-docs.yaml}
+ * 拿到后端真实契约，落盘到 {@code target/openapi/openapi.yaml} 后与仓库里 提交的前端契约逐字比对。控制器新增/改名/改结构都会在此变红。
  *
  * <p>漂移修复：{@code bash scripts/check-openapi-consistency.sh --update}（覆盖前端契约后需 {@code pnpm gen:api}
  * 重新生成 SDK）。比较前统一换行符，因为 Windows 工作树是 CRLF、仓库内是 LF。
@@ -50,7 +50,10 @@ class OpenApiContractExportTest {
 
   private static final Path COMMITTED_CONTRACT = ContractFiles.find("frontend/openapi.yaml");
   private static final Path EXPORTED_CONTRACT =
-      COMMITTED_CONTRACT.getParent().getParent().resolve(Path.of("target", "openapi", "openapi.yaml"));
+      COMMITTED_CONTRACT
+          .getParent()
+          .getParent()
+          .resolve(Path.of("target", "openapi", "openapi.yaml"));
 
   /** 用裸 {@code @RequestParam("file") MultipartFile} 声明的上传接口，契约必须给出 multipart 请求体。 */
   private static final Map<String, List<String>> UPLOAD_ENDPOINTS =
@@ -77,9 +80,9 @@ class OpenApiContractExportTest {
   }
 
   /**
-   * 上传接口的请求体形状：springdoc 在 {@code default-flat-param-object} 下会把裸 MultipartFile 参数整个吞掉，
-   * 生成出来的 SDK 就会把 body 判成 {@code undefined}，前端 {@code {body: {file}}} 直接编译不过。
-   * {@code OpenApiConfig} 负责补回 binary 参数并改写成 multipart/form-data，本用例守住这条补偿。
+   * 上传接口的请求体形状：springdoc 在 {@code default-flat-param-object} 下会把裸 MultipartFile 参数整个吞掉， 生成出来的 SDK
+   * 就会把 body 判成 {@code undefined}，前端 {@code {body: {file}}} 直接编译不过。 {@code OpenApiConfig} 负责补回
+   * binary 参数并改写成 multipart/form-data，本用例守住这条补偿。
    */
   @Test
   void uploadEndpointsDescribeMultipartRequestBody() {
