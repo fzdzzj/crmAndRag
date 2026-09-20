@@ -1,0 +1,66 @@
+# ================================================================
+# Prometheus 主配置
+# 由 deploy/docker-compose.yml 的 prometheus 服务挂到 /etc/prometheus，
+# 容器内以 --config.file=/etc/prometheus/prometheus.yml 启动。
+# 起法与两条验证 curl 见 deploy/README.md 的「监控栈起法与验证」。
+# ----------------------------------------------------------------
+# 指标名真相源：deploy/prometheus/expected-metric-names.txt
+#   （真起上下文抓 /actuator/prometheus 得到；采集用例
+#    src/test/java/com/slz/crm/platform/monitoring/PrometheusExportTruthCaptureTest.java）
+# 消费端一致性门禁：src/test/java/com/slz/crm/platform/monitoring/MonitoringArtifactConsistencyTest.java
+#   （纯 JVM、进 surefire：alert-rules 与面板引用的指标名/label 必须 ⊆ 上面那份实采清单）
+# 本机校验：promtool check config /etc/prometheus/prometheus.yml
+#          promtool check rules   /etc/prometheus/alert-rules.yml
+# ================================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    stack: crm-platform
+
+# 告警规则：路径相对本文件所在目录解析，即 deploy/prometheus/alert-rules.yml。
+# 不挂这一条，alert-rules.yml 就还是一份没人读的死文件（TASK-16 之前的状态）。
+rule_files:
+  - alert-rules.yml
+
+# Alertmanager 默认不部署（先把"有人抓、规则有人评"这一环闭合）。要接告警分发时
+# 起一个 alertmanager 服务并取消下面注释：
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  # Prometheus 自监控
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # 应用线程池 / 业务指标（compose 网络内的 app 服务）
+  #
+  # !! 抓取侧鉴权事实（TASK-16 实测，改这里之前先读）：
+  # /actuator/prometheus 被 ActuatorProtectionFilter 列在 admin-only 名单
+  # （platform.actuator.admin-only-paths，见 src/main/resources/application.yml），
+  # 要求"有效 JWT + roleId=1"，匿名抓取恒 401 → 本 job 的 target 会停在 DOWN，
+  # 并触发 alert-rules.yml 的 ThreadPoolMetricsMissing。这不是规则写错，是端点本来就没对
+  # 网络开放；PrometheusExportTruthCaptureTest 里有一条用例把 401 钉成了断言。
+  #
+  # 闭合链路需要一次"指标端点怎么暴露"的决策（属安全口径变更，本任务边界内不擅自放开），
+  # 三个候选，按侵入度排序：
+  #   1) 把 /actuator/prometheus 加进 platform.actuator.public-paths（compose 里用
+  #      PLATFORM_ACTUATOR_PUBLIC_PATHS[0..2] 覆盖整张白名单即可，无需改代码）。
+  #      代价：指标端点在已发布的 8080 上匿名可读（标签里带线程池名/URI 基数）。
+  #   2) 走独立 management 端口不对外发布：MANAGEMENT_SERVER_PORT=9091 + 本文件目标改成
+  #      app:9091。代价：要先验证该子上下文是否仍套这层 filter（未验证，别当既成事实）。
+  #   3) 抓取侧带 token 头（Prometheus 3.x 的 http_headers 不接受 $VAR 展开，实测报
+  #      "cannot unmarshal into config.Header"，所以只能明文写进文件/独立 secrets 文件挂载）。
+  #      代价：把超管 JWT 落到监控侧，等于给监控一个长期凭据。
+  - job_name: crm-app
+    metrics_path: /actuator/prometheus
+    scrape_interval: 15s
+    scheme: http
+    static_configs:
+      - targets: ["app:8080"]
+        labels:
+          component: app
