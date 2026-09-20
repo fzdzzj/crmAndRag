@@ -1,0 +1,35 @@
+-- ============================================================
+-- V28__add_source_to_customer_company.sql —— TASK-14：修 Wave-0 死图表查询（schema 缺列）
+--
+-- 背景：
+--   ContractMapper.xml#selectCompanySourceByPeriod（客户来源分布饼图，dataType=CUSTOMER_SOURCE）
+--   SELECT c2.source / GROUP BY c2.source，别名 c2 = customer_company。
+--   但 V1__baseline.sql 的 customer_company 建表无 source 列（L92 起），且全迁移链从未 ALTER 加过该列，
+--   → 真库上该查询直接抛 Unknown column 'c2.source' in 'field list'（对外 90004），
+--     客户来源分布图自 e3f8230 起是死查询。
+--   复现用例：PermissionApplyReportIT#shouldAllowChartDataForRoleGrantedGenerateReport（期望 code=1 实得 90004）。
+--
+-- 定夺：用户已拍板方案 A —— 加列修 schema，不删查询（保留产品既有的客户来源分析能力）。
+--
+-- 迁移策略：
+--   纯 additive（仅 ADD COLUMN ... NULL），不动任何已合入脚本（Flyway 校 checksum）。
+--   source 可空、无存量数据需要回填（存量客户公司来源未知即 NULL），聚合时 NULL 自成一桶，行为安全。
+--   同轮在 CustomerCompanyEntity 补 String source 字段（实体↔真库对齐，SchemaDriftAuditIT 不产生新漂移）。
+--
+-- 索引取舍（刻意不加 idx_customer_company_source）：
+--   该查询是 contract（按 sign_date/status 过滤）LEFT JOIN customer_company ON c1.company_id = c2.id
+--   后对 c2.source GROUP BY：c2 侧走主键单行定位，待分组的行集来自 join 结果而非对 customer_company
+--   的扫描/过滤，source 上的索引在该 plan 下不可用（只会退化成 join 后的小集合 filesort / 临时表）。
+--   同时 customer_company 是客户主体小表、source 为低基数枚举值，优化器即便可用也不会选它。
+--   结论：加了只增加写入成本与迁移时长，不减任何扫描 → 不加。
+--   若将来出现"按来源筛选/统计客户公司"的全表过滤查询，再以 V(n+1) 追加索引（本仓约定：不改已合入脚本）。
+--
+-- 号段归属：
+--   customer_company 属 V1 基座 CRM 业务表 → 顺序号段下一空闲 = V28（当前目录实测最高 V27）。
+--
+-- 回滚注意：
+--   纯新增列，无破坏性变更；如需回退请用 DB 快照恢复（本仓库约定不提供 DROP 回滚）。
+-- ============================================================
+
+ALTER TABLE customer_company
+    ADD COLUMN source varchar(50) NULL COMMENT '客户来源';

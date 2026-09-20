@@ -136,6 +136,16 @@ class PermissionApplyReportIT extends AbstractMySqlIT {
   @Test
   @DisplayName("持有报表生成权限502的非超管角色可生成图表JSON")
   void shouldAllowChartDataForRoleGrantedGenerateReport() throws Exception {
+    // TASK-14：V28 补 customer_company.source 后，给种子里所有客户公司都填上来源，验证聚合真出数
+    // （不止"不再 Unknown column"）。建数走本 IT 既有方式：用例内 jdbcTemplate seeding +
+    // @Transactional 回滚隔离，禁改共享 init_data.sql。
+    // 两条 UPDATE 的分工：先全表刷一个值（兜住 init_data.sql 日后新增的公司行，避免留下 NULL 桶），
+    // 再把公司 1、2 覆盖成同一来源，构成"一个来源 2 笔签约合同"的可断言聚合。
+    jdbcTemplate.update("UPDATE customer_company SET source = ?", "TASK14_ADVERT");
+    jdbcTemplate.update(
+        "UPDATE customer_company SET source = ? WHERE id IN (?, ?)", "TASK14_REFERRAL", 1L, 2L);
+    // init_data.sql 已种 contract 1/2/3（company_id=1/2/3、sign_date=NOW()、status=SIGN），
+    // dataType 无 timeRange 时服务默认 THIS_WEEK 窗口 [now-1w, now] 覆盖 NOW()。
     mockMvc
         .perform(
             post("/dataStatistics/chartData")
@@ -143,6 +153,7 @@ class PermissionApplyReportIT extends AbstractMySqlIT {
                 .contentType("application/json")
                 .content("{\"dataType\":\"CUSTOMER_SOURCE\"}"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.code").value(1));
+        .andExpect(jsonPath("$.code").value(1))
+        .andExpect(jsonPath("$.data.data.TASK14_REFERRAL").value(2));
   }
 }

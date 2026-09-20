@@ -95,4 +95,8 @@ public class CustomerCompanyEntity {
   /** 部门 */
   @Column(comment = "部门（客户具体到部门级别）", type = "varchar(50)")
   private String dept;
+
+  /** 客户来源（V28 补列，客户来源分布图表的数据源；getter/setter 由类级 @Data 生成） */
+  @Column(comment = "客户来源", type = "varchar(50)")
+  private String source;
 }
