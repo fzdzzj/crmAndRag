@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.slz.crm.platform.contract.DynamicConfigService;
+import com.slz.crm.platform.contract.RetrievalDefaults;
 import com.slz.crm.platform.contract.SourceReference;
 import com.slz.crm.server.ai.AiChatKnowledgeRetrievalService;
 import com.slz.crm.server.ai.port.KnowledgeRetrievalPort;
@@ -32,7 +33,7 @@ class AiChatKnowledgeRetrievalServiceTest {
     ObjectProvider<KnowledgeRetrievalPort> provider = mock(ObjectProvider.class);
     when(provider.getIfAvailable()).thenReturn(retrievalPort);
     dynamicConfigProvider = mock(ObjectProvider.class);
-    // 缺省：动态配置未装配 → topK 回退默认 4（升级前硬编码行为）
+    // 缺省：动态配置未装配 → topK 回退真相源默认 RetrievalDefaults.TOP_K（TASK-18 收敛，曾孤例 4）
     when(dynamicConfigProvider.getIfAvailable()).thenReturn(null);
     service = new AiChatKnowledgeRetrievalService(provider, dynamicConfigProvider);
   }
@@ -60,8 +61,8 @@ class AiChatKnowledgeRetrievalServiceTest {
         ArgumentCaptor.forClass(KnowledgeRetrievalPort.RetrievalQuery.class);
     verify(retrievalPort).retrieve(captor.capture());
     assertThat(captor.getValue().imageVector()).containsExactly(0.1F, 0.2F);
-    // 动态配置未装配：topK 回退默认 4（升级前硬编码）
-    assertThat(captor.getValue().topK()).isEqualTo(4);
+    // 动态配置未装配：topK 回退真相源默认（RetrievalDefaults.TOP_K，一致性由 RetrievalParamTruthSourceTest 门禁保证）
+    assertThat(captor.getValue().topK()).isEqualTo(RetrievalDefaults.TOP_K);
     assertThat(outcome.context()).contains("片段内容").contains("[编号]");
     assertThat(outcome.sources()).containsExactly(source);
   }
@@ -71,7 +72,7 @@ class AiChatKnowledgeRetrievalServiceTest {
   @DisplayName("topK 配置生效")
   void retrieve_topKShouldFollowDynamicConfig() {
     DynamicConfigService config = mock(DynamicConfigService.class);
-    when(config.get("rag.retrieval.topK", Integer.class, 4)).thenReturn(6);
+    when(config.get("rag.retrieval.topK", Integer.class, RetrievalDefaults.TOP_K)).thenReturn(6);
     when(dynamicConfigProvider.getIfAvailable()).thenReturn(config);
     when(retrievalPort.retrieve(any())).thenReturn(KnowledgeRetrievalPort.RetrievalResult.empty());
 
@@ -83,12 +84,12 @@ class AiChatKnowledgeRetrievalServiceTest {
     assertThat(captor.getValue().topK()).isEqualTo(6);
   }
 
-  /** 任务 4.1 非法回退：配置值 <1 时回退默认 4。 */
+  /** 任务 4.1 非法回退：配置值 <1 时回退真相源默认（RetrievalDefaults.TOP_K）。 */
   @Test
   @DisplayName("topK 非法配置回退默认")
   void retrieve_invalidTopKShouldFallBackToDefault() {
     DynamicConfigService config = mock(DynamicConfigService.class);
-    when(config.get("rag.retrieval.topK", Integer.class, 4)).thenReturn(0);
+    when(config.get("rag.retrieval.topK", Integer.class, RetrievalDefaults.TOP_K)).thenReturn(0);
     when(dynamicConfigProvider.getIfAvailable()).thenReturn(config);
     when(retrievalPort.retrieve(any())).thenReturn(KnowledgeRetrievalPort.RetrievalResult.empty());
 
@@ -97,7 +98,7 @@ class AiChatKnowledgeRetrievalServiceTest {
     ArgumentCaptor<KnowledgeRetrievalPort.RetrievalQuery> captor =
         ArgumentCaptor.forClass(KnowledgeRetrievalPort.RetrievalQuery.class);
     verify(retrievalPort).retrieve(captor.capture());
-    assertThat(captor.getValue().topK()).isEqualTo(4);
+    assertThat(captor.getValue().topK()).isEqualTo(RetrievalDefaults.TOP_K);
   }
 
   @Test

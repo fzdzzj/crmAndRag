@@ -244,8 +244,9 @@ public class DynamicConfigKeyRegistry {
             "rag.retrieval.minScore",
             "rag.retrieval",
             ConfigValueType.DOUBLE,
-            "0.0",
-            "检索相关性最低分阈值，范围 0.0~1.0；低于阈值的片段不进入上下文。",
+            "0.2",
+            "检索相关性最低分阈值，范围 0.0~1.0；低于阈值的片段不进入上下文。默认值对齐运行真相源 "
+                + "RetrievalDefaults.MIN_SCORE=0.20（TASK-18，展示值≠运行值曾漂移已修正）。",
             "0.0",
             "1.0",
             Set.of(),

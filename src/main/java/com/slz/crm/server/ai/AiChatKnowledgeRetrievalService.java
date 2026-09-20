@@ -1,6 +1,7 @@
 package com.slz.crm.server.ai;
 
 import com.slz.crm.platform.contract.DynamicConfigService;
+import com.slz.crm.platform.contract.RetrievalDefaults;
 import com.slz.crm.platform.contract.SourceReference;
 import com.slz.crm.server.ai.port.KnowledgeRetrievalPort;
 import java.util.List;
@@ -14,7 +15,8 @@ import org.springframework.stereotype.Component;
  * <p>KB OFF 绝不触发检索，也绝不注入未命中提示；KB ON 零命中时注入诚实生成的标记， 避免旧 RAG 的“强制兜底一句未检索到”。B 生产实现合入后只需替换 port 实现。
  *
  * <p>topK 参数化（add-context-compression-and-enrichment 任务 4.1）：检索条数从动态配置 {@code rag.retrieval.topK}
- * 解析（缺省/非法回退 4，与升级前硬编码一致），不再写死。
+ * 解析；缺省/非法回退值与生产检索实现同源（{@link RetrievalDefaults#TOP_K}，TASK-18 收敛，曾孤例 4 判漏配）， 一致性由 {@code
+ * RetrievalParamTruthSourceTest} 门禁保证。
  */
 @Slf4j
 @Component
@@ -26,7 +28,7 @@ public class AiChatKnowledgeRetrievalService {
             不要声称引用了知识库来源，也不要输出机械化的空结果提示。""";
 
   private static final String TOP_K_KEY = "rag.retrieval.topK";
-  private static final int DEFAULT_TOP_K = 4;
+  private static final int DEFAULT_TOP_K = RetrievalDefaults.TOP_K;
 
   private final ObjectProvider<KnowledgeRetrievalPort> retrievalPortProvider;
   private final ObjectProvider<DynamicConfigService> dynamicConfigProvider;
@@ -67,7 +69,10 @@ public class AiChatKnowledgeRetrievalService {
     }
   }
 
-  /** 检索条数：动态配置 {@code rag.retrieval.topK}；未配置/&lt;1 回退 4（升级前硬编码值）。 */
+  /**
+   * 检索条数：动态配置 {@code rag.retrieval.topK}；未配置/&lt;1 回退真相源默认（与生产检索实现同源，一致性已由
+   * RetrievalParamTruthSourceTest 门禁保证）。
+   */
   private int resolveTopK() {
     DynamicConfigService config =
         dynamicConfigProvider == null ? null : dynamicConfigProvider.getIfAvailable();

@@ -4,6 +4,7 @@ import com.slz.crm.knowledge.auth.KnowledgeBaseAuthorizationService;
 import com.slz.crm.knowledge.embedding.EmbeddingService;
 import com.slz.crm.platform.contract.CrmVectorStore;
 import com.slz.crm.platform.contract.DynamicConfigService;
+import com.slz.crm.platform.contract.RetrievalDefaults;
 import com.slz.crm.platform.contract.SourceReference;
 import com.slz.crm.platform.contract.UserContext;
 import com.slz.crm.platform.contract.UserContextHolder;
@@ -39,9 +40,15 @@ import org.springframework.stereotype.Service;
 @Service
 public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
   private static final Logger log = LoggerFactory.getLogger(KnowledgeRetrievalServiceImpl.class);
-  private static final int DEFAULT_TOP_K = 5;
+
+  /**
+   * 缺省 topK/minScore 引用单一真相源 {@link RetrievalDefaults}（TASK-18，漂移由 RetrievalParamTruthSourceTest
+   * 门禁拦截）。
+   */
+  private static final int DEFAULT_TOP_K = RetrievalDefaults.TOP_K;
+
   private static final int DEFAULT_CANDIDATE_MULTIPLIER = 4;
-  private static final double DEFAULT_MIN_SCORE = 0.20;
+  private static final double DEFAULT_MIN_SCORE = RetrievalDefaults.MIN_SCORE;
   private static final double DEFAULT_TEXT_ROUTE_WEIGHT = 0.70;
   private static final double DEFAULT_IMAGE_ROUTE_WEIGHT = 0.30;
   private static final String FUSION_MODE_KEY = "rag.retrieval.fusion.mode";

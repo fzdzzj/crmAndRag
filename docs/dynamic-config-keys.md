@@ -3,6 +3,9 @@
 > 维护约定：新增/变更 DynamicConfig 键随所属提案同步更新本清单（complete-hybrid-retrieval-and-rerank 任务 5.4 起建）。
 > 口径：键名 / 类型 / 默认值 / 语义与回退。动态配置实现（Lane E）未配置或类型不匹配时返回调用方给定的默认值，
 > 因此下表"默认值"即缺省回退行为，缺配置不影响检索可用性。
+> 单一真相源（TASK-18）：`rag.retrieval.topK`=5、`rag.retrieval.minScore`=0.20 两行的默认值与
+> `RetrievalDefaults` 常量、`DynamicConfigKeyRegistry` 展示默认、检索服务运行默认及基准 TOP_K=5 由
+> `RetrievalParamTruthSourceTest`（CI 阶段 1）强制一致，本表任一侧单独改动即红。
 
 ## rag.retrieval.* —— 检索管线（Lane B）
 
