@@ -1,5 +1,6 @@
 package com.slz.crm.integration.controller;
 
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -144,6 +145,26 @@ class PermissionApplyReportIT extends AbstractMySqlIT {
     jdbcTemplate.update("UPDATE customer_company SET source = ?", "TASK14_ADVERT");
     jdbcTemplate.update(
         "UPDATE customer_company SET source = ? WHERE id IN (?, ?)", "TASK14_REFERRAL", 1L, 2L);
+    // TASK-15 红②：上面两条 UPDATE 把所有存量公司刷成非空，这里在其后追加一家 source 保持默认 NULL 的
+    // 种子公司（id=900）+ 其签约合同（contract_status=1、sign_date=NOW()），让 mapper 真产出
+    // chartTitle=null 的行（V28 存量语义）。TASK-14 版实现在此 null key 下 Jackson 序列化对外 → HTTP 500。
+    jdbcTemplate.update(
+        "INSERT INTO customer_company (id, company_name, creator_id) VALUES (?, ?, ?)",
+        900L,
+        "TASK15_UNLABELED_CO",
+        1);
+    jdbcTemplate.update(
+        "INSERT INTO contract (id, contract_no, company_id, contract_name, total_amount, sign_date,"
+            + " contract_status, owner_id, creator_id)"
+            + " VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?)",
+        900L,
+        "TASK15-NULL-SRC-001",
+        900L,
+        "TASK15 null-source contract",
+        new java.math.BigDecimal("1.00"),
+        1,
+        2,
+        1);
     // init_data.sql 已种 contract 1/2/3（company_id=1/2/3、sign_date=NOW()、status=SIGN），
     // dataType 无 timeRange 时服务默认 THIS_WEEK 窗口 [now-1w, now] 覆盖 NOW()。
     mockMvc
@@ -154,6 +175,8 @@ class PermissionApplyReportIT extends AbstractMySqlIT {
                 .content("{\"dataType\":\"CUSTOMER_SOURCE\"}"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.code").value(1))
-        .andExpect(jsonPath("$.data.data.TASK14_REFERRAL").value(2));
+        .andExpect(jsonPath("$.data.data.TASK14_REFERRAL").value(2))
+        // 未标注桶：null 来源并入，至少含刚种的这家 NULL 来源公司（>=1）。
+        .andExpect(jsonPath("$.data.data['未标注']").value(greaterThanOrEqualTo(1)));
   }
 }

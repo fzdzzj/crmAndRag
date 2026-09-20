@@ -32,6 +32,9 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class DataStatisticsServiceImpl implements DataStatisticsService {
+  /** 客户来源为 null / 全空白时归入的兜底桶名（V28 后 source 可空，存量行全 NULL）。 */
+  private static final String UNLABELED_SOURCE = "未标注";
+
   @Autowired private ContractMapper contractMapper;
 
   @Autowired private PaymentRecordMapper paymentRecordMapper;
@@ -136,8 +139,22 @@ public class DataStatisticsServiceImpl implements DataStatisticsService {
             dataStatisticsDTO.getEndTime(),
             ContractConstant.SIGN);
 
+    // V28 后 customer_company.source 可空，存量行全 NULL → mapper 返回 chartTitle=null 的行。
+    // 2 参 Collectors.toMap 会把 null / 纯空白 key 原样塞进 Map（HashMap 允许 null key），
+    // 但 Jackson 序列化对外时拒绝 Map null key → HTTP 500。方案 A：null 或 trim 后为空的来源
+    // 统一并入"未标注"桶，并用带 merge 函数的 collector 防键冲突（未来 mapper 去掉 GROUP BY 时同桶多行）。
     return chartData.stream()
-        .collect(Collectors.toMap(ContractChartDTO::getChartTitle, ContractChartDTO::getNum));
+        .collect(
+            Collectors.toMap(
+                dto -> normalizeSourceKey(dto.getChartTitle()),
+                dto -> (Number) dto.getNum(),
+                (left, right) -> left.longValue() + right.longValue(),
+                LinkedHashMap::new));
+  }
+
+  /** 客户来源非空则保持 mapper 原值；null 或 trim 后为空则并入未标注桶。 */
+  private static String normalizeSourceKey(String source) {
+    return (source == null || source.trim().isEmpty()) ? UNLABELED_SOURCE : source;
   }
 
   /** 获取回款金额数据 */
