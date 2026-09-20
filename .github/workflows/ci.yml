@@ -112,6 +112,59 @@ jobs:
           PMD_MAX_VIOLATIONS: 5
           SPOTLESS_APPLY_DIFF: 0
 
+  # TASK-10：Fail-Fast 启动门禁——依赖不可达时应用必须起不来，且原因指名到组件。
+  #   与本地完全同一条命令：bash scripts/fail-fast-gate.sh（脚本自带断言，不靠 grep 拼凑）
+  #   阶段1（build-and-gate 的 surefire）之后执行；三个场景需要一个可达的 MySQL
+  #   （qdrant/minio 场景的探测排在 MySQL 之后，库不可达会先于被测组件失败），故挂 service container。
+  fail-fast-gate:
+    needs: build-and-gate
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: gate-root-not-a-secret
+          MYSQL_DATABASE: crm_gate
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pgate-root-not-a-secret"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=24
+    env:
+      # dev profile 的依赖坐标全部来自环境变量（本地由 .env 提供，CI 在此提供）
+      SPRING_PROFILES_ACTIVE: dev
+      SLZ_DATASOURCE_HOST: 127.0.0.1
+      SLZ_DATASOURCE_PORT: "3306"
+      SLZ_DATASOURCE_DATABASE: crm_gate
+      SLZ_DATASOURCE_USERNAME: root
+      SLZ_DATASOURCE_PASSWORD: gate-root-not-a-secret
+      SLZ_JWT_SECRET_KEY: gate-jwt-secret-key-not-a-secret-32b
+      SLZ_JWT_TTL: "3600000"
+      SLZ_ATTACH_TOKEN_KEY: gate-attach-key-not-a-secret-32b
+      DASHSCOPE_API_KEY: sk-ci-placeholder-not-used
+    steps:
+      - name: 检出
+        uses: actions/checkout@v4
+
+      - name: 装配 JDK 21 + Maven 缓存
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+
+      - name: Fail-Fast 启动门禁（db / qdrant / minio 三场景）
+        run: bash scripts/fail-fast-gate.sh
+
+      - name: 上传启动失败日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fail-fast-gate-logs
+          path: target/fail-fast-gate/*.log
+          if-no-files-found: ignore
+
   frontend-quality:
     name: Frontend Lint / Type-check
     runs-on: ubuntu-latest

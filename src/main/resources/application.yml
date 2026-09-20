@@ -7,6 +7,11 @@
 #   敏感项（密钥/凭据/本地路径）一律走环境变量或 .env，禁止入库（任务 3）。
 # ================================================================
 spring:
+  main:
+    # 无 ASCII 横幅：容器日志首屏即有效信息（TASK-10 AC3）
+    banner-mode: off
+    # Bean 名冲突必须报错而非静默覆盖（Boot 2.1+ 默认即 false，此处显式钉住语义）
+    allow-bean-definition-overriding: false
   application:
     name: crm-platform
   profiles:
@@ -170,8 +175,9 @@ app:
     memory-pool-size: 2
     memory-queue-capacity: 64
   dependency:
-    # Qdrant / MinIO 健康检查超时（毫秒），用于 /actuator/health 组件健康
-    health-timeout-ms: 2000
+    # 单个依赖（MySQL / Qdrant / MinIO）健康探测的硬超时，FailFastValidator 与 /actuator/health 共用此预算（TASK-10 AC1）。
+    # 必须 > QdrantVectorStore.probe() 内置的 2s：否则超时先于探测返回，失败原因会从"组件不可达"退化成"探测超时"。
+    health-timeout-ms: 3000     # 默认：3000 毫秒；建议范围：3000~5000；三项全不可达时启动失败上限 3×此值
 
 # ---------------- com.tangzc 自动建表（仅本地/测试便捷；生产 auto-table.mode=none） ----------------
 auto-table:

@@ -17,47 +17,73 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/** MinIO 健康探测与条件装配测试。 */
+/**
+ * MinIO 健康探测、失败原因明细与条件装配测试。
+ *
+ * <p>明细要求（TASK-10 AC2）：DOWN 必须自带 endpoint / bucket / error， 让 {@code /actuator/health} 与 Fail-Fast
+ * 都能指名"哪个组件、哪个端点、什么原因"。
+ */
 @ExtendWith(MockitoExtension.class)
 class MinioHealthIndicatorTest {
 
+  private static final String ENDPOINT = "http://127.0.0.1:9000";
+  private static final String BUCKET = "knowledge-files";
+
   @Mock private MinioClient minioClient;
+
+  private MinioHealthIndicator indicator() {
+    return new MinioHealthIndicator(minioClient, ENDPOINT, BUCKET);
+  }
 
   @Test
   void shouldReturnUpWhenBucketExists() throws Exception {
     when(minioClient.bucketExists(any(BucketExistsArgs.class))).thenReturn(true);
-    MinioHealthIndicator indicator = new MinioHealthIndicator(minioClient, "knowledge-files");
 
-    assertThat(indicator.health().getStatus()).isEqualTo(Status.UP);
+    var health = indicator().health();
+
+    assertThat(health.getStatus()).isEqualTo(Status.UP);
+    assertThat(health.getDetails())
+        .containsEntry("endpoint", ENDPOINT)
+        .containsEntry("bucket", BUCKET);
   }
 
   @Test
   void shouldReturnDownWhenBucketIsMissing() throws Exception {
     when(minioClient.bucketExists(any(BucketExistsArgs.class))).thenReturn(false);
-    MinioHealthIndicator indicator = new MinioHealthIndicator(minioClient, "knowledge-files");
 
-    var health = indicator.health();
+    var health = indicator().health();
 
     assertThat(health.getStatus()).isEqualTo(Status.DOWN);
-    assertThat(health.getDetails()).containsEntry("message", "MinIO 可达但存储桶不存在");
+    assertThat(health.getDetails())
+        .containsEntry("endpoint", ENDPOINT)
+        .containsEntry("bucket", BUCKET)
+        .containsEntry("message", "MinIO 可达但存储桶不存在");
   }
 
   @Test
-  void shouldReturnDownWhenMinioIsUnavailable() throws Exception {
+  void shouldReportEndpointAndErrorWhenMinioIsUnavailable() throws Exception {
     when(minioClient.bucketExists(any(BucketExistsArgs.class)))
-        .thenThrow(new IOException("unavailable"));
-    MinioHealthIndicator indicator = new MinioHealthIndicator(minioClient, "knowledge-files");
+        .thenThrow(new IOException("Connection refused"));
 
-    assertThat(indicator.health().getStatus()).isEqualTo(Status.DOWN);
+    var health = indicator().health();
+
+    assertThat(health.getStatus()).isEqualTo(Status.DOWN);
+    assertThat(health.getDetails())
+        .containsEntry("endpoint", ENDPOINT)
+        .containsEntry("bucket", BUCKET)
+        .containsEntry("error", "java.io.IOException: Connection refused");
   }
 
   @Test
   void shouldRegisterOnlyWhenMinioClientBeanExists() {
     new ApplicationContextRunner()
+        .withPropertyValues("knowledge.minio.endpoint=" + ENDPOINT)
         .withUserConfiguration(MinioConfiguration.class, MinioHealthIndicator.class)
         .run(
             context -> {
               assertThat(context).hasSingleBean(MinioHealthIndicator.class);
+              assertThat(context.getBean(MinioHealthIndicator.class).health().getStatus())
+                  .isEqualTo(Status.DOWN);
             });
     new ApplicationContextRunner()
         .withUserConfiguration(MinioHealthIndicator.class)
