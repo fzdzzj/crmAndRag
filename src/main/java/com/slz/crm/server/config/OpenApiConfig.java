@@ -4,6 +4,7 @@ import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.media.Content;
 import io.swagger.v3.oas.models.media.ObjectSchema;
 import io.swagger.v3.oas.models.media.Schema;
+import io.swagger.v3.oas.models.media.StringSchema;
 import io.swagger.v3.oas.models.parameters.Parameter;
 import io.swagger.v3.oas.models.parameters.RequestBody;
 import java.util.ArrayList;
@@ -13,9 +14,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.springdoc.core.customizers.GlobalOpenApiCustomizer;
+import org.springdoc.core.customizers.OperationCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.MethodParameter;
 import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * OpenAPI 契约自定义（简化版：multipart 自动检测 + 叶子字段展开）
@@ -35,6 +41,60 @@ public class OpenApiConfig {
 
   /** 兜底接口：无 binary 字段但前端以 FormData 提交 */
   private static final Set<String> EXTRA_MULTIPART = Set.of("/sales/stage|put");
+
+  /**
+   * 裸 {@code MultipartFile} 参数补偿：{@code default-flat-param-object: true} 下 springdoc 把 {@code
+   * &#64;RequestParam("file") MultipartFile file} 当成待拍平的复杂对象，既不进 parameters 也不进请求体，
+   * 导出的契约里上传接口就成了"没有请求体"，生成的 SDK 随之把 body 判成 undefined。
+   *
+   * <p>这里把这类参数补成 {@code format=binary} 的 query 参数，剩下的交给 {@link #openApiCustomizer()} 里已有的 multipart
+   * 改写逻辑，保证与普通上传接口走同一条契约化路径。
+   */
+  @Bean
+  public OperationCustomizer multipartFileParameterCustomizer() {
+    return (operation, handlerMethod) -> {
+      for (MethodParameter parameter : handlerMethod.getMethodParameters()) {
+        if (!MultipartFile.class.isAssignableFrom(parameter.getParameterType())) {
+          continue;
+        }
+        String name = multipartParameterName(parameter);
+        if (name != null && !hasParameterNamed(operation, name)) {
+          operation.addParametersItem(
+              new Parameter()
+                  .name(name)
+                  .in("query")
+                  .required(true)
+                  .schema(new StringSchema().format("binary")));
+        }
+      }
+      return operation;
+    };
+  }
+
+  /** 只认显式命名的注解；未命名时退回参数名（需要 -parameters 编译，取不到就跳过该参数） */
+  private static String multipartParameterName(MethodParameter parameter) {
+    RequestParam requestParam = parameter.getParameterAnnotation(RequestParam.class);
+    if (requestParam != null) {
+      String named = requestParam.value().isBlank() ? requestParam.name() : requestParam.value();
+      if (!named.isBlank()) {
+        return named;
+      }
+    }
+    RequestPart requestPart = parameter.getParameterAnnotation(RequestPart.class);
+    if (requestPart != null) {
+      String named = requestPart.value().isBlank() ? requestPart.name() : requestPart.value();
+      if (!named.isBlank()) {
+        return named;
+      }
+    }
+    return parameter.getParameterName();
+  }
+
+  private static boolean hasParameterNamed(Operation operation, String name) {
+    return operation.getParameters() != null
+        && operation.getParameters().stream()
+            .anyMatch(parameter -> name.equals(parameter.getName()));
+  }
 
   @Bean
   public GlobalOpenApiCustomizer openApiCustomizer() {

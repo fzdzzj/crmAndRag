@@ -1,8 +1,20 @@
 import { TokenManager } from '@/utils/token.ts';
+import {
+  getErrorCodeMeta,
+  isApiSuccess,
+  resolveErrorMessage,
+} from '@/constants/error-code-map.ts';
 import { apiConfig } from './config.ts';
 import { ApiError } from './types.ts';
 import axios from 'axios';
 import { createClient } from './axios/client/client.gen.ts';
+
+/** 后端统一响应外壳 `Result`，业务码在 code 上 */
+interface ResultEnvelope {
+  code?: number | string;
+  msg?: string;
+}
+
 const apiClient = axios.create(apiConfig)
 apiClient.interceptors.response.use((response) => {
   // 文件下载等二进制响应不按 JSON 业务码校验
@@ -12,8 +24,14 @@ apiClient.interceptors.response.use((response) => {
   ) {
     return response;
   }
-  if (response.data.code !== 1) {
-    throw new ApiError(response.data.code.toString(), response.data.msg);
+  const { code, msg } = (response.data ?? {}) as ResultEnvelope;
+  if (!isApiSuccess(code)) {
+    const rawCode = code === undefined ? '' : String(code);
+    throw new ApiError(
+      rawCode,
+      resolveErrorMessage(code, msg),
+      getErrorCodeMeta(code),
+    );
   }
   return response;
 });

@@ -121,7 +121,6 @@ const createForm = (): StageApprovalForm => ({
   'salesStageApproval.targetStage': undefined,
   'salesStageApproval.approverId': undefined,
   'salesStageApproval.message': undefined,
-  'salesStageApproval.assistUserIds': undefined,
 });
 const open = (record: SalesListItem) => {
   innerOpen.value = true;
@@ -188,7 +187,6 @@ const submit = async () => {
   const requestBody: StageApprovalForm = {
     ...form.value,
     'salesStageApproval.message': approvalForm.value.approvalMessage.trim(),
-    'salesStageApproval.assistUserIds': undefined,
   };
   validList.forEach((item, index) => {
     requestBody[`salesStageApproval.assistApplyList[${index}].assistUserId`] = item.assistUserId!;

@@ -60,6 +60,35 @@ jobs:
             target/failsafe-reports/
           if-no-files-found: ignore
 
+  # TASK-09：前后端契约一致性门禁。判定就在阶段 1 的那条 surefire 用例里
+  # （OpenApiContractExportTest 起完整上下文打 /v3/api-docs.yaml 与 frontend/openapi.yaml 逐字比对），
+  # 本 job 只是把它单独立哨并打印差异，便于漂移时一眼看到少了哪个接口。
+  # 故意与 build-and-gate 并行：等 Docker 集成测试跑完再报契约漂移只会拖慢反馈，不会增加信号。
+  openapi-consistency-gate:
+    name: OpenAPI Contract Consistency
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出
+        uses: actions/checkout@v4
+
+      - name: 装配 JDK 21 + Maven 缓存
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+
+      - name: 后端 swagger 导出与前端契约比对
+        run: bash scripts/check-openapi-consistency.sh
+
+      - name: 上传后端当前导出
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-export
+          path: target/openapi/openapi.yaml
+          if-no-files-found: warn
+
   # TASK-02：静态检查门禁（checkstyle/spotbugs/pmd/spotless）
   static-analysis-gate:
     needs: build-and-gate
@@ -106,6 +135,11 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # src/api/axios 是 openapi.yaml 的生成物且被 .gitignore 排除（frontend/.gitignore:35），
+      # 不在 CI 里生成的话 apiClient.ts 对 client.gen.ts 的导入直接找不到文件，类型检查无从谈起。
+      - name: Generate API client from contract
+        run: pnpm gen:api
 
       - name: Lint
         run: pnpm lint:check

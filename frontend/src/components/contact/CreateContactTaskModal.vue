@@ -37,7 +37,6 @@ const createDefaultForm = (): ContactTaskForm => ({
   priority: 1,
   status: 0,
   assigneeId: undefined,
-  assistUserIds: undefined,
   assistApplyList: [],
 });
 
@@ -130,17 +129,12 @@ const submit = async () => {
   }
   form.value.assistApplyList = validList;
 
-  // 协助目的与要求通过 assistApplyList 提交，避免写入不存在的顶层字段。
-  const { applyPurpose, applyRequirement, assistUserIds, ...taskPayload } = form.value;
-  const payload = {
-    ...taskPayload,
-    assistUserIds,
-    assistApplyList: assistUserIds?.map((assistUserId) => ({
-      assistUserId,
-      applyPurpose: applyPurpose?.trim(),
-      applyRequirement: applyRequirement?.trim(),
-    })),
-  };
+  // 顶层 applyPurpose/applyRequirement 只是编辑态字段；协助人一律走 assistApplyList 逐条提交。
+  const {
+    applyPurpose: _applyPurpose,
+    applyRequirement: _applyRequirement,
+    ...payload
+  } = form.value;
 
   createContactTask(payload, {
     onSuccess: () => {

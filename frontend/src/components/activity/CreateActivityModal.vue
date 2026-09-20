@@ -36,7 +36,6 @@ const createDefaultForm = (): ActivityForm => ({
   contactIdList: [],
   taskId: undefined,
   nextTaskStatus: undefined,
-  assistUserIds: undefined,
   assistApplyList: [],
 });
 

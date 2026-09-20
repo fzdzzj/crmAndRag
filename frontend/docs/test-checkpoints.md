@@ -194,3 +194,13 @@
 - [x] 门禁 | `pnpm exec vitest run` 15 files / 150 tests 全绿；`pnpm lint:check` 0 errors（22 条既有 warning）；`pnpm exec playwright test e2e/sse-reconnect.spec.ts` 2 passed
 - [x] 单测 | 新增 backoff.test.ts 3 用例（1s±10% / multiplier 2.0 / 30s 封顶）、retryWithBackoff.test.ts 8 用例、error-toast.test.ts 8 用例、log.test.ts 3 用例、ErrorFeedbackButton.test.ts 3 用例、useAiChat.test.ts 6 用例
 - [ ] 待拍板 | `useAiChat` 仍请求 `/ai/chat/stream`，而 dev 代理与 nginx 只转发 `/api/` 前缀 → 直连必然 404（本次未改，改后 E2E 桩路径需同步）
+
+## TASK-09 前后端对接（OpenAPI 契约同步 + 统一错误码映射层，2026-09-20）
+
+### 待验证（Playwright）
+- [ ] 全局 | 接口返回 `code != 1` 且 `msg` 为空（如 12002）→ 提示出映射层文案「权限不足」，不是空白也不是裸码
+- [ ] 全局 | 后端返回映射层没有的码（0 / 自定义码）→ 提示「系统繁忙，请稍后再试」，同时 `ApiError.code` 仍保留原始码值供上报
+- [ ] 登录态 | Token 过期（10002）→ `ApiError.meta.action === 'relogin'`，登录跳转分支可据此接入
+- [ ] 表单 | 新增联络任务勾选协助人并填目的/要求 → 请求体带 `assistApplyList` 逐条明细（契约里已无顶层 `assistUserIds`，此前协助人实际未提交）
+- [ ] 上传 | 客户/联系人 Excel 导入、知识库文件上传、助手图片上传（`POST /company/list`、`/contact/list`、`/knowledge/files`、`/ai/sessions/{sessionId}/images`）→ FormData 带 file 字段且成功，不再出现"无请求体"的 400
+- [ ] 门禁 | `bash scripts/check-openapi-consistency.sh` 与后端当前 swagger 逐字一致；改一个控制器后该命令必须变红
