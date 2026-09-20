@@ -24,6 +24,18 @@ if [ "${1:-}" = "--update" ]; then
   MODE="update"
 fi
 
+# aggregate_tuples -- sum "tests failures errors skipped" tuples coming in one per line.
+#
+# Why this exists (E1): xargs splits the file list into several awk processes as soon as the
+# argument list exceeds the OS batch limit, and every one of those processes prints its own
+# END tuple. Without this second pass the caller sees a multi-line (or, with a newline-less
+# printf, a glued-together) tuple and `read` parses garbage like "Skipped=047 0 0 0".
+# Aggregating here keeps measure() a single-line contract no matter how many batches ran.
+aggregate_tuples() {
+  awk '{tests += $1; failures += $2; errors += $3; skipped += $4}
+       END {printf "%d %d %d %d", tests, failures, errors, skipped}'
+}
+
 # measure <report-dir> -> "<reports> <tests> <failures> <errors> <skipped>"
 measure() {
   local dir="$1"
@@ -35,17 +47,39 @@ measure() {
   if [ -z "$files" ] || [ "$files" -eq 0 ]; then
     return 1
   fi
+  # Test-only hook: BASELINE_XARGS_LIMIT=<n> forces "xargs -0 -n <n>" so a small fixture
+  # directory really is split across several awk batches. Unset = stock batching behaviour.
+  local xargs_opts=""
+  if [ -n "${BASELINE_XARGS_LIMIT:-}" ]; then
+    case "$BASELINE_XARGS_LIMIT" in
+      *[!0-9]*) echo "BASELINE_XARGS_LIMIT must be a positive integer" >&2; return 1 ;;
+    esac
+    xargs_opts="-n $BASELINE_XARGS_LIMIT"
+  fi
   # 每个 .txt 只取第一条 Tests run 行，避免同一文件多行时重复计数
+  # shellcheck disable=SC2086
   sums=$(find "$dir" -maxdepth 1 -name '*.txt' -type f -print0 \
-    | xargs -0 awk -F'[:,]' '
+    | xargs -0 $xargs_opts awk -F'[:,]' '
         /^Tests run:/ && !seen[FILENAME]++ {
           tests += $2; failures += $4; errors += $6; skipped += $8
         }
-        END { printf "%d %d %d %d", tests, failures, errors, skipped }
-      ')
-  if [ -z "$sums" ]; then
+        END { printf "%d %d %d %d\n", tests, failures, errors, skipped }
+      ' \
+    | aggregate_tuples)
+  # measure() must end up with exactly four integers; anything else means the reports could not
+  # be read and must not be silently reported as "0 tests, 0 failures".
+  # shellcheck disable=SC2086
+  set -- $sums
+  if [ "$#" -ne 4 ]; then
     return 1
   fi
+  local field
+  for field in "$@"; do
+    case "$field" in
+      ''|*[!0-9]*) return 1 ;;
+    esac
+  done
+  sums="$1 $2 $3 $4"
   printf '%s %s' "$files" "$sums"
 }
 
@@ -86,6 +120,14 @@ fail() {
   echo "::error::$*" >&2
   rc=1
 }
+
+# Self-test hook: `BASELINE_LIB_ONLY=1 . scripts/check-test-baseline.sh` loads the functions above
+# without running the gate below (used by scripts/tests/check-test-baseline-selftest.sh).
+# When executed normally the variable is unset, and a bare `return` outside a function is simply
+# ignored by bash, so the gate always runs for a real invocation.
+if [ "${BASELINE_LIB_ONLY:-}" = "1" ]; then
+  return 0 2>/dev/null
+fi
 
 rc=0
 

@@ -7,6 +7,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.alibaba.cloud.ai.dashscope.api.DashScopeApi;
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatModel;
 import com.alibaba.cloud.ai.dashscope.embedding.DashScopeEmbeddingModel;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.slz.crm.common.enumeration.DataScopeLevel;
 import com.slz.crm.knowledge.auth.KnowledgeBaseAuthorizationService;
 import com.slz.crm.knowledge.embedding.EmbeddingService;
@@ -24,6 +28,7 @@ import com.slz.crm.quality.RagQualityReport.CaseOutcome;
 import com.slz.crm.quality.RagQualityReport.Report;
 import com.slz.crm.server.ai.CitationAligner;
 import com.slz.crm.server.ai.port.KnowledgeRetrievalPort;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -68,11 +73,19 @@ import reactor.core.publisher.Flux;
  * RetrievalQueryRewriteService} 吞掉，无法回收）； TTFT 取流式答案首 chunk 时延；总延迟覆盖 检索+生成+判卷 全程。 向量库用
  * InMemory（评测环境无 Qdrant 依赖），检索算法与生产同源 （{@link KnowledgeRetrievalServiceImpl} 全链路，仅授权换成评测桩）。
  *
+ * <p><b>写盘口径</b>（TASK-19 E2）：基线文件是<b>合并写</b>——只覆盖本 IT 拥有的顶层键（{@link
+ * #OWNED_TOP_LEVEL_KEYS}），其余顶层段（{@code RagQualityRegressionTest} 独占的 {@code fixtureRegression}
+ * 等）逐字保留；已有文件不是合法 JSON 对象时直接抛错拒绝覆盖。旧版整文件重写会把别人的基线段一起抹掉，随后日常 {@code mvn test} 因基线缺段而红。
+ *
  * <p><b>取证旁路</b>（trace-i05-citation-forensics）：{@code -Drag.benchmark.only} 过滤单条； {@code
  * -Drag.benchmark.trace.out} 落盘对齐前后答案与 [n]/召回 excerpt。不改 CaseScore / CitationAligner /
  * citationPrecision 公式。单条报告禁止当锚点。
  */
 class RagRealRetrievalBenchmarkIT {
+
+  /** 基线 / 取证 JSON 的统一 mapper（缩进风格与既有的 baseline-v1.json 一致）。 */
+  private static final ObjectMapper MAPPER =
+      new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
 
   /** compatible-mode 端点（与 ModelProviderImplDashScopeIT 相同的装配方式） */
   private static final String COMPATIBLE_BASE_URL =
@@ -215,9 +228,8 @@ class RagRealRetrievalBenchmarkIT {
         System.getProperty(OUT_PROP) == null || System.getProperty(OUT_PROP).isBlank()
             ? run.outFile == null ? DEFAULT_BASELINE_PATH : Path.of(run.outFile)
             : Path.of(System.getProperty(OUT_PROP));
-    Files.createDirectories(outPath.getParent());
-    Files.writeString(outPath, withRunConfig(report.toJson(), run), StandardCharsets.UTF_8);
-    System.out.println("[rag-benchmark] 基线已落盘: " + outPath.toAbsolutePath());
+    writeBaselineReport(outPath, report.toJson(), run);
+    System.out.println("[rag-benchmark] 基线已落盘（合并写，保留非本 run 的顶层段）: " + outPath.toAbsolutePath());
     System.out.println("[rag-benchmark] metrics=" + report.metrics());
 
     // 4) 取证旁路（trace-i05-citation-forensics 1.2）：对齐前后答案/[n]/召回/excerpt，不进 CaseScore
@@ -308,13 +320,10 @@ class RagRealRetrievalBenchmarkIT {
 
   /** 序列化取证旁路 JSON（任务 2.2 单测入口）。 */
   static String forensicsToJson(List<ForensicCase> cases) throws Exception {
-    com.fasterxml.jackson.databind.ObjectMapper mapper =
-        new com.fasterxml.jackson.databind.ObjectMapper()
-            .enable(com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT);
     Map<String, Object> root = new LinkedHashMap<>();
     root.put("caseCount", cases == null ? 0 : cases.size());
     root.put("cases", cases == null ? List.of() : cases);
-    return mapper.writeValueAsString(root);
+    return MAPPER.writeValueAsString(root);
   }
 
   /** 取证单条（不进 CaseScore）。excerpts 含 1-based n / chunkId / 截断 excerpt。 package-private 供单测构造假数据。 */
@@ -338,20 +347,94 @@ class RagRealRetrievalBenchmarkIT {
   /** 在报告 JSON 末尾附当跑矩阵快照（凭报告可复现该跑）；不影响 RAG 指标字段。 */
   private static String withRunConfig(String reportJson, RagBenchmarkRun run) {
     try {
-      com.fasterxml.jackson.databind.ObjectMapper mapper =
-          new com.fasterxml.jackson.databind.ObjectMapper()
-              .enable(com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT);
-      com.fasterxml.jackson.databind.node.ObjectNode root =
-          (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(reportJson);
+      ObjectNode root = (ObjectNode) MAPPER.readTree(reportJson);
       root.put("runProfile", run.name());
       root.put("runChunking", run.chunking);
       root.putObject("runConfig")
           .put("sparseOn", run.sparseOn)
           .put("contextOn", run.contextOn)
-          .set("matrix", mapper.valueToTree(run.matrix));
-      return mapper.writeValueAsString(root);
+          .set("matrix", MAPPER.valueToTree(run.matrix));
+      return MAPPER.writeValueAsString(root);
     } catch (Exception ignored) {
       return reportJson;
+    }
+  }
+
+  /**
+   * 本报告顶层里归本 IT 所有的键（TASK-19 E2）。
+   *
+   * <p>写盘只允许覆盖这些键；其余顶层段（最关键是 {@code RagQualityRegressionTest} 独占的 {@code
+   * fixtureRegression}）必须逐字保留—— 整文件重写会把那段抹掉，随后日常 {@code mvn test} 因基线缺段而红。
+   */
+  static final Set<String> OWNED_TOP_LEVEL_KEYS =
+      Set.of(
+          "suiteVersion",
+          "generatedAt",
+          "metrics",
+          "cases",
+          "runProfile",
+          "runChunking",
+          "runConfig");
+
+  /**
+   * 基线报告落盘（合并写，不整文件重写）。
+   *
+   * <p>读现有文件 → 只替换 {@link #OWNED_TOP_LEVEL_KEYS} 里的键 → 其他顶层段原样保留 → 写回。文件不存在时新建（含建父目录）。
+   *
+   * @throws IOException 现有文件不是合法 JSON 对象时抛出——宁可让 IT 红，也不能静默覆盖别人的基线段
+   */
+  static void writeBaselineReport(Path outPath, String reportJson, RagBenchmarkRun run)
+      throws IOException {
+    String existing =
+        Files.isRegularFile(outPath) ? Files.readString(outPath, StandardCharsets.UTF_8) : null;
+    String merged = mergeBaselineJson(existing, reportJson, run);
+    Path parent = outPath.toAbsolutePath().getParent();
+    if (parent != null) {
+      Files.createDirectories(parent);
+    }
+    Files.writeString(outPath, merged, StandardCharsets.UTF_8);
+  }
+
+  /**
+   * 把本轮报告合并进已有基线 JSON（package-private 供 {@code RagBaselineMergeWriteTest} 离线锁定）。
+   *
+   * @param existingJson 现有文件内容，{@code null}/空白表示新建
+   * @param reportJson {@link RagQualityReport.Report#toJson()} 的产出
+   * @return 合并后的 JSON（缩进与既有风格一致，顶层键顺序沿用现有文件）
+   */
+  static String mergeBaselineJson(String existingJson, String reportJson, RagBenchmarkRun run)
+      throws IOException {
+    JsonNode ownedNode;
+    try {
+      ownedNode = MAPPER.readTree(withRunConfig(reportJson, run));
+    } catch (Exception exception) {
+      throw new IOException("本轮报告 JSON 读不出来，拒绝写基线：" + exception.getMessage(), exception);
+    }
+    if (!ownedNode.isObject()) {
+      throw new IOException("本轮报告 JSON 根节点不是对象，拒绝写基线");
+    }
+    ObjectNode owned = (ObjectNode) ownedNode;
+    ObjectNode root;
+    if (existingJson == null || existingJson.isBlank()) {
+      root = MAPPER.createObjectNode();
+    } else {
+      JsonNode parsed = MAPPER.readTree(existingJson);
+      if (!parsed.isObject()) {
+        throw new IOException("基线根节点不是 JSON 对象，拒绝覆盖（先人工确认这份文件是什么）");
+      }
+      root = (ObjectNode) parsed;
+    }
+    // 本轮没写出的自有键要一并删掉，不给上一轮留幽灵值；非自有键一律不碰。
+    for (String ownedKey : OWNED_TOP_LEVEL_KEYS) {
+      if (!owned.has(ownedKey)) {
+        root.remove(ownedKey);
+      }
+    }
+    owned.fields().forEachRemaining(entry -> root.set(entry.getKey(), entry.getValue()));
+    try {
+      return MAPPER.writeValueAsString(root);
+    } catch (Exception exception) {
+      throw new IOException("基线 JSON 序列化失败，拒绝写盘：" + exception.getMessage(), exception);
     }
   }
 
