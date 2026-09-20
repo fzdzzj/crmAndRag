@@ -43,10 +43,12 @@ function calculateDelay(attempt: number, cfg: BackoffConfig): number {
 ```tsx
 export function showErrorToast(techCode: string | Error): void {
   const map: Record<string, string> = {
-    '93001': 'AI 服务暂时不可用，请稍后重试或联系管理员',
+    '93001': '确认已超时，请重新发起',      // 后端 ErrorCode.AI_ACTION_TIMEOUT 真相，非"服务不可用"
     '93002': '知识库检索超时，请检查网络后重试',
     'NETWORK_ERROR': '网络连接中断，请检查您的网络设置',
   };
+  // 实现落在 src/utils/error-toast.ts（.ts 非 .tsx），消息组件确认为 ant-design-vue；
+  // 与 src/constants/error-code-map.ts（TASK-009）的收敛见 PLAN.md 待办 D1。
   const message = typeof techCode === 'string' ? map[techCode] || techCode : techCode.message;
   antdMessage.error({ content: message, key: 'ai-error' });
 }
