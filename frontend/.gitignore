@@ -33,3 +33,9 @@ crm-auth.json
 *.auth.json
 .claude/settings.local.json
 src/api/axios
+
+# build/scratch artifacts (TASK hygiene sweep 2026-09-20)
+*.tsbuildinfo
+openapi.yaml.bak
+openapi.yaml.tmp
+.claude/
