@@ -6,10 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import com.slz.crm.knowledge.config.QdrantProperties;
 import com.slz.crm.knowledge.vector.QdrantVectorStore;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
-/** Qdrant 超时配置集成测试；需 Docker 环境运行。 */
-@Testcontainers(disabledWithoutDocker = true)
+/** Qdrant 超时配置集成测试；纯 JVM 构造断言，不启动容器、不连接 Qdrant 服务。 */
 class QdrantTimeoutConfigIT {
 
   @Test
