@@ -1,9 +1,9 @@
 # 回归基线：由 scripts/check-test-baseline.sh --update 从一次真实运行写入，禁止手改。
-# source-revision=6980d04
-# measured-at=2026-09-20T12:40:50Z
+# source-revision=d5a750f
+# measured-at=2026-09-20T15:38:40Z
 # reports=报告文件数，tests=Tests run 合计，skipped=Skipped 合计（上限，不是下限）
-surefire.reports=137
-surefire.tests=693
+surefire.reports=141
+surefire.tests=717
 surefire.skipped=0
 failsafe.reports=19
 failsafe.tests=52
