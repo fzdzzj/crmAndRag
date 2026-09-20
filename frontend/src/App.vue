@@ -13,13 +13,16 @@
 <script setup lang="ts">
 import { ConfigProvider } from 'ant-design-vue';
 import zhCN from 'ant-design-vue/es/locale/zh_CN';
+import axios from 'axios';
 import { onMounted, ref } from 'vue';
 import { ReviewTool } from 'vue-page-review';
 import 'vue-page-review/style.css';
+import { API_BASE_URL } from '@/api/config';
 
 onMounted(() => {
-  // health check
-  fetch(import.meta.env.BASE_API + '/health').then(() => {
+  // health check：/health 返回纯文本而非 Result 业务壳，故绕开 apiClient 的响应拦截器；
+  // validateStatus 全放行，只要拿到响应（含 401）就算可达，网络层失败才 reject
+  axios.get(`${API_BASE_URL}/health`, { validateStatus: () => true }).then(() => {
     console.log('API server is healthy');
   }).catch((err) => {
     console.error('API server is not reachable:', err);
