@@ -76,7 +76,7 @@
 
 ### 6.2 覆盖边界：本地无 Docker 时 `mvn verify` 的"绿"不代表验证过
 
-按现存 `src/test/**/*IT.java` 全量分类（TASK-22 复核 2026-09-21：逐类读文件头与守卫 + 合并树全量 `mvn verify` 的 `target/failsafe-reports/*.txt` 首行；"用例"= 该类报告的 `Tests run` 数，含参数化展开。TASK-003R 复核：原 D 组已整体并入 B 组）：
+按现存 `src/test/**/*IT.java` 全量分类（TASK-22 复核 2026-09-21：逐类读文件头与守卫 + 合并树全量 `mvn verify` 的 `target/failsafe-reports/*.txt` 首行；"用例"= 该类报告的 `Tests run` 数，含参数化展开。TASK-24 复核 2026-09-21：`QdrantTimeoutConfigIT` 摘除误挂的 `@Testcontainers(disabledWithoutDocker = true)` 后由 B 组改归 A 组，B/A 计数与结论句同步。TASK-003R 复核：原 D 组已整体并入 B 组）：
 
 **A · 真跑（无 Docker、无 env 依赖，本地与 CI 同口径）**
 
@@ -84,8 +84,9 @@
 |---|---|---|
 | `integration/permission/PermissionCoverageAuditIT` | 2 | 端点权限覆盖静态扫描门禁，纯 JVM |
 | `integration/FailFastIntegrationIT` | 1 | 真启动链 Fail-Fast：Qdrant 指向必然拒绝连接的端口，数据源走 H2、存储走内存回退，全程离线 |
+| `integration/vector/QdrantTimeoutConfigIT` | 3 | 纯 JVM：properties 装配 + `new QdrantVectorStore(...)` 构造断言（该类构造器 javadoc 明示连接错误延迟到实际请求），不启容器、不连库；TASK-24 摘除误挂的 Docker 注解后真跑 |
 
-**B · 优雅跳过（Docker 守卫 → 整类不执行，报告记 `Tests run: 0`）——共 13 类 / 57 用例**
+**B · 优雅跳过（Docker 守卫 → 整类不执行，报告记 `Tests run: 0`）——共 12 类 / 54 用例**
 
 守卫写在本类：
 
@@ -95,7 +96,6 @@
 | `integration/SparseRecallServiceIT` | 4 | `@BeforeAll` 同上 |
 | `integration/ChunkNgramRecallGateIT` | 15 | `@BeforeAll` 同上；断言走生产稀疏服务（`SparseRecallService`→`DocumentVectorChunkMapper`，TASK-21），14 个 LEXICAL 参数化用例 + 1 个语料哨兵 = 15 次执行 |
 | `integration/schema/SchemaDriftAuditIT` | 1 | `@BeforeAll` 同上 |
-| `integration/vector/QdrantTimeoutConfigIT` | 3 | 类上注解 `@Testcontainers(disabledWithoutDocker = true)`——同为 Docker 守卫但机制不是 `assumeTrue`：3 个用例本身不启容器（纯 JVM 构造 `QdrantProperties`/`QdrantVectorStore`），无 Docker 时整类被该注解禁用 |
 
 守卫继承自 `AbstractMySqlIT`（基类 `@BeforeAll` + `assumeTrue(isDockerAvailable)` + `mysqlStarted` 幂等；8 个子类自身均无 `static {}`、无 `@BeforeAll`、不引用 `MYSQL`）：
 
@@ -121,7 +121,7 @@
 
 **历史坑（已闭合，遇到旧日志时对照用）**：`AbstractMySqlIT` 曾在 `static {}` 里直接 `MYSQL.start()` 且无 `assumeTrue`，当时 Docker 缺失会让类初始化抛 `ExceptionInInitializerError`、同类其余用例连锁 `NoClassDefFoundError`——那 20 个用例整批变 Errors 把构建直接搞红。TASK-005（2026-09-19）把容器启动移到 `@BeforeAll` 的 `assumeTrue` 之后，并用 `mysqlStarted` 保证共享容器在同 JVM 内只启一次，故这 7 类改判为 B 组。⚠ "无 Docker 记 skipped"这一分支**尚未在无 Docker 的机器上实测**（本机 Docker 在线，Testcontainers 策略链无法用环境变量模拟缺失），依据是同构先例 + 静态成因已消除（见 `work/mailbox/tasks/TASK-005/handoff.md` 未完成 1）；真无 Docker 的 runner 复验前，B 组的跳过结论按"待复验"对待。
 
-**因此：本地无 Docker 时 `mvn verify` 大概率是"绿但不证明任何东西"**——B 组 57 个用例、C 组 6 个用例全记跳过，只剩 A 组 3 个真跑。不能用本地构建结果支撑「Flyway 真库迁移已验证」「真 MySQL 写链/数据权限已验证」或「真机模型链路已验证」；这三条只在 CI（`ubuntu-latest` 自带 Docker）真跑。
+**因此：本地无 Docker 时 `mvn verify` 大概率是"绿但不证明任何东西"**——B 组 54 个用例、C 组 6 个用例全记跳过，只剩 A 组 6 个真跑。不能用本地构建结果支撑「Flyway 真库迁移已验证」「真 MySQL 写链/数据权限已验证」或「真机模型链路已验证」；这三条只在 CI（`ubuntu-latest` 自带 Docker）真跑。
 
 ### 6.3 反向警告：真外发 IT 一律需显式 opt-in
 
