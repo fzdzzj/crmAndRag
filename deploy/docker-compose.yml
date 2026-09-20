@@ -194,9 +194,63 @@ services:
       minio:
         condition: service_healthy
 
+  # ---------------- Prometheus（抓应用指标 + 评估线程池告警规则）----------------
+  # 没有这个服务，deploy/prometheus/ 下的 alert-rules.yml 与面板 JSON 就永远是死文件。
+  # 配置与规则整目录挂到 /etc/prometheus（只读），prometheus.yml 里 rule_files 按相对路径引规则。
+  prometheus:
+    image: prom/prometheus:v3.4.1
+    container_name: crm-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    environment:
+      TZ: Asia/Shanghai
+      # 抓取侧不带凭据：/actuator/prometheus 目前要求超管 JWT，匿名抓取恒 401，
+      # 该怎么把指标端点暴露给监控系统属安全口径决策（三个候选与实测依据见
+      # deploy/prometheus/prometheus.yml 里 crm-app 任务段的注释）。在那之前本 target 停在 DOWN，
+      # 由 alert-rules.yml 的 ThreadPoolMetricsMissing 显式报出来，而不是假装监控已经生效。
+    depends_on:
+      app:
+        condition: service_started
+    healthcheck:
+      # 镜像里没有 curl/wget，用自带的 promtool 做自检（同时守住"规则文件没写坏"）
+      test: ["CMD", "/bin/promtool", "check", "config", "/etc/prometheus/prometheus.yml"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ---------------- Grafana（默认不起：重，且本任务只要求"有人抓、规则有人评"）----------------
+  # 面板 JSON 已按 /actuator/prometheus 实际导出名修好，需要看图时取消整段注释，
+  # 再 up 并按 deploy/README.md「监控栈起法与验证」的最后一句导入面板。
+  # grafana:
+  #   image: grafana/grafana:11.6.0
+  #   container_name: crm-grafana
+  #   restart: unless-stopped
+  #   environment:
+  #     GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set in .env}
+  #     TZ: Asia/Shanghai
+  #   ports:
+  #     - "${GRAFANA_PORT:-3000}:3000"
+  #   volumes:
+  #     - grafana-data:/var/lib/grafana
+  #     - ./prometheus:/provisioning-files:ro
+  #   depends_on:
+  #     - prometheus
+
 volumes:
   mysql-data:
   qdrant-data:
   minio-data:
   app-file:
   app-logs:
+  prometheus-data:
+  # grafana 专用，启用上面那段注释后再放开
+  # grafana-data:

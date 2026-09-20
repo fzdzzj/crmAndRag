@@ -4,7 +4,8 @@
     "tags": ["thread-pool", "rejection", "platform"],
     "timezone": "browser",
     "schemaVersion": 38,
-    "version": 1,
+    "version": 2,
+    "description": "指标名/label 真相源 = deploy/prometheus/expected-metric-names.txt（真起上下文抓 /actuator/prometheus 实采，禁止手抄）。拒绝计数导出名 async_task_rejected_total（label: executor, policy, application）；线程池状态由 ExecutorServiceMetrics 绑定，导出族 executor_active_threads / executor_queued_tasks / executor_pool_size_threads / executor_pool_max_threads / executor_pool_core_threads / executor_queue_remaining_tasks / executor_completed_tasks_total，其池名 label 是 name（不是 executor）。旧面板查 executor_threads_active / executor_queue_size / executor_threads_max / executor_queue_remaining 属推断名，恒 No data（TASK-16 修）。name 有两套取值：platform-* 来自本仓 TaskExecutorMetricsBinder（线程名前缀），*TaskExecutor 来自 Spring Boot 对容器内 Executor 的自动绑定，同一线程池被双份记录；本面板按 name=~\"platform-.*\" 只看平台池。",
     "panels": [
       {
         "id": 1,
@@ -13,7 +14,7 @@
         "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
         "targets": [
           {
-            "expr": "increase(async_task_rejected[5m])",
+            "expr": "increase(async_task_rejected_total[5m])",
             "legendFormat": "{{executor}} - {{policy}}",
             "refId": "A"
           }
@@ -40,7 +41,7 @@
         "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
         "targets": [
           {
-            "expr": "sum(increase(async_task_rejected[1h])) by (executor)",
+            "expr": "sum(increase(async_task_rejected_total[1h])) by (executor)",
             "legendFormat": "{{executor}}",
             "refId": "A"
           }
@@ -58,8 +59,8 @@
         "gridPos": {"x": 0, "y": 8, "w": 6, "h": 6},
         "targets": [
           {
-            "expr": "executor_threads_active",
-            "legendFormat": "{{executor}}",
+            "expr": "executor_active_threads{name=~\"platform-.*\"}",
+            "legendFormat": "{{name}}",
             "refId": "A"
           }
         ],
@@ -72,8 +73,8 @@
         "gridPos": {"x": 6, "y": 8, "w": 6, "h": 6},
         "targets": [
           {
-            "expr": "executor_queue_size",
-            "legendFormat": "{{executor}}",
+            "expr": "executor_queued_tasks{name=~\"platform-.*\"}",
+            "legendFormat": "{{name}}",
             "refId": "A"
           }
         ],
@@ -86,7 +87,7 @@
         "gridPos": {"x": 12, "y": 8, "w": 6, "h": 6},
         "targets": [
           {
-            "expr": "sum(increase(async_task_rejected[24h])) by (policy)",
+            "expr": "sum(increase(async_task_rejected_total[24h])) by (policy)",
             "legendFormat": "{{policy}}",
             "refId": "A"
           }
@@ -99,14 +100,14 @@
         "gridPos": {"x": 18, "y": 8, "w": 6, "h": 6},
         "targets": [
           {
-            "expr": "executor_threads_active + executor_threads_max + executor_queue_remaining",
+            "expr": "{__name__=~\"executor_active_threads|executor_pool_size_threads|executor_queue_remaining_tasks\",name=~\"platform-.*\"}",
             "format": "table",
             "instant": true,
             "refId": "A"
           }
         ],
         "transformations": [
-          {"id": "organize", "options": {"renameByName": {"Value": "线程数", "__name__": "指标名称"}}}
+          {"id": "organize", "options": {"renameByName": {"Value": "数值", "__name__": "指标名称"}}}
         ]
       }
     ],

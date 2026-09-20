@@ -221,16 +221,19 @@ jobs:
           # 验证拒绝策略可观测性
           VERIFY_REJECTION_METRICS: "true"
 
-      - name: 验证 Prometheus 指标格式
-        run: |
-          echo "验证 async_task_rejected 指标格式正确"
-          grep -r "async.task.rejected" src/main/java/com/slz/crm/platform/async/PlatformAsyncConfig.java || exit 1
-          echo "✓ 指标命名符合 Prometheus 规范（使用下划线分隔）"
+      # TASK-16：替换掉两段假门禁。旧写法①在被测文件里 grep 被测字符串
+      # （grep "async.task.rejected" PlatformAsyncConfig.java）——代码里写着推断名（导出其实是
+      # async_task_rejected_total）它反而更绿；②只 test -f 两份产物，文件存在但名字全错照样过。
+      # 断言只能落在"引用侧 vs /actuator/prometheus 实采侧"，故换成下面两条真校验。
+      - name: 监控资产一致性对账（纯 JVM，指标名/label 必须等于实采清单）
+        run: mvn -B -ntp test -Dtest=MonitoringArtifactConsistencyTest
 
-      - name: 验证告警规则文件存在
+      - name: promtool 校验告警规则与抓取配置
         run: |
-          test -f deploy/prometheus/alert-rules.yml && echo "✓ 告警规则文件已创建" || exit 1
-          test -f deploy/prometheus/grafana-thread-pool-dashboard.json && echo "✓ Grafana 面板配置已创建" || exit 1
+          docker run --rm -v "$PWD/deploy/prometheus:/t:ro" --entrypoint promtool prom/prometheus:v3.4.1 \
+            check rules /t/alert-rules.yml
+          docker run --rm -v "$PWD/deploy/prometheus:/t:ro" --entrypoint promtool prom/prometheus:v3.4.1 \
+            check config /t/prometheus.yml
 
       - name: 上传指标报告
         if: always()
