@@ -166,7 +166,7 @@ jobs:
           if-no-files-found: ignore
 
   frontend-quality:
-    name: Frontend Lint / Type-check
+    name: Frontend Lint / Type-check / Build Budget
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -199,6 +199,17 @@ jobs:
 
       - name: Type-check
         run: pnpm type-check:check
+
+      # TASK-20：产物体积门禁。此前这个 job 从不 pnpm build，"包变大"在 CI 里完全不可观测。
+      # 阈值不在 YAML 里，而在 frontend/bundle-budget.json（gzip 字节数），且只允许由
+      #   node scripts/check-bundle-budget.mjs --update
+      # 在一次真实 pnpm build 之后写入；口径与阶段3 的 scripts/test-baseline.txt 同源。
+      # 没有 dist 时该脚本直接判失败——"根本没构建"不许被读成"体积达标"。
+      - name: 生产构建
+        run: pnpm build
+
+      - name: gzip 体积预算校验（entry / vendor 三分 / app / total 六桶）
+        run: node scripts/check-bundle-budget.mjs
 
   # TASK-04：线程池拒绝指标门禁（高负载测试验证指标上报）
   thread-pool-metrics-gate:

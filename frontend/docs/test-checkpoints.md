@@ -204,3 +204,15 @@
 - [ ] 表单 | 新增联络任务勾选协助人并填目的/要求 → 请求体带 `assistApplyList` 逐条明细（契约里已无顶层 `assistUserIds`，此前协助人实际未提交）
 - [ ] 上传 | 客户/联系人 Excel 导入、知识库文件上传、助手图片上传（`POST /company/list`、`/contact/list`、`/knowledge/files`、`/ai/sessions/{sessionId}/images`）→ FormData 带 file 字段且成功，不再出现"无请求体"的 400
 - [ ] 门禁 | `bash scripts/check-openapi-consistency.sh` 与后端当前 swagger 逐字一致；改一个控制器后该命令必须变红
+
+## TASK-20 前端构建产物门禁（manualChunks 三分 + gzip 体积预算 + ReviewTool 仅 DEV，2026-09-20）
+
+### 待验证（Playwright）
+- [ ] DEV（`pnpm dev`）| 任意路由都挂着 vue-page-review 的评审浮层，`v-model:active` 能被开关，切路由时 `pagePath` / `pageName` 跟随 `$route` 更新（与改动前逐项一致，dev 行为不许变）
+- [ ] PROD（`pnpm build && pnpm preview`）| DOM 里查不到 ReviewTool 的挂载节点与浮层，网络面板没有任何 vue-page-review 的 js/css 请求
+- [ ] PROD | `dist/index.html` 的预加载清单（`script[src]` + `modulepreload` + `stylesheet`）里出现 `vendor-antd` / `vendor` 两个桶（manualChunks 生效的第一证据），`statistics.page` 路由块单独懒加载 `vendor-echarts`
+- [ ] PROD | 图表页 `/statistics` 首次进入才拉 `vendor-echarts`，进一次后切别的页面不应重复请求该桶
+- [ ] 门禁 | `pnpm build && node scripts/check-bundle-budget.mjs` exit 0
+- [ ] 门禁（变异自证）| 手改 `bundle-budget.json` 里任一 `maxGzipBytes` 调小 → 同一命令必须 exit 1 且 `::error::` 指名是哪一个桶超了多少 KiB，改回即绿
+- [ ] 门禁（空产物）| 删掉 `dist/` 后直接跑 `node scripts/check-bundle-budget.mjs` 必须红（"无法度量"），不许把"根本没构建"读成"体积达标"
+
