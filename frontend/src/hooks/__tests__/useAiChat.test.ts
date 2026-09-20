@@ -57,6 +57,11 @@ async function send(chat: ReturnType<typeof useAiChat>, text: string) {
 
 const startFrame = frame('start', { sessionId: '11', generationId: 'g1', assistantMessageId: 5 }, 'g1:1');
 
+/** fetch 首参在类型上是 string | Request | URL，断言只关心字符串 URL */
+function fetchUrlAt(callIndex: number): string {
+  return vi.mocked(global.fetch).mock.calls[callIndex][0] as string;
+}
+
 describe('useAiChat SSE 重连', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -84,6 +89,16 @@ describe('useAiChat SSE 重连', () => {
     unmount();
   });
 
+  it('流式请求发到 /api 前缀下的 stream 端点', async () => {
+    const { chat, unmount } = mountChat();
+    vi.mocked(global.fetch).mockResolvedValue(sseResponse([startFrame, frame('done', { sessionId: '11' }, 'g1:2')]));
+
+    await send(chat, 'hi');
+
+    expect(fetchUrlAt(0)).toMatch(/^\/api\/ai\/chat\/stream/);
+    unmount();
+  });
+
   it('流中断后带 Last-Event-ID 续传，内容不重复且清掉重试提示', async () => {
     const { chat, unmount } = mountChat();
     const dropped = sseResponseThatDrops(
@@ -102,6 +117,8 @@ describe('useAiChat SSE 重连', () => {
     await send(chat, 'hi');
 
     expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(fetchUrlAt(1)).toMatch(/^\/api\/ai\/chat\/stream/);
+    expect(fetchUrlAt(1)).toBe(fetchUrlAt(0));
     const retryHeaders = vi.mocked(global.fetch).mock.calls[1][1] as RequestInit;
     expect((retryHeaders.headers as Record<string, string>)['Last-Event-ID']).toBe('g1:2');
     expect(chat.messages.value[1].content).toBe('你好！');

@@ -1,5 +1,6 @@
 import { ref, computed, onUnmounted } from 'vue';
 import { axiosInstance } from '@/api/apiClient';
+import { API_BASE_URL } from '@/api/config';
 import { message as antdMessage } from 'ant-design-vue';
 import { describeError, friendlyMessage, showErrorToast } from '@/utils/error-toast';
 import { isRetryableStatus, retryWithBackoff } from '@/utils/retryWithBackoff';
@@ -24,7 +25,7 @@ export interface SseEvent {
 }
 
 export const NETWORK_ERROR_CODE = 'NETWORK_ERROR';
-const STREAM_URL = '/ai/chat/stream';
+const STREAM_URL = `${API_BASE_URL}/ai/chat/stream`;
 const MAX_STREAM_RETRIES = 5;
 const RETRY_TOAST_KEY = 'ai-retry';
 
