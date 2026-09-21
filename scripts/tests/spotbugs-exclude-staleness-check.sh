@@ -127,14 +127,17 @@ parse_spotbugs_findings() {
 
 # truth_rows <file> —— 输出排序后的「类 <TAB> bug型 <TAB> 成员种类 <TAB> 成员名」，列序与台账解析一致。
 # TRUTH_KIND=xml 时输入是 spotbugs XML（只取 priority=1 即 High），=tsv 时输入是本脚本产出的快照。
+# 一律先 tr -d '\r'：台账与快照都是被跟踪文本，在 core.autocrlf=true 的检出下会带 CRLF，
+# 而 \r 会挂在第 4 列尾巴上，使 comm 判为不同行 —— 表现为 MISS/STALE 成对出现、
+# 只有文件末行（无尾换行）能配上。这是平台差异不是缺陷差异，必须在读入侧归一。
 TRUTH_KIND=""
 truth_rows() {
   case "$TRUTH_KIND" in
   xml)
-    parse_spotbugs_findings < "$1" | awk -F'\t' '$1 == "1"' | cut -f2-
+    tr -d '\r' < "$1" | parse_spotbugs_findings | awk -F'\t' '$1 == "1"' | cut -f2-
     ;;
   tsv)
-    LC_ALL=C grep -v '^#' "$1" | LC_ALL=C grep .
+    tr -d '\r' < "$1" | LC_ALL=C grep -v '^#' | LC_ALL=C grep .
     ;;
   esac | LC_ALL=C sort
 }
@@ -183,7 +186,7 @@ esac
 [ -f "$truth_file" ] || { err "缺少真值文件：$truth_file（跑一次 --update-snapshot 生成）"; exit 2; }
 
 truth=$(truth_rows "$truth_file")
-ledger=$(parse_exclude_matches < "$exclude_file")
+ledger=$(tr -d '\r' < "$exclude_file" | parse_exclude_matches)
 [ -n "$truth" ] || { err "真值解析结果为空：$truth_file —— 宁可判错，也不把'没解析出来'读成'没有缺陷'"; exit 2; }
 [ -n "$ledger" ] || { err "台账解析结果为空：$exclude_file"; exit 2; }
 

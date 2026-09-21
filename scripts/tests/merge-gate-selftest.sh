@@ -173,6 +173,39 @@ expect_has "9 通过态里显式声明本证据未覆盖前端轨" "未覆盖前
 expect_lacks "9 降级时不误报前端轨 PASS" "PASS [frontend-unit]" "$work/fe-nodeps.out"
 expect_lacks "9 依赖在位时不多报未覆盖" "未覆盖前端 Vitest 单元轨" "$work/all-green.out"
 
+# ---------------------------------------------------------------- 10. 行尾差异不得影响双射（autocrlf 回归锁）
+# 起因：2026-09-21 在 Windows（core.autocrlf=true）上跑真实 merge-gate 时 [bijection] 红了，
+# MISS 与 STALE 是同一批 11 行 —— 被跟踪的台账与快照被检出成 CRLF，\r 挂在第 4 列尾巴上，
+# 只有文件末行（无尾换行）能配上。这是平台差异不是缺陷差异。此处复刻该形态并锁住两侧：
+# CRLF 必须照样成立，而"真的对不上"必须照样变红（证明这条断言不恒真）。
+mk_crlf() { tr -d '\r' < "$1" | sed -e 's/$/\r/' > "$2"; }
+mk_crlf "$repo_root/src/main/resources/spotbugs-exclude.xml" "$work/exclude-crlf.xml"
+mk_crlf "$repo_root/scripts/tests/spotbugs-high-baseline.tsv" "$work/snapshot-crlf.tsv"
+crlf_gate() { # <outfile> <snapshot>
+  local out=$1 snap=$2
+  (
+    export MERGE_GATE_CMD_UNIT="$OK_CMD" MERGE_GATE_CMD_SPOTBUGS="$OK_CMD" MERGE_GATE_CMD_BASELINE="$OK_CMD"
+    export MERGE_GATE_CMD_FRONTEND="$OK_CMD" MERGE_GATE_HOOKS_DIR="$work/hooks-ok"
+    export SPOTBUGS_EXCLUDE_FILE="$work/exclude-crlf.xml" SPOTBUGS_HIGH_SNAPSHOT="$snap"
+    cd "$repo_root" && bash "$gate"
+  ) >"$out" 2>&1
+  echo $?
+}
+rc=$(crlf_gate "$work/crlf.out" "$work/snapshot-crlf.tsv")
+expect_eq "10 CRLF 台账 + CRLF 快照下双射仍成立" "0" "$rc"
+expect_has "10 双射真跑出 OK 结论" "RESULT=BIJECTION_OK" "$work/crlf.out"
+
+sed -e 's/threadLocal/threadLocalRenamed/' "$work/snapshot-crlf.tsv" > "$work/snapshot-crlf-bad.tsv"
+rc=$(crlf_gate "$work/crlf-bad.out" "$work/snapshot-crlf-bad.tsv")
+expect_eq "10 台账与快照真的对不上时必须变红" "1" "$rc"
+expect_has "10 失败被指名到 [bijection]" "FAIL [bijection]" "$work/crlf-bad.out"
+# 被跟踪的台账与快照必须一字未动（本场景只许改临时副本）
+if [ -z "$(cd "$repo_root" && git status --porcelain -- src/main/resources/spotbugs-exclude.xml scripts/tests/spotbugs-high-baseline.tsv)" ]; then
+  pass "10 未污染被跟踪的台账与快照"
+else
+  die "10 被跟踪的台账或快照被本场景改动"
+fi
+
 echo
 if [ "$failures" -gt 0 ]; then
   echo "merge-gate 自测失败：$checks 条断言中 $failures 条 NOT OK" >&2
