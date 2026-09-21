@@ -25,6 +25,8 @@
 4. **Why-3 的行号与"两处"表述都要改。** 真读者是 `pom.xml:451`（`:446` 是 `artifactId`）；接线后 `failurePriority` 在 `:458`、`<skip>` 在 `:464`。而且装饰性"条数阈值"其实有**第三处**：`src/main/resources/pmd-rules.xml:4` 的头部注释"阈值≤5 violations 通过"——组 1.1 给的普查面（`pom.xml scripts/ docs/`）按定义扫不到它。→ 验收第 3 条的普查面必须扩到 `src/main/resources/*.xml`，否则"全仓不存在第二处条数阈值表述"会假绿。
 5. **"未知量级"这个风险已闭合，取值为 1329。** 声明尺子下的真实底数 = **1329 条**（priority：p1=39 / p3=1290 / p2=p4=0），24 条声明规则全部加载，其中 12 条有命中、12 条 0 命中；内置 quickstart 侧本轮**复现**为 122 条（与 §6.7 登记值一致，非沿用）。分布：86.4% 集中在 3 条规则（`OnlyOneReturn` 732、`CommentSize` 282、`AvoidCatchingGenericException` 134）。两个必须在登记处写明的口径：① PMD 默认源目录**不含 `src/test/java`**（241 个 main 文件，报告里 0 条来自测试代码），与 SpotBugs 那 12 条不是同一口径，不许拿它类比；② 基线取 1329 时，这道门禁短期只拦"新增第 4 种异味"——这正是「风险」第 1 条预告的形态，按 Q2 如实登记，不回头调松规则集。
 6. **本提案的地基判别式已证实：** 注入不存在的规则名 → `mvn -o -B -ntp pmd:check` **exit 1 硬错**（`Unable to find referenced rule ...` + `The ruleset could not be loaded`，且日志里 `PMD Failure` 行数 = 0，即一条源码都没分析）。"失效规则静默隐身"的前提不成立，验收第 2 条已过。
+7. **"无 Docker 机器"这个前提在本机是假的**（P2 实测纠正）：`docker info` → Server 29.6.2 / Docker Desktop，`mvn -o -B -ntp verify` 真起了 `mysql:8.0.36` 并交出新鲜 failsafe 结论。派发简报与「风险」末条按"failsafe 新鲜度=否"预期，实测为**是**；§6.2 那句"无 Docker 分支尚未在无 Docker 机器上实测"的悬置**不因本轮而闭合**（有 Docker 证明不了没 Docker 的行为）。
+8. **新暴露一处"没有自动执行点"的口径，必须如实登记：** `maxAllowedViolations` 是**严格大于才红**（实测=登记 → 绿），所以"基线只许下调"**在构建层没有任何自动判别**——修掉一条异味后 `pmd:check` 依旧绿，只有 `pmd-baseline-check.sh`（登记 > 实测 → 红）会报，而它目前只挂在 `merge-gate` 里、靠人跑。这与当初 SpotBugs"记着但没人接"是同一种形态，处置见组 4 落地的 `[pmd-baseline]` 与「风险」新增条目：**不假装它自动执行**，而是把"跑一次全量聚合门禁"写成合入前置。
 
 
 ## What Changes
@@ -61,7 +63,8 @@
 - **测出的基线过大导致门禁形同虚设**：若 `maxAllowedViolations` 落在几百条，这道门禁短期内拦不住什么。处置：如实写进登记与 runbook，并把"只许下调"作为硬约束交给后续每一次真实运行；不为了好看去偷偷加强规则集（那会把 `mvn verify` 弄成不可用的红）。
 - **规则替换改变语义**：10 条失效 ref 若就近换成 7.9.0 的"看似同名"规则，可能悄悄放宽或收紧标准。处置：每条处置必须写明"删/换/改名"三选一与依据，且接线后跑一次**逐规则命中数**清单作为前后对照。
 - **`mvn verify` 与 `[it]` 的耦合**：pmd 绑在 `verify` 阶段，`merge-gate.sh` 默认不跑 `[it]`。若 `[pmd]` 也挂在 verify 上，默认序列将不覆盖它——必须像 `[spotbugs]` 那样单独 `mvn -B -ntp pmd:check` 调用，不能指望 `[it]` 顺带。
-- **无 Docker 机器上"真跑记录"的可得性**：§6.7 到期条件③要求补 `mvn verify` 真跑记录；无 Docker 时 failsafe 侧只跳不证。处置：记录里明确区分"PMD 真跑=是"与"failsafe 新鲜度=否"。
+- **无 Docker 机器上"真跑记录"的可得性**：§6.7 到期条件③要求补 `mvn verify` 真跑记录；无 Docker 时 failsafe 侧只跳不证。处置：记录里明确区分"PMD 真跑=是"与"failsafe 新鲜度=否"。（P2 实测更正：本机 Docker **在线**，本轮记录的新鲜度为"是"，见补正 7。）
+- **"只许下调"缺少自动执行点**（P2 实测发现，见补正 8）：`pmd:check` 只在实测**严格大于**登记值时红，因此变好不会触发任何构建层信号；抓"该下调了"的只有 `pmd-baseline-check.sh`，而它的生效位置是**人跑的** `merge-gate`。处置：不假装自动执行——`openspec/git-workflow.md` 的合入前置写明"合入前必须跑一次 `bash scripts/merge-gate.sh`（含 `[pmd-baseline]`）"，并把这条口径连同边界语义写进台账头部，防止后来人以为 pom 那道墙会自己收紧。
 
 ## Non-Goals
 

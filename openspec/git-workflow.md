@@ -20,10 +20,13 @@
 ## 3. 合并回 master（缺一不合）
 
 1. 亲验：`bash scripts/merge-gate.sh` 全绿。这一条命令就是合并前必跑序列，不要拆开来手跑后就当作跑过：
-   它依次裁决 surefire 单元与契约、`spotbugs:check`（High 级）、回归基线、提交期 `pre-commit` 转发器是否在位、
-   SpotBugs 豁免台账双射。需要把 failsafe 集成测试也纳入时加 `--with-verify`（本机 Docker 在线时会经
-   Testcontainers 拉镜像，故默认不跑）。
+   它裁决的子门禁清单**以 `scripts/merge-gate.sh` 头部注释为唯一权威源**（本文故意不逐项复制——上一版这里枚举过一遍，
+   后来 `[pmd]`/`[pmd-baseline]`/`[frontend-unit]` 加进脚本时文档没跟上，就成了假口径）。
+   需要把 failsafe 集成测试也纳入时加 `--with-verify`（本机 Docker 在线时它会经 Testcontainers 真起容器，故默认不跑；
+   有没有 Docker 用 `docker info` 实测，别猜）。
    输出即合入证据：把各子门禁的实测数字抄进汇报，不许引用上一轮数字。
+   特别地，PMD 的"基线只许下调"在构建层**没有**自动执行点（`pmd:check` 只在实测严格大于登记值时才红），
+   抓"该下调了"的 `[pmd-baseline]` 只有在这条聚合命令里才会被跑到。
 2. 亲验：`git status` 干净（仅允许剩两个已知未跟踪文件，见 §6）。
 3. 合并：
    ```

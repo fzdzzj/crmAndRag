@@ -41,6 +41,15 @@
 - 两者与 `.github/workflows/ci.yml` 的三段门禁同源（阶段1 surefire → 阶段2 failsafe → 阶段3 回归基线）。阶段3 的判定逻辑与阈值不在 YAML 里：本地直接跑 `bash scripts/check-test-baseline.sh` 就能复现 CI 结论，阈值存 `scripts/test-baseline.txt`，只允许用 `--update` 从一次真实运行写入。
 - 坑：`-Dit.test=...` 会**覆盖** pom 里 failsafe 的 `<includes>`。写成 `-Dit.test=!XxxIT` 不是“排除一个”，而是让 failsafe 把全量单测再跑一遍。
 - 本地无 Docker 时 `mvn verify` 的真实结果、哪些用例会跳、哪些会直接报错，读 `docs/migration-runbook.md` 第 6 节。**先读它再下“已验证”结论**。
+- **别假定本机有没有 Docker，`docker info` 一条命令就能实测**（2026-09-21 实测在线）。把"本机没 Docker"当默认前提曾让一条门禁记录把"没跑 `[it]`"记成环境所限，实际是没开 `--with-verify`。
+
+### 静态分析门禁（checkstyle / spotbugs / spotless / pmd）
+
+- **数字一律不写在本文与 `.github/workflows/ci.yml` 里**。每条口径只有一个读者，位置在 `pom.xml` 对应插件块；要看当前值就去读 pom 与台账（本文只指路）。
+- PMD：尺子 = `src/main/resources/pmd-rules.xml`（由 pom pmd 块的 `<rulesets>` 加载，`grep -n "<ruleset>src" pom.xml` 定位），哪些条计入 = 同块 `<failurePriority>`，计入多少条算失败 = 同块 `<maxAllowedViolations>`（全仓唯一条数读者）。存量台账 `scripts/tests/pmd-violation-baseline.txt` 只允许 `bash scripts/tests/pmd-baseline-check.sh --update` 从一次真实 `mvn -B -ntp pmd:check` 写入且**只许下调**；过期/漂移判别跑 `bash scripts/tests/pmd-baseline-check.sh`（注意：`pmd:check` 只在实测**严格大于**登记值时才红，"该下调了"这一项它自己看不到，必须靠本脚本）。
+- SpotBugs 同构：读者 = pom 该块的 `threshold` + `<excludeFilterFile>`，台账 `src/main/resources/spotbugs-exclude.xml` + `scripts/tests/spotbugs-high-baseline.tsv`，双射校验 `bash scripts/tests/spotbugs-exclude-staleness-check.sh`。
+- `[pmd]` 与 `[pmd-baseline]` 在 `scripts/merge-gate.sh` 里是**显式单点调用**，不等 `[it]`（`mvn verify`）顺带——pmd 绑 verify 而默认序列不跑 verify，这是 `harness-gates` 已确认的坑。
+- 启用状态、豁免历史（三条理由的消除过程）与复测命令：`docs/migration-runbook.md` §6.7；变更规格：`openspec/changes/wire-pmd-ruleset/`。
 
 ### 环境与迁移入口
 

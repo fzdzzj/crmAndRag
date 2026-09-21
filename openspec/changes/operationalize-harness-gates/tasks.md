@@ -103,7 +103,7 @@ P4 正确指出：接了 CI 一步在本仓仍是"不会自动执行"（无触�
 
 - [x] 7.1 `mvn -B -ntp test` 全绿，且 surefire/failsafe 计数与 `scripts/test-baseline.txt` 记录值一致（本提案不应增减 Java 用例）
       → 真实全量 `bash scripts/merge-gate.sh` 于 HEAD `ff0f26e` 跑通，退出 **0**：`[unit]` Tests run **724, F0/E0/S0**（=基线 724，未增减）、`[spotbugs]` `BugInstance size is 0`（无 skipped）、`[baseline]`、`[frontend-unit]`、`[hook]`、`[bijection]` `12↔12` 全 PASS
-      → **口径限制（不可回避，脚本头部亦已声明）**：本轮未跑 `[it]`（默认跳过、本机无 Docker），`[baseline]` 的 failsafe 侧读的是上一轮遗留报告（66/skipped 6）。要在failsafe上取新鲜证据须 `--with-verify` + Docker
+      → **口径限制（不可回避，脚本头部亦已声明）**：本轮未跑 `[it]`（**原因是默认序列不含 verify，需 `--with-verify`**；此处当时另写了一句"本机无 Docker"，**那句是错的**——后续 `wire-pmd-ruleset` P2 于 2026-09-21 实测本机 Docker 在线并交出新鲜的 failsafe 结论），`[baseline]` 的 failsafe 侧读的是上一轮遗留报告（66/skipped 6）。要在 failsafe 上取新鲜证据须 `--with-verify`
 - [x] 7.2 `bash scripts/check-test-baseline.sh` 与 `scripts/tests/check-test-baseline-selftest.sh`（及新增的 merge-gate 自测）全部通过
       → 主 agent 亲跑：`check-test-baseline-selftest.sh` 退出 0（**34 条断言**）；`merge-gate-selftest.sh` 退出 0（**42 条断言**，含本提案追加的 8 条 `[frontend-unit]`）；`[baseline]` 在真实门禁内通过
 - [x] 7.3 逐项复核 proposal.md「验收」5 条判别式，每条附命令与实际输出摘录
@@ -123,6 +123,6 @@ P4 正确指出：接了 CI 一步在本仓仍是"不会自动执行"（无触�
 - [x] 7.6 **合并后重跑全量门禁抓出一条平台相关缺陷（2026-09-21，已修）**：在合并后的 master（`123c4a9`）上重跑 `bash scripts/merge-gate.sh` → `[bijection]` 红，`High=12 <Match>=12 MISS=11 STALE=11`，且 **MISS 与 STALE 是同一批 11 行**。根因：`scripts/tests/spotbugs-high-baseline.tsv` 与 `spotbugs-exclude.xml` 一旦被 git 跟踪，`core.autocrlf=true` 的 checkout 会经 smudge 把它们变成 CRLF，`\r` 挂在第 4 列尾巴上使 `comm` 判为不同行；只有文件末行（无尾换行）能配上，故 12 里恰好 1 对"通过"。
       → 为什么交付时没发现：**台账未入库前是 LF，P3/P4 的实测与自测都在那个形态上跑，所以当时确实绿**；是我 `git add` + 切分支 checkout 之后字节才变。结论：台账类文件的判别必须在"被检出的形态"下验证，不能只在生成它的会话里验证。
       → 修法（读入侧归一，不让数据迁就平台）：`spotbugs-exclude-staleness-check.sh` 的 `truth_rows()` 两个分支与 `ledger` 解析一律 `tr -d '\r'`；回归锁加在 `merge-gate-selftest.sh` 场景 10（CRLF 台账+ CRLF 快照必须仍 BIJECTION_OK；把成员名改坏必须变红；并断言本场景不得污染被跟踪文件），断言数 42 → **47**。
-      → 修复后在同一 HEAD 复跑全量门禁：`PASS [unit]`（surefire 724/0/0/0）→ `PASS [spotbugs]` → `PASS [baseline]` → `PASS [frontend-unit]`（163/163）→ `PASS [hook]` → `PASS [bijection]`（`RESULT=BIJECTION_OK（12 条豁免与 12 条 High 一一对应）`），末行 `EXIT=0`；`[it]` 因无 Docker 未跑。落地提交：`dae419e`（校验器+回归锁）、`a425f6b`（本条与 P2 派发词）。
+      → 修复后在同一 HEAD 复跑全量门禁：`PASS [unit]`（surefire 724/0/0/0）→ `PASS [spotbugs]` → `PASS [baseline]` → `PASS [frontend-unit]`（163/163）→ `PASS [hook]` → `PASS [bijection]`（`RESULT=BIJECTION_OK（12 条豁免与 12 条 High 一一对应）`），末行 `EXIT=0`；`[it]` 未跑（默认序列不含 verify；本条初稿此处写"因无 Docker"，**是错的**，实测本机 Docker 在线，见 `wire-pmd-ruleset` P2 的 verify 记录）。落地提交：`dae419e`（校验器+回归锁）、`a425f6b`（本条与 P2 派发词）。
       → 已把同一要求写进 `wire-pmd-ruleset` 的 P2 派发词（`pmd-violation-baseline.txt` 的读取侧必须容 CRLF，并照场景 10 做正/反两判）。
-      → 遗留：更彻底的做法是给这类台账加 `.gitattributes`（`text eol=lf`）从源头禁止转换；本轮先按读入侧归一，避免顺带改动全仓文本归因。
+      → 遗留：仓内**已有** `.gitattributes`（实测 218 字节，只写 `*.sh text eol=lf` 与 `.githooks/* text eol=lf`，这也正是 `.sh` 从来不被 CRLF 咬到的原因），但台账类（`*.tsv` / `spotbugs-exclude.xml` / `scripts/tests/*.txt`）不在覆盖内。**更彻底的做法是扩展这个既有文件**而不是"新增 .gitattributes"（我本条初稿就是这么误写的）；本轮仍按读入侧归一，理由：读入侧归一对 Linux runner 同样成立，改 eol 属性会让其他 lane 的工作树在下次 checkout 时集体变"已修改"。
