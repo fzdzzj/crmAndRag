@@ -162,7 +162,8 @@ write_ledger() {
 # pmd.violations = 声明尺子下的违规条数；pmd.files = 本轮被分析的源文件数（用来识破「根本没分析」）。
 #
 # 口径（必须连同数值一起读，否则会被拿去做错误的类比）：
-#   1) 尺子 = src/main/resources/pmd-rules.xml 声明的 24 条规则（不是插件内置 quickstart）；
+#   1) 尺子 = src/main/resources/pmd-rules.xml 声明的 25 条规则（不是插件内置 quickstart；
+#      2026-09-21 Q4 拍板补回 EmptyControlStatement，24 -> 25）；
 #      哪些条计入由 pom 该块的 failurePriority=4 决定，计入多少条算失败由同块的
 #      maxAllowedViolations 决定 —— 后者是全仓唯一的条数读者，本台账是它的入库凭证与过期判据。
 #   2) 只覆盖 src/main/java —— PMD 默认源目录不含 src/test/java。本数与 SpotBugs 的 12 条 High
@@ -240,7 +241,7 @@ if [ "$pom_reader" != "$registered" ]; then
   rc=1
 fi
 if [ "$measured_violations" -gt "$registered" ]; then
-  err "新增违规超基线：实测 ${measured_violations} > 登记 ${registered}（多出 $((measured_violations - registered)) 条）。这些代码违反了仓库声明的 24 条规则，要改的是代码不是台账；--update 也会拒绝上调"
+  err "新增违规超基线：实测 ${measured_violations} > 登记 ${registered}（多出 $((measured_violations - registered)) 条）。这些代码违反了仓库声明的 25 条规则，要改的是代码不是台账；--update 也会拒绝上调"
   rc=1
 elif [ "$registered" -gt "$measured_violations" ]; then
   err "基线过期：登记 ${registered} > 实测 ${measured_violations}（有 $((registered - measured_violations)) 条异味已被修掉）。必须跑 bash scripts/tests/pmd-baseline-check.sh --update 把登记值下调（连同 pom 的 maxAllowedViolations），不许留着冗余"

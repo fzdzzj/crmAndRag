@@ -166,7 +166,7 @@ failsafe 侧的当前口径、CI 期望值与"无 Docker 下限"的含义一律�
 
 **当前状态（2026-09-21 P2 实测，非推断）**：`pom.xml` pmd 块的 `<skip>true</skip>` **已删除**（`grep -c "<skip>" pom.xml` 实测 **0**），`mvn -B -ntp pmd:check`、`mvn -B -ntp verify` 与本地聚合门禁 `bash scripts/merge-gate.sh` 的 `[pmd]` 都在真跑，`.github/workflows/ci.yml` 的静态检查步骤也已把 `pmd:check` 加回。判定口径三层、每层只有一个读者：
 
-- **量哪把尺子** = pom pmd 块的 `<ruleset>src/main/resources/pmd-rules.xml</ruleset>`（声明 **24 条**规则；不是插件内置 quickstart）。行号随 pom 漂移，定位一律 `grep -n "<ruleset>src" pom.xml`。
+- **量哪把尺子** = pom pmd 块的 `<ruleset>src/main/resources/pmd-rules.xml</ruleset>`（声明 **25 条**规则；2026-09-21 Q4 拍板补回 `EmptyControlStatement` 后 24→25，不是插件内置 quickstart）。行号随 pom 漂移，定位一律 `grep -n "<ruleset>src" pom.xml`。
 - **哪条违规计入条数** = 同块 `<failurePriority>`（`grep -n failurePriority pom.xml`）。它管优先级，与条数不可换算。
 - **计入多少条算失败** = 同块 `<maxAllowedViolations>`（`grep -n maxAllowedViolations pom.xml`）——**全仓唯一的条数读者**。它的值只允许由一次真实 `mvn -B -ntp pmd:check` 经 `bash scripts/tests/pmd-baseline-check.sh --update` 写进台账 `scripts/tests/pmd-violation-baseline.txt`（头三行口径照 `scripts/test-baseline.txt`：`source-revision` + `measured-at` + 生成命令），**只许下调不许上调**，且 `--update` 在实测 > 登记时直接拒绝写入。当前值与完整口径（含"只覆盖 `src/main/java`""86.4% 集中在 3 条规则"）以那两个文件为准，**本节不复制数字**，避免又养出第二个读者。
 - **边界语义是实测的**（2026-09-21 两次真跑：实测=登记 → exit 0；实测=登记+1 → exit 1）：插件按"严格大于才失败"。推论很重要 —— 修掉一条异味后 `pmd:check` **仍然绿**，"该下调了"只能由 `bash scripts/tests/pmd-baseline-check.sh` 判（登记 > 实测 → 红；实测 > 登记 → 红；pom 与台账两个数字不等 → 红）。自测锁在 `scripts/tests/merge-gate-selftest.sh` 场景 11（含 CRLF 双向）。
@@ -191,7 +191,7 @@ failsafe 侧的当前口径、CI 期望值与"无 Docker 下限"的含义一律�
   ```bash
   grep -c "<skip>" pom.xml                    # 0 = 未退回跳过态；>0 即豁免复活，本节"已启用"结论当场作废
   grep -n "rulesets" pom.xml                  # 无输出 = 又退回内置 quickstart（理由 1 复活）
-  grep -o 'ref="category/java/[^"]*"' src/main/resources/pmd-rules.xml | wc -l   # 2026-09-21 P1 起 24（接线前 28）
+  grep -o 'ref="category/java/[^"]*"' src/main/resources/pmd-rules.xml | wc -l   # 2026-09-21 P1 接线后 24；Q4 拍板补回后 25（接线前 28）
   mvn -o -B -ntp pmd:check                    # 基线内：exit 0 且打印 "The build has not failed because N violations are allowed (maxAllowedViolations)."
   grep -c "<violation " target/pmd.xml        # 接线后声明尺子的底数：2026-09-21 实测 1329；与台账 pmd.violations 相等才算未过期
   bash scripts/tests/pmd-baseline-check.sh    # 登记 / 实测 / pom 三方对齐判别（任一对不齐即非零，含"该下调了"这一项）
@@ -199,7 +199,7 @@ failsafe 侧的当前口径、CI 期望值与"无 Docker 下限"的含义一律�
   ```
   历史口径（解除前、`wire-pmd-ruleset` P1 期间用的旁路法，原文保留）：当时要先"临时注释掉 pom pmd 块的 `<skip>`"才跑得动，跑完**必须把 `<skip>` 原样放回**，否则 `mvn verify` 会因这 1329 条红掉（接线前是 122 条）；`grep -c "PMD Failure" /tmp/pmd.log` 与条数相等，而 **122 只会在未接线（内置 quickstart）状态下出现**。自 P2 删除 `<skip>` 起，"放回"这一步连同它带来的"本地跑一次就脏一次 pom"的副作用一起消失。
   口径提醒：PMD 默认源目录**不含 `src/test/java`**，该 1329 只覆盖 241 个 main 文件（P2 复测同值），不能与 SpotBugs 的 12 条 High 基线类比。
-- **到期触发条件**（① ② ③ 均已于 2026-09-21 触发/满足，本豁免至此作废；保留原文以便下一次有人把 PMD 关掉时知道该补什么）：① 下一次任何 Java 侧变更触碰 `pom.xml` 的 pmd 块或 `src/main/resources/pmd-rules.xml` 时，必须复跑上面的复测命令并按实测更新本条（**2026-09-21 已由 `wire-pmd-ruleset` P1 触发一次并按实测改写**：接线状态、18/10 计数更正、属性名陷阱、24 条尺子、1329 底数；**P2 再次触发**：删 `<skip>`、落 `maxAllowedViolations`、改写本条状态）；② 阈值口径定夺完成（`failurePriority` 与条数二选一、`ci.yml` 的 env 有读者或删除）时（**P2 已完成**：条数口径 = `maxAllowedViolations` 单一读者，`failurePriority` 只管"哪条计入"，`ci.yml` 无任何阈值 env）；③ 上述理由 1/2/3 全部消除后本豁免作废并删除 `<skip>`，且需按 6.2 的口径补一次"`mvn verify` 真跑 PMD"的实测记录（**P2 已完成**，记录见下一条）。
+- **到期触发条件**（① ② ③ 均已于 2026-09-21 触发/满足，本豁免至此作废；保留原文以便下一次有人把 PMD 关掉时知道该补什么）：① 下一次任何 Java 侧变更触碰 `pom.xml` 的 pmd 块或 `src/main/resources/pmd-rules.xml` 时，必须复跑上面的复测命令并按实测更新本条（**2026-09-21 已由 `wire-pmd-ruleset` P1 触发一次并按实测改写**：接线状态、18/10 计数更正、属性名陷阱、24 条尺子、1329 底数；**P2 再次触发**：删 `<skip>`、落 `maxAllowedViolations`、改写本条状态；**Q4 拍板后触发**（2026-09-21）：补回 `codestyle/EmptyControlStatement`，24→25 条、实测 0 命中、底数与阈值不变）；② 阈值口径定夺完成（`failurePriority` 与条数二选一、`ci.yml` 的 env 有读者或删除）时（**P2 已完成**：条数口径 = `maxAllowedViolations` 单一读者，`failurePriority` 只管"哪条计入"，`ci.yml` 无任何阈值 env）；③ 上述理由 1/2/3 全部消除后本豁免作废并删除 `<skip>`，且需按 6.2 的口径补一次"`mvn verify` 真跑 PMD"的实测记录（**P2 已完成**，记录见下一条）。
 
 - **解除后的真跑记录**（到期条件③要求的"`mvn verify` 真跑 PMD"，按 6.2 的口径把两件事分开陈述）：2026-09-21 本机（Windows，`core.autocrlf=true`；Maven 3.9.4 / JDK 21.0.9 / maven-pmd-plugin 3.26.0 / PMD 7.9.0；命令 `mvn -o -B -ntp verify`，离线；耗时 05:57；exit **0 / BUILD SUCCESS**）：
   - **PMD 真跑 = 是**：`verify` 生命周期里 `--- pmd:3.26.0:pmd (pmd) ---`（`:5210`）与 `--- pmd:3.26.0:check (pmd-check) ---`（`:5234`）两个 goal 都实际执行，结论行是 `PMD 7.9.0 has found 1329 violations.` + `The build has not failed because 1329 violations are allowed (maxAllowedViolations).`（`:6564`/`:6565`），`target/pmd.xml` 当场重新产出。单点调用同口径：`mvn -o -B -ntp pmd:check` → exit 0。日志：`work/mailbox/tasks/PMDC-P2/run-8-verify-real.log`。

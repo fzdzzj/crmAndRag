@@ -55,4 +55,4 @@
         `core.autocrlf=true` 检出成 CRLF，故把台账复制成 CRLF 再跑一次 `pmd-baseline-check.sh`
         → 仍 exit 0（`PMD_BASELINE_OK`）；反向 sanity：把 pom 指向非 pom 文件 → **exit 2 拒绝裁决**，
         不会静默放过。
-      → **仍未闭合的两件事**：① Q4（`codestyle/EmptyControlStatement` 补不补）等 owner 拍板；② `ci.yml` 虽有 `pmd:check`，但**本仓无远端 → 整份 YAML 没有触发通道**，PMD 现在"会红"只发生在人跑的 `mvn verify` / `merge-gate` 上。
+      → **仍未闭合的两件事**：① Q4（`codestyle/EmptyControlStatement` 补不补）——**已闭合（2026-09-21 owner 拍板补回）**：规则集 24→25 条、实测 0 命中、底数不变，台账经 --update 重写；② `ci.yml` 虽有 `pmd:check`，但**本仓无远端 → 整份 YAML 没有触发通道**，PMD 现在"会红"只发生在人跑的 `mvn verify` / `merge-gate` 上。

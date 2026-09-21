@@ -51,7 +51,10 @@
     <rule ref="category/java/errorprone.xml/EmptyCatchBlock"/>
     <!-- PMDC-P1 处置：删除 errorprone/DetectedEmptyClause —— 7.9.0 jar 内无任何 DetectedEmpty* 规则名，
          且 errorprone 下与"空语句"相关的现存规则（EmptyCatchBlock 已声明 / EmptyControlStatement 未声明）
-         都不是它的同名搬家。不擅自换成 EmptyControlStatement（那属于扩规则，越出本包授权），交 owner 定夺 -->
+         都不是它的同名搬家。不擅自换成 EmptyControlStatement（那属于扩规则，越出本包授权），交 owner 定夺。
+         Q4 拍板（2026-09-21 owner 采纳推荐）：补回 codestyle/EmptyControlStatement —— 它承载原
+         DetectedEmptyClause 想要的检查意图（P1 实测 0 命中，不推高存量基线；数值以台账为准）；规则集 24 -> 25 条 -->
+    <rule ref="category/java/codestyle.xml/EmptyControlStatement"/>
     <!-- PMDC-P1 处置：仅改分类路径 errorprone -> bestpractices，规则名与语义未变（同上，不得删除） -->
     <rule ref="category/java/bestpractices.xml/CheckResultSet"/>
     

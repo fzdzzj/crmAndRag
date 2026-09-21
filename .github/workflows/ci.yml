@@ -136,7 +136,7 @@ jobs:
       # pmd:check 判定依据（wire-pmd-ruleset P2 于 2026-09-21 把本步加回，三层各一个读者，行号会随
       #   pom 变动漂移，定位一律用括号里的 grep 锚点）：
       #   ① 量哪把尺子 = <ruleset>src/main/resources/pmd-rules.xml</ruleset>（pom 第 459 行，
-      #      `grep -n "<ruleset>src" pom.xml`）——24 条声明规则，不是插件内置 quickstart；
+      #      `grep -n "<ruleset>src" pom.xml`）——25 条声明规则（Q4 拍板补 EmptyControlStatement 后），不是插件内置 quickstart；
       #   ② 哪条违规计入条数 = <failurePriority>（pom 第 462 行，`grep -n failurePriority pom.xml`）；
       #   ③ 计入多少条算失败 = <maxAllowedViolations>（pom 第 469 行，
       #      `grep -n maxAllowedViolations pom.xml`）——**全仓唯一的条数读者**，本 YAML 故意不复制

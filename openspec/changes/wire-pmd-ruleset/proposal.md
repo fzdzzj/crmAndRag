@@ -57,6 +57,7 @@
   1. 被删的 `errorprone/DetectedEmptyClause` 从未在任何 PMD 版本存在（名字本身是笔误级别的产物）；7.9.0 里承载同一意图的是 `codestyle/EmptyControlStatement`（实测**它住在 codestyle 而非 errorprone**）。补 = 覆盖面 +1 规则（本轮实测 0 命中，不会推高 1329）。**推荐补**，因为它才是不删该条时原作者想要的检查。
   2. `SimplifyStartsWith`（7.x 已移除）与 `MultipleStringLiterals`（7.0 移除）无等价物，接受覆盖面缩窄，不回补。
   → 未拍板前按现状（24 条）落基线；若采纳 1，只把基线重跑一次取新数，不改阈值口径。
+  → **已拍板（2026-09-21 owner 采纳 1）**：补回 `codestyle/EmptyControlStatement`（24→25 条），实测 0 命中、底数不变，台账经 `--update` 重写一次，阈值口径未动；2 维持不回补。
 
 ## 风险
 

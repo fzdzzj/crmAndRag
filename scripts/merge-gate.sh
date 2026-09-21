@@ -15,7 +15,7 @@
 # 子门禁（失败出口一律带方括号 id，便于从日志里直接认出是哪一步红）：
 #   [unit]        mvn -B -ntp test                    surefire 单元 + 契约 + H2 上下文冒烟，无 Docker 无外网
 #   [spotbugs]    mvn -B -ntp spotbugs:check          High 级缺陷扫描；判定依据 pom.xml 的 threshold + excludeFilterFile
-#   [pmd]         mvn -B -ntp pmd:check               声明规则集（src/main/resources/pmd-rules.xml，24 条）的代码异味扫描；
+#   [pmd]         mvn -B -ntp pmd:check               声明规则集（src/main/resources/pmd-rules.xml，25 条）的代码异味扫描；
 #                 条数读者 = pom 的 <maxAllowedViolations>。**单独调用、不挂 [it]**：pmd 虽绑在 verify 阶段，
 #                 而默认序列根本不跑 verify（--with-verify 才有 [it]），挂在 verify 上等于不设门禁。
 #   [it]          mvn -B -ntp verify                  （--with-verify 才跑）failsafe IT；本机无 Docker 时按 §6.2 只跳不证

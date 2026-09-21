@@ -1,11 +1,12 @@
 # PMD 存量条数基线：由 scripts/tests/pmd-baseline-check.sh --update 从一次真实 pmd:check 运行写入，禁止手改。
-# source-revision=978825b
-# measured-at=2026-09-21T10:38:35Z
+# source-revision=088486a
+# measured-at=2026-09-21T12:37:59Z
 # 生成命令：mvn -B -ntp pmd:check（产出 target/pmd.xml）后 bash scripts/tests/pmd-baseline-check.sh --update
 # pmd.violations = 声明尺子下的违规条数；pmd.files = 本轮被分析的源文件数（用来识破「根本没分析」）。
 #
 # 口径（必须连同数值一起读，否则会被拿去做错误的类比）：
-#   1) 尺子 = src/main/resources/pmd-rules.xml 声明的 24 条规则（不是插件内置 quickstart）；
+#   1) 尺子 = src/main/resources/pmd-rules.xml 声明的 25 条规则（不是插件内置 quickstart；
+#      2026-09-21 Q4 拍板补回 EmptyControlStatement，24 -> 25）；
 #      哪些条计入由 pom 该块的 failurePriority=4 决定，计入多少条算失败由同块的
 #      maxAllowedViolations 决定 —— 后者是全仓唯一的条数读者，本台账是它的入库凭证与过期判据。
 #   2) 只覆盖 src/main/java —— PMD 默认源目录不含 src/test/java。本数与 SpotBugs 的 12 条 High
