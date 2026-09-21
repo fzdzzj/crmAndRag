@@ -15,11 +15,19 @@
 # 子门禁（失败出口一律带方括号 id，便于从日志里直接认出是哪一步红）：
 #   [unit]        mvn -B -ntp test                    surefire 单元 + 契约 + H2 上下文冒烟，无 Docker 无外网
 #   [spotbugs]    mvn -B -ntp spotbugs:check          High 级缺陷扫描；判定依据 pom.xml 的 threshold + excludeFilterFile
+#   [pmd]         mvn -B -ntp pmd:check               声明规则集（src/main/resources/pmd-rules.xml，24 条）的代码异味扫描；
+#                 条数读者 = pom 的 <maxAllowedViolations>。**单独调用、不挂 [it]**：pmd 虽绑在 verify 阶段，
+#                 而默认序列根本不跑 verify（--with-verify 才有 [it]），挂在 verify 上等于不设门禁。
 #   [it]          mvn -B -ntp verify                  （--with-verify 才跑）failsafe IT；本机无 Docker 时按 §6.2 只跳不证
 #   [baseline]    bash scripts/check-test-baseline.sh 回归基线裁决（阈值唯一读者 scripts/test-baseline.txt）
 #   [hook]        生效 hooks 目录内 pre-commit 存在、可追踪到 frontend/.githooks/pre-commit、且被转发目标确实在位
 #   [bijection]   bash scripts/tests/spotbugs-exclude-staleness-check.sh
 #                 SpotBugs 台账双射：<Match> 元素数 == 未过滤 High 数且一一对应，抓"登记了却不再命中"的过期豁免
+#   [pmd-baseline]
+#                 bash scripts/tests/pmd-baseline-check.sh
+#                 PMD 条数基线的过期/漂移判别：登记值 > 实测值 → 红（要求下调，[pmd] 自己看不见这一项）；
+#                 实测值 > 登记值 → 红；pom 的 <maxAllowedViolations> 与台账不等 → 红。必须在 [pmd] 之后，
+#                 因为它读的就是 [pmd] 刚产出的 target/pmd.xml。
 #   [frontend-unit]
 #                 pnpm -C frontend test    前端 Vitest 单元/组件轨。之所以要出现在这里：提交期 pre-commit
 #                 只跑 lint+type-check（见 frontend/AGENTS.md），而本仓 CI 无触发通道 —— 单元轨否则没有任何
@@ -60,9 +68,11 @@ done
 # 正常调用不需要设任何变量；口径同 scripts/check-test-baseline.sh 的 BASELINE_* 测试钩子。
 cmd_unit=${MERGE_GATE_CMD_UNIT:-mvn -B -ntp test}
 cmd_spotbugs=${MERGE_GATE_CMD_SPOTBUGS:-mvn -B -ntp spotbugs:check}
+cmd_pmd=${MERGE_GATE_CMD_PMD:-mvn -B -ntp pmd:check}
 cmd_it=${MERGE_GATE_CMD_IT:-mvn -B -ntp verify}
 cmd_baseline=${MERGE_GATE_CMD_BASELINE:-bash scripts/check-test-baseline.sh}
 cmd_bijection=${MERGE_GATE_CMD_BIJECTION:-bash scripts/tests/spotbugs-exclude-staleness-check.sh}
+cmd_pmd_baseline=${MERGE_GATE_CMD_PMD_BASELINE:-bash scripts/tests/pmd-baseline-check.sh}
 # [hook] 的生效目录默认由 git 自己解析（不许硬编码绝对路径）；该覆盖同样只服务于自测。
 hooks_dir=${MERGE_GATE_HOOKS_DIR:-$(git rev-parse --git-path hooks)}
 cmd_frontend=${MERGE_GATE_CMD_FRONTEND:-pnpm -C frontend test}
@@ -93,6 +103,9 @@ run_gate() {
 
 run_gate unit "surefire 单元与契约门禁" "$cmd_unit"
 run_gate spotbugs "SpotBugs High 门禁" "$cmd_spotbugs"
+# [pmd] 显式单点调用 pmd:check：pmd 在 pom 里绑的是 verify 阶段，默认序列不跑 verify，
+# 指望 [it] 顺带等于没有这道门禁（harness-gates 已确认的坑，spec R4「绑在默认不跑的阶段上的检查」）。
+run_gate pmd "PMD 声明规则集门禁（条数读者 = pom 的 maxAllowedViolations）" "$cmd_pmd"
 if [ "$WITH_VERIFY" -eq 1 ]; then
   run_gate it "failsafe 集成测试门禁" "$cmd_it"
 else
@@ -135,6 +148,9 @@ else
 fi
 
 run_gate bijection "SpotBugs 基线双射校验（过期豁免）" "$cmd_bijection"
+# [pmd-baseline] 紧跟在 [pmd] 之后跑过才有意义（它读的就是 [pmd] 产出的 target/pmd.xml）；
+# 与 [bijection] 同族：都抓"台账留着已失效的冗余"，那类过期 pmd:check 自己永远不会报。
+run_gate pmd-baseline "PMD 条数基线过期/漂移校验（台账 scripts/tests/pmd-violation-baseline.txt）" "$cmd_pmd_baseline"
 
 if [ "${#failed[@]}" -eq 0 ]; then
   echo "== merge-gate 通过：所有已执行的子门禁绿。以上输出可作为合入证据（含各步实测数字）。=="
@@ -146,8 +162,9 @@ if [ "${#failed[@]}" -eq 0 ]; then
 fi
 
 echo "::error::merge-gate 失败，未通过的子门禁：${failed[*]}" >&2
-echo "        逐项排查命令：unit→mvn -B -ntp test｜spotbugs→mvn -B -ntp spotbugs:check｜it→mvn -B -ntp verify｜" >&2
+echo "        逐项排查命令：unit→mvn -B -ntp test｜spotbugs→mvn -B -ntp spotbugs:check｜pmd→mvn -B -ntp pmd:check｜it→mvn -B -ntp verify｜" >&2
 echo "        baseline→bash scripts/check-test-baseline.sh｜hook→见 frontend/AGENTS.md Git Hook Policy｜" >&2
 echo "        frontend-unit→pnpm -C frontend test｜" >&2
-echo "        bijection→bash scripts/tests/spotbugs-exclude-staleness-check.sh" >&2
+echo "        bijection→bash scripts/tests/spotbugs-exclude-staleness-check.sh｜" >&2
+echo "        pmd-baseline→bash scripts/tests/pmd-baseline-check.sh" >&2
 exit 1

@@ -2,7 +2,9 @@
 # Self-test for scripts/merge-gate.sh（harness-gates 组 5.3，spec R4）。
 #
 # 锁住的是**聚合逻辑**：任一子门禁失败时整条命令必须非零退出、并且指名是哪一步；
-# 全过时零退出；[it] 默认不跑；失败可累积；[hook] 与 [bijection] 两道存在性判别确实会红。
+# 全过时零退出；[it] 默认不跑；失败可累积；[hook] 与 [bijection] 两道存在性判别确实会红；
+# [pmd] 与 [pmd-baseline]（wire-pmd-ruleset 组 4.3 新增）同样"失败即被指名"，且场景 11 用真实的
+# scripts/tests/pmd-baseline-check.sh + 临时夹具锁住三种态（相等 / 登记偏高 / 实测超登记）与 CRLF 双向。
 #
 # 无 Docker、无外网、不跑 Maven —— 靠 merge-gate.sh 顶部声明的 MERGE_GATE_* 测试钩子注入桩命令，
 # 口径同 scripts/check-test-baseline.sh 的 BASELINE_* 钩子。真实门禁各自的正确性由自己的
@@ -50,15 +52,16 @@ mk_hooks_dir() { # <dir> <body>
 FORWARDER_BODY='#!/bin/sh
 exec sh "$repo/frontend/.githooks/pre-commit" "$@"   # forwards to frontend/.githooks/pre-commit'
 
-# 所有重型子门禁一律打桩、[hook] 指向夹具、[bijection] 打桩的基线环境。
+# 所有重型子门禁一律打桩、[hook] 指向夹具、[bijection] 与 [pmd-baseline] 打桩的基线环境。
 # 每个 case 只在其上覆盖需要变的那一项。
 run_case() { # <outfile> [额外 env 赋值...]
   local out=$1
   shift
   (
-    export MERGE_GATE_CMD_UNIT="$OK_CMD" MERGE_GATE_CMD_SPOTBUGS="$OK_CMD" \
+    export MERGE_GATE_CMD_UNIT="$OK_CMD" MERGE_GATE_CMD_SPOTBUGS="$OK_CMD" MERGE_GATE_CMD_PMD="$OK_CMD" \
       MERGE_GATE_CMD_IT="$OK_CMD" MERGE_GATE_CMD_BASELINE="$OK_CMD" \
-      MERGE_GATE_CMD_BIJECTION="$OK_CMD" MERGE_GATE_CMD_FRONTEND="$OK_CMD"
+      MERGE_GATE_CMD_BIJECTION="$OK_CMD" MERGE_GATE_CMD_FRONTEND="$OK_CMD" \
+      MERGE_GATE_CMD_PMD_BASELINE="$OK_CMD"
     export MERGE_GATE_HOOKS_DIR="$work/hooks-ok"
     for kv in "$@"; do export "$kv"; done
     cd "$repo_root" && bash "$gate"
@@ -74,12 +77,14 @@ expect_eq "1 全部子门禁通过时聚合零退出" "0" "$rc"
 expect_has "1 输出里每个子门禁都留了 PASS" "PASS [unit]" "$work/all-green.out"
 
 # ---------------------------------------------------------------- 2. 任一子门禁失败 → 非零且指名
-for id in unit spotbugs baseline bijection; do
+for id in unit spotbugs pmd baseline bijection pmd-baseline; do
   case "$id" in
   unit) env_over="MERGE_GATE_CMD_UNIT=$BAD_CMD" ;;
   spotbugs) env_over="MERGE_GATE_CMD_SPOTBUGS=$BAD_CMD" ;;
+  pmd) env_over="MERGE_GATE_CMD_PMD=$BAD_CMD" ;;
   baseline) env_over="MERGE_GATE_CMD_BASELINE=$BAD_CMD" ;;
   bijection) env_over="MERGE_GATE_CMD_BIJECTION=$BAD_CMD" ;;
+  pmd-baseline) env_over="MERGE_GATE_CMD_PMD_BASELINE=$BAD_CMD" ;;
   esac
   out="$work/fail-$id.out"
   rc=$(run_case "$out" "$env_over")
@@ -105,9 +110,10 @@ run_case_verify() { # <outfile> [额外 env...]
   local out=$1
   shift
   (
-    export MERGE_GATE_CMD_UNIT="$OK_CMD" MERGE_GATE_CMD_SPOTBUGS="$OK_CMD" \
+    export MERGE_GATE_CMD_UNIT="$OK_CMD" MERGE_GATE_CMD_SPOTBUGS="$OK_CMD" MERGE_GATE_CMD_PMD="$OK_CMD" \
       MERGE_GATE_CMD_IT="$OK_CMD" MERGE_GATE_CMD_BASELINE="$OK_CMD" \
-      MERGE_GATE_CMD_BIJECTION="$OK_CMD" MERGE_GATE_CMD_FRONTEND="$OK_CMD"
+      MERGE_GATE_CMD_BIJECTION="$OK_CMD" MERGE_GATE_CMD_FRONTEND="$OK_CMD" \
+      MERGE_GATE_CMD_PMD_BASELINE="$OK_CMD"
     export MERGE_GATE_HOOKS_DIR="$work/hooks-ok"
     for kv in "$@"; do export "$kv"; done
     cd "$repo_root" && bash "$gate" --with-verify
@@ -138,7 +144,7 @@ expect_eq "6 未知参数退出 2" "2" "$rc"
 # 只把重型 Maven/基线步骤打桩，[hook] 用真实 git 解析出的 hooks 目录、[bijection] 用真实台账与被跟踪快照。
 rc=$( (
   export MERGE_GATE_CMD_UNIT="$OK_CMD" MERGE_GATE_CMD_SPOTBUGS="$OK_CMD" MERGE_GATE_CMD_BASELINE="$OK_CMD"
-  export MERGE_GATE_CMD_FRONTEND="$OK_CMD"
+  export MERGE_GATE_CMD_FRONTEND="$OK_CMD" MERGE_GATE_CMD_PMD="$OK_CMD" MERGE_GATE_CMD_PMD_BASELINE="$OK_CMD"
   cd "$repo_root" && bash "$gate"
 ) >"$work/real-existence.out" 2>&1; echo $? )
 expect_eq "7 真实 [hook]+[bijection] 在当前工作副本上为零退出" "0" "$rc"
@@ -151,7 +157,7 @@ expect_has "7 [hook] 真跑指向 git 解析出的目录" "PASS [hook]" "$work/r
 printf '<project/>\n' >"$work/pom-nowiring.xml"
 rc=$( (
   export MERGE_GATE_CMD_UNIT="$OK_CMD" MERGE_GATE_CMD_SPOTBUGS="$OK_CMD" MERGE_GATE_CMD_BASELINE="$OK_CMD"
-  export MERGE_GATE_CMD_FRONTEND="$OK_CMD"
+  export MERGE_GATE_CMD_FRONTEND="$OK_CMD" MERGE_GATE_CMD_PMD="$OK_CMD" MERGE_GATE_CMD_PMD_BASELINE="$OK_CMD"
   export MERGE_GATE_HOOKS_DIR="$work/hooks-ok"
   export SPOTBUGS_POM_FILE="$work/pom-nowiring.xml"
   cd "$repo_root" && bash "$gate"
@@ -186,6 +192,7 @@ crlf_gate() { # <outfile> <snapshot>
   (
     export MERGE_GATE_CMD_UNIT="$OK_CMD" MERGE_GATE_CMD_SPOTBUGS="$OK_CMD" MERGE_GATE_CMD_BASELINE="$OK_CMD"
     export MERGE_GATE_CMD_FRONTEND="$OK_CMD" MERGE_GATE_HOOKS_DIR="$work/hooks-ok"
+    export MERGE_GATE_CMD_PMD="$OK_CMD" MERGE_GATE_CMD_PMD_BASELINE="$OK_CMD"
     export SPOTBUGS_EXCLUDE_FILE="$work/exclude-crlf.xml" SPOTBUGS_HIGH_SNAPSHOT="$snap"
     cd "$repo_root" && bash "$gate"
   ) >"$out" 2>&1
@@ -205,6 +212,116 @@ if [ -z "$(cd "$repo_root" && git status --porcelain -- src/main/resources/spotb
 else
   die "10 被跟踪的台账或快照被本场景改动"
 fi
+
+# ---------------------------------------------------------------- 11. [pmd] 与 [pmd-baseline]（wire-pmd-ruleset 组 4.3）
+# 场景 2 只锁住"这两道失败会被聚合指名"；本场景锁的是判定本身：
+#   用**真实的** scripts/tests/pmd-baseline-check.sh（[pmd] 那条 Maven 仍打桩，保持不跑 Maven），
+#   只把它的三个输入换成临时夹具，证明三种态各自的对错，并且 CRLF 夹具不许把对的说成错的、
+#   也不许把错的说成对的（autocrlf 回归锁，与场景 10 同一族坑）。
+mk_pmd_report() { # <out> <violations>
+  local out=$1 n=$2 i=0
+  {
+    printf '<?xml version="1.0" encoding="UTF-8"?>\n<pmd xmlns="http://pmd.sourceforge.net/report/2.0.0" version="7.9.0">\n'
+    printf '<file name="/a/A.java">\n'
+    while [ "$i" -lt "$n" ]; do
+      printf '<violation beginline="1" endline="1" begincolumn="1" endcolumn="1" rule="OnlyOneReturn" ruleset="Code Style" class="A" priority="3">m</violation>\n'
+      i=$((i + 1))
+    done
+    printf '</file>\n</pmd>\n'
+  } >"$out"
+}
+mk_pmd_pom() { # <out> <maxAllowedViolations> <crlf:0|1>
+  local out=$1 n=$2 crlf=$3
+  {
+    printf '<project><build><plugins><plugin><artifactId>maven-pmd-plugin</artifactId><configuration>'
+    printf '<rulesets><ruleset>src/main/resources/pmd-rules.xml</ruleset></rulesets>'
+    printf '<maxAllowedViolations>%s</maxAllowedViolations>' "$n"
+    printf '</configuration></plugin></plugins></build></project>\n'
+  } >"$out"
+  if [ "$crlf" = "1" ]; then sed -e 's/$/\r/' "$out" >"$out.cr" && mv "$out.cr" "$out"; fi
+}
+mk_pmd_ledger() { # <out> <pmd.violations> <crlf:0|1>
+  local out=$1 n=$2 crlf=$3
+  printf '# 临时台账（自测夹具）\npmd.violations=%s\npmd.files=1\n' "$n" >"$out"
+  if [ "$crlf" = "1" ]; then sed -e 's/$/\r/' "$out" >"$out.cr" && mv "$out.cr" "$out"; fi
+}
+pmd_gate() { # <outfile> <ledger> <pom>
+  local out=$1 ledger=$2 pompom=$3
+  (
+    export MERGE_GATE_CMD_UNIT="$OK_CMD" MERGE_GATE_CMD_SPOTBUGS="$OK_CMD" MERGE_GATE_CMD_PMD="$OK_CMD"
+    export MERGE_GATE_CMD_IT="$OK_CMD" MERGE_GATE_CMD_BASELINE="$OK_CMD" MERGE_GATE_CMD_FRONTEND="$OK_CMD"
+    export MERGE_GATE_CMD_BIJECTION="$OK_CMD" MERGE_GATE_HOOKS_DIR="$work/hooks-ok"
+    export PMD_REPORT="$work/pmd-report.xml" PMD_BASELINE_LEDGER="$ledger" PMD_POM_FILE="$pompom"
+    cd "$repo_root" && bash "$gate"
+  ) >"$out" 2>&1
+  echo $?
+}
+mk_pmd_report "$work/pmd-report.xml" 7
+# 夹具跑完之后必须证明被跟踪的 pom / 台账一个字节没动（pom 在本包里本来就是改动态，
+# 所以这里比对的是"进入本场景时的高度"而不是 git status 是否干净）。
+pom_hash_before=$(LC_ALL=C tr -d '\r' < "$repo_root/pom.xml" | cksum)
+ledger_hash_before=""
+if [ -f "$repo_root/scripts/tests/pmd-violation-baseline.txt" ]; then
+  ledger_hash_before=$(LC_ALL=C tr -d '\r' < "$repo_root/scripts/tests/pmd-violation-baseline.txt" | cksum)
+fi
+
+# 11a 实测 == 登记 == pom 阈值（LF 夹具）→ 必须绿
+mk_pmd_ledger "$work/pmd-ledger-eq.txt" 7 0
+mk_pmd_pom "$work/pmd-pom-eq.xml" 7 0
+rc=$(pmd_gate "$work/pmd-eq.out" "$work/pmd-ledger-eq.txt" "$work/pmd-pom-eq.xml")
+expect_eq "11 实测=登记=pom 时聚合零退出" "0" "$rc"
+expect_has "11 [pmd-baseline] 真跑出 OK 结论" "RESULT=PMD_BASELINE_OK" "$work/pmd-eq.out"
+expect_has "11 PASS 归属 [pmd-baseline]" "PASS [pmd-baseline]" "$work/pmd-eq.out"
+
+# 11b 同一组数据换成 CRLF 夹具 → 必须照样绿（否则 autocrlf 会把绿判成红）
+mk_pmd_ledger "$work/pmd-ledger-eq-crlf.txt" 7 1
+mk_pmd_pom "$work/pmd-pom-eq-crlf.xml" 7 1
+rc=$(pmd_gate "$work/pmd-eq-crlf.out" "$work/pmd-ledger-eq-crlf.txt" "$work/pmd-pom-eq-crlf.xml")
+expect_eq "11 CRLF 台账 + CRLF pom 下依然为零退出" "0" "$rc"
+expect_has "11 CRLF 夹具下双射结论照样成立" "RESULT=PMD_BASELINE_OK" "$work/pmd-eq-crlf.out"
+
+# 11c 登记 > 实测（台账留了冗余，CRLF 夹具）→ 必须红并指名
+mk_pmd_ledger "$work/pmd-ledger-stale.txt" 9 1
+mk_pmd_pom "$work/pmd-pom-stale.xml" 9 1
+rc=$(pmd_gate "$work/pmd-stale.out" "$work/pmd-ledger-stale.txt" "$work/pmd-pom-stale.xml")
+expect_eq "11 登记值高于实测时聚合非零" "1" "$rc"
+expect_has "11 失败被指名到 [pmd-baseline]" "FAIL [pmd-baseline]" "$work/pmd-stale.out"
+expect_has "11 过期原因被透传" "基线过期" "$work/pmd-stale.out"
+expect_has "11 尾部清单列出 pmd-baseline" "未通过的子门禁：pmd-baseline" "$work/pmd-stale.out"
+
+# 11d 实测 > 登记（新引入违规）→ 必须红
+mk_pmd_ledger "$work/pmd-ledger-exceed.txt" 5 0
+mk_pmd_pom "$work/pmd-pom-exceed.xml" 5 0
+rc=$(pmd_gate "$work/pmd-exceed.out" "$work/pmd-ledger-exceed.txt" "$work/pmd-pom-exceed.xml")
+expect_eq "11 实测超出登记时聚合非零" "1" "$rc"
+expect_has "11 超基线原因被透传" "新增违规超基线" "$work/pmd-exceed.out"
+
+# 11e pom 与台账不等（条数口径出现两个数字）→ 必须红
+mk_pmd_ledger "$work/pmd-ledger-drift.txt" 7 0
+mk_pmd_pom "$work/pmd-pom-drift.xml" 8 0
+rc=$(pmd_gate "$work/pmd-drift.out" "$work/pmd-ledger-drift.txt" "$work/pmd-pom-drift.xml")
+expect_eq "11 pom 阈值与台账漂移时聚合非零" "1" "$rc"
+expect_has "11 漂移原因被透传" "两个数字" "$work/pmd-drift.out"
+
+# 11f <skip> 回到 pmd 块里 → 前置缺失（exit 2）也必须被聚合成红并透传
+{
+  printf '<project><build><plugins><plugin><artifactId>maven-pmd-plugin</artifactId><configuration>'
+  printf '<rulesets><ruleset>src/main/resources/pmd-rules.xml</ruleset></rulesets>'
+  printf '<skip>true</skip><maxAllowedViolations>7</maxAllowedViolations>'
+  printf '</configuration></plugin></plugins></build></project>\n'
+} >"$work/pmd-pom-skip.xml"
+rc=$(pmd_gate "$work/pmd-skip.out" "$work/pmd-ledger-eq.txt" "$work/pmd-pom-skip.xml")
+expect_eq "11 pmd 块重新出现 <skip> 时聚合非零" "1" "$rc"
+expect_has "11 跳过态的拒绝裁决理由被透传" "拒绝裁决" "$work/pmd-skip.out"
+
+# 11g 被跟踪的 PMD 台账与 pom 不得被这些夹具改动（按进入本场景时的 cksum 比，忽略行尾差异）
+pom_hash_after=$(LC_ALL=C tr -d '\r' < "$repo_root/pom.xml" | cksum)
+ledger_hash_after=""
+if [ -f "$repo_root/scripts/tests/pmd-violation-baseline.txt" ]; then
+  ledger_hash_after=$(LC_ALL=C tr -d '\r' < "$repo_root/scripts/tests/pmd-violation-baseline.txt" | cksum)
+fi
+expect_eq "11 未污染被跟踪的 pom（正文 cksum 不变）" "$pom_hash_before" "$pom_hash_after"
+expect_eq "11 未污染被跟踪的 PMD 台账（正文 cksum 不变）" "$ledger_hash_before" "$ledger_hash_after"
 
 echo
 if [ "$failures" -gt 0 ]; then

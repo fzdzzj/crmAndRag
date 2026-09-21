@@ -120,7 +120,7 @@ jobs:
       # SPOTLESS_APPLY_DIFF 四个变量**全仓无读者**，已逐个删除，处置依据：
       #   - checkstyle 只有"存在 error 级违规即红"的二值口径，没有"允许 N 条"的计数概念；
       #   - spotbugs 的"什么算缺陷"与"存量多少"分别由 threshold 与 exclude 文件承载，不是计数阈值；
-      #   - pmd 从未真正产出结论（见下）；
+      #   - pmd 当时从未真正产出结论（见下方 pmd 段，该状态已于 2026-09-21 改变）；
       #   - SPOTLESS_APPLY_DIFF 不是 spotless-maven-plugin 认得的属性名（插件只读 pom 的 configuration）。
       #
       # checkstyle:check 判定依据：pom.xml:387 <failOnViolation>true</failOnViolation>
@@ -130,20 +130,33 @@ jobs:
       #   High 基线台账；不在台账内的新 High 直接变红。基线只允许由
       #   `mvn -B -ntp compile spotbugs:spotbugs` 的一次真实运行更新（过期豁免双射校验：
       #   bash scripts/tests/spotbugs-exclude-staleness-check.sh）。
-      # spotless:check   判定依据：pom.xml:488-500 的 <java> 格式化配置（googleJavaFormat GOOGLE），
+      # spotless:check   判定依据：pom.xml:505-517 的 <java> 格式化配置（googleJavaFormat GOOGLE），
       #   该插件块无 <skip>，格式不合规即红。
       #
-      # pmd:check 已从本步骤移除：pom.xml:457 是字面量 <skip>true</skip>（全仓唯一一处 skip），
-      #   跑它只会打印 "PMD plugin skipped"，不产生任何结论——跑了不产生结论就别装成在跑。
-      #   豁免四要素（项 / 三条理由 / 复测命令 / 到期触发条件）登记在 docs/migration-runbook.md §6.7。
+      # pmd:check 判定依据（wire-pmd-ruleset P2 于 2026-09-21 把本步加回，三层各一个读者，行号会随
+      #   pom 变动漂移，定位一律用括号里的 grep 锚点）：
+      #   ① 量哪把尺子 = <ruleset>src/main/resources/pmd-rules.xml</ruleset>（pom 第 459 行，
+      #      `grep -n "<ruleset>src" pom.xml`）——24 条声明规则，不是插件内置 quickstart；
+      #   ② 哪条违规计入条数 = <failurePriority>（pom 第 462 行，`grep -n failurePriority pom.xml`）；
+      #   ③ 计入多少条算失败 = <maxAllowedViolations>（pom 第 469 行，
+      #      `grep -n maxAllowedViolations pom.xml`）——**全仓唯一的条数读者**，本 YAML 故意不复制
+      #      那个数字。它的值只允许由一次真实 `mvn -B -ntp pmd:check` 经
+      #      `bash scripts/tests/pmd-baseline-check.sh --update` 写入
+      #      scripts/tests/pmd-violation-baseline.txt，且只许下调不许上调（口径同阶段3）。
+      #      边界语义是实测的：实测 == 登记 → 绿，实测 > 登记 → 红；因此修掉一条异味后本步仍会绿，
+      #      "该下调了"由 `bash scripts/tests/pmd-baseline-check.sh` 单独判（登记 > 实测即红）。
+      #      基线只覆盖 src/main/java（PMD 默认不含 src/test/java），与上面 spotbugs 的 12 条
+      #      不是同一口径、不可类比——两侧口径都写在各自台账的头部。
+      #   本步此前被移除的原因是 pom 的 pmd 块挂着字面量 <skip>true</skip>（"跑了不产生结论就别装成在跑"），
+      #   豁免四要素与三条理由的消除过程保留在 docs/migration-runbook.md §6.7 作历史对照。
       #
       # 命令以 `compile` 开头是必需的，不是冗余：本 job 是独立 checkout，没有前置构建，而 spotbugs:check
       #   读的是 target/classes。缺产物时它会"无类可分析"地静默通过 —— 又回到"装成在跑"。
-      #   同时 compile 会连带触发 pom 里绑到 validate 阶段的 checkstyle-check（pom.xml:390-397）与
-      #   spotless-check（pom.xml:502-509），后面显式再点一次是为了让这三项在命令行上都能被读到，
+      #   同时 compile 会连带触发 pom 里绑到 validate 阶段的 checkstyle-check（pom.xml:391-397）与
+      #   spotless-check（pom.xml:520-526），后面显式再点一次是为了让这三项在命令行上都能被读到，
       #   不依赖"有人记得 pom 里绑过阶段"。
-      - name: 静态检查门禁（checkstyle / spotbugs / spotless）
-        run: mvn -B -ntp compile checkstyle:check spotbugs:check spotless:check
+      - name: 静态检查门禁（checkstyle / spotbugs / spotless / pmd）
+        run: mvn -B -ntp compile checkstyle:check spotbugs:check spotless:check pmd:check
 
   # TASK-10：Fail-Fast 启动门禁——依赖不可达时应用必须起不来，且原因指名到组件。
   #   与本地完全同一条命令：bash scripts/fail-fast-gate.sh（脚本自带断言，不靠 grep 拼凑）
