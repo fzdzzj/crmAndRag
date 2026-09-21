@@ -30,10 +30,9 @@ public class RoleAO {
    * @return 是否拥有权限
    */
   public boolean hasPermission(Long permissionId) {
-    if (permissions == null || permissions.isEmpty()) {
-      return false;
-    }
-    return permissions.stream().anyMatch(permission -> permission.getId().equals(permissionId));
+    return permissions != null
+        && !permissions.isEmpty()
+        && permissions.stream().anyMatch(permission -> permission.getId().equals(permissionId));
   }
 
   /**
@@ -44,9 +43,6 @@ public class RoleAO {
    */
   public boolean hasPermission(
       com.slz.crm.common.enumeration.PermissionOperates permissionOperates) {
-    if (permissionOperates == null) {
-      return false;
-    }
-    return hasPermission(permissionOperates.getId());
+    return permissionOperates != null && hasPermission(permissionOperates.getId());
   }
 }

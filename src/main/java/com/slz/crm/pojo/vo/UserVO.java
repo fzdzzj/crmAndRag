@@ -52,30 +52,28 @@ public class UserVO implements Privacy {
    * @return UserVO
    */
   public static UserVO fromEntity(UserEntity entity) {
-    if (entity == null) {
-      return null;
+    UserVO vo = null;
+    if (entity != null) {
+      vo = new UserVO();
+      vo.setId(entity.getId());
+      vo.setRealName(entity.getRealName());
+      vo.setPhone(entity.getPhone());
+      vo.setEmail(entity.getEmail());
+      vo.setDeptId(entity.getDeptId());
+      vo.setRoleId(entity.getRoleId());
+      vo.setStatus(entity.getStatus());
+      // 设置状态描述
+      String statusDesc =
+          switch (entity.getStatus()) {
+            case 1 -> "正常";
+            case 0 -> "冻结";
+            case 2 -> "离职";
+            default -> "未知状态";
+          };
+      vo.setStatusDesc(statusDesc);
+      vo.setCreateTime(entity.getCreateTime());
+      vo.setUpdateTime(entity.getUpdateTime());
     }
-
-    UserVO vo = new UserVO();
-    vo.setId(entity.getId());
-    vo.setRealName(entity.getRealName());
-    vo.setPhone(entity.getPhone());
-    vo.setEmail(entity.getEmail());
-    vo.setDeptId(entity.getDeptId());
-    vo.setRoleId(entity.getRoleId());
-    vo.setStatus(entity.getStatus());
-    // 设置状态描述
-    String statusDesc =
-        switch (entity.getStatus()) {
-          case 1 -> "正常";
-          case 0 -> "冻结";
-          case 2 -> "离职";
-          default -> "未知状态";
-        };
-    vo.setStatusDesc(statusDesc);
-    vo.setCreateTime(entity.getCreateTime());
-    vo.setUpdateTime(entity.getUpdateTime());
-
     return vo;
   }
 }

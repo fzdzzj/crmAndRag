@@ -47,21 +47,19 @@ public class BusinessActivityUserVO {
    */
   public static BusinessActivityUserVO fromEntity(
       BusinessActivityUserEntity entity, String activityName, String userName, String creatorName) {
-    if (entity == null) {
-      return null;
+    BusinessActivityUserVO vo = null;
+    if (entity != null) {
+      vo = new BusinessActivityUserVO();
+      vo.setId(entity.getId());
+      vo.setActivityId(entity.getActivityId());
+      vo.setActivityName(activityName);
+      vo.setUserId(entity.getUserId());
+      vo.setUserRole(entity.getUserRole());
+      vo.setUserName(userName);
+      vo.setCreatorId(entity.getCreatorId());
+      vo.setCreatorName(creatorName);
+      vo.setCreateTime(entity.getCreateTime());
     }
-
-    BusinessActivityUserVO vo = new BusinessActivityUserVO();
-    vo.setId(entity.getId());
-    vo.setActivityId(entity.getActivityId());
-    vo.setActivityName(activityName);
-    vo.setUserId(entity.getUserId());
-    vo.setUserRole(entity.getUserRole());
-    vo.setUserName(userName);
-    vo.setCreatorId(entity.getCreatorId());
-    vo.setCreatorName(creatorName);
-    vo.setCreateTime(entity.getCreateTime());
-
     return vo;
   }
 }

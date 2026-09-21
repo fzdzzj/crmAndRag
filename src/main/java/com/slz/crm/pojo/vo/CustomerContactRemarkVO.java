@@ -53,43 +53,44 @@ public class CustomerContactRemarkVO {
    */
   public static List<CustomerContactRemarkVO> fromEntity(
       List<CustomerContactRemarkEntity> entityList) {
-    if (entityList == null) {
-      return null;
+    List<CustomerContactRemarkVO> result = null;
+    if (entityList != null) {
+      result =
+          entityList.stream()
+              .map(
+                  entity -> {
+                    CustomerContactRemarkVO vo = new CustomerContactRemarkVO();
+                    vo.setId(entity.getId());
+                    vo.setContactId(entity.getContactId());
+                    vo.setRemarkType(entity.getRemarkType());
+                    vo.setRemarkContent(entity.getRemarkContent());
+                    vo.setRemarkName(entity.getRemarkName());
+                    vo.setRemarkDate(entity.getRemarkDate());
+                    vo.setCreatorId(entity.getCreatorId());
+                    vo.setCreateTime(entity.getCreateTime());
+                    vo.setUpdateTime(entity.getUpdateTime());
+
+                    switch (entity.getRemarkType()) {
+                      case 1:
+                        vo.setRemarkTypeDesc("喜好");
+                        break;
+                      case 2:
+                        vo.setRemarkTypeDesc("住址");
+                        break;
+                      case 3:
+                        vo.setRemarkTypeDesc("本人出生日期");
+                        break;
+                      case 4:
+                        vo.setRemarkTypeDesc("亲属出生日期");
+                        break;
+                      case 5:
+                        vo.setRemarkTypeDesc("自定义");
+                    }
+
+                    return vo;
+                  })
+              .collect(Collectors.toList());
     }
-
-    return entityList.stream()
-        .map(
-            entity -> {
-              CustomerContactRemarkVO vo = new CustomerContactRemarkVO();
-              vo.setId(entity.getId());
-              vo.setContactId(entity.getContactId());
-              vo.setRemarkType(entity.getRemarkType());
-              vo.setRemarkContent(entity.getRemarkContent());
-              vo.setRemarkName(entity.getRemarkName());
-              vo.setRemarkDate(entity.getRemarkDate());
-              vo.setCreatorId(entity.getCreatorId());
-              vo.setCreateTime(entity.getCreateTime());
-              vo.setUpdateTime(entity.getUpdateTime());
-
-              switch (entity.getRemarkType()) {
-                case 1:
-                  vo.setRemarkTypeDesc("喜好");
-                  break;
-                case 2:
-                  vo.setRemarkTypeDesc("住址");
-                  break;
-                case 3:
-                  vo.setRemarkTypeDesc("本人出生日期");
-                  break;
-                case 4:
-                  vo.setRemarkTypeDesc("亲属出生日期");
-                  break;
-                case 5:
-                  vo.setRemarkTypeDesc("自定义");
-              }
-
-              return vo;
-            })
-        .collect(Collectors.toList());
+    return result;
   }
 }

@@ -35,16 +35,13 @@ public class SubPermissionVO {
    * @return SubPermissionVO
    */
   public static SubPermissionVO fromEntity(PermissionsEntity entity) {
-    if (entity == null) {
-      return null;
-    }
-
     Long parentId = null;
-    PermissionOperates operates = PermissionOperates.fromId(entity.getId());
-    if (operates != null) {
-      parentId = operates.getParentPermissionId();
+    if (entity != null) {
+      PermissionOperates operates = PermissionOperates.fromId(entity.getId());
+      if (operates != null) {
+        parentId = operates.getParentPermissionId();
+      }
     }
-
-    return new SubPermissionVO(entity, parentId);
+    return entity == null ? null : new SubPermissionVO(entity, parentId);
   }
 }

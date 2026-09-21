@@ -88,29 +88,27 @@ public class CustomerContactVO implements Privacy {
       String companyName,
       String creatorName,
       List<CustomerContactRemarkVO> remarkVOList) {
-    if (entity == null) {
-      return null;
+    CustomerContactVO vo = null;
+    if (entity != null) {
+      vo = new CustomerContactVO();
+      vo.setId(entity.getId());
+      vo.setCompanyId(entity.getCompanyId());
+      vo.setCompanyName(companyName);
+      vo.setName(entity.getName());
+      vo.setPosition(entity.getPosition());
+      vo.setDept(entity.getDept());
+      vo.setPhone(entity.getPhone());
+      vo.setMobile(entity.getMobile());
+      vo.setEmail(entity.getEmail());
+      vo.setGender(entity.getGender());
+      vo.setRelationLevel(entity.getRelationLevel());
+      vo.setCreateId(entity.getCreatorId());
+      vo.setCreatorName(creatorName);
+      vo.setIsDeleted(entity.getIsDeleted() != null && entity.getIsDeleted() ? 1 : 0);
+      vo.setCreateTime(entity.getCreateTime());
+      vo.setUpdateTime(entity.getUpdateTime());
+      vo.setRemarks(remarkVOList);
     }
-
-    CustomerContactVO vo = new CustomerContactVO();
-    vo.setId(entity.getId());
-    vo.setCompanyId(entity.getCompanyId());
-    vo.setCompanyName(companyName);
-    vo.setName(entity.getName());
-    vo.setPosition(entity.getPosition());
-    vo.setDept(entity.getDept());
-    vo.setPhone(entity.getPhone());
-    vo.setMobile(entity.getMobile());
-    vo.setEmail(entity.getEmail());
-    vo.setGender(entity.getGender());
-    vo.setRelationLevel(entity.getRelationLevel());
-    vo.setCreateId(entity.getCreatorId());
-    vo.setCreatorName(creatorName);
-    vo.setIsDeleted(entity.getIsDeleted() != null && entity.getIsDeleted() ? 1 : 0);
-    vo.setCreateTime(entity.getCreateTime());
-    vo.setUpdateTime(entity.getUpdateTime());
-    vo.setRemarks(remarkVOList);
-
     return vo;
   }
 }

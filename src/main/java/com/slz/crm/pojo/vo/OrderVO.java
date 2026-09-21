@@ -36,19 +36,17 @@ public class OrderVO implements Privacy {
    * @return OrderVO
    */
   public static OrderVO fromEntity(ContractOrderItemEntity entity) {
-    if (entity == null) {
-      return null;
+    OrderVO vo = null;
+    if (entity != null) {
+      vo = new OrderVO();
+      vo.setId(entity.getId());
+      vo.setContractId(entity.getContractId());
+      vo.setProductName(entity.getProductName());
+      vo.setQuantity(entity.getQuantity());
+      vo.setUnitPrice(entity.getUnitPrice());
+      vo.setAmount(entity.getAmount());
+      vo.setRemark(entity.getRemark());
     }
-
-    OrderVO vo = new OrderVO();
-    vo.setId(entity.getId());
-    vo.setContractId(entity.getContractId());
-    vo.setProductName(entity.getProductName());
-    vo.setQuantity(entity.getQuantity());
-    vo.setUnitPrice(entity.getUnitPrice());
-    vo.setAmount(entity.getAmount());
-    vo.setRemark(entity.getRemark());
-
     return vo;
   }
 }

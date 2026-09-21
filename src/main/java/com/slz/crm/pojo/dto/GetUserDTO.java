@@ -36,16 +36,10 @@ public class GetUserDTO {
   private Integer pageSize;
 
   public Integer getPageNum() {
-    if (pageNum == null) {
-      return 1;
-    }
-    return pageNum;
+    return pageNum != null ? pageNum : 1;
   }
 
   public Integer getPageSize() {
-    if (pageSize == null) {
-      return 10;
-    }
-    return pageSize;
+    return pageSize != null ? pageSize : 10;
   }
 }

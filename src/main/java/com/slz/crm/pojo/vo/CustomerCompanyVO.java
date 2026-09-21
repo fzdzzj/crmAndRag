@@ -70,30 +70,28 @@ public class CustomerCompanyVO implements Privacy {
    */
   public static CustomerCompanyVO fromEntity(
       CustomerCompanyEntity entity, String creatorName, String ownerName) {
-    if (entity == null) {
-      return null;
+    CustomerCompanyVO vo = null;
+    if (entity != null) {
+      vo = new CustomerCompanyVO();
+      vo.setId(entity.getId());
+      vo.setCompanyName(entity.getCompanyName());
+      vo.setIndustry(entity.getIndustry());
+      vo.setCustomerType(entity.getCustomerType());
+      vo.setBelongGroup(entity.getBelongGroup());
+      vo.setDept(entity.getDept());
+      vo.setAddress(entity.getAddress());
+      vo.setPhone(entity.getPhone());
+      vo.setWebsite(entity.getWebsite());
+      vo.setDescription(entity.getDescription());
+      vo.setCreatorId(entity.getCreatorId());
+      vo.setOwnerId(entity.getOwnerId());
+      vo.setGrade(entity.getGrade());
+      vo.setCreateTime(entity.getCreateTime());
+      vo.setUpdateTime(entity.getUpdateTime());
+      vo.setIsDeleted(entity.getIsDeleted());
+      vo.setCreatorName(creatorName);
+      vo.setOwnerName(ownerName);
     }
-
-    CustomerCompanyVO vo = new CustomerCompanyVO();
-    vo.setId(entity.getId());
-    vo.setCompanyName(entity.getCompanyName());
-    vo.setIndustry(entity.getIndustry());
-    vo.setCustomerType(entity.getCustomerType());
-    vo.setBelongGroup(entity.getBelongGroup());
-    vo.setDept(entity.getDept());
-    vo.setAddress(entity.getAddress());
-    vo.setPhone(entity.getPhone());
-    vo.setWebsite(entity.getWebsite());
-    vo.setDescription(entity.getDescription());
-    vo.setCreatorId(entity.getCreatorId());
-    vo.setOwnerId(entity.getOwnerId());
-    vo.setGrade(entity.getGrade());
-    vo.setCreateTime(entity.getCreateTime());
-    vo.setUpdateTime(entity.getUpdateTime());
-    vo.setIsDeleted(entity.getIsDeleted());
-    vo.setCreatorName(creatorName);
-    vo.setOwnerName(ownerName);
-
     return vo;
   }
 }

@@ -23,15 +23,13 @@ public class PermissionVO {
    * @return PermissionVO
    */
   public static PermissionVO fromEntity(PermissionsEntity entity) {
-    if (entity == null) {
-      return null;
+    PermissionVO vo = null;
+    if (entity != null) {
+      vo = new PermissionVO();
+      vo.setId(entity.getId());
+      vo.setPermissionsName(entity.getPermissionsName());
+      vo.setPermissionsDesc(entity.getPermissionsDesc());
     }
-
-    PermissionVO vo = new PermissionVO();
-    vo.setId(entity.getId());
-    vo.setPermissionsName(entity.getPermissionsName());
-    vo.setPermissionsDesc(entity.getPermissionsDesc());
-
     return vo;
   }
 

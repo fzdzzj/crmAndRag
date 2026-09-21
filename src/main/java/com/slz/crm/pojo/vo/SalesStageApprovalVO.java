@@ -69,34 +69,32 @@ public class SalesStageApprovalVO implements Privacy {
       String currentStage,
       String targetStage,
       String approverName) {
-    if (entity == null) {
-      return null;
+    SalesStageApprovalVO vo = null;
+    if (entity != null) {
+      vo = new SalesStageApprovalVO();
+      vo.setId(entity.getId());
+      vo.setOpportunityId(entity.getOpportunityId());
+      vo.setOpportunityName(opportunityName);
+      vo.setCurrentStage(currentStage);
+      vo.setTargetStage(targetStage);
+      vo.setApproverId(entity.getApproverId());
+      vo.setApproverName(approverName);
+      vo.setApprovalStatus(entity.getApprovalStatus());
+      vo.setApprovalTriggered(!Boolean.FALSE.equals(entity.getApprovalTriggered()));
+      // 设置审批状态描述
+      String statusDesc =
+          switch (entity.getApprovalStatus()) {
+            case 0 -> "待审批";
+            case 1 -> "同意";
+            case 2 -> "拒绝";
+            case 3 -> "退回修改";
+            default -> "未知状态";
+          };
+      vo.setApprovalStatusDesc(statusDesc);
+      vo.setApprovalOpinion(entity.getApprovalOpinion());
+      vo.setMessage(entity.getMessage());
+      vo.setApplyTime(entity.getApplyTime());
     }
-
-    SalesStageApprovalVO vo = new SalesStageApprovalVO();
-    vo.setId(entity.getId());
-    vo.setOpportunityId(entity.getOpportunityId());
-    vo.setOpportunityName(opportunityName);
-    vo.setCurrentStage(currentStage);
-    vo.setTargetStage(targetStage);
-    vo.setApproverId(entity.getApproverId());
-    vo.setApproverName(approverName);
-    vo.setApprovalStatus(entity.getApprovalStatus());
-    vo.setApprovalTriggered(!Boolean.FALSE.equals(entity.getApprovalTriggered()));
-    // 设置审批状态描述
-    String statusDesc =
-        switch (entity.getApprovalStatus()) {
-          case 0 -> "待审批";
-          case 1 -> "同意";
-          case 2 -> "拒绝";
-          case 3 -> "退回修改";
-          default -> "未知状态";
-        };
-    vo.setApprovalStatusDesc(statusDesc);
-    vo.setApprovalOpinion(entity.getApprovalOpinion());
-    vo.setMessage(entity.getMessage());
-    vo.setApplyTime(entity.getApplyTime());
-
     return vo;
   }
 }

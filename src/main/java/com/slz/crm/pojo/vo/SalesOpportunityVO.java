@@ -65,31 +65,29 @@ public class SalesOpportunityVO implements Privacy {
       String ownerName,
       String creatorName,
       String approverName) {
-    if (entity == null) {
-      return null;
+    SalesOpportunityVO vo = null;
+    if (entity != null) {
+      vo = new SalesOpportunityVO();
+      vo.setId(entity.getId());
+      vo.setOpportunityName(entity.getOpportunityName());
+      vo.setCompanyId(entity.getCompanyId());
+      vo.setCompanyName(companyName);
+      vo.setContactId(entity.getContactId());
+      vo.setContactName(contactName);
+      vo.setStage(entity.getStage());
+      vo.setAmount(entity.getAmount());
+      vo.setExpectedCloseDate(entity.getExpectedCloseDate());
+      vo.setSource(entity.getSource());
+      vo.setDescription(entity.getDescription());
+      vo.setOwnerId(entity.getOwnerId());
+      vo.setOwnerName(ownerName);
+      vo.setCreatorId(entity.getCreatorId());
+      vo.setCreatorName(creatorName);
+      vo.setApproverId(entity.getApproverId());
+      vo.setApproverName(approverName);
+      vo.setCreateTime(entity.getCreateTime());
+      vo.setUpdateTime(entity.getUpdateTime());
     }
-
-    SalesOpportunityVO vo = new SalesOpportunityVO();
-    vo.setId(entity.getId());
-    vo.setOpportunityName(entity.getOpportunityName());
-    vo.setCompanyId(entity.getCompanyId());
-    vo.setCompanyName(companyName);
-    vo.setContactId(entity.getContactId());
-    vo.setContactName(contactName);
-    vo.setStage(entity.getStage());
-    vo.setAmount(entity.getAmount());
-    vo.setExpectedCloseDate(entity.getExpectedCloseDate());
-    vo.setSource(entity.getSource());
-    vo.setDescription(entity.getDescription());
-    vo.setOwnerId(entity.getOwnerId());
-    vo.setOwnerName(ownerName);
-    vo.setCreatorId(entity.getCreatorId());
-    vo.setCreatorName(creatorName);
-    vo.setApproverId(entity.getApproverId());
-    vo.setApproverName(approverName);
-    vo.setCreateTime(entity.getCreateTime());
-    vo.setUpdateTime(entity.getUpdateTime());
-
     return vo;
   }
 }

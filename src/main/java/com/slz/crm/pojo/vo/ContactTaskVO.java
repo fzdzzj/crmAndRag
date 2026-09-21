@@ -105,82 +105,80 @@ public class ContactTaskVO {
       String assigneeName,
       String assignerName,
       String creatorName) {
-    if (entity == null) {
-      return null;
+    ContactTaskVO vo = null;
+    if (entity != null) {
+      vo = new ContactTaskVO();
+      vo.setId(entity.getId());
+      vo.setTaskTitle(entity.getTaskTitle());
+      vo.setCompanyId(entity.getCompanyId());
+      vo.setCompanyName(companyName);
+      vo.setContactId(entity.getContactId());
+      vo.setContactName(contactName);
+      vo.setOpportunityId(entity.getOpportunityId());
+      vo.setOpportunityTitle(opportunityTitle);
+      vo.setTaskType(entity.getTaskType());
+      vo.setTaskContent(entity.getTaskContent());
+      vo.setStartTime(
+          entity.getStartTime() != null
+              ? entity
+                  .getStartTime()
+                  .toInstant()
+                  .atZone(java.time.ZoneId.systemDefault())
+                  .toLocalDateTime()
+              : null);
+      vo.setEndTime(
+          entity.getEndTime() != null
+              ? entity
+                  .getEndTime()
+                  .toInstant()
+                  .atZone(java.time.ZoneId.systemDefault())
+                  .toLocalDateTime()
+              : null);
+
+      // 设置优先级（转换为字符串）
+      String priority =
+          switch (entity.getPriority()) {
+            case 0, 1, 2 -> "低";
+            case 3, 4, 5 -> "中";
+            case 6, 7, 8 -> "高";
+            case 9 -> "紧急";
+            default -> "未设置";
+          };
+      vo.setPriority(priority);
+
+      // 设置状态（转换为字符串）
+      String status =
+          switch (entity.getStatus()) {
+            case 0 -> "未开始";
+            case 1 -> "进行中";
+            case 2 -> "已完成";
+            case 3 -> "已取消";
+            default -> "未知状态";
+          };
+      vo.setStatus(status);
+      vo.setAssigneeId(entity.getAssigneeId());
+      vo.setAssigneeName(assigneeName);
+      vo.setAssignerId(entity.getAssignerId());
+      vo.setAssignerName(assignerName);
+      vo.setCreatorId(entity.getCreatorId());
+      vo.setCreatorName(creatorName);
+      vo.setCreateTime(
+          entity.getCreateTime() != null
+              ? entity
+                  .getCreateTime()
+                  .toInstant()
+                  .atZone(java.time.ZoneId.systemDefault())
+                  .toLocalDateTime()
+              : null);
+      vo.setUpdateTime(
+          entity.getUpdateTime() != null
+              ? entity
+                  .getUpdateTime()
+                  .toInstant()
+                  .atZone(java.time.ZoneId.systemDefault())
+                  .toLocalDateTime()
+              : null);
     }
-
-    ContactTaskVO vo = new ContactTaskVO();
-    vo.setId(entity.getId());
-    vo.setTaskTitle(entity.getTaskTitle());
-    vo.setCompanyId(entity.getCompanyId());
-    vo.setCompanyName(companyName);
-    vo.setContactId(entity.getContactId());
-    vo.setContactName(contactName);
-    vo.setOpportunityId(entity.getOpportunityId());
-    vo.setOpportunityTitle(opportunityTitle);
-    vo.setTaskType(entity.getTaskType());
-    vo.setTaskContent(entity.getTaskContent());
-    vo.setStartTime(
-        entity.getStartTime() != null
-            ? entity
-                .getStartTime()
-                .toInstant()
-                .atZone(java.time.ZoneId.systemDefault())
-                .toLocalDateTime()
-            : null);
-    vo.setEndTime(
-        entity.getEndTime() != null
-            ? entity
-                .getEndTime()
-                .toInstant()
-                .atZone(java.time.ZoneId.systemDefault())
-                .toLocalDateTime()
-            : null);
-
-    // 设置优先级（转换为字符串）
-    String priority =
-        switch (entity.getPriority()) {
-          case 0, 1, 2 -> "低";
-          case 3, 4, 5 -> "中";
-          case 6, 7, 8 -> "高";
-          case 9 -> "紧急";
-          default -> "未设置";
-        };
-    vo.setPriority(priority);
-
-    // 设置状态（转换为字符串）
-    String status =
-        switch (entity.getStatus()) {
-          case 0 -> "未开始";
-          case 1 -> "进行中";
-          case 2 -> "已完成";
-          case 3 -> "已取消";
-          default -> "未知状态";
-        };
-    vo.setStatus(status);
-    vo.setAssigneeId(entity.getAssigneeId());
-    vo.setAssigneeName(assigneeName);
-    vo.setAssignerId(entity.getAssignerId());
-    vo.setAssignerName(assignerName);
-    vo.setCreatorId(entity.getCreatorId());
-    vo.setCreatorName(creatorName);
-    vo.setCreateTime(
-        entity.getCreateTime() != null
-            ? entity
-                .getCreateTime()
-                .toInstant()
-                .atZone(java.time.ZoneId.systemDefault())
-                .toLocalDateTime()
-            : null);
-    vo.setUpdateTime(
-        entity.getUpdateTime() != null
-            ? entity
-                .getUpdateTime()
-                .toInstant()
-                .atZone(java.time.ZoneId.systemDefault())
-                .toLocalDateTime()
-            : null);
-
     return vo;
   }
 }

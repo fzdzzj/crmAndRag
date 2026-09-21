@@ -86,41 +86,39 @@ public class ContractVO implements Privacy {
       String opportunityName,
       String ownerName,
       String creatorName) {
-    if (entity == null) {
-      return null;
+    ContractVO vo = null;
+    if (entity != null) {
+      vo = new ContractVO();
+      vo.setId(entity.getId());
+      vo.setContractNo(entity.getContractNo());
+      vo.setOpportunityId(entity.getOpportunityId());
+      vo.setOpportunityName(opportunityName);
+      vo.setCompanyId(entity.getCompanyId());
+      vo.setCompanyName(companyName);
+      vo.setContractName(entity.getContractName());
+      vo.setTotalAmount(entity.getTotalAmount());
+      vo.setSignDate(entity.getSignDate() != null ? entity.getSignDate() : null);
+      vo.setStartDate(entity.getStartDate() != null ? entity.getStartDate() : null);
+      vo.setEndDate(entity.getEndDate() != null ? entity.getEndDate() : null);
+      vo.setContractStatus(entity.getContractStatus());
+      // 设置合同状态描述
+      String statusDesc =
+          switch (entity.getContractStatus()) {
+            case 0 -> "预签约";
+            case 1 -> "已生效";
+            case 2 -> "已终止";
+            case 3 -> "已完成";
+            case 4 -> "已弃用";
+            default -> "未知状态";
+          };
+      vo.setContractStatusDesc(statusDesc);
+      vo.setOwnerId(entity.getOwnerId());
+      vo.setOwnerName(ownerName);
+      vo.setCreatorId(entity.getCreatorId());
+      vo.setCreatorName(creatorName);
+      vo.setCreateTime(entity.getCreateTime());
+      vo.setUpdateTime(entity.getUpdateTime());
     }
-
-    ContractVO vo = new ContractVO();
-    vo.setId(entity.getId());
-    vo.setContractNo(entity.getContractNo());
-    vo.setOpportunityId(entity.getOpportunityId());
-    vo.setOpportunityName(opportunityName);
-    vo.setCompanyId(entity.getCompanyId());
-    vo.setCompanyName(companyName);
-    vo.setContractName(entity.getContractName());
-    vo.setTotalAmount(entity.getTotalAmount());
-    vo.setSignDate(entity.getSignDate() != null ? entity.getSignDate() : null);
-    vo.setStartDate(entity.getStartDate() != null ? entity.getStartDate() : null);
-    vo.setEndDate(entity.getEndDate() != null ? entity.getEndDate() : null);
-    vo.setContractStatus(entity.getContractStatus());
-    // 设置合同状态描述
-    String statusDesc =
-        switch (entity.getContractStatus()) {
-          case 0 -> "预签约";
-          case 1 -> "已生效";
-          case 2 -> "已终止";
-          case 3 -> "已完成";
-          case 4 -> "已弃用";
-          default -> "未知状态";
-        };
-    vo.setContractStatusDesc(statusDesc);
-    vo.setOwnerId(entity.getOwnerId());
-    vo.setOwnerName(ownerName);
-    vo.setCreatorId(entity.getCreatorId());
-    vo.setCreatorName(creatorName);
-    vo.setCreateTime(entity.getCreateTime());
-    vo.setUpdateTime(entity.getUpdateTime());
-
     return vo;
   }
 }

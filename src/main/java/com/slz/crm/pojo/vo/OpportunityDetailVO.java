@@ -95,18 +95,22 @@ public class OpportunityDetailVO implements Privacy {
    * @return 阶段名称
    */
   public static String getStageName(Integer stage) {
+    String result;
     if (stage == null) {
-      return "未知阶段";
+      result = "未知阶段";
+    } else {
+      result =
+          switch (stage) {
+            case 0 -> "种子商机";
+            case 1 -> "潜在商机";
+            case 2 -> "确认商机";
+            case 3 -> "储备项目";
+            case 4 -> "立项签约";
+            case 5 -> "关闭";
+            default -> "未知阶段";
+          };
     }
-    return switch (stage) {
-      case 0 -> "种子商机";
-      case 1 -> "潜在商机";
-      case 2 -> "确认商机";
-      case 3 -> "储备项目";
-      case 4 -> "立项签约";
-      case 5 -> "关闭";
-      default -> "未知阶段";
-    };
+    return result;
   }
 
   /**
@@ -127,31 +131,29 @@ public class OpportunityDetailVO implements Privacy {
       String ownerName,
       String creatorName,
       String approverName) {
-    if (entity == null) {
-      return null;
+    OpportunityDetailVO vo = null;
+    if (entity != null) {
+      vo = new OpportunityDetailVO();
+      vo.setId(entity.getId());
+      vo.setOpportunityName(entity.getOpportunityName());
+      vo.setCompanyId(entity.getCompanyId());
+      vo.setCompanyName(companyName);
+      vo.setContactId(entity.getContactId());
+      vo.setContactName(contactName);
+      vo.setStage(entity.getStage());
+      vo.setAmount(entity.getAmount());
+      vo.setExpectedCloseDate(entity.getExpectedCloseDate());
+      vo.setSource(entity.getSource());
+      vo.setDescription(entity.getDescription());
+      vo.setOwnerId(entity.getOwnerId());
+      vo.setOwnerName(ownerName);
+      vo.setApproverId(entity.getApproverId());
+      vo.setApproverName(approverName);
+      vo.setCreatorId(entity.getCreatorId());
+      vo.setCreatorName(creatorName);
+      vo.setCreateTime(entity.getCreateTime());
+      vo.setUpdateTime(entity.getUpdateTime());
     }
-
-    OpportunityDetailVO vo = new OpportunityDetailVO();
-    vo.setId(entity.getId());
-    vo.setOpportunityName(entity.getOpportunityName());
-    vo.setCompanyId(entity.getCompanyId());
-    vo.setCompanyName(companyName);
-    vo.setContactId(entity.getContactId());
-    vo.setContactName(contactName);
-    vo.setStage(entity.getStage());
-    vo.setAmount(entity.getAmount());
-    vo.setExpectedCloseDate(entity.getExpectedCloseDate());
-    vo.setSource(entity.getSource());
-    vo.setDescription(entity.getDescription());
-    vo.setOwnerId(entity.getOwnerId());
-    vo.setOwnerName(ownerName);
-    vo.setApproverId(entity.getApproverId());
-    vo.setApproverName(approverName);
-    vo.setCreatorId(entity.getCreatorId());
-    vo.setCreatorName(creatorName);
-    vo.setCreateTime(entity.getCreateTime());
-    vo.setUpdateTime(entity.getUpdateTime());
-
     return vo;
   }
 }

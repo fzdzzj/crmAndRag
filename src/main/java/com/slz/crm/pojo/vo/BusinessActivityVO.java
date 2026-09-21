@@ -96,25 +96,23 @@ public class BusinessActivityVO implements Privacy {
    */
   public static BusinessActivityVO fromEntity(
       BusinessActivityEntity entity, String creatorName, String opportunityName) {
-    if (entity == null) {
-      return null;
+    BusinessActivityVO vo = null;
+    if (entity != null) {
+      vo = new BusinessActivityVO();
+      vo.setId(entity.getId());
+      vo.setActivityTitle(entity.getActivityTitle());
+      vo.setActivityContent(entity.getActivityContent());
+      vo.setActivityTime(entity.getActivityTime());
+      vo.setActivityType(entity.getActivityType());
+      vo.setActivityDuration(entity.getActivityDuration());
+      vo.setOpportunityId(entity.getOpportunityId());
+      vo.setCreateTime(entity.getCreateTime());
+      vo.setRemark(entity.getRemark());
+      vo.setCreatorId(entity.getCreatorId());
+      vo.setCreatorName(creatorName);
+      vo.setOpportunityName(opportunityName);
+      vo.setTaskId(entity.getTaskId());
     }
-
-    BusinessActivityVO vo = new BusinessActivityVO();
-    vo.setId(entity.getId());
-    vo.setActivityTitle(entity.getActivityTitle());
-    vo.setActivityContent(entity.getActivityContent());
-    vo.setActivityTime(entity.getActivityTime());
-    vo.setActivityType(entity.getActivityType());
-    vo.setActivityDuration(entity.getActivityDuration());
-    vo.setOpportunityId(entity.getOpportunityId());
-    vo.setCreateTime(entity.getCreateTime());
-    vo.setRemark(entity.getRemark());
-    vo.setCreatorId(entity.getCreatorId());
-    vo.setCreatorName(creatorName);
-    vo.setOpportunityName(opportunityName);
-    vo.setTaskId(entity.getTaskId());
-
     return vo;
   }
 }

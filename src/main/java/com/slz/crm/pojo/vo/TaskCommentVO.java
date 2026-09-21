@@ -36,18 +36,16 @@ public class TaskCommentVO {
    * @return TaskCommentVO
    */
   public static TaskCommentVO fromEntity(TaskCommentEntity entity, String creatorName) {
-    if (entity == null) {
-      return null;
+    TaskCommentVO vo = null;
+    if (entity != null) {
+      vo = new TaskCommentVO();
+      vo.setId(entity.getId());
+      vo.setTaskId(entity.getTaskId());
+      vo.setContent(entity.getContent());
+      vo.setCreatorId(entity.getCreatorId());
+      vo.setCreatorName(creatorName);
+      vo.setCreateTime(entity.getCreateTime());
     }
-
-    TaskCommentVO vo = new TaskCommentVO();
-    vo.setId(entity.getId());
-    vo.setTaskId(entity.getTaskId());
-    vo.setContent(entity.getContent());
-    vo.setCreatorId(entity.getCreatorId());
-    vo.setCreatorName(creatorName);
-    vo.setCreateTime(entity.getCreateTime());
-
     return vo;
   }
 }

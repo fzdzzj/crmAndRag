@@ -22,15 +22,13 @@ public class RoleVO {
    * @return RoleVO
    */
   public static RoleVO fromEntity(RoleEntity entity) {
-    if (entity == null) {
-      return null;
+    RoleVO vo = null;
+    if (entity != null) {
+      vo = new RoleVO();
+      vo.setId(entity.getId());
+      vo.setRoleName(entity.getRoleName());
+      vo.setRoleDesc(entity.getRoleDesc());
     }
-
-    RoleVO vo = new RoleVO();
-    vo.setId(entity.getId());
-    vo.setRoleName(entity.getRoleName());
-    vo.setRoleDesc(entity.getRoleDesc());
-
     return vo;
   }
 }

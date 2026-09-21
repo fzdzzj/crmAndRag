@@ -50,21 +50,19 @@ public class BusinessActivityContactVO {
       String activityName,
       String contactName,
       String creatorName) {
-    if (entity == null) {
-      return null;
+    BusinessActivityContactVO vo = null;
+    if (entity != null) {
+      vo = new BusinessActivityContactVO();
+      vo.setId(entity.getId());
+      vo.setActivityId(entity.getActivityId());
+      vo.setActivityName(activityName);
+      vo.setContactId(entity.getContactId());
+      vo.setContactRole(entity.getContactRole());
+      vo.setContactName(contactName);
+      vo.setCreatorId(entity.getCreatorId());
+      vo.setCreatorName(creatorName);
+      vo.setCreateTime(entity.getCreateTime());
     }
-
-    BusinessActivityContactVO vo = new BusinessActivityContactVO();
-    vo.setId(entity.getId());
-    vo.setActivityId(entity.getActivityId());
-    vo.setActivityName(activityName);
-    vo.setContactId(entity.getContactId());
-    vo.setContactRole(entity.getContactRole());
-    vo.setContactName(contactName);
-    vo.setCreatorId(entity.getCreatorId());
-    vo.setCreatorName(creatorName);
-    vo.setCreateTime(entity.getCreateTime());
-
     return vo;
   }
 }
