@@ -114,6 +114,12 @@ P4 正确指出：接了 CI 一步在本仓仍是"不会自动执行"（无触�
       → **钩子在真实提交里首次自动跑起来**：`e009f0f` 与 `8db51cb` 两次提交都触发了 `pnpm precommit:check`（lint + type-check）并全绿通过；`bb79148`（无前端文件暂存）正确短路，证明不误伤后端提交
       → 分批提交一律用显式 pathspec（`git commit -F … -- <路径>`），索引里预暂存的 2 个改名直到 `8db51cb` 才被认领，未被卷进无关提交；`work/`、`target/` 全程未入库
 - [x] 7.5 汇报：commit hash + 5 条判别式输出摘录 + Q1 最终选择的落地形态 + "哪些门禁现在会自己变红、哪些仍靠人跑"的清单；**不 push**
+      → 已交回主 agent 会话：7 个实现提交 + 收尾提交；Q1=选项 A；生效清单见本文件组 2/组 3/组 4/组 5 行尾与 7.6
+- [x] 7.6 **合并后重跑全量门禁抓出一条平台相关缺陷（2026-09-21，已修）**：在合并后的 master（`123c4a9`）上重跑 `bash scripts/merge-gate.sh` → `[bijection]` 红，`High=12 <Match>=12 MISS=11 STALE=11`，且 **MISS 与 STALE 是同一批 11 行**。根因：`scripts/tests/spotbugs-high-baseline.tsv` 与 `spotbugs-exclude.xml` 一旦被 git 跟踪，`core.autocrlf=true` 的 checkout 会经 smudge 把它们变成 CRLF，`\r` 挂在第 4 列尾巴上使 `comm` 判为不同行；只有文件末行（无尾换行）能配上，故 12 里恰好 1 对"通过"。
+      → 为什么交付时没发现：**台账未入库前是 LF，P3/P4 的实测与自测都在那个形态上跑，所以当时确实绿**；是我 `git add` + 切分支 checkout 之后字节才变。结论：台账类文件的判别必须在"被检出的形态"下验证，不能只在生成它的会话里验证。
+      → 修法（读入侧归一，不让数据迁就平台）：`spotbugs-exclude-staleness-check.sh` 的 `truth_rows()` 两个分支与 `ledger` 解析一律 `tr -d '\r'`；回归锁加在 `merge-gate-selftest.sh` 场景 10（CRLF 台账+ CRLF 快照必须仍 BIJECTION_OK；把成员名改坏必须变红；并断言本场景不得污染被跟踪文件），断言数 42 → **47**。
+      → 已把同一要求写进 `wire-pmd-ruleset` 的 P2 派发词（`pmd-violation-baseline.txt` 的读取侧必须容 CRLF，并照场景 10 做正/反两判）。
+      → 遗留：更彻底的做法是给这类台账加 `.gitattributes`（`text eol=lf`）从源头禁止转换；本轮先按读入侧归一，避免顺带改动全仓文本归因。
       → Q1 落地形态=选项 A：`core.hooksPath` 未改动，生效目录内新增可追踪转发器，Qoder 遥测钩子原样在位
       → **会自己变红的**：① 暂存了 `frontend/` 文件的那次 `git commit`（lint + type-check，实测两次触发）；② `bash scripts/merge-gate.sh` 的 6 个子门禁（含 SpotBugs 新 High、基线只增不减、前端单元轨、钩子在位、双射过期）——但它是"人跑一次、一次全查"，不是自动触发
       → **仍全靠人跑的**：`mvn test/verify`、`check-test-baseline.sh`、`merge-gate.sh` 本身、整份 `ci.yml`（无远端 → 无触发通道）

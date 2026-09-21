@@ -29,6 +29,7 @@
 
 ## 任务（按序）
 1. **3.1 落阈值**：读 P1 报告的实测条数，写进 pmd 块 `<maxAllowedViolations>`，并建 `scripts/tests/pmd-violation-baseline.txt` 存该值 + 生成命令 + 日期 + `source-revision`（口径照 `scripts/test-baseline.txt` 的头三行）。注释里写明"只允许由一次真实运行写入、只许下调"。
+   - **行尾陷阱（`harness-gates` 刚在 2026-09-21 踩过，别重复）**：本仓 `core.autocrlf=true`，任何**被跟踪的**台账/快照文件在 Windows 检出后都会变成 CRLF，`\r` 会挂在最后一列尾巴上，使 `comm`/字符串比较把同一行判成两行。因此 `pmd-violation-baseline.txt` 的**读取侧必须 `tr -d '\r'` 归一**（或把值解析做成"只取数字列"），并在 `pmd-baseline-check.sh` 里用一个 CRLF 版本的临时台账做过期判别的正/反两个场景 —— 参照 `scripts/tests/merge-gate-selftest.sh` 的场景 10 与 `spotbugs-exclude-staleness-check.sh` 的 `truth_rows`。
 2. **3.2 清掉假注释**：`pom.xml:443` 那句"代码异味检测（阈值≤5）"改为与真读者一致；全仓确认没有第二处"条数阈值"表述（`scripts/`、`docs/`、`openspec/` 里的**引用式指针**不算）。
 3. **3.3 建过期校验** `scripts/tests/pmd-baseline-check.sh`：读台账值与 `target/pmd.xml`（或等价产物）的实测条数，**登记值 > 实测值 → 非零退出并要求下调**；独立可跑、退出码有意义、参数只有 `--update`（用真实运行重写台账，且**含失败时拒绝写入**，照 `check-test-baseline.sh` 的语义）。
 4. **4.1 摘 skip** → `mvn -o -B -ntp pmd:check` 在基线内为绿。
