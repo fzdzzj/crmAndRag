@@ -12,8 +12,13 @@
 
 ## 2. 分片 B：OnlyOneReturn（732，按模块分批，每批独立收尾）
 
-- [ ] 2.1 盘点 732 处按模块分布，登记批次表（common/pojo/quality/knowledge/platform/server） ｜实测：
-- [ ] 2.2..2.7 逐模块批次：合并多 return 为单一出口（行为等价），每批 surefire 724/0/0/0 + merge-gate + 提交 + --update ｜实测：
+- [x] 2.1 盘点 732 处按模块分布，登记批次表（common/pojo/quality/knowledge/platform/server） ｜实测：target/pmd.xml 统计——common 34 / pojo 22 / quality 3 / knowledge 134 / platform 71 / server 468，合计 732，与台账 OneReturn 一致
+- [x] 2.2 common 批（34）：合并多 return 为单一出口（行为等价），pmd:check → --update → pom 同步 → merge-gate → 提交 ｜实测：1047→1013（-34，本模块 OnlyOneReturn 清零 0，其他规则无新增）；台账 1013/172、pom 469 行=1013；merge-gate 8 子门禁全 PASS（[unit] surefire 724 不变）
+- [ ] 2.3 pojo 批（22）｜实测：
+- [ ] 2.4 quality 批（3）｜实测：
+- [ ] 2.5 knowledge 批（134）｜实测：
+- [ ] 2.6 platform 批（71）｜实测：
+- [ ] 2.7 server 批（468）｜实测：
 
 ## 3. 分片 C：AvoidCatchingGenericException（134，逐例；前置 Q6 拍板）
 

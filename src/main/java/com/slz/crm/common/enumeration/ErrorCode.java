@@ -319,12 +319,14 @@ public enum ErrorCode {
    * @return ErrorCode枚举，未找到返回null
    */
   public static ErrorCode getByCode(Integer code) {
+    ErrorCode result = null;
     for (ErrorCode errorCode : values()) {
       if (errorCode.getCode().equals(code)) {
-        return errorCode;
+        result = errorCode;
+        break;
       }
     }
-    return null;
+    return result;
   }
 
   /**
@@ -334,11 +336,13 @@ public enum ErrorCode {
    * @return ErrorCode枚举，未找到返回null
    */
   public static ErrorCode getByMessageKey(String messageKey) {
+    ErrorCode result = null;
     for (ErrorCode errorCode : values()) {
       if (errorCode.getMessageKey().equals(messageKey)) {
-        return errorCode;
+        result = errorCode;
+        break;
       }
     }
-    return null;
+    return result;
   }
 }

@@ -96,6 +96,7 @@ public class ForeignKeyDeleteUtil {
 
   /** 逻辑删除主表记录 */
   private <T> Integer logicalDeleteMainRecord(Class<T> entityClass, Long id) {
+    Integer result = 0;
     String mapperBeanName = getMapperBeanName(entityClass);
     try {
       BaseMapper<T> mapper = applicationContext.getBean(mapperBeanName, BaseMapper.class);
@@ -108,23 +109,22 @@ public class ForeignKeyDeleteUtil {
 
       try {
         entityClass.getMethod("setIsDeleted", Boolean.class).invoke(updateEntity, true);
+        result = mapper.updateById((T) updateEntity);
+        log.info("逻辑删除主表记录: {}, 影响行数: {}", entityClass.getSimpleName(), result);
       } catch (NoSuchMethodException e) {
         log.warn("实体类 {} 没有isDeleted字段，跳过逻辑删除", entityClass.getSimpleName());
-        return 0;
       }
-
-      int result = mapper.updateById((T) updateEntity);
-      log.info("逻辑删除主表记录: {}, 影响行数: {}", entityClass.getSimpleName(), result);
-      return result;
     } catch (Exception e) {
       log.error("逻辑删除主表记录失败: {}", entityClass.getSimpleName(), e);
       throw new BaseException(ErrorCode.DATA_DELETE_FAILED);
     }
+    return result;
   }
 
   /** 获取子表中需要删除的记录ID */
   private <T> List<Long> getChildIds(
       Class<T> childEntityClass, String foreignKey, List<Long> parentIds, Integer resourceType) {
+    List<Long> result = List.of();
     String mapperBeanName = getMapperBeanName(childEntityClass);
     try {
       BaseMapper<T> mapper = applicationContext.getBean(mapperBeanName, BaseMapper.class);
@@ -140,25 +140,27 @@ public class ForeignKeyDeleteUtil {
 
       // 获取子表ID列表（假设主键字段为id）
       List<Object> objList = mapper.selectObjs(wrapper);
-      return objList.stream()
-          .map(
-              obj -> {
-                // 处理可能的类型转换（如Integer转Long，或字符串转Long）
-                if (obj instanceof Number) {
-                  return ((Number) obj).longValue(); // 数字类型直接转Long
-                } else if (obj instanceof String) {
-                  return Long.parseLong((String) obj); // 字符串转Long（根据实际场景决定是否需要）
-                } else {
-                  log.warn("无法转换类型 {} 为 Long，值：{}", obj.getClass(), obj);
-                  return null; // 或抛出异常，根据业务处理
-                }
-              })
-          .filter(Objects::nonNull) // 过滤转换失败的null
-          .collect(Collectors.toList());
+      result =
+          objList.stream()
+              .map(
+                  obj -> {
+                    // 处理可能的类型转换（如Integer转Long，或字符串转Long）
+                    if (obj instanceof Number) {
+                      return ((Number) obj).longValue(); // 数字类型直接转Long
+                    } else if (obj instanceof String) {
+                      return Long.parseLong((String) obj); // 字符串转Long（根据实际场景决定是否需要）
+                    } else {
+                      log.warn("无法转换类型 {} 为 Long，值：{}", obj.getClass(), obj);
+                      return null; // 或抛出异常，根据业务处理
+                    }
+                  })
+              .filter(Objects::nonNull) // 过滤转换失败的null
+              .collect(Collectors.toList());
     } catch (BeansException e) {
       log.error("获取子表ID失败: {}", mapperBeanName, e);
-      return List.of();
+      result = List.of();
     }
+    return result;
   }
 
   /** 删除子表的关联记录 */
@@ -196,6 +198,7 @@ public class ForeignKeyDeleteUtil {
     public static <T> String getColumn(Class<T> entityClass, String propertyName) {
       try {
         TableInfo tableInfo = TableInfoHelper.getTableInfo(entityClass);
+        String result = propertyName;
         if (tableInfo != null) {
           TableFieldInfo fieldInfo =
               tableInfo.getFieldList().stream()
@@ -205,9 +208,9 @@ public class ForeignKeyDeleteUtil {
                       () ->
                           new NoSuchFieldException(
                               "实体类" + entityClass.getName() + "不存在属性" + propertyName));
-          return fieldInfo.getColumn();
+          result = fieldInfo.getColumn();
         }
-        return propertyName;
+        return result;
       } catch (Exception e) {
         throw new BaseException(
             ErrorCode.ID_NOT_EXISTS,

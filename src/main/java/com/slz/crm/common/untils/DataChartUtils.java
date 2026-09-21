@@ -35,14 +35,18 @@ public class DataChartUtils {
     String englishTitle = convertToEnglishTitle(title);
 
     // 根据图表类型创建不同的图表
+    JFreeChart result;
     switch (chartType) {
       case LINE_CHART:
-        return createLineChart(chartData, englishTitle);
+        result = createLineChart(chartData, englishTitle);
+        break;
       case PIE_CHART:
-        return createPieChart(chartData, englishTitle);
+        result = createPieChart(chartData, englishTitle);
+        break;
       default:
         throw new IllegalArgumentException("不支持的图表类型: " + chartType);
     }
+    return result;
   }
 
   /**
@@ -52,20 +56,23 @@ public class DataChartUtils {
    * @return 英文标题
    */
   public static String convertToEnglishTitle(String chineseTitle) {
+    String result;
     if ("签约合同数".equals(chineseTitle)) {
-      return "Contract Count";
+      result = "Contract Count";
     } else if ("客户分布".equals(chineseTitle)) {
-      return "Customer Distribution";
+      result = "Customer Distribution";
     } else if ("业绩".equals(chineseTitle)) {
-      return "Performance";
+      result = "Performance";
     } else if ("回款金额".equals(chineseTitle)) {
-      return "Payment Amount";
+      result = "Payment Amount";
     } else if ("回款笔数".equals(chineseTitle)) {
-      return "Payment Count";
+      result = "Payment Count";
     } else if ("回款状态分布".equals(chineseTitle)) {
-      return "Payment Status Distribution";
+      result = "Payment Status Distribution";
+    } else {
+      result = chineseTitle; // 如果没有匹配的，返回原标题
     }
-    return chineseTitle; // 如果没有匹配的，返回原标题
+    return result;
   }
 
   /** 创建折线图 */

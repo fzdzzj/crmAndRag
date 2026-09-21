@@ -239,12 +239,14 @@ public class AttachmentDownloadTokenUtil {
    * @return true：已过期，false：未过期
    */
   public boolean isTokenExpired(String encryptedToken) {
+    boolean expired = true;
     try {
       parseDownloadToken(encryptedToken);
-      return false;
+      expired = false;
     } catch (IllegalArgumentException e) {
-      return true;
+      expired = true;
     }
+    return expired;
   }
 
   /** 下载令牌数据结构 */

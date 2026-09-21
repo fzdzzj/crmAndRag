@@ -310,32 +310,31 @@ public enum PermissionOperates {
    * @return 主权限ID，如果是主权限则返回null
    */
   public Long getParentPermissionId() {
-    if (!isDataScopePermission()) {
-      return null;
+    Long result = null;
+    if (isDataScopePermission()) {
+      String name = this.name();
+      String baseName = null;
+      if (name.endsWith("_ONLY_MY")) {
+        baseName = name.substring(0, name.length() - "_ONLY_MY".length());
+      } else if (name.endsWith("_TAGE")) {
+        baseName = name.substring(0, name.length() - "_TAGE".length());
+      } else if (name.endsWith("_ALL")) {
+        baseName = name.substring(0, name.length() - "_ALL".length());
+      } else if (name.endsWith("_DEPT_AND_SUB")) {
+        baseName = name.substring(0, name.length() - "_DEPT_AND_SUB".length());
+      } else if (name.endsWith("_DEPT")) {
+        baseName = name.substring(0, name.length() - "_DEPT".length());
+      }
+      if (baseName != null) {
+        try {
+          PermissionOperates parent = PermissionOperates.valueOf(baseName);
+          result = parent.getId();
+        } catch (IllegalArgumentException e) {
+          result = null;
+        }
+      }
     }
-
-    String name = this.name();
-    String baseName;
-    if (name.endsWith("_ONLY_MY")) {
-      baseName = name.substring(0, name.length() - "_ONLY_MY".length());
-    } else if (name.endsWith("_TAGE")) {
-      baseName = name.substring(0, name.length() - "_TAGE".length());
-    } else if (name.endsWith("_ALL")) {
-      baseName = name.substring(0, name.length() - "_ALL".length());
-    } else if (name.endsWith("_DEPT_AND_SUB")) {
-      baseName = name.substring(0, name.length() - "_DEPT_AND_SUB".length());
-    } else if (name.endsWith("_DEPT")) {
-      baseName = name.substring(0, name.length() - "_DEPT".length());
-    } else {
-      return null;
-    }
-
-    try {
-      PermissionOperates parent = PermissionOperates.valueOf(baseName);
-      return parent.getId();
-    } catch (IllegalArgumentException e) {
-      return null;
-    }
+    return result;
   }
 
   /**
@@ -345,14 +344,15 @@ public enum PermissionOperates {
    * @return 权限枚举，如果不存在则返回null
    */
   public static PermissionOperates fromId(Long id) {
-    if (id == null) {
-      return null;
-    }
-    for (PermissionOperates permission : values()) {
-      if (permission.getId().equals(id)) {
-        return permission;
+    PermissionOperates result = null;
+    if (id != null) {
+      for (PermissionOperates permission : values()) {
+        if (permission.getId().equals(id)) {
+          result = permission;
+          break;
+        }
       }
     }
-    return null;
+    return result;
   }
 }

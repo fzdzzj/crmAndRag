@@ -23,10 +23,7 @@ public final class ValidationUtils {
    * @return true-规范，false-不规范
    */
   public static boolean isValidMobile(String mobile) {
-    if (mobile == null || mobile.isEmpty()) {
-      return false;
-    }
-    return MOBILE_PATTERN.matcher(mobile).matches();
+    return mobile != null && !mobile.isEmpty() && MOBILE_PATTERN.matcher(mobile).matches();
   }
 
   /**
@@ -36,10 +33,7 @@ public final class ValidationUtils {
    * @return true-规范，false-不规范
    */
   public static boolean isValidPhone(String phone) {
-    if (phone == null || phone.isEmpty()) {
-      return false;
-    }
-    return PHONE_PATTERN.matcher(phone).matches();
+    return phone != null && !phone.isEmpty() && PHONE_PATTERN.matcher(phone).matches();
   }
 
   public static boolean isValidEmail(String email) {

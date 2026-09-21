@@ -74,48 +74,45 @@ public class ActuatorProtectionFilter implements Filter {
       chain.doFilter(request, response);
       return;
     }
-    if (!properties.isProtectedEnabled()) {
-      chain.doFilter(request, response);
-      return;
-    }
+    boolean forward = false;
     String path = resolvePath(req);
-    if (!path.startsWith("/actuator")) {
+    if (properties.isProtectedEnabled() && path.startsWith("/actuator") && !isPublic(path)) {
+      Long userId = authenticate(req);
+      boolean blocked = userId == null;
+      if (blocked) {
+        writeJson(
+            resp,
+            HttpStatus.UNAUTHORIZED,
+            PlatformErrorCode.UNAUTHORIZED.getCode(),
+            PlatformErrorCode.UNAUTHORIZED.getMessage());
+      } else {
+        Long roleId = loadRoleId(userId);
+        if (roleId == null) {
+          // token 合法但用户已被删除：视为未登录，避免僵尸 token 访问运维端点
+          writeJson(
+              resp,
+              HttpStatus.UNAUTHORIZED,
+              PlatformErrorCode.UNAUTHORIZED.getCode(),
+              PlatformErrorCode.UNAUTHORIZED.getMessage());
+        } else {
+          boolean superAdmin = roleId == 1L;
+          if (requiresSuperAdmin(path) && !superAdmin) {
+            log.warn("非超管访问敏感 Actuator 端点被拒绝: path={}, roleId={}", path, roleId);
+            writeJson(resp, HttpStatus.FORBIDDEN, 12002, "仅超级管理员可访问该端点");
+          } else {
+            req.setAttribute(ATTR_AUTHORIZED, Boolean.TRUE);
+            req.setAttribute(ATTR_SUPER_ADMIN, superAdmin);
+            forward = true;
+          }
+        }
+      }
+    } else {
+      // 未启用保护 / 非 Actuator 端点 / 探针白名单（组件明细由 show-details 控制，匿名只拿总体状态）
+      forward = true;
+    }
+    if (forward) {
       chain.doFilter(request, response);
-      return;
     }
-    if (isPublic(path)) {
-      // 探针放行：组件明细由 show-details=when_authorized 控制，匿名只拿总体状态
-      chain.doFilter(request, response);
-      return;
-    }
-    Long userId = authenticate(req);
-    if (userId == null) {
-      writeJson(
-          resp,
-          HttpStatus.UNAUTHORIZED,
-          PlatformErrorCode.UNAUTHORIZED.getCode(),
-          PlatformErrorCode.UNAUTHORIZED.getMessage());
-      return;
-    }
-    Long roleId = loadRoleId(userId);
-    if (roleId == null) {
-      // token 合法但用户已被删除：视为未登录，避免僵尸 token 访问运维端点
-      writeJson(
-          resp,
-          HttpStatus.UNAUTHORIZED,
-          PlatformErrorCode.UNAUTHORIZED.getCode(),
-          PlatformErrorCode.UNAUTHORIZED.getMessage());
-      return;
-    }
-    boolean superAdmin = roleId == 1L;
-    if (requiresSuperAdmin(path) && !superAdmin) {
-      log.warn("非超管访问敏感 Actuator 端点被拒绝: path={}, roleId={}", path, roleId);
-      writeJson(resp, HttpStatus.FORBIDDEN, 12002, "仅超级管理员可访问该端点");
-      return;
-    }
-    req.setAttribute(ATTR_AUTHORIZED, Boolean.TRUE);
-    req.setAttribute(ATTR_SUPER_ADMIN, superAdmin);
-    chain.doFilter(request, response);
   }
 
   /**
@@ -160,19 +157,19 @@ public class ActuatorProtectionFilter implements Filter {
    * @return 用户 id；token 缺失/无效返回 {@code null}（统一按 401 处理，不区分具体原因，避免探测）
    */
   private Long authenticate(HttpServletRequest request) {
+    Long result = null;
     String token = request.getHeader(jwtProperties.getTokenName());
-    if (!StringUtils.hasText(token)) {
-      return null;
+    if (StringUtils.hasText(token)) {
+      try {
+        Claims claims = JwtUntil.parseJWT(jwtProperties.getSecretKey(), token);
+        Long userId = claims.get("userID", Long.class);
+        result = Objects.isNull(userId) ? null : userId;
+      } catch (Exception e) {
+        // 不把异常细节透给客户端，只记服务端日志便于排查
+        log.debug("Actuator 访问 JWT 校验失败: {}", e.getMessage());
+      }
     }
-    try {
-      Claims claims = JwtUntil.parseJWT(jwtProperties.getSecretKey(), token);
-      Long userId = claims.get("userID", Long.class);
-      return Objects.isNull(userId) ? null : userId;
-    } catch (Exception e) {
-      // 不把异常细节透给客户端，只记服务端日志便于排查
-      log.debug("Actuator 访问 JWT 校验失败: {}", e.getMessage());
-      return null;
-    }
+    return result;
   }
 
   /**

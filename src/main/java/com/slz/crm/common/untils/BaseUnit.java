@@ -49,10 +49,11 @@ public class BaseUnit {
    * @return 解密后的明文密码
    */
   public static String decryptBase64(String encryptedPassword) {
-    if (encryptedPassword == null || encryptedPassword.isEmpty()) {
-      return encryptedPassword;
+    String result = encryptedPassword;
+    if (encryptedPassword != null && !encryptedPassword.isEmpty()) {
+      byte[] decodedBytes = Base64.getDecoder().decode(encryptedPassword);
+      result = new String(decodedBytes, StandardCharsets.UTF_8);
     }
-    byte[] decodedBytes = Base64.getDecoder().decode(encryptedPassword);
-    return new String(decodedBytes, StandardCharsets.UTF_8);
+    return result;
   }
 }

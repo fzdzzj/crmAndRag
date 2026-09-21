@@ -38,11 +38,13 @@ public enum DataScopeLevel {
    * @return 对应的 DataScopeLevel，如果没有匹配则返回 NONE
    */
   public static DataScopeLevel fromCode(int code) {
+    DataScopeLevel result = NONE;
     for (DataScopeLevel level : values()) {
       if (level.code == code) {
-        return level;
+        result = level;
+        break;
       }
     }
-    return NONE;
+    return result;
   }
 }

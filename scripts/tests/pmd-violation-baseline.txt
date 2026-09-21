@@ -1,6 +1,6 @@
 # PMD 存量条数基线：由 scripts/tests/pmd-baseline-check.sh --update 从一次真实 pmd:check 运行写入，禁止手改。
-# source-revision=5e05b95
-# measured-at=2026-09-21T13:08:42Z
+# source-revision=cd92b9d
+# measured-at=2026-09-21T13:36:21Z
 # 生成命令：mvn -B -ntp pmd:check（产出 target/pmd.xml）后 bash scripts/tests/pmd-baseline-check.sh --update
 # pmd.violations = 声明尺子下的违规条数；pmd.files = 本轮被分析的源文件数（用来识破「根本没分析」）。
 #
@@ -18,5 +18,5 @@
 # 命令写入，且只许下调不许上调 —— --update 在实测 > 登记时直接拒绝写入。
 # 边界语义实测：实测 == 登记 → 绿；实测 == 登记 + 1 → 红（插件是「严格大于才失败」）。
 # 因此修掉一条异味后 pmd:check 仍绿，必须靠 pmd-baseline-check.sh 把两处数字一起拽下来。
-pmd.violations=1047
-pmd.files=179
+pmd.violations=1013
+pmd.files=172

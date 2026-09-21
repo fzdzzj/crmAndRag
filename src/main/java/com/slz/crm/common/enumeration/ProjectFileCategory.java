@@ -23,15 +23,16 @@ public enum ProjectFileCategory {
    * @return 枚举值，不存在返回null
    */
   public static ProjectFileCategory fromCode(String code) {
-    if (code == null) {
-      return null;
-    }
-    for (ProjectFileCategory category : values()) {
-      if (category.getCode().equals(code)) {
-        return category;
+    ProjectFileCategory result = null;
+    if (code != null) {
+      for (ProjectFileCategory category : values()) {
+        if (category.getCode().equals(code)) {
+          result = category;
+          break;
+        }
       }
     }
-    return null;
+    return result;
   }
 
   /**
