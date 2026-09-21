@@ -149,33 +149,38 @@ public final class RagQualityEvaluator {
   }
 
   private static double firstRelevantReciprocal(List<String> retrieved, Set<String> expected) {
+    double result = 0d;
     for (int i = 0; i < retrieved.size(); i++) {
       if (expected.contains(retrieved.get(i))) {
-        return 1d / (i + 1);
+        result = 1d / (i + 1);
+        break;
       }
     }
-    return 0d;
+    return result;
   }
 
   /** 引用精度：答案实际引用的来源里，属于黄金片段的比例（伪造/越界引用拉低精度）。 */
   private static double citationPrecision(CaseOutcome outcome, Set<String> expected) {
     List<Integer> citations = outcome.citations();
+    double result;
     if (citations == null || citations.isEmpty()) {
       // 无引用：边界用例（expected 空）视为诚实正确；有黄金却零引用视为漏引
-      return expected.isEmpty() ? 1d : 0d;
-    }
-    List<String> retrieved = outcome.retrievedChunkIds();
-    int gold = 0;
-    int valid = 0;
-    for (Integer citation : citations) {
-      if (citation == null || citation < 1 || citation > retrieved.size()) {
-        continue; // 越界引用编号忽略（不计入分母）
+      result = expected.isEmpty() ? 1d : 0d;
+    } else {
+      List<String> retrieved = outcome.retrievedChunkIds();
+      int gold = 0;
+      int valid = 0;
+      for (Integer citation : citations) {
+        if (citation == null || citation < 1 || citation > retrieved.size()) {
+          continue; // 越界引用编号忽略（不计入分母）
+        }
+        valid++;
+        if (expected.contains(retrieved.get(citation - 1))) {
+          gold++;
+        }
       }
-      valid++;
-      if (expected.contains(retrieved.get(citation - 1))) {
-        gold++;
-      }
+      result = valid == 0 ? 0d : (double) gold / valid;
     }
-    return valid == 0 ? 0d : (double) gold / valid;
+    return result;
   }
 }

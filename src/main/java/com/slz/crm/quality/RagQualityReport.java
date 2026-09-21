@@ -80,11 +80,13 @@ public final class RagQualityReport {
      * @return 报告的 JSON 串（可归档、可跨次比较）；序列化失败返回 {@code {}}
      */
     public String toJson() {
+      String result = "{}";
       try {
-        return MAPPER.writeValueAsString(this);
+        result = MAPPER.writeValueAsString(this);
       } catch (JsonProcessingException e) {
-        return "{}";
+        result = "{}";
       }
+      return result;
     }
   }
 }
