@@ -447,6 +447,13 @@
                 <version>3.26.0</version>
                 <configuration>
                     <targetJdk>21</targetJdk>
+                    <!-- 尺子唯一来源：仓库声明的规则集。此前该块内没有 rulesets 配置，
+                         插件实际跑的是内置 rulesets/java/quickstart.xml，
+                         而 src/main/resources/pmd-rules.xml 是零读者的孤儿配置文件
+                         （登记见 docs/migration-runbook.md 6.7）。 -->
+                    <rulesets>
+                        <ruleset>src/main/resources/pmd-rules.xml</ruleset>
+                    </rulesets>
                     <printFailingErrors>true</printFailingErrors>
                     <failurePriority>4</failurePriority>
                     <linkXRef>false</linkXRef>

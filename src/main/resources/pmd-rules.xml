@@ -9,21 +9,19 @@
          xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
 
     <!-- 代码异味检测 -->
-    <rule ref="category/java/codestyle.xml/MultipleStringLiterals">
-        <properties>
-            <property name="ignoreOccurrenceContext" value="false"/>
-            <property name="minThreshold" value="4"/>
-        </properties>
-    </rule>
-
+    <!-- PMDC-P1 处置（2026-09-21，逐条依据见 work/mailbox/tasks/PMDC-P1/report.md §3）：
+         删除 codestyle/MultipleStringLiterals —— 7.9.0 jar 内 288 条 java 规则零匹配，无等价物；
+         删除 codestyle/UnusedImports —— 7.9.0 只有 UnnecessaryImport，而它已在下方声明，留两条即重复。 -->
     <rule ref="category/java/codestyle.xml/UnnecessaryImport"/>
     <rule ref="category/java/codestyle.xml/TooManyStaticImports"/>
-    <rule ref="category/java/codestyle.xml/UnusedImports"/>
     <rule ref="category/java/codestyle.xml/OnlyOneReturn"/>
     <rule ref="category/java/codestyle.xml/FieldNamingConventions"/>
     <rule ref="category/java/codestyle.xml/ClassNamingConventions"/>
-    <rule ref="category/java/codestyle.java/LocalVariableNamingConventions"/>
-    <rule ref="category/java/bestpractices.xml/MethodReturnsNewArray"/>
+    <!-- PMDC-P1 处置：仅改文件名笔误 codestyle.java -> codestyle.xml，规则本身与语义未变 -->
+    <rule ref="category/java/codestyle.xml/LocalVariableNamingConventions"/>
+    <!-- PMDC-P1 处置：换成 7.9.0 同分类下唯一存在的 MethodReturnsInternalArray（原写法 MethodReturnsNewArray
+         在 288 条规则里零匹配；这是名字笔误修复，不是放宽——该条此前从未跑过，本轮起才有真实命中数） -->
+    <rule ref="category/java/bestpractices.xml/MethodReturnsInternalArray"/>
     <rule ref="category/java/bestpractices.xml/AvoidPrintStackTrace"/>
     <rule ref="category/java/bestpractices.xml/SystemPrintln"/>
     <rule ref="category/java/bestpractices.xml/UnusedLocalVariable"/>
@@ -31,51 +29,67 @@
     <rule ref="category/java/bestpractices.xml/UseTryWithResources"/>
     
     <!-- 安全漏洞检测 -->
-    <rule ref="category/java/security.xml/HardCodedCrypto"/>
-    <rule ref="category/java/security.xml/InsecureCryptoWithIV"/>
+    <!-- PMDC-P1 处置：7.9.0 security.xml 里这两条规则的确切名是 HardCodedCryptoKey / InsecureCryptoIv
+         （原写法少了词尾 / IV 大小写写错），属改名而非删除，覆盖面不变 -->
+    <rule ref="category/java/security.xml/HardCodedCryptoKey"/>
+    <rule ref="category/java/security.xml/InsecureCryptoIv"/>
     
     <!-- 性能问题 -->
     <rule ref="category/java/performance.xml/InsufficientStringBufferDeclaration"/>
     <rule ref="category/java/performance.xml/UseArrayListInsteadOfVector"/>
-    <rule ref="category/java/performance.xml/SimplifyStartsWith"/>
+    <!-- PMDC-P1 处置：删除 performance/SimplifyStartsWith —— 7.9.0 jar 内规则名含 StartsWith 的为 0 条，
+         该规则在 7.x 已被移除，无等价物可换（删除即覆盖面缩窄，已如实登记在报告 §3） -->
     
     <!-- 异常处理 -->
-    <rule ref="category/java/errorprone.xml/AvoidCatchingGenericException"/>
+    <!-- PMDC-P1 处置：仅改分类路径 errorprone -> design，规则名与语义未变（7.9.0 里它住在 design.xml），
+         按 spec R2「只是搬家的规则不得被删除」处理 -->
+    <rule ref="category/java/design.xml/AvoidCatchingGenericException"/>
     <rule ref="category/java/errorprone.xml/EmptyCatchBlock"/>
-    <rule ref="category/java/errorprone.xml/DetectedEmptyClause"/>
-    <rule ref="category/java/errorprone.xml/CheckResultSet"/>
+    <!-- PMDC-P1 处置：删除 errorprone/DetectedEmptyClause —— 7.9.0 jar 内无任何 DetectedEmpty* 规则名，
+         且 errorprone 下与"空语句"相关的现存规则（EmptyCatchBlock 已声明 / EmptyControlStatement 未声明）
+         都不是它的同名搬家。不擅自换成 EmptyControlStatement（那属于扩规则，越出本包授权），交 owner 定夺 -->
+    <!-- PMDC-P1 处置：仅改分类路径 errorprone -> bestpractices，规则名与语义未变（同上，不得删除） -->
+    <rule ref="category/java/bestpractices.xml/CheckResultSet"/>
     
     <!-- 设计问题 -->
     <rule ref="category/java/design.xml/CognitiveComplexity">
         <properties>
-            <property name="classMax" value="75"/>
-            <property name="methodMax" value="25"/>
+            <!-- PMDC-P1 处置（属性名 7.9.0 不存在，非 ref 问题，见报告 §5）：
+                 原写法 methodMax=25 / classMax=75 两条都被 PMD 判 "Cannot set non-existent property"。
+                 javap 出 CognitiveComplexityRule 唯一属性名是 reportLevel，且它只 visit 方法/构造子
+                 （classMax 在 7.9.0 根本没有对应目标，故丢弃；数值 25 原样保留，不放宽） -->
+            <property name="reportLevel" value="25"/>
         </properties>
     </rule>
     
     <rule ref="category/java/design.xml/CyclomaticComplexity">
         <properties>
-            <property name="classMax" value="75"/>
-            <property name="methodMax" value="15"/>
+            <!-- PMDC-P1 处置：仅属性名搬家 classMax/methodMax -> classReportLevel/methodReportLevel
+                 （javap CyclomaticComplexityRule 得到真实名），数值 75 / 15 一字未改 -->
+            <property name="classReportLevel" value="75"/>
+            <property name="methodReportLevel" value="15"/>
         </properties>
     </rule>
     
     <rule ref="category/java/design.xml/NcssCount">
         <properties>
-            <property name="classMax" value="150"/>
-            <property name="methodMax" value="75"/>
+            <!-- PMDC-P1 处置：同上，classMax/methodMax -> classReportLevel/methodReportLevel，数值不变 -->
+            <property name="classReportLevel" value="150"/>
+            <property name="methodReportLevel" value="75"/>
         </properties>
     </rule>
     
     <rule ref="category/java/design.xml/TooManyMethods">
         <properties>
-            <property name="maxMethods" value="30"/>
+            <!-- PMDC-P1 处置：仅大小写笔误 maxMethods -> maxmethods（7.9.0 的真实属性名，见 category xml），数值 30 未改 -->
+            <property name="maxmethods" value="30"/>
         </properties>
     </rule>
     
     <rule ref="category/java/documentation.xml/CommentSize">
         <properties>
-            <property name="minLines" value="1"/>
+            <!-- PMDC-P1 处置：删除 minLines=1 —— javap CommentSizeRule 只有 maxLines / maxLineLength 两个属性，
+                 无 "最小行数" 概念（1 行本就是下限，删去不改变任何判定）；maxLines=20 原样保留 -->
             <property name="maxLines" value="20"/>
         </properties>
     </rule>
