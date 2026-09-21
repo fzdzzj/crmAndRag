@@ -109,5 +109,13 @@ P4 正确指出：接了 CI 一步在本仓仍是"不会自动执行"（无触�
 - [x] 7.3 逐项复核 proposal.md「验收」5 条判别式，每条附命令与实际输出摘录
       → ①钩子：`.git/hooks/pre-commit` 在位且可追踪到 `frontend/.githooks/pre-commit`，真阻断实测 exit 1（lint `no-explicit-any`），假转发器仍红；②静态：`pom.xml` 仅剩 `:457` 一处 `<skip>`(pmd)，`ci.yml` 无 `env:` 块、`pmd:check` 已移出，逐步写明 pom 读者行号，PMD 豁免四要素在 runbook §6.7；③声明：`ci.yml` 头部与 `git-workflow.md` 改指本地 `merge-gate`（`grep -c merge-gate`=2），`check_baseline`=0；④前端：`pnpm test`=163/163 绿并入 CI 第 8 步与 `[frontend-unit]`，e2e 未接入默认；⑤文档：五份治理文档同指 `scripts/test-baseline.txt`，无内嵌快照数字
       → 连带处置：`merge-gate` 跑完 vitest 会再次把 `frontend/typed-router.d.ts` 刷成 CR-only 差异（已按门禁 NOTE 的 `diff -q` 证明确认正文未变并 `git checkout` 还原）
-- [ ] 7.4 分支 `feature/operationalize-harness-gates`，按任务组提交 `type(scope): 中文描述`（提案三件套随首个提交入库）；`git status` 干净（`work/mailbox/**` 等已知未跟踪件不提交、不删除）后 `--no-ff` 合入 master
-- [ ] 7.5 汇报：commit hash + 5 条判别式输出摘录 + Q1 最终选择的落地形态 + "哪些门禁现在会自己变红、哪些仍靠人跑"的清单；**不 push**
+- [x] 7.4 分支 `feature/operationalize-harness-gates`，按任务组提交 `type(scope): 中文描述`（提案三件套随首个提交入库）；`git status` 干净（`work/mailbox/**` 等已知未跟踪件不提交、不删除）后 `--no-ff` 合入 master
+      → 7 个提交：`bb79148` 提案三件套 ｜ `e009f0f` 钩子 ｜ `e14df31` 静态门禁 ｜ `dee2a55` 后续提案 ｜ `8db51cb` CI+前端轨（含 2 个 `R100` 归档改名）｜ `3575239` merge-gate ｜ `fd20e28` 治理文档。汇总 29 文件 / +1654 / -61
+      → **钩子在真实提交里首次自动跑起来**：`e009f0f` 与 `8db51cb` 两次提交都触发了 `pnpm precommit:check`（lint + type-check）并全绿通过；`bb79148`（无前端文件暂存）正确短路，证明不误伤后端提交
+      → 分批提交一律用显式 pathspec（`git commit -F … -- <路径>`），索引里预暂存的 2 个改名直到 `8db51cb` 才被认领，未被卷进无关提交；`work/`、`target/` 全程未入库
+- [x] 7.5 汇报：commit hash + 5 条判别式输出摘录 + Q1 最终选择的落地形态 + "哪些门禁现在会自己变红、哪些仍靠人跑"的清单；**不 push**
+      → Q1 落地形态=选项 A：`core.hooksPath` 未改动，生效目录内新增可追踪转发器，Qoder 遥测钩子原样在位
+      → **会自己变红的**：① 暂存了 `frontend/` 文件的那次 `git commit`（lint + type-check，实测两次触发）；② `bash scripts/merge-gate.sh` 的 6 个子门禁（含 SpotBugs 新 High、基线只增不减、前端单元轨、钩子在位、双射过期）——但它是"人跑一次、一次全查"，不是自动触发
+      → **仍全靠人跑的**：`mvn test/verify`、`check-test-baseline.sh`、`merge-gate.sh` 本身、整份 `ci.yml`（无远端 → 无触发通道）
+      → **仍关闭的**：PMD（`pom.xml:457` 字面量 skip，豁免见 runbook §6.7，修复另见 `wire-pmd-ruleset`，其 Q1 待拍板、推荐 `maxAllowedViolations` 只降不升）
+      → 未 push；本轮未跑 `[it]`，failsafe 结论读自上一轮报告
