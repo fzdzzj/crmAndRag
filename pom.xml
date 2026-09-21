@@ -440,7 +440,11 @@
                 </dependencies>
             </plugin>
 
-            <!-- PMD:3.26.0 - 代码异味检测（阈值≤5） -->
+            <!-- PMD:3.26.0 - 代码异味检测。判定依据只有下面 <configuration> 里的两项：
+                 failurePriority 决定"哪条违规计入条数"，maxAllowedViolations 决定"计入多少条算失败"
+                 （后者是全仓唯一的条数读者）。基线值与口径见
+                 scripts/tests/pmd-violation-baseline.txt，只允许由
+                 scripts/tests/pmd-baseline-check.sh 从一次真实 pmd:check 运行写入且只许下调。 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-pmd-plugin</artifactId>
@@ -456,12 +460,18 @@
                     </rulesets>
                     <printFailingErrors>true</printFailingErrors>
                     <failurePriority>4</failurePriority>
+                    <!-- 条数阈值的唯一读者（wire-pmd-ruleset 拍板 Q1=A）：maxAllowedViolations。
+                         值只允许由 scripts/tests/pmd-baseline-check.sh 的 update 模式从一次真实
+                         pmd:check 运行写入，台账在 scripts/tests/pmd-violation-baseline.txt，
+                         只许下调不许上调（口径同 scripts/test-baseline.txt）。
+                         failurePriority 管"哪条违规计入条数"，本项管"计入多少条算失败"，
+                         两者不可互相换算。 -->
+                    <maxAllowedViolations>1329</maxAllowedViolations>
                     <linkXRef>false</linkXRef>
                     <excludeRoots>
                         <excludeRoot>target/generated-sources</excludeRoot>
                         <excludeRoot>target/generated-test-sources</excludeRoot>
                     </excludeRoots>
-                    <skip>true</skip>
                 </configuration>
                 <executions>
                     <execution>

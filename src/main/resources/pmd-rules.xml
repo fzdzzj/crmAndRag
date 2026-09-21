@@ -1,7 +1,11 @@
 <?xml version="1.0"?>
 <!--
   PMD 规则集（maven-pmd-plugin:3.26.0）
-  仅开启 HIGH/DEFAULT 级别规则，阈值≤5 violations 通过
+  仅开启 HIGH/DEFAULT 级别规则。本文件只定义"量什么"，不定义"多少算失败"：
+  条数上限的唯一读者是 pom.xml 的 maven-pmd-plugin 块里的 <maxAllowedViolations>，
+  存量基线与口径登记在 scripts/tests/pmd-violation-baseline.txt。
+  本注释头部原有一句"violations 通过"式的条数阈值表述，它没有任何读者，
+  已于 2026-09-21 wire-pmd-ruleset 组 3.2 清除（登记见 docs/migration-runbook.md 6.7 理由 3）。
 -->
 <ruleset name="PMD Custom Rules"
          xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"

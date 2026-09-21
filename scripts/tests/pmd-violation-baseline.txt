@@ -1,0 +1,21 @@
+# PMD 存量条数基线：由 scripts/tests/pmd-baseline-check.sh --update 从一次真实 pmd:check 运行写入，禁止手改。
+# source-revision=978825b
+# measured-at=2026-09-21T10:38:35Z
+# 生成命令：mvn -B -ntp pmd:check（产出 target/pmd.xml）后 bash scripts/tests/pmd-baseline-check.sh --update
+# pmd.violations = 声明尺子下的违规条数；pmd.files = 本轮被分析的源文件数（用来识破「根本没分析」）。
+#
+# 口径（必须连同数值一起读，否则会被拿去做错误的类比）：
+#   1) 尺子 = src/main/resources/pmd-rules.xml 声明的 24 条规则（不是插件内置 quickstart）；
+#      哪些条计入由 pom 该块的 failurePriority=4 决定，计入多少条算失败由同块的
+#      maxAllowedViolations 决定 —— 后者是全仓唯一的条数读者，本台账是它的入库凭证与过期判据。
+#   2) 只覆盖 src/main/java —— PMD 默认源目录不含 src/test/java。本数与 SpotBugs 的 12 条 High
+#      基线**不是同一口径、不可类比**（那 12 条是一条条被豁免的具体缺陷，本数是一个条数上限）。
+#   3) 86.4% 的条数集中在 3 条规则（OnlyOneReturn 732 / CommentSize 282 /
+#      AvoidCatchingGenericException 134，共 1148/1329），所以短期内这道门禁只拦「新增第 4 种
+#      异味」。按拍板 Q2 如实登记，不为好看回头调松规则集；收紧留给按规则分片的后续提案。
+# 台账与 pom 的 <maxAllowedViolations> 一旦不等即红（口径不许有两个数字）。改数只允许由上面那条
+# 命令写入，且只许下调不许上调 —— --update 在实测 > 登记时直接拒绝写入。
+# 边界语义实测：实测 == 登记 → 绿；实测 == 登记 + 1 → 红（插件是「严格大于才失败」）。
+# 因此修掉一条异味后 pmd:check 仍绿，必须靠 pmd-baseline-check.sh 把两处数字一起拽下来。
+pmd.violations=1329
+pmd.files=241
