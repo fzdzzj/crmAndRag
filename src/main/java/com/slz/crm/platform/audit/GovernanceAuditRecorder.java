@@ -87,10 +87,11 @@ public class GovernanceAuditRecorder {
   }
 
   private String resolveActor(String actorUserRef) {
-    if (actorUserRef != null && !actorUserRef.isBlank()) {
-      return actorUserRef;
+    String result = actorUserRef;
+    if (actorUserRef == null || actorUserRef.isBlank()) {
+      var context = UserContextHolder.current();
+      result = context == null ? "anonymous" : context.userIdRef();
     }
-    var context = UserContextHolder.current();
-    return context == null ? "anonymous" : context.userIdRef();
+    return result;
   }
 }

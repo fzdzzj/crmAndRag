@@ -111,32 +111,33 @@ public class FailFastValidator {
   }
 
   private void validate(HealthContributorRegistry registry, Dependency dependency) {
+    boolean up = false;
     if (!dependency.required()) {
       log.info("fail-fast skipped component={} reason=provider-disabled", dependency.component());
-      return;
+    } else {
+      HealthIndicator indicator = asIndicator(registry.getContributor(dependency.component()));
+      if (indicator == null) {
+        throw new IllegalStateException(
+            dependency.displayName()
+                + "健康指示器未装配：component="
+                + dependency.component()
+                + " 不在 HealthContributorRegistry 中（客户端 Bean 未创建或该健康组件被关闭），禁止带病启动");
+      }
+      Health health = probeWithinBudget(indicator, dependency);
+      Status status = health.getStatus();
+      up = Status.UP.equals(status);
+      if (!up) {
+        throw new IllegalStateException(
+            dependency.displayName()
+                + (Status.DOWN.equals(status) ? "不可达" : "状态异常")
+                + "：component="
+                + dependency.component()
+                + ", status="
+                + status.getCode()
+                + ", details="
+                + health.getDetails());
+      }
     }
-    HealthIndicator indicator = asIndicator(registry.getContributor(dependency.component()));
-    if (indicator == null) {
-      throw new IllegalStateException(
-          dependency.displayName()
-              + "健康指示器未装配：component="
-              + dependency.component()
-              + " 不在 HealthContributorRegistry 中（客户端 Bean 未创建或该健康组件被关闭），禁止带病启动");
-    }
-    Health health = probeWithinBudget(indicator, dependency);
-    Status status = health.getStatus();
-    if (Status.UP.equals(status)) {
-      return;
-    }
-    throw new IllegalStateException(
-        dependency.displayName()
-            + (Status.DOWN.equals(status) ? "不可达" : "状态异常")
-            + "：component="
-            + dependency.component()
-            + ", status="
-            + status.getCode()
-            + ", details="
-            + health.getDetails());
   }
 
   /** 单次探测包在独立线程里跑，超时即判失败——指示器本身没有超时能力（Hikari 30s、MinIO 无超时）。 */

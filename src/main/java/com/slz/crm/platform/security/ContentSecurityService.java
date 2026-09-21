@@ -75,38 +75,53 @@ public class ContentSecurityService {
     if (result.isBlocked()) {
       throw new ContentRiskBlockedException(result);
     }
+    String wrapped;
     if (result.action() == ContentSecurityAction.DEGRADE) {
-      return "<untrusted_content risk=\""
-          + result.riskLevel().name().toLowerCase(Locale.ROOT)
-          + "\">\n"
-          + content
-          + "\n</untrusted_content>";
+      wrapped =
+          "<untrusted_content risk=\""
+              + result.riskLevel().name().toLowerCase(Locale.ROOT)
+              + "\">\n"
+              + content
+              + "\n</untrusted_content>";
+    } else {
+      wrapped = content;
     }
-    return content;
+    return wrapped;
   }
 
   private ContentSecurityResult classify(String content) {
     String normalized = content == null ? "" : content.toLowerCase(Locale.ROOT);
+    ContentSecurityResult result = null;
     for (String pattern : PROMPT_INJECTION_PATTERNS) {
       if (normalized.contains(pattern)) {
-        return new ContentSecurityResult(
-            ContentRiskLevel.HIGH,
-            ContentSecurityAction.BLOCK,
-            "prompt-injection",
-            "内容试图覆盖或提取系统指令");
+        result =
+            new ContentSecurityResult(
+                ContentRiskLevel.HIGH,
+                ContentSecurityAction.BLOCK,
+                "prompt-injection",
+                "内容试图覆盖或提取系统指令");
+        break;
       }
     }
-    for (String pattern : SENSITIVE_CREDENTIAL_PATTERNS) {
-      if (normalized.contains(pattern)) {
-        return new ContentSecurityResult(
-            ContentRiskLevel.MEDIUM,
-            ContentSecurityAction.DEGRADE,
-            "sensitive-credential",
-            "内容包含疑似凭据");
+    if (result == null) {
+      for (String pattern : SENSITIVE_CREDENTIAL_PATTERNS) {
+        if (normalized.contains(pattern)) {
+          result =
+              new ContentSecurityResult(
+                  ContentRiskLevel.MEDIUM,
+                  ContentSecurityAction.DEGRADE,
+                  "sensitive-credential",
+                  "内容包含疑似凭据");
+          break;
+        }
       }
     }
-    return new ContentSecurityResult(
-        ContentRiskLevel.SAFE, ContentSecurityAction.ALLOW, "default", "未命中安全规则");
+    if (result == null) {
+      result =
+          new ContentSecurityResult(
+              ContentRiskLevel.SAFE, ContentSecurityAction.ALLOW, "default", "未命中安全规则");
+    }
+    return result;
   }
 
   private void recordEvent(

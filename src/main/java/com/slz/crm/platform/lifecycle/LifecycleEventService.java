@@ -41,6 +41,7 @@ public class LifecycleEventService {
   public LifecycleEventResult record(LifecycleEventRequest request) {
     validate(request);
     PlatformLifecycleEventEntity entity = toEntity(request);
+    LifecycleEventResult result;
     try {
       lifecycleEventMapper.insert(entity);
       meterRegistry
@@ -51,7 +52,7 @@ public class LifecycleEventService {
               "result",
               "created")
           .increment();
-      return new LifecycleEventResult(true, false, entity);
+      result = new LifecycleEventResult(true, false, entity);
     } catch (DuplicateKeyException exception) {
       PlatformLifecycleEventEntity existing = findByIdempotencyKey(request.idempotencyKey());
       meterRegistry
@@ -62,8 +63,9 @@ public class LifecycleEventService {
               "result",
               "duplicate")
           .increment();
-      return new LifecycleEventResult(false, true, existing);
+      result = new LifecycleEventResult(false, true, existing);
     }
+    return result;
   }
 
   /**
@@ -73,15 +75,19 @@ public class LifecycleEventService {
    * @return 事件列表
    */
   public List<PlatformLifecycleEventEntity> findUnprocessed(int limit) {
+    List<PlatformLifecycleEventEntity> result;
     if (limit <= 0) {
-      return List.of();
+      result = List.of();
+    } else {
+      result =
+          lifecycleEventMapper.selectList(
+              new LambdaQueryWrapper<PlatformLifecycleEventEntity>()
+                  .isNull(PlatformLifecycleEventEntity::getProcessedTime)
+                  .orderByAsc(PlatformLifecycleEventEntity::getStatusVersion)
+                  .orderByAsc(PlatformLifecycleEventEntity::getId)
+                  .last("limit " + limit));
     }
-    return lifecycleEventMapper.selectList(
-        new LambdaQueryWrapper<PlatformLifecycleEventEntity>()
-            .isNull(PlatformLifecycleEventEntity::getProcessedTime)
-            .orderByAsc(PlatformLifecycleEventEntity::getStatusVersion)
-            .orderByAsc(PlatformLifecycleEventEntity::getId)
-            .last("limit " + limit));
+    return result;
   }
 
   /**
@@ -93,16 +99,18 @@ public class LifecycleEventService {
   public boolean markProcessed(Long eventId) {
     Objects.requireNonNull(eventId, "eventId 不能为空");
     PlatformLifecycleEventEntity entity = lifecycleEventMapper.selectById(eventId);
+    boolean result;
     if (entity == null || entity.getProcessedTime() != null) {
-      return false;
+      result = false;
+    } else {
+      entity.setProcessedTime(LocalDateTime.now());
+      entity.setUpdateTime(entity.getProcessedTime());
+      result = lifecycleEventMapper.updateById(entity) > 0;
+      if (result) {
+        meterRegistry.counter("platform.lifecycle.processed").increment();
+      }
     }
-    entity.setProcessedTime(LocalDateTime.now());
-    entity.setUpdateTime(entity.getProcessedTime());
-    boolean updated = lifecycleEventMapper.updateById(entity) > 0;
-    if (updated) {
-      meterRegistry.counter("platform.lifecycle.processed").increment();
-    }
-    return updated;
+    return result;
   }
 
   private void validate(LifecycleEventRequest request) {

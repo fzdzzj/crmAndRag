@@ -49,17 +49,16 @@ public record ConfigKeyDefinition(
    * @param canonical 已通过类型解析的十进制文本（保证可被 BigDecimal 解析）
    */
   public String rangeError(String canonical) {
-    if (minValue == null && maxValue == null) {
-      return null;
+    String result = null;
+    if (minValue != null || maxValue != null) {
+      java.math.BigDecimal value = new java.math.BigDecimal(canonical);
+      if (minValue != null && value.compareTo(new java.math.BigDecimal(minValue)) < 0) {
+        result = "取值不能小于 " + minValue + "，实际值：" + canonical;
+      } else if (maxValue != null && value.compareTo(new java.math.BigDecimal(maxValue)) > 0) {
+        result = "取值不能大于 " + maxValue + "，实际值：" + canonical;
+      }
     }
-    java.math.BigDecimal value = new java.math.BigDecimal(canonical);
-    if (minValue != null && value.compareTo(new java.math.BigDecimal(minValue)) < 0) {
-      return "取值不能小于 " + minValue + "，实际值：" + canonical;
-    }
-    if (maxValue != null && value.compareTo(new java.math.BigDecimal(maxValue)) > 0) {
-      return "取值不能大于 " + maxValue + "，实际值：" + canonical;
-    }
-    return null;
+    return result;
   }
 
   /** STRING_LIST 反序列化目标类型（List&lt;String&gt;） */

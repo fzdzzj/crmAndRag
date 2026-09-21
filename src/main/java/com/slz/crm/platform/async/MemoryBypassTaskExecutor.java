@@ -36,13 +36,15 @@ final class MemoryBypassTaskExecutor implements BypassTaskExecutor {
   @Override
   public boolean tryExecute(Runnable task) {
     Assert.notNull(task, "记忆旁路任务不能为空");
+    boolean result;
     try {
       executor.execute(MdcTaskDecorator.wrap(task));
-      return true;
+      result = true;
     } catch (RejectedExecutionException | IllegalStateException exception) {
       // IllegalStateException 来自执行器关闭后的提交；两者都表示任务未入队，调用方应降级跳过。
       rejectedCounter.increment();
-      return false;
+      result = false;
     }
+    return result;
   }
 }

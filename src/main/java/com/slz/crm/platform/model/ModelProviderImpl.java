@@ -138,60 +138,74 @@ public class ModelProviderImpl implements ModelProvider {
   @Override
   public Flux<ChatResponse> streamChat(Prompt prompt, ModelCallOptions options) {
     Prompt translated = applyOptions(prompt, options);
+    Flux<ChatResponse> result;
     if (options != null && options.hasTools()) {
       // 修正轮3：工具优先——走 Spring AI tool loop（enable_thinking 尽力而为，
       // 手工 JSON 路径不支持工具，不能为 thinking 破坏 tool loop）
-      return streamChat(translated);
-    }
-    if (translated.getOptions() instanceof OpenAiChatOptions opts
+      result = streamChat(translated);
+    } else if (translated.getOptions() instanceof OpenAiChatOptions opts
         && opts.getHttpHeaders() != null
         && "true".equals(opts.getHttpHeaders().get(THINKING_HEADER))) {
-      return streamWithThinking(translated, options);
+      result = streamWithThinking(translated, options);
+    } else {
+      result = streamChat(translated);
     }
-    return streamChat(translated);
+    return result;
   }
 
   @Override
   public ModelCallResult<String> vision(Prompt prompt, ModelCallOptions options) {
-    if (options == null) return vision(prompt);
-    Prompt translated = applyOptions(prompt, options);
-    String model =
-        StringUtils.hasText(options.model()) ? options.model() : properties.getVisionModel();
-    return toTextResult(compatibleChatModel.call(withModel(translated, model)), model);
+    ModelCallResult<String> result;
+    if (options == null) {
+      result = vision(prompt);
+    } else {
+      Prompt translated = applyOptions(prompt, options);
+      String model =
+          StringUtils.hasText(options.model()) ? options.model() : properties.getVisionModel();
+      result = toTextResult(compatibleChatModel.call(withModel(translated, model)), model);
+    }
+    return result;
   }
 
   /** 翻译 ModelCallOptions 到 OpenAiChatOptions（修正轮2：thinking 头标记）。 */
   private Prompt applyOptions(Prompt prompt, ModelCallOptions options) {
-    if (options == null) return prompt;
-    OpenAiChatOptions opts = overlayFrom(prompt.getOptions());
-    if (StringUtils.hasText(options.model())) opts.setModel(options.model());
-    if (options.temperature() != null) opts.setTemperature(options.temperature());
-    if (options.maxTokens() != null) opts.setMaxTokens(options.maxTokens());
-    if (options.hasTools()) {
-      opts.setToolCallbacks(options.toolCallbacks());
-      if (options.toolContext() != null) opts.setToolContext(options.toolContext());
+    Prompt result;
+    if (options == null) {
+      result = prompt;
+    } else {
+      OpenAiChatOptions opts = overlayFrom(prompt.getOptions());
+      if (StringUtils.hasText(options.model())) opts.setModel(options.model());
+      if (options.temperature() != null) opts.setTemperature(options.temperature());
+      if (options.maxTokens() != null) opts.setMaxTokens(options.maxTokens());
+      if (options.hasTools()) {
+        opts.setToolCallbacks(options.toolCallbacks());
+        if (options.toolContext() != null) opts.setToolContext(options.toolContext());
+      }
+      if (options.thinking()) {
+        Map<String, String> headers =
+            opts.getHttpHeaders() != null
+                ? new LinkedHashMap<>(opts.getHttpHeaders())
+                : new LinkedHashMap<>();
+        headers.put(THINKING_HEADER, "true");
+        opts.setHttpHeaders(headers);
+      }
+      result = new Prompt(prompt.getInstructions(), opts);
     }
-    if (options.thinking()) {
-      Map<String, String> headers =
-          opts.getHttpHeaders() != null
-              ? new LinkedHashMap<>(opts.getHttpHeaders())
-              : new LinkedHashMap<>();
-      headers.put(THINKING_HEADER, "true");
-      opts.setHttpHeaders(headers);
-    }
-    return new Prompt(prompt.getInstructions(), opts);
+    return result;
   }
 
   /** 从调用方 options 构建 OpenAiChatOptions（修正轮2：非 OpenAi 入参不丢参）。 */
   private OpenAiChatOptions overlayFrom(ChatOptions source) {
+    OpenAiChatOptions result;
     if (source instanceof OpenAiChatOptions openAi) {
-      return OpenAiChatOptions.fromOptions(openAi);
-    }
-    OpenAiChatOptions result = new OpenAiChatOptions();
-    if (source != null) {
-      if (source.getModel() != null) result.setModel(source.getModel());
-      if (source.getTemperature() != null) result.setTemperature(source.getTemperature());
-      if (source.getMaxTokens() != null) result.setMaxTokens(source.getMaxTokens());
+      result = OpenAiChatOptions.fromOptions(openAi);
+    } else {
+      result = new OpenAiChatOptions();
+      if (source != null) {
+        if (source.getModel() != null) result.setModel(source.getModel());
+        if (source.getTemperature() != null) result.setTemperature(source.getTemperature());
+        if (source.getMaxTokens() != null) result.setMaxTokens(source.getMaxTokens());
+      }
     }
     return result;
   }
@@ -213,6 +227,7 @@ public class ModelProviderImpl implements ModelProvider {
 
   /** 将 enable_thinking 双写注入 JSON body（sync 经 RestClient 拦截器调用）。 */
   private byte[] injectThinkingIntoBody(byte[] body) {
+    byte[] result = body;
     try {
       JsonNode root = objectMapper.readTree(body);
       if (root instanceof ObjectNode obj) {
@@ -224,12 +239,12 @@ public class ModelProviderImpl implements ModelProvider {
           kwargs = obj.putObject("chat_template_kwargs");
         }
         kwargs.put("enable_thinking", true);
-        return objectMapper.writeValueAsBytes(obj);
+        result = objectMapper.writeValueAsBytes(obj);
       }
     } catch (Exception e) {
       log.warn("enable_thinking body 注入失败", e);
     }
-    return body;
+    return result;
   }
 
   /** thinking=true 流式：手工 JSON + WebClient SSE。 */
@@ -280,6 +295,7 @@ public class ModelProviderImpl implements ModelProvider {
 
   /** SSE data JSON 转 ChatResponse。 */
   private ChatResponse chunkToChatResponse(String json) {
+    ChatResponse result;
     try {
       JsonNode root = objectMapper.readTree(json);
       List<Generation> generations = new ArrayList<>();
@@ -295,11 +311,12 @@ public class ModelProviderImpl implements ModelProvider {
           }
         }
       }
-      return new ChatResponse(generations);
+      result = new ChatResponse(generations);
     } catch (Exception e) {
       log.warn("SSE chunk 解析失败: {}", json, e);
-      return new ChatResponse(List.of());
+      result = new ChatResponse(List.of());
     }
+    return result;
   }
 
   private OpenAiChatModel buildCompatibleChatModel() {
@@ -344,11 +361,12 @@ public class ModelProviderImpl implements ModelProvider {
   }
 
   private String extractText(ChatResponse response) {
-    if (response.getResult() == null || response.getResult().getOutput() == null) {
-      return "";
+    String result = "";
+    if (response.getResult() != null && response.getResult().getOutput() != null) {
+      AssistantMessage output = response.getResult().getOutput();
+      result = output.getText() == null ? "" : output.getText();
     }
-    AssistantMessage output = response.getResult().getOutput();
-    return output.getText() == null ? "" : output.getText();
+    return result;
   }
 
   private Long toLong(Integer value) {
@@ -356,24 +374,26 @@ public class ModelProviderImpl implements ModelProvider {
   }
 
   private String resolveBaseUrl() {
-    String configured = properties.getBaseUrl();
-    if (StringUtils.hasText(configured)) return configured;
-    String dashscope = environment.getProperty("spring.ai.dashscope.base-url", "");
-    if (!StringUtils.hasText(dashscope)) {
-      throw new IllegalStateException(
-          "compatible-mode base-url 未配置（platform.ai.model.base-url / spring.ai.dashscope.base-url）");
+    String result = properties.getBaseUrl();
+    if (!StringUtils.hasText(result)) {
+      result = environment.getProperty("spring.ai.dashscope.base-url", "");
+      if (!StringUtils.hasText(result)) {
+        throw new IllegalStateException(
+            "compatible-mode base-url 未配置（platform.ai.model.base-url / spring.ai.dashscope.base-url）");
+      }
     }
-    return dashscope;
+    return result;
   }
 
   private String resolveApiKey() {
-    String configured = properties.getApiKey();
-    if (StringUtils.hasText(configured)) return configured;
-    String dashscope = environment.getProperty("spring.ai.dashscope.api-key", "");
-    if (!StringUtils.hasText(dashscope)) {
-      log.warn("compatible-mode api-key 未配置：调用将在运行期失败");
-      return "missing-api-key";
+    String result = properties.getApiKey();
+    if (!StringUtils.hasText(result)) {
+      result = environment.getProperty("spring.ai.dashscope.api-key", "");
+      if (!StringUtils.hasText(result)) {
+        log.warn("compatible-mode api-key 未配置：调用将在运行期失败");
+        result = "missing-api-key";
+      }
     }
-    return dashscope;
+    return result;
   }
 }

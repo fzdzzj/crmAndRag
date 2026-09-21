@@ -36,15 +36,18 @@ public class MinioHealthIndicator implements HealthIndicator {
 
   @Override
   public Health health() {
+    Health result;
     try {
       boolean exists = minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucket).build());
       if (exists) {
-        return up().build();
+        result = up().build();
+      } else {
+        result = down().withDetail("message", "MinIO 可达但存储桶不存在").build();
       }
-      return down().withDetail("message", "MinIO 可达但存储桶不存在").build();
     } catch (Exception exception) {
-      return down().withDetail("error", describe(exception)).build();
+      result = down().withDetail("error", describe(exception)).build();
     }
+    return result;
   }
 
   private Health.Builder up() {

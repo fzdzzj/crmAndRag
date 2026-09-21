@@ -39,21 +39,25 @@ public class VectorStoreHealthIndicator implements HealthIndicator {
 
   @Override
   public Health health() {
+    Health result;
     CrmVectorStoreHealth storeHealth = vectorStoreHealthProvider.getIfAvailable();
     if (storeHealth == null) {
-      return Health.up()
-          .withDetail("component", "not-configured")
-          .withDetail("message", "知识库向量实现尚未接入")
-          .build();
+      result =
+          Health.up()
+              .withDetail("component", "not-configured")
+              .withDetail("message", "知识库向量实现尚未接入")
+              .build();
+    } else if (storeHealth.inMemoryFallback()) {
+      result =
+          Health.status(WARN)
+              .withDetail("component", storeHealth.componentName())
+              .withDetail("collection", storeHealth.collectionName())
+              .withDetail("inMemoryFallback", true)
+              .build();
+    } else {
+      result = probe(storeHealth);
     }
-    if (storeHealth.inMemoryFallback()) {
-      return Health.status(WARN)
-          .withDetail("component", storeHealth.componentName())
-          .withDetail("collection", storeHealth.collectionName())
-          .withDetail("inMemoryFallback", true)
-          .build();
-    }
-    return probe(storeHealth);
+    return result;
   }
 
   private Health probe(CrmVectorStoreHealth storeHealth) {

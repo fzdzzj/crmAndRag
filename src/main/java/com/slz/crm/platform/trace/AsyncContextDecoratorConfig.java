@@ -30,13 +30,15 @@ public class AsyncContextDecoratorConfig {
   }
 
   private static boolean decoratorIsAbsent(ThreadPoolTaskExecutor executor) {
+    boolean result = true;
     try {
       Field decoratorField = ThreadPoolTaskExecutor.class.getDeclaredField("taskDecorator");
       decoratorField.setAccessible(true);
-      return decoratorField.get(executor) == null;
+      result = decoratorField.get(executor) == null;
     } catch (ReflectiveOperationException | SecurityException exception) {
       // Spring 版本变更时宁可保持业务装饰器原样，也不静默覆盖已有上下文语义。
-      return false;
+      result = false;
     }
+    return result;
   }
 }

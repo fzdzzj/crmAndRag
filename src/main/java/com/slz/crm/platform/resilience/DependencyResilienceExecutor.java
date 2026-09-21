@@ -184,12 +184,15 @@ public class DependencyResilienceExecutor {
     }
 
     private boolean recordFailure(int failureThreshold, long openDurationMillis) {
+      boolean result;
       if (consecutiveFailures.incrementAndGet() < failureThreshold) {
-        return false;
+        result = false;
+      } else {
+        openUntilNanos.set(System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(openDurationMillis));
+        consecutiveFailures.set(0);
+        result = true;
       }
-      openUntilNanos.set(System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(openDurationMillis));
-      consecutiveFailures.set(0);
-      return true;
+      return result;
     }
   }
 }

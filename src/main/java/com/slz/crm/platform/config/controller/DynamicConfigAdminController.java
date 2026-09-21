@@ -70,11 +70,16 @@ public class DynamicConfigAdminController {
   public Result<ConfigItemView> rollback(
       @PathVariable String key, @RequestBody ConfigRollbackRequest request) {
     Integer targetVersion = request.getVersion();
+    Result<ConfigItemView> result;
     if (targetVersion == null || targetVersion <= 0) {
-      return Result.error(
-          com.slz.crm.platform.contract.PlatformErrorCode.VALIDATION.getCode(), "回滚目标版本号必须为正整数");
+      result =
+          Result.error(
+              com.slz.crm.platform.contract.PlatformErrorCode.VALIDATION.getCode(),
+              "回滚目标版本号必须为正整数");
+    } else {
+      result = Result.success(adminService.rollback(key, targetVersion, request.getRemark()));
     }
-    return Result.success(adminService.rollback(key, targetVersion, request.getRemark()));
+    return result;
   }
 
   /** 软删除配置项 = 恢复静态默认（历史保留可回滚/复活） */

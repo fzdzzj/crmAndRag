@@ -22,14 +22,16 @@ public class CurrentUserResolver {
    * @return 当前操作人；未登录（无任何身份来源）返回 {@code null}
    */
   public ConfigOperator resolve() {
+    ConfigOperator result = null;
     UserContext ctx = UserContextHolder.current();
     if (ctx != null) {
-      return new ConfigOperator(ctx.userIdRef(), ctx.userId(), ctx.roleId(), ctx.displayName());
+      result = new ConfigOperator(ctx.userIdRef(), ctx.userId(), ctx.roleId(), ctx.displayName());
+    } else {
+      RoleAO role = BaseUnit.getCurrentRole();
+      if (role != null && role.getId() != null && role.getRoleId() != null) {
+        result = new ConfigOperator("user:" + role.getId(), role.getId(), role.getRoleId(), null);
+      }
     }
-    RoleAO role = BaseUnit.getCurrentRole();
-    if (role != null && role.getId() != null && role.getRoleId() != null) {
-      return new ConfigOperator("user:" + role.getId(), role.getId(), role.getRoleId(), null);
-    }
-    return null;
+    return result;
   }
 }

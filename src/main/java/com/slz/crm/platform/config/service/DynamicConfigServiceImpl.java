@@ -31,20 +31,15 @@ public class DynamicConfigServiceImpl implements DynamicConfigService {
 
   @Override
   public <T> T get(String key, Class<T> type, T defaultValue) {
+    T result = defaultValue;
     ConfigKeyDefinition def = registry.definitionOf(key).orElse(null);
-    if (def == null) {
-      // 未知键：消费方按固定键编程，防御性回退默认
-      return defaultValue;
+    if (def != null) {
+      Object value = cache.typedValue(key);
+      if (value != null && type.isInstance(value)) {
+        // 类型匹配才返回动态值，否则契约要求回退默认，避免脏类型泄漏
+        result = type.cast(value);
+      }
     }
-    Object value = cache.typedValue(key);
-    if (value == null) {
-      // 无覆盖 / 存储值非法：回退默认
-      return defaultValue;
-    }
-    if (type.isInstance(value)) {
-      return type.cast(value);
-    }
-    // 类型不匹配（如消费方以 String 读 INTEGER 键）：契约要求回退默认，避免脏类型泄漏
-    return defaultValue;
+    return result;
   }
 }

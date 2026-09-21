@@ -78,12 +78,13 @@ public class TokenUsageRecorderImpl implements TokenUsageRecorder {
   }
 
   private Long totalTokens(TokenUsageRecord record) {
-    if (record.totalTokens() != null) {
-      return record.totalTokens();
+    Long result = record.totalTokens();
+    if (result == null) {
+      long prompt = normalized(record.promptTokens());
+      long completion = normalized(record.completionTokens());
+      result = prompt + completion;
     }
-    long prompt = normalized(record.promptTokens());
-    long completion = normalized(record.completionTokens());
-    return prompt + completion;
+    return result;
   }
 
   private long normalized(Long value) {

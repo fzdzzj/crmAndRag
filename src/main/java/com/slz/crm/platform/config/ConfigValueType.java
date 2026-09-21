@@ -48,17 +48,21 @@ public enum ConfigValueType {
    * @return 解析结果；失败时给出可读错误信息（写入方据此拒绝并保持原值）
    */
   public Parsed parse(String raw, ConfigKeyDefinition def) {
+    Parsed result;
     if (raw == null) {
-      return Parsed.fail("值不能为空");
+      result = Parsed.fail("值不能为空");
+    } else {
+      result =
+          switch (this) {
+            case STRING -> parseString(raw.trim(), def);
+            case INTEGER -> parseInteger(raw.trim(), def);
+            case LONG -> parseLong(raw.trim(), def);
+            case BOOLEAN -> parseBoolean(raw.trim());
+            case DOUBLE -> parseDouble(raw.trim(), def);
+            case STRING_LIST -> parseStringList(raw.trim(), def);
+          };
     }
-    return switch (this) {
-      case STRING -> parseString(raw.trim(), def);
-      case INTEGER -> parseInteger(raw.trim(), def);
-      case LONG -> parseLong(raw.trim(), def);
-      case BOOLEAN -> parseBoolean(raw.trim());
-      case DOUBLE -> parseDouble(raw.trim(), def);
-      case STRING_LIST -> parseStringList(raw.trim(), def);
-    };
+    return result;
   }
 
   /**
@@ -72,100 +76,121 @@ public enum ConfigValueType {
    * @return 类型化值；非法/不可解析返回 {@code null}
    */
   public Object parseStored(String canonical, ConfigKeyDefinition def) {
-    if (canonical == null) {
-      return null;
+    Object result = null;
+    if (canonical != null) {
+      Parsed parsed = parse(canonical, def);
+      result = parsed.valid() ? parsed.typed() : null;
     }
-    Parsed parsed = parse(canonical, def);
-    return parsed.valid() ? parsed.typed() : null;
+    return result;
   }
 
   private Parsed parseString(String trimmed, ConfigKeyDefinition def) {
+    Parsed result;
     if (trimmed.isEmpty()) {
-      return Parsed.fail("值不能为空");
+      result = Parsed.fail("值不能为空");
+    } else if (trimmed.length() > def.maxValueLength()) {
+      result = Parsed.fail("值长度超过上限（最大 " + def.maxValueLength() + " 字符）");
+    } else if (!def.allowedValues().isEmpty() && !def.allowedValues().contains(trimmed)) {
+      result = Parsed.fail("取值必须在枚举范围内：" + def.allowedValues());
+    } else {
+      result = Parsed.ok(trimmed, trimmed);
     }
-    if (trimmed.length() > def.maxValueLength()) {
-      return Parsed.fail("值长度超过上限（最大 " + def.maxValueLength() + " 字符）");
-    }
-    if (!def.allowedValues().isEmpty() && !def.allowedValues().contains(trimmed)) {
-      return Parsed.fail("取值必须在枚举范围内：" + def.allowedValues());
-    }
-    return Parsed.ok(trimmed, trimmed);
+    return result;
   }
 
   private Parsed parseInteger(String trimmed, ConfigKeyDefinition def) {
-    final int value;
+    Parsed result;
     try {
-      value = Integer.parseInt(trimmed);
+      int value = Integer.parseInt(trimmed);
+      String rangeError = def.rangeError(trimmed);
+      if (rangeError != null) {
+        result = Parsed.fail(rangeError);
+      } else {
+        result = Parsed.ok(value, Integer.toString(value));
+      }
     } catch (NumberFormatException e) {
-      return Parsed.fail("必须是整数，实际值：" + trimmed);
+      result = Parsed.fail("必须是整数，实际值：" + trimmed);
     }
-    String rangeError = def.rangeError(trimmed);
-    if (rangeError != null) {
-      return Parsed.fail(rangeError);
-    }
-    return Parsed.ok(value, Integer.toString(value));
+    return result;
   }
 
   private Parsed parseLong(String trimmed, ConfigKeyDefinition def) {
-    final long value;
+    Parsed result;
     try {
-      value = Long.parseLong(trimmed);
+      long value = Long.parseLong(trimmed);
+      String rangeError = def.rangeError(trimmed);
+      if (rangeError != null) {
+        result = Parsed.fail(rangeError);
+      } else {
+        result = Parsed.ok(value, Long.toString(value));
+      }
     } catch (NumberFormatException e) {
-      return Parsed.fail("必须是长整数，实际值：" + trimmed);
+      result = Parsed.fail("必须是长整数，实际值：" + trimmed);
     }
-    String rangeError = def.rangeError(trimmed);
-    if (rangeError != null) {
-      return Parsed.fail(rangeError);
-    }
-    return Parsed.ok(value, Long.toString(value));
+    return result;
   }
 
   private Parsed parseBoolean(String trimmed) {
+    Parsed result;
     if ("true".equalsIgnoreCase(trimmed) || "false".equalsIgnoreCase(trimmed)) {
       boolean value = Boolean.parseBoolean(trimmed);
-      return Parsed.ok(value, Boolean.toString(value));
+      result = Parsed.ok(value, Boolean.toString(value));
+    } else {
+      result = Parsed.fail("必须是 true/false，实际值：" + trimmed);
     }
-    return Parsed.fail("必须是 true/false，实际值：" + trimmed);
+    return result;
   }
 
   private Parsed parseDouble(String trimmed, ConfigKeyDefinition def) {
-    final double value;
+    Parsed result;
     try {
-      value = Double.parseDouble(trimmed);
+      double value = Double.parseDouble(trimmed);
+      if (!Double.isFinite(value)) {
+        result = Parsed.fail("必须是有限数值，实际值：" + trimmed);
+      } else {
+        String rangeError = def.rangeError(trimmed);
+        if (rangeError != null) {
+          result = Parsed.fail(rangeError);
+        } else {
+          result = Parsed.ok(value, Double.toString(value));
+        }
+      }
     } catch (NumberFormatException e) {
-      return Parsed.fail("必须是数值，实际值：" + trimmed);
+      result = Parsed.fail("必须是数值，实际值：" + trimmed);
     }
-    if (!Double.isFinite(value)) {
-      return Parsed.fail("必须是有限数值，实际值：" + trimmed);
-    }
-    String rangeError = def.rangeError(trimmed);
-    if (rangeError != null) {
-      return Parsed.fail(rangeError);
-    }
-    return Parsed.ok(value, Double.toString(value));
+    return result;
   }
 
   private Parsed parseStringList(String trimmed, ConfigKeyDefinition def) {
+    Parsed result = Parsed.fail("列表条目不能为空字符串");
     try {
       var entries = def.objectMapper().readValue(trimmed, def.listType());
       if (entries.isEmpty()) {
-        return Parsed.fail("列表不能为空（至少一个条目）");
-      }
-      if (entries.size() > def.maxListSize()) {
-        return Parsed.fail("列表条目数超过上限（最大 " + def.maxListSize() + " 条）");
-      }
-      for (String entry : entries) {
-        if (entry == null || entry.isBlank()) {
-          return Parsed.fail("列表条目不能为空字符串");
+        result = Parsed.fail("列表不能为空（至少一个条目）");
+      } else if (entries.size() > def.maxListSize()) {
+        result = Parsed.fail("列表条目数超过上限（最大 " + def.maxListSize() + " 条）");
+      } else {
+        boolean invalid = false;
+        for (String entry : entries) {
+          if (entry == null || entry.isBlank()) {
+            result = Parsed.fail("列表条目不能为空字符串");
+            invalid = true;
+            break;
+          }
+          if (entry.length() > def.maxEntryLength()) {
+            result = Parsed.fail("列表条目长度超过上限（最大 " + def.maxEntryLength() + " 字符）");
+            invalid = true;
+            break;
+          }
         }
-        if (entry.length() > def.maxEntryLength()) {
-          return Parsed.fail("列表条目长度超过上限（最大 " + def.maxEntryLength() + " 字符）");
+        if (!invalid) {
+          String canonical = def.objectMapper().writeValueAsString(entries);
+          result = Parsed.ok(new java.util.ArrayList<>(entries), canonical);
         }
       }
-      String canonical = def.objectMapper().writeValueAsString(entries);
-      return Parsed.ok(new java.util.ArrayList<>(entries), canonical);
     } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
-      return Parsed.fail("必须是 JSON 字符串数组（如 [\"类目A\",\"类目B\"]），实际值：" + trimmed);
+      result = Parsed.fail("必须是 JSON 字符串数组（如 [\"类目A\",\"类目B\"]），实际值：" + trimmed);
     }
+    return result;
   }
 }

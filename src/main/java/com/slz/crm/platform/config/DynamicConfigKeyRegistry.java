@@ -72,10 +72,14 @@ public class DynamicConfigKeyRegistry {
    * @return 该命名空间下的定义（保序）
    */
   public List<ConfigKeyDefinition> byNamespace(String namespace) {
+    List<ConfigKeyDefinition> result;
     if (namespace == null || namespace.isBlank()) {
-      return List.copyOf(definitions.values());
+      result = List.copyOf(definitions.values());
+    } else {
+      result =
+          definitions.values().stream().filter(def -> def.namespace().equals(namespace)).toList();
     }
-    return definitions.values().stream().filter(def -> def.namespace().equals(namespace)).toList();
+    return result;
   }
 
   /**
@@ -87,10 +91,13 @@ public class DynamicConfigKeyRegistry {
    */
   public ConfigValueType.Parsed validate(String key, String raw) {
     ConfigKeyDefinition def = definitions.get(key);
+    ConfigValueType.Parsed result;
     if (def == null) {
-      return ConfigValueType.Parsed.fail("未知配置键：" + key + "（键必须预先在注册表中声明）");
+      result = ConfigValueType.Parsed.fail("未知配置键：" + key + "（键必须预先在注册表中声明）");
+    } else {
+      result = def.type().parse(raw, def);
     }
-    return def.type().parse(raw, def);
+    return result;
   }
 
   /**
@@ -101,10 +108,11 @@ public class DynamicConfigKeyRegistry {
    */
   public Object parseStored(String key, String canonical) {
     ConfigKeyDefinition def = definitions.get(key);
-    if (def == null) {
-      return null;
+    Object result = null;
+    if (def != null) {
+      result = def.type().parseStored(canonical, def);
     }
-    return def.type().parseStored(canonical, def);
+    return result;
   }
 
   /** 平台内置配置键目录（注册顺序即管理端展示顺序）。 */

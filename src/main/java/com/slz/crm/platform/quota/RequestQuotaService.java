@@ -48,6 +48,7 @@ public class RequestQuotaService {
     String normalizedKey = key == null || key.isBlank() ? "GLOBAL" : key;
     FixedWindow window = cache(dimension).get(normalizedKey, ignored -> new FixedWindow());
     long limit = limit(dimension);
+    QuotaDecision result;
     synchronized (window) {
       long now = System.currentTimeMillis();
       window.resetIfNeeded(now, 60_000);
@@ -55,13 +56,15 @@ public class RequestQuotaService {
         long retryAfterSeconds =
             Math.max(1, Duration.ofMillis(window.windowStartMillis + 60_000 - now).toSeconds());
         meterRegistry.counter("platform.quota.rejected", "dimension", dimension.name()).increment();
-        return new QuotaDecision(
-            false, window.count.get(), limit, retryAfterSeconds, "RATE_LIMITED");
+        result =
+            new QuotaDecision(false, window.count.get(), limit, retryAfterSeconds, "RATE_LIMITED");
+      } else {
+        window.count.incrementAndGet();
+        meterRegistry.counter("platform.quota.acquired", "dimension", dimension.name()).increment();
+        result = new QuotaDecision(true, window.count.get(), limit, 0, "OK");
       }
-      window.count.incrementAndGet();
     }
-    meterRegistry.counter("platform.quota.acquired", "dimension", dimension.name()).increment();
-    return new QuotaDecision(true, window.count.get(), limit, 0, "OK");
+    return result;
   }
 
   private long limit(QuotaDimension dimension) {

@@ -17,7 +17,7 @@
 - [x] 2.3 pojo 批（22）：合并多 return 为单一出口（行为等价），pmd:check → --update → pom 同步 → merge-gate → 提交 ｜实测：1013→991（-22，pojo OnlyOneReturn 清零 0）；台账 991/154、pom 469 行=991；merge-gate 8 子门禁全 PASS（[unit] surefire 724 不变）
 - [x] 2.4 quality 批（3）：合并多 return 为单一出口（行为等价），pmd:check → --update → pom 同步 → merge-gate → 提交 ｜实测：991→988（-3，quality OnlyOneReturn 清零 0）；台账 988/153、pom 469 行=988；merge-gate 8 子门禁全 PASS（[unit] surefire 724 不变）
 - [x] 2.5 knowledge 批（134）：合并多 return 为单一出口（行为等价），pmd:check → --update → pom 同步 → merge-gate → 提交 ｜实测：988→858（knowledge OnlyOneReturn 清零 0，本模块 134 处）；台账 858/145、pom 469 行=858；merge-gate 8 子门禁全 PASS（[unit] surefire 计数不变）
-- [ ] 2.6 platform 批（71）｜实测：
+- [x] 2.6 platform 批（71）：合并多 return 为单一出口（行为等价，遇 try/catch 内无法等价合并的示例跳过并列入未修清单），pmd:check → --update → pom 同步 → merge-gate → 提交 ｜实测：858→787（-71，platform OnlyOneReturn 清零 0，其他规则无新增）；台账 787/132、pom 469 行=787；merge-gate 8 子门禁全 PASS（[unit] surefire 724 不变；首跑 [unit] 曾因 ConfigValueType 中间态编译失败，修正后复跑全绿）｜尚未提交（见下一 commit）
 - [ ] 2.7 server 批（468）｜实测：
 
 ## 3. 分片 C：AvoidCatchingGenericException（134，逐例；前置 Q6 拍板）

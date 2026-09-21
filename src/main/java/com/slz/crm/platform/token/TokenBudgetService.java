@@ -73,40 +73,42 @@ public class TokenBudgetService {
     if (request.estimatedTokens() < 0) {
       throw new IllegalArgumentException("预估token不能小于0");
     }
+    TokenBudgetDecision result;
     if (!properties.isEnabled()) {
-      return TokenBudgetDecision.allow(
-          Long.MAX_VALUE, 0, request.estimatedTokens(), Long.MAX_VALUE);
+      result =
+          TokenBudgetDecision.allow(Long.MAX_VALUE, 0, request.estimatedTokens(), Long.MAX_VALUE);
+    } else {
+      LocalDateTime now = LocalDateTime.now(clock);
+      TokenBudgetDecision dailyDecision =
+          evaluate(
+              request,
+              now,
+              now.toLocalDate().atStartOfDay(),
+              now.toLocalDate().plusDays(1).atStartOfDay(),
+              properties.getDailyLimit());
+      if (!dailyDecision.allowed()) {
+        result = dailyDecision;
+      } else {
+        YearMonth month = YearMonth.from(now);
+        TokenBudgetDecision monthlyDecision =
+            evaluate(
+                request,
+                now,
+                month.atDay(1).atStartOfDay(),
+                month.plusMonths(1).atDay(1).atStartOfDay(),
+                properties.getMonthlyLimit());
+        if (!monthlyDecision.allowed()) {
+          result = monthlyDecision;
+        } else {
+          // 同时通过日/月预算时，暴露更紧的剩余额度，避免调用方误用月度余量。
+          long limit = Math.min(dailyDecision.limit(), monthlyDecision.limit());
+          long used = Math.max(dailyDecision.used(), monthlyDecision.used());
+          long remaining = Math.min(dailyDecision.remaining(), monthlyDecision.remaining());
+          result = TokenBudgetDecision.allow(limit, used, request.estimatedTokens(), remaining);
+        }
+      }
     }
-
-    LocalDateTime now = LocalDateTime.now(clock);
-    TokenBudgetDecision dailyDecision =
-        evaluate(
-            request,
-            now,
-            now.toLocalDate().atStartOfDay(),
-            now.toLocalDate().plusDays(1).atStartOfDay(),
-            properties.getDailyLimit());
-    if (!dailyDecision.allowed()) {
-      return dailyDecision;
-    }
-
-    YearMonth month = YearMonth.from(now);
-    TokenBudgetDecision monthlyDecision =
-        evaluate(
-            request,
-            now,
-            month.atDay(1).atStartOfDay(),
-            month.plusMonths(1).atDay(1).atStartOfDay(),
-            properties.getMonthlyLimit());
-    if (!monthlyDecision.allowed()) {
-      return monthlyDecision;
-    }
-
-    // 同时通过日/月预算时，暴露更紧的剩余额度，避免调用方误用月度余量。
-    long limit = Math.min(dailyDecision.limit(), monthlyDecision.limit());
-    long used = Math.max(dailyDecision.used(), monthlyDecision.used());
-    long remaining = Math.min(dailyDecision.remaining(), monthlyDecision.remaining());
-    return TokenBudgetDecision.allow(limit, used, request.estimatedTokens(), remaining);
+    return result;
   }
 
   private long usedTokens(TokenBudgetRequest request, LocalDateTime start, LocalDateTime end) {
@@ -155,6 +157,7 @@ public class TokenBudgetService {
     long used = usedTokens(request, start, end);
     // remaining 表示扣除本次预估后的余量，调用方能直接判断还能否继续发起后续调用。
     long remaining = Math.max(0, limit - used - request.estimatedTokens());
+    TokenBudgetDecision result;
     if (used >= limit || request.estimatedTokens() > remaining) {
       long retryAfterSeconds = Math.max(1, Duration.between(now, end).getSeconds());
       meterRegistry
@@ -165,15 +168,18 @@ public class TokenBudgetService {
               "type",
               request.usageType() == null ? "all" : request.usageType().wireName())
           .increment();
-      return new TokenBudgetDecision(
-          false,
-          limit,
-          used,
-          request.estimatedTokens(),
-          remaining,
-          retryAfterSeconds,
-          "TOKEN_BUDGET_EXCEEDED");
+      result =
+          new TokenBudgetDecision(
+              false,
+              limit,
+              used,
+              request.estimatedTokens(),
+              remaining,
+              retryAfterSeconds,
+              "TOKEN_BUDGET_EXCEEDED");
+    } else {
+      result = TokenBudgetDecision.allow(limit, used, request.estimatedTokens(), remaining);
     }
-    return TokenBudgetDecision.allow(limit, used, request.estimatedTokens(), remaining);
+    return result;
   }
 }

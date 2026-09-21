@@ -156,13 +156,15 @@ public class DynamicConfigAdminService {
     LocalDateTime now = LocalDateTime.now();
 
     DynamicConfigItemEntity row = findByKeyAny(key);
+    ConfigItemView result;
     if (row == null) {
-      return createItem(def, canonical, op, remark, now);
+      result = createItem(def, canonical, op, remark, now);
+    } else if (Boolean.TRUE.equals(row.getIsDeleted())) {
+      result = reviveItem(def, row, canonical, op, remark, now);
+    } else {
+      result = updateItem(def, row, canonical, op, remark, now);
     }
-    if (Boolean.TRUE.equals(row.getIsDeleted())) {
-      return reviveItem(def, row, canonical, op, remark, now);
-    }
-    return updateItem(def, row, canonical, op, remark, now);
+    return result;
   }
 
   /**
@@ -324,35 +326,45 @@ public class DynamicConfigAdminService {
       ConfigOperator op,
       String remark,
       LocalDateTime now) {
+    ConfigItemView result;
     if (Objects.equals(row.getConfigValue(), canonical)) {
       // 幂等：值未变化，不产生历史与审计，直接返回现状
-      return toView(row, def);
+      result = toView(row, def);
+    } else {
+      String oldValue = row.getConfigValue();
+      int newVersion = row.getVersion() + 1;
+      int rows =
+          itemMapper.update(
+              null,
+              new LambdaUpdateWrapper<DynamicConfigItemEntity>()
+                  .eq(DynamicConfigItemEntity::getId, row.getId())
+                  .eq(DynamicConfigItemEntity::getVersion, row.getVersion())
+                  .set(DynamicConfigItemEntity::getConfigValue, canonical)
+                  .set(DynamicConfigItemEntity::getVersion, newVersion)
+                  .set(DynamicConfigItemEntity::getUpdatedBy, op.ref())
+                  .set(DynamicConfigItemEntity::getUpdateTime, now));
+      if (rows == 0) {
+        // 乐观锁冲突：他人并发修改过，拒绝本次写入避免丢更新
+        throw new ServiceException(PlatformErrorCode.INTERNAL.getCode(), "配置已被其他会话修改，请刷新后重试");
+      }
+      row.setConfigValue(canonical);
+      row.setVersion(newVersion);
+      row.setUpdatedBy(op.ref());
+      row.setUpdateTime(now);
+      appendHistory(
+          row.getId(),
+          def,
+          newVersion,
+          ConfigOperationType.UPDATE,
+          oldValue,
+          canonical,
+          op,
+          remark);
+      recordAudit(def, ConfigOperationType.UPDATE, oldValue, canonical, op, remark);
+      cache.invalidate(def.key());
+      result = toView(row, def);
     }
-    String oldValue = row.getConfigValue();
-    int newVersion = row.getVersion() + 1;
-    int rows =
-        itemMapper.update(
-            null,
-            new LambdaUpdateWrapper<DynamicConfigItemEntity>()
-                .eq(DynamicConfigItemEntity::getId, row.getId())
-                .eq(DynamicConfigItemEntity::getVersion, row.getVersion())
-                .set(DynamicConfigItemEntity::getConfigValue, canonical)
-                .set(DynamicConfigItemEntity::getVersion, newVersion)
-                .set(DynamicConfigItemEntity::getUpdatedBy, op.ref())
-                .set(DynamicConfigItemEntity::getUpdateTime, now));
-    if (rows == 0) {
-      // 乐观锁冲突：他人并发修改过，拒绝本次写入避免丢更新
-      throw new ServiceException(PlatformErrorCode.INTERNAL.getCode(), "配置已被其他会话修改，请刷新后重试");
-    }
-    row.setConfigValue(canonical);
-    row.setVersion(newVersion);
-    row.setUpdatedBy(op.ref());
-    row.setUpdateTime(now);
-    appendHistory(
-        row.getId(), def, newVersion, ConfigOperationType.UPDATE, oldValue, canonical, op, remark);
-    recordAudit(def, ConfigOperationType.UPDATE, oldValue, canonical, op, remark);
-    cache.invalidate(def.key());
-    return toView(row, def);
+    return result;
   }
 
   /** 软删后重写 = 复活（同一唯一键，版本保持连续） */
@@ -494,13 +506,15 @@ public class DynamicConfigAdminService {
 
   /** 敏感值掩码：全掩为 {@code ******}，不泄露任何片段（长度也不给，避免辅助爆破）。 空值显示 {@code (空)} 以便与“有值但被掩码”区分。 */
   private String mask(String raw, boolean sensitive) {
+    String result;
     if (!sensitive) {
-      return raw;
+      result = raw;
+    } else if (raw == null || raw.isBlank()) {
+      result = "(空)";
+    } else {
+      result = "******";
     }
-    if (raw == null || raw.isBlank()) {
-      return "(空)";
-    }
-    return "******";
+    return result;
   }
 
   private LocalDateTime now() {

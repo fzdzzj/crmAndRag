@@ -16,12 +16,12 @@ public final class DependencyFailureClassifier {
    * @return true 表示应保留/恢复为待处理状态，等待依赖恢复后重放
    */
   public static boolean isRecoverable(Throwable error) {
-    for (Throwable current = error; current != null; current = current.getCause()) {
-      if (current instanceof DependencyUnavailableException unavailable
-          && unavailable.failureType().recoverable()) {
-        return true;
-      }
+    boolean result = false;
+    for (Throwable current = error; current != null && !result; current = current.getCause()) {
+      result =
+          current instanceof DependencyUnavailableException unavailable
+              && unavailable.failureType().recoverable();
     }
-    return false;
+    return result;
   }
 }

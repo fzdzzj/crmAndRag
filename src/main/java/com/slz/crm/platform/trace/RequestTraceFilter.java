@@ -44,9 +44,10 @@ public class RequestTraceFilter extends OncePerRequestFilter {
   }
 
   private String resolveTraceId(String requestedTraceId) {
+    String result = UUID.randomUUID().toString().replace("-", "");
     if (requestedTraceId != null && VALID_TRACE_ID.matcher(requestedTraceId.trim()).matches()) {
-      return requestedTraceId.trim();
+      result = requestedTraceId.trim();
     }
-    return UUID.randomUUID().toString().replace("-", "");
+    return result;
   }
 }

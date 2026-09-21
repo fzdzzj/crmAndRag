@@ -72,17 +72,19 @@ public class DynamicConfigCache {
 
   /** 读取某个键的缓存条目；未配置返回 {@code null}。 */
   public Entry entryOf(String key) {
+    Entry entry;
     if (!properties.isCacheEnabled()) {
-      return loadFromDb(key);
-    }
-    ensureFreshIfDue();
-    ConcurrentHashMap<String, Entry> current = entries;
-    Entry entry = current.get(key);
-    if (entry == null) {
-      // 键级 miss：写后失效或首次访问 → 按需回库一次并回填（不触发全量刷新）
       entry = loadFromDb(key);
-      if (entry != null) {
-        current.put(key, entry);
+    } else {
+      ensureFreshIfDue();
+      ConcurrentHashMap<String, Entry> current = entries;
+      entry = current.get(key);
+      if (entry == null) {
+        // 键级 miss：写后失效或首次访问 → 按需回库一次并回填（不触发全量刷新）
+        entry = loadFromDb(key);
+        if (entry != null) {
+          current.put(key, entry);
+        }
       }
     }
     return entry;
@@ -159,9 +161,6 @@ public class DynamicConfigCache {
 
   /** 日志脱敏：敏感值/解析失败值只露长度，不露明文 */
   private String maskForLog(String raw) {
-    if (raw == null) {
-      return "null";
-    }
-    return raw.length() + "字符";
+    return raw == null ? "null" : raw.length() + "字符";
   }
 }
