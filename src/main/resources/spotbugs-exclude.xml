@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SpotBugs High 存量基线（豁免台账）
+
+  来源：openspec/changes/operationalize-harness-gates（组 3 / P3）于 2026-09-21 从一次真实运行生成。
+  生成命令：mvn -B -ntp compile spotbugs:spotbugs
+  权威产物：target/spotbugsXml.xml（12 条 priority=1 / High，7 类 5 型）
+  更新规则：只允许由上述同一条命令的一次真实运行更新（对齐 scripts/test-baseline.txt 的"禁止手改数字"惯例）。
+            新增 High 缺陷不在本文件内 = 构建立即变红；修掉一条存量 = 必须同时删除对应 <Match>，
+            否则该条目成为"登记了却不再命中"的过期豁免。
+            过期豁免复验法：临时把 pom 的 <excludeFilterFile> 注释掉跑一次 spotbugs:spotbugs，
+            取未过滤的 High 清单；<Match> 条数必须等于 High 条数且类+型+成员一一对应，
+            多出来的 <Match> 即已失效的登记，必须删除而不是留着。
+  粒度约束：每条必须是「类 + bug 类型 + 方法/字段」三段齐全，禁止包级或通配 Match，
+            以免顺带吞掉将来同类的新缺陷。
+  复测命令：mvn -B -ntp spotbugs:check
+-->
+<FindBugsFilter>
+
+    <!-- com.slz.crm.common.untils.BaseUnit: threadLocal 可变静态字段 -->
+    <Match>
+        <Class name="com.slz.crm.common.untils.BaseUnit"/>
+        <Bug pattern="MS_SHOULD_BE_FINAL"/>
+        <Field name="threadLocal"/>
+    </Match>
+
+    <!-- com.slz.crm.platform.model.ModelProviderImpl: 两处对已知非空值的冗余判空 -->
+    <Match>
+        <Class name="com.slz.crm.platform.model.ModelProviderImpl"/>
+        <Bug pattern="RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE"/>
+        <Method name="embed"/>
+    </Match>
+    <Match>
+        <Class name="com.slz.crm.platform.model.ModelProviderImpl"/>
+        <Bug pattern="RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE"/>
+        <Method name="toTextResult"/>
+    </Match>
+
+    <!-- com.slz.crm.server.config.ForeignKeyConfig: 公开可变静态集合 -->
+    <Match>
+        <Class name="com.slz.crm.server.config.ForeignKeyConfig"/>
+        <Bug pattern="MS_MUTABLE_COLLECTION"/>
+        <Field name="ALL_RELATIONS"/>
+    </Match>
+
+    <!-- com.slz.crm.server.constant.PrivacyGetId: 公开可变静态集合 -->
+    <Match>
+        <Class name="com.slz.crm.server.constant.PrivacyGetId"/>
+        <Bug pattern="MS_MUTABLE_COLLECTION"/>
+        <Field name="USER_ID_RELATED_FIELDS"/>
+    </Match>
+
+    <!-- com.slz.crm.server.init.DataInitializer: 依赖平台默认编码 + 恒真条件 -->
+    <Match>
+        <Class name="com.slz.crm.server.init.DataInitializer"/>
+        <Bug pattern="DM_DEFAULT_ENCODING"/>
+        <Method name="initAdminUser"/>
+    </Match>
+    <Match>
+        <Class name="com.slz.crm.server.init.DataInitializer"/>
+        <Bug pattern="UC_USELESS_CONDITION"/>
+        <Method name="start"/>
+    </Match>
+
+    <!-- com.slz.crm.server.init.PermissionSyncRunner: 恒真条件 -->
+    <Match>
+        <Class name="com.slz.crm.server.init.PermissionSyncRunner"/>
+        <Bug pattern="UC_USELESS_CONDITION"/>
+        <Method name="start"/>
+    </Match>
+
+    <!-- com.slz.crm.server.service.impl.UserServiceImpl: 4 处依赖平台默认编码 -->
+    <Match>
+        <Class name="com.slz.crm.server.service.impl.UserServiceImpl"/>
+        <Bug pattern="DM_DEFAULT_ENCODING"/>
+        <Method name="addUser"/>
+    </Match>
+    <Match>
+        <Class name="com.slz.crm.server.service.impl.UserServiceImpl"/>
+        <Bug pattern="DM_DEFAULT_ENCODING"/>
+        <Method name="login"/>
+    </Match>
+    <Match>
+        <Class name="com.slz.crm.server.service.impl.UserServiceImpl"/>
+        <Bug pattern="DM_DEFAULT_ENCODING"/>
+        <Method name="resetUserPassword"/>
+    </Match>
+    <Match>
+        <Class name="com.slz.crm.server.service.impl.UserServiceImpl"/>
+        <Bug pattern="DM_DEFAULT_ENCODING"/>
+        <Method name="updatePassword"/>
+    </Match>
+
+</FindBugsFilter>

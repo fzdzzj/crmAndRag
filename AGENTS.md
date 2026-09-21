@@ -45,7 +45,7 @@
 ### 环境与迁移入口
 
 - `docs/migration-runbook.md`：`.env.example` → `.env`、`SPRING_PROFILES_ACTIVE=prod`、Flyway 号段归属。
-- **Flyway 号段现状（以 `ls src/main/resources/db/migration` 实测为准）**：`V1__baseline` 基座 + 个位数历史段 `V3`/`V4`/`V4_1`/`V5`/`V6`（早期 lane 的 `V2x`/`V3x`/`V4x`/`V5x`/`V6x` 十位号段规划**从未启用**，lane 归属见 runbook §1 与 `spec/.../agent-execution-plan.md §5`）；自 V21 起改用顺序号，当前最高 `V27__knowledge_admin_permission_seed.sql`，**下一可用号以目录实测为准**（不要照抄本文档）。
+- **Flyway 号段现状（以 `ls src/main/resources/db/migration` 实测为准）**：`V1__baseline` 基座 + 个位数历史段 `V3`/`V4`/`V4_1`/`V5`/`V6`（早期 lane 的 `V2x`/`V3x`/`V4x`/`V5x`/`V6x` 十位号段规划**从未启用**，lane 归属见 runbook §1 与 `spec/.../agent-execution-plan.md §5`）；自 V21 起改用顺序号，**下一可用号只以实测为准**（本文不记号段上界数字，任何"当前最高 Vxx"的写法都会过期）：`ls src/main/resources/db/migration | sed 's/__.*//' | sort -V | tail -1`。
 - 库结构唯一真相源 = `src/main/resources/db/migration`；**禁改已合入脚本**（Flyway 校 checksum），改错出 `V(n+1)__fix_xxx.sql`。
 - 回退：**不提供 DROP 回滚**，回退 = 恢复迁移前的数据库快照（runbook 第 4.1 步的 dump）。
 

@@ -1,0 +1,17 @@
+# SpotBugs 未过滤 High 存量快照：由 scripts/tests/spotbugs-exclude-staleness-check.sh --update-snapshot
+# 从一次真实运行写入，禁止手改（口径同 scripts/test-baseline.txt）。
+# 列：类 <TAB> bug 型 <TAB> 成员种类 <TAB> 成员名；成员取 primary='true' 的 Field，无则取 Method。
+# source-revision=ff0f26e
+# measured-at=2026-09-21T05:56:28Z
+com.slz.crm.common.untils.BaseUnit	MS_SHOULD_BE_FINAL	field	threadLocal
+com.slz.crm.platform.model.ModelProviderImpl	RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE	method	embed
+com.slz.crm.platform.model.ModelProviderImpl	RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE	method	toTextResult
+com.slz.crm.server.config.ForeignKeyConfig	MS_MUTABLE_COLLECTION	field	ALL_RELATIONS
+com.slz.crm.server.constant.PrivacyGetId	MS_MUTABLE_COLLECTION	field	USER_ID_RELATED_FIELDS
+com.slz.crm.server.init.DataInitializer	DM_DEFAULT_ENCODING	method	initAdminUser
+com.slz.crm.server.init.DataInitializer	UC_USELESS_CONDITION	method	start
+com.slz.crm.server.init.PermissionSyncRunner	UC_USELESS_CONDITION	method	start
+com.slz.crm.server.service.impl.UserServiceImpl	DM_DEFAULT_ENCODING	method	addUser
+com.slz.crm.server.service.impl.UserServiceImpl	DM_DEFAULT_ENCODING	method	login
+com.slz.crm.server.service.impl.UserServiceImpl	DM_DEFAULT_ENCODING	method	resetUserPassword
+com.slz.crm.server.service.impl.UserServiceImpl	DM_DEFAULT_ENCODING	method	updatePassword

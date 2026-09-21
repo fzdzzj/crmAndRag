@@ -9,7 +9,7 @@
 
 - **是什么**：一个 Java/Spring Boot **单体**，把原 CRM 系统与原 RAG 系统融合成一个产品。
 - **架构定位（关键，D11）**：**不是**"两个对等系统拼接"，而是 **CRM 为基座** + **AI 助手吸收 RAG 的对话能力** + **知识库能力移植为 `com.slz.crm.knowledge` 模块**。原 RAG 的独立对话层（`chat_*` 表 / `RagChatPipeline` / 匿名问答）**已丢弃**，对话统一走 CRM 的 `ai_session`/`ai_message`。
-- **当前状态**：`master` = 完整融合产品 + **检索链路优化 5 提案已全部落地**（混合检索/上下文压缩/语义切分/查询增强，见 §2.5 与 `openspec/`）；**测试基线数字以 `.github/workflows/ci.yml` 为准（当前 surefire 657 / failsafe 13，截至 2026-09-19）**；真库迁移链在本机 Docker 完整应用（该实测记录快照截至 2026-09-16 覆盖到 V26，V27 合入后未复验）；**schema 漂移 7 项遗留已全部定夺豁免**（Known/NEW 二分机制上线，见 §3）；**RAG 基准集已扩容 18→54 条（SUITE_VERSION 2.0）且 v2 锚点已跑**（见 §3）；**未 push**（推送需显式授权）。
+- **当前状态**：`master` = 完整融合产品 + **检索链路优化 5 提案已全部落地**（混合检索/上下文压缩/语义切分/查询增强，见 §2.5 与 `openspec/`）；**测试基线阈值只存放在 `scripts/test-baseline.txt`，裁决入口是 `bash scripts/check-test-baseline.sh`（本地与 CI 同一条命令；本文不复制数字，阈值禁止手改，历史阶梯见 `git log -p -- scripts/test-baseline.txt`）**；真库迁移链在本机 Docker 完整应用（该实测记录快照截至 2026-09-16 覆盖到 V26，V27 合入后未复验）；**schema 漂移 7 项遗留已全部定夺豁免**（Known/NEW 二分机制上线，见 §3）；**RAG 基准集已扩容 18→54 条（SUITE_VERSION 2.0）且 v2 锚点已跑**（见 §3）；**未 push**（推送需显式授权）。
 - **怎么建的**：OpenSpec 规范驱动 + **多 agent 并行**：Wave 0 基座串行（契约冻结）→ Wave 1 四 lane 并行（A 数据权限/B 知识库/C 助手/D 治理）→ Wave 2 E 动态配置 → Wave 3 串行集成。理解这个波次结构对理解代码归属很重要（见 §1/§2）。
 
 ---
@@ -77,10 +77,10 @@ com.slz.crm
 ## 3. 当前 git 状态与未决事项
 
 - **图像 PDF 视觉转写试点已落地（add-vision-pdf-ingest-pilot，默认关）**：`PdfVisionTranscriber` + `DocumentService.parsePdf` 可选接入；三键 `rag.retrieval.vision-pdf.*`（enabled=false / min-text-chars=80 / max-pages=3）；失败回退文本层；pageNo 不变。**真 VLM 1 页试点已授权跑完（2026-09-17）**：`VisionPdfRealPilotIT`（failsafe，`RAG_VISION_PDF_REAL=1` 门控）**1 次 vision** 全绿——无文本层 PDF（文本层 0 字符）→ 渲染 → `qwen-vl-plus` 转写 **112 字**、关键词 **6/6** 命中、**闸门通过**、chunks=1 / pageNo=1；未跑 54 条、未跑 132 页全量；记录见 `docs/ingest-vision-pdf-pilot.md`。生产打开 `enabled=true` 仍需单独授权。
-- **I-05 图注黄金块切分对齐（fix-i05-caption-chunk，已合入）**：`sla-arch-diagram.md` 独立 fixture（key=`sla-arch`），从 `sla-terms.md` 删图注段；FIXTURES 11→12；`RagBenchmarkDataPreparerTest` 词面断言（含接入层/台账与预警引擎，不含何建军/赔偿当月服务费）；`SUITE_VERSION` 仍 2.0；禁改 CitationAligner/FixedChunkingStrategy 320/40/Evaluator。本轮新增 1 个词面断言用例（surefire 口径以 ci.yml 为准）。**I-05 取证重跑已授权完成（2026-09-16）**：citP **1.0**（was 0.0）；黄金 `sla-arch-0` rank1 被 `[1]` KEEP；见 `docs/rag-quality/i05-after-caption-chunk.md`；未覆盖 v1/v2/after-quality-loop/i05-forensics.json。
+- **I-05 图注黄金块切分对齐（fix-i05-caption-chunk，已合入）**：`sla-arch-diagram.md` 独立 fixture（key=`sla-arch`），从 `sla-terms.md` 删图注段；FIXTURES 11→12；`RagBenchmarkDataPreparerTest` 词面断言（含接入层/台账与预警引擎，不含何建军/赔偿当月服务费）；`SUITE_VERSION` 仍 2.0；禁改 CitationAligner/FixedChunkingStrategy 320/40/Evaluator。本轮新增 1 个词面断言用例（surefire 计数口径见 `scripts/test-baseline.txt`，本文不复制数字）。**I-05 取证重跑已授权完成（2026-09-16）**：citP **1.0**（was 0.0）；黄金 `sla-arch-0` rank1 被 `[1]` KEEP；见 `docs/rag-quality/i05-after-caption-chunk.md`；未覆盖 v1/v2/after-quality-loop/i05-forensics.json。
 - **性能与并发基线（measure-perf-baseline，已合入）**：只测不改热路径。`docs/perf-baseline.md` 盘点 AiChatMetrics / 平台与助手线程池拒绝策略 / actuator 保护；`PerfBaselineSmokeTest` 4 条 ¥0 微基准（FixedChunking 10KB/100KB、CitationAligner×1e4、ConstraintQuerySplitter×1e4），本机 ns 表入文档**不**入 ci 阈值。**未**改 `FixedChunkingStrategy` / 线程池大小 / SSE 超时；**尚未**开始 `add-paragraph-chunking`（切分默认策略仍为 fixed）。
 - **工作树实测（口径 = `git status --porcelain`，2026-09-19 亲验快照：25 个已跟踪文件被改 + 142 个未跟踪条目，展开 303 个文件；并行 lane 会让该数随时变，接手时重新跑命令，别照抄）**：其中 `frontend/` 整片是**在途前端提案的工作区**（未跟踪，非遗留垃圾），另有 rag 学习工作区的三个暂存件 `_rag优化交接.md`/`_vlm_transcribe.py`/`_技术深化交接.md`（**勿提交勿删除**）。**未 push**（硬约束：推送需你显式授权）。旧版本文"工作树干净（仅三个未跟踪件）"的说法已不成立。
-- **surefire 全绿以 ci.yml 基线为准**（本机的历次亲验记录只作过程证据，见上文各提案条目）；failsafe 在无 Docker 机器上是"下限口径"，分类见 `docs/migration-runbook.md` §6.2。
+- **surefire 全绿以 `scripts/test-baseline.txt` + `bash scripts/check-test-baseline.sh` 的裁决为准**（本机的历次亲验记录只作过程证据，见上文各提案条目）；failsafe 在无 Docker 机器上是"下限口径"，分类见 `docs/migration-runbook.md` §6.2。
 - **WriteChainRegressionIT 双红灯已修复（V24 补 approval_attachment.uploader_id + 种子修正）**；**全量实体↔表列漂移审计（P1）已完成（audit-entity-table-drift 合入）**：新增 `SchemaDriftAuditIT` 永久门禁（真 MySQL CRITICAL 非空即 fail）根修 `V25__invoice_info_add_remark.sql` 补 `invoice_info.remark` 列，审计报告见 `docs/schema-drift-audit.md`。
 - **schema 漂移 7 项遗留已全部定夺豁免（drift-disposition 合入，零行为变更）**：新增 `KnownDriftRegistry`（W1-W5 类型不亲和 + I1 生成列 + I2 预留表，2026-09-14 拍板"登记豁免、不动表结构"），审计 KNOWN/NEW 二分上线（KNOWN=7 / NEW=0 / CRITICAL=0，IT 真库实测）；单测防呆 `unmatchedKnownDrifts` 保证登记项必须仍产出真实漂移，新漂移走 NEW 登记流程。
 - **权限读取缺口已闭合（close-permission-read-gap 合入）**：`GET /permission/list` 与 `GET /permission/getByRole` 已加 `@RequirePermission(PermissionOperates.SYSTEM_ASSIGN_PERMISSION)`（复用 606，读写同权，未新增 608）；`PermissionControllerIT` 两个 `@Disabled` 已移除并新增 1 正向用例（本地 Docker 实测 3 绿）；surefire 用例数本轮不变。AGENTS.md「未闭合的授权缺口」章节已改写为闭合记录。
@@ -88,7 +88,7 @@ com.slz.crm
 - **RAG 基准集扩容 18→54 条（expand-rag-benchmark 合入，¥0 部分）**：fixtures 6→11（新增客户 SOP/价格政策/区域政策/SLA/维保周期表）；`RagBenchmarkSuite` 五类 TEXT 17 / TABLE 13 / IMAGE 6 / LEXICAL 14 / EDGE 4，`SUITE_VERSION` 升 2.0（v1 18 条不可直接比较，单条权重 5.6%→1.9%）；新增 ngram 召回闸门覆盖 L-01~L-14（含 InnoDB FTS 批量插入相关度全 0 的坑：ingest 后须 `OPTIMIZE TABLE` 刷盘）；本轮新增 1 例，ci.yml 三处同步上调。**v2 锚点已跑（用户授权真外呼，2026-09-16）**：`docs/rag-quality/baseline-v2.json` + `docs/rag-quality/baseline-v2-anchor.md`（54 条，纯默认矩阵 V1，failureRate 0.0）；关键指标 recall@5 0.9105 / MRR 0.8210 / citationPrecision 0.7843 / hitRate 0.96 / answerConsistency 0.9475 / totalTokens 51947 / meanTotalLatency 3665.7ms；与 v1（18 条）不可数值直比，TABLE 聚合与数值区间（TB-01/TB-10 零召回）为新增难度面弱项。
 - **RAG 真检索基线已跑**：四份 JSON + `docs/rag-quality/ladder-report.md`。跑法铁律：`RAG_BENCHMARK_REAL=1` 且只 `-Dit.test=RagRealRetrievalBenchmarkIT` 过滤——`.env` 常备 key，全量 `mvn verify` 会连带其他 DashScope IT 真外发。
 - **测试与可观测性卫生修复（test-hygiene 合入，零行为变更）**：① 9 个 Caffeine cache 开 `recordStats()`（CacheConfig 8 + RequestQuotaService 2，命中率指标可见）；② AI 定时任务按 `crm.ai.scheduled-enabled` 门控（生产默认开，测试 profile 关闭，H2 冒烟不再刷 `ai_pending_action` Table not found）；③ surefire `@{argLine}` 合并挂 byte-buddy-agent 1.17.7 消 Mockito 动态加载警告；④ AsyncContextDecoratorConfig 的 @Bean 工厂方法 static 化消 Spring 6.2 BPP 警告。**本轮 surefire 用例数不变、全绿**，四类警告日志全消。
-- CI：`.github/workflows/ci.yml` = surefire + failsafe 双口径回归门禁（基线数字以文件为准）+ 报告归档。
+- CI：`.github/workflows/ci.yml` = surefire + failsafe 双口径回归门禁 + 报告归档；其回归基线步骤不含硬编码阈值，只调用 `bash scripts/check-test-baseline.sh` 读 `scripts/test-baseline.txt` 裁决（该文件禁止手改，只允许 `--update` 从一次真实运行写入）。
 - **待授权遗留**：生产库全量 reingest（真实嵌入成本 × chunk 总量，`KnowledgeReingestRunner` 已实现）、多查询/HyDE 生产语料重评。（基准集 v2 锚点已于 2026-09-16 授权跑完，见上条与 `baseline-v2-anchor.md`。）
 - **生成后引用编号对齐（fix-citation-alignment，已合入）**：`CitationAligner` 零外呼 KEEP/REMAP/DROP；生产 `AiChatStreamLifecycle` 落库前对齐、评测 `RagRealRetrievalBenchmarkIT` 共用同一实现对齐后再抽 citations。阈值 KEEP_MIN=0.12 / REMAP_MIN=0.22 / TIE_MARGIN=0.08；计分子句 CJK 二字覆盖率。本轮新增 `CitationAlignerTest` 6 例（ci.yml 已同步上调）。**after-quality-loop 已跑**（2026-09-16 授权，三单合并一次默认矩阵；产物 `docs/rag-quality/baseline-after-quality-loop.json` + `.md`，**未**覆盖 v1/v2；全套 recall@5 **0.9475** / MRR **0.9136** / hitRate **1.0** / citP **0.8302** / failureRate **0** / suiteVersion **2.0**；I-05 citP **仍 0**——对齐目标未达，不调阈值）。
 - **Excel 多列表头投影（add-excel-header-projection，已合入）**：`DocumentService.parseExcel` 在首行非空格≥2 且每格≤32 时把列名投影为「列名：值」进数据行，表头行不入库；单列/超长首行保持原行为。¥0 单测 + 语料黄金行列名断言已绿（本轮新增 3 例，ci.yml 已同步上调）。**after-quality-loop 已覆盖本单复测**（非单独 after-excel-header 文件）：TB-01/TB-10 recall **0→1.0**，其余 11 条 TABLE recall 无回退。生产已入库 xlsx 需另授权 reingest，本单不触发。
@@ -129,7 +129,7 @@ com.slz.crm
 
 ## 5. 接手后的第一步 / 常见任务怎么做
 
-1. **先跑** `mvn test`（是否绿以 `.github/workflows/ci.yml` 的 surefire 基线为准）+ 跑 `git status --porcelain` 看工作树（**当前不干净**：口径与快照见 §3，`frontend/` 是在途提案工作区）。
+1. **先跑** `mvn test` + `bash scripts/check-test-baseline.sh`（是否绿以该脚本对 `scripts/test-baseline.txt` 的裁决为准，本地与 CI 同口径）+ 跑 `git status --porcelain` 看工作树（**当前不干净**：口径与快照见 §3，`frontend/` 是在途提案工作区）。
 2. **理解助手**：读 `server/ai/` + `assistant-decision-tree.md` + SSE 契约（`SseEventName` + `SseContractTest`）。改事件/payload = 契约变更，同步前端 + 测试。
 3. **理解知识库**：`knowledge/` + `contracts-frozen.md §2`；检索管线 = 授权过滤→查询改写→向量/稀疏双路召回→RRF 融合→rerank→ContextBuilder 邻居增强+预算压缩（`KnowledgeRetrievalServiceImpl`；开关矩阵见 §2.5 与 `docs/dynamic-config-keys.md`）。
 4. **改契约**：`contracts-frozen.md` 是权威；改 `platform/contract` 要同步所有消费方 + `SseContractTest`。
@@ -171,7 +171,7 @@ com.slz.crm
   POST /knowledge/files/{id}/reingest
   POST /knowledge/retrieval/test （默认稀疏零外呼）
 - 新增 controller 已登记 PermissionCoverageScanner.CONTROLLER_REGISTRY。
-- surefire 本轮新增 KnowledgeAdminServiceTest 4 个用例（实测绿），`.github/workflows/ci.yml` 的基线随之上调（当前值以该文件为准）。
+- surefire 本轮新增 KnowledgeAdminServiceTest 4 个用例（实测绿），当时（2026-09-18 历史记录）上调的是 `.github/workflows/ci.yml` 里的字面量；阈值现由 `scripts/test-baseline.txt` 持有，当前值以该文件与其 `git log -p` 为准，本条不作验收口径。
 - V27__knowledge_admin_permission_seed.sql 已种植 + 业务角色授权。
 - docs/permission-matrix-audit.md 已追加行。
 - 禁止事项遵守：未改 V1..V26；未跑 54 条基准；未默认真 embedding；单测 mock；IT 如需 Docker 记 skip。

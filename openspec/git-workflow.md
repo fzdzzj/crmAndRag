@@ -1,7 +1,7 @@
 # Git 工作流 — 检索链路优化提案执行契约（交接 agent 必读）
 
 > 适用：`openspec/changes/` 下剩余提案（2–5）的执行 agent。本文自包含，与本机环境（旧版 git + PowerShell）已对齐。
-> 当前基线：master @ `e24663a`（提案 1 已 `--no-ff` 合入）；**测试基线数字一律以 `.github/workflows/ci.yml` 为准（当前 surefire 657 / failsafe 13，截至 2026-09-19）**，本文不复制数字作验收口径；仓库**无 remote，禁止 push**（推送需用户显式授权）。
+> 当前基线：master @ `e24663a`（提案 1 已 `--no-ff` 合入）；**回归基线阈值只存放在 `scripts/test-baseline.txt`，裁决由 `bash scripts/check-test-baseline.sh` 完成（本地与 CI 同一条命令）**——本文与该文件之外的任何地方都不复制 surefire/failsafe 数字作验收口径，历史口径一律以该文件与 `git log -p -- scripts/test-baseline.txt` 为准；仓库**无 remote，禁止 push**（推送需用户显式授权）。
 
 ## 1. 分支模型
 
@@ -19,7 +19,11 @@
 
 ## 3. 合并回 master（缺一不合）
 
-1. 亲验：`mvn -B -ntp test` 全绿，记录 Tests run 合计 N（写进汇报，不许引用上一轮数字）。
+1. 亲验：`bash scripts/merge-gate.sh` 全绿。这一条命令就是合并前必跑序列，不要拆开来手跑后就当作跑过：
+   它依次裁决 surefire 单元与契约、`spotbugs:check`（High 级）、回归基线、提交期 `pre-commit` 转发器是否在位、
+   SpotBugs 豁免台账双射。需要把 failsafe 集成测试也纳入时加 `--with-verify`（本机 Docker 在线时会经
+   Testcontainers 拉镜像，故默认不跑）。
+   输出即合入证据：把各子门禁的实测数字抄进汇报，不许引用上一轮数字。
 2. 亲验：`git status` 干净（仅允许剩两个已知未跟踪文件，见 §6）。
 3. 合并：
    ```
@@ -30,9 +34,17 @@
 
 ## 4. CI 基线 bump（凡新增测试的提案必做）
 
-- 分支收尾提交：`chore(ci): surefire回归基线上调至 N——锁住提案X新增Y测试（实测N绿）`（bump 前的当前值以 `.github/workflows/ci.yml` 为准，不在本文复制）。
-- 同步改 `.github/workflows/ci.yml` 三处：口径A 注释（写明新增来源测试类与实测日期，不写等式）、`check_baseline target/surefire-reports` 数字、错误提示行数字。
-- failsafe 基线（当前值以 ci.yml 为准）仅在**新增 IT 且本地实测**后才上调（无 Docker 按 skip 口径，见 ci.yml 口径B 注释的坑与 `docs/migration-runbook.md` §6.2 的红/跳分类）。
+- 基线数字的**唯一存放处是 `scripts/test-baseline.txt`**，本文与 `.github/workflows/ci.yml` 都不复制它，
+  也不存在"同步改 CI 里几处数字"这回事——CI 的阶段3 只是调 `bash scripts/check-test-baseline.sh` 做裁决。
+- 更新方式只有一种：跑一次真实构建，然后带 `--update` 让它自己写入。
+  ```bash
+  mvn -B -ntp clean verify
+  bash scripts/check-test-baseline.sh --update
+  ```
+  **禁止手改该文件的数字**（`scripts/check-test-baseline.sh:13` 与 `scripts/test-baseline.txt` 第 1 行都写着这条，
+  对任何提案生效）；当前运行含 Failures/Errors 时 `--update` 会直接拒绝写入。
+- 分支收尾提交信息口径：`chore(ci): 回归基线由一次真实运行重新写入——锁住提案X新增Y测试（实测见 --update 输出）`；
+  failsafe 侧仅在**新增 IT 且本地实测**后才会上调（无 Docker 时哪些跳哪些红，见 `docs/migration-runbook.md` §6.2）。
 - 基线 JSON（`baseline-after-*.json`）**入库**——它们是后续提案"不回退"验收的锚点。
 - **新增 `src/main/resources/db/migration/` 脚本必须在同一变更内更新 `FlywayMigrationIT` 的 `EXPECTED_VERSIONS`**（该类是迁移链全集门禁；版本表漏登记 = 新脚本对门禁完全失明，CI 下限口径也拦不住）。
 
@@ -51,6 +63,7 @@
 ## 7. 通用收尾自检（每个提案合并前逐条过）
 
 1. tasks.md 除显式"待授权"项外全勾。
-2. `mvn -B -ntp test` 绿，计数 = 分支内 ci.yml 新基线数字。
+2. `bash scripts/merge-gate.sh` 全绿（回归基线由其中的 `[baseline]` 子门禁裁决），把实测计数写进汇报；
+   数字本身只在 `scripts/test-baseline.txt`，本文不复制，也不去 CI YAML 里找。
 3. `git log --oneline --graph`：提交按任务组整齐、merge 带 `--no-ff`。
 4. 汇报写明：实测测试数、baseline JSON 路径、遗留未勾项及原因（HANDOFF 教训：报完成要亲验 commit hash + status 干净）。

@@ -1,7 +1,18 @@
 # ================================================================
 # CI 门禁（task18：契约/安全/数据权限/韧性/RAG 评估纳入 CI + 回归阈值）
-# 触发：推送与 PR。ubuntu-latest 自带 Docker → Testcontainers IT（含 Flyway 真库迁移）可真跑。
-# 门禁语义：任一阶段失败即阻止合入；单元测试(surefire) + 集成测试(failsafe) 分开跑，先快后慢。
+#
+# ⚠ 触发通道现状（必读，勿按字面理解为"失败会自动拦下合入"）：
+#   本仓 `git remote -v` 为空、master 无 upstream —— 下面声明的 push/PR 触发在**本仓不会执行**，
+#   全部 job 只在定义被镜像到支持 GitHub Actions 的平台后才生效（接入远端需单独授权）。
+#   所以真实的合并前验收边界在本地，一条命令：
+#       bash scripts/merge-gate.sh
+#   它与本文件的 job 同源（跑同一批判定命令），因此在无 CI 触发通道时结论可本地复现。
+#   合并序列见 openspec/git-workflow.md §3。
+#
+# 门禁语义（仅在有触发通道时成立）：任一阶段失败即阻止合入；
+#   单元测试(surefire) + 集成测试(failsafe) 分开跑，先快后慢。
+#   ubuntu-latest 自带 Docker → Testcontainers IT（含 Flyway 真库迁移）可真跑；
+#   本地无 Docker 时哪些用例会跳、哪些会红，以 docs/migration-runbook.md §6.2 的分类为准。
 # ================================================================
 name: CI
 
@@ -89,7 +100,7 @@ jobs:
           path: target/openapi/openapi.yaml
           if-no-files-found: warn
 
-  # TASK-02：静态检查门禁（checkstyle/spotbugs/pmd/spotless）
+  # TASK-02：静态检查门禁（checkstyle / spotbugs / spotless）
   static-analysis-gate:
     needs: build-and-gate
     runs-on: ubuntu-latest
@@ -104,13 +115,35 @@ jobs:
           java-version: 21
           cache: maven
 
-      - name: 静态检查门禁（checkstyle/spotbugs/pmd/spotless）
-        run: mvn -B -ntp checkstyle:check spotbugs:check pmd:check spotless:check
-        env:
-          CHECKSTYLE_MAX_VIOLATIONS: 0
-          SPOTBUGS_MAX_HIGH: 0
-          PMD_MAX_VIOLATIONS: 5
-          SPOTLESS_APPLY_DIFF: 0
+      # 每一步的判定依据都写在下面并标注配置行，做到 grep 得到读者（spec R1②：禁止注入后无人读的阈值）。
+      # 原先本步骤 env 注入的 CHECKSTYLE_MAX_VIOLATIONS / SPOTBUGS_MAX_HIGH / PMD_MAX_VIOLATIONS /
+      # SPOTLESS_APPLY_DIFF 四个变量**全仓无读者**，已逐个删除，处置依据：
+      #   - checkstyle 只有"存在 error 级违规即红"的二值口径，没有"允许 N 条"的计数概念；
+      #   - spotbugs 的"什么算缺陷"与"存量多少"分别由 threshold 与 exclude 文件承载，不是计数阈值；
+      #   - pmd 从未真正产出结论（见下）；
+      #   - SPOTLESS_APPLY_DIFF 不是 spotless-maven-plugin 认得的属性名（插件只读 pom 的 configuration）。
+      #
+      # checkstyle:check 判定依据：pom.xml:387 <failOnViolation>true</failOnViolation>
+      #   + pom.xml:388 <violationSeverity>error</violationSeverity>（规则集 src/main/resources/checkstyle.xml）。
+      # spotbugs:check   判定依据：pom.xml:418 <threshold>High</threshold> 定义"什么算缺陷"，
+      #   pom.xml:423 <excludeFilterFile>src/main/resources/spotbugs-exclude.xml</excludeFilterFile> 承载存量
+      #   High 基线台账；不在台账内的新 High 直接变红。基线只允许由
+      #   `mvn -B -ntp compile spotbugs:spotbugs` 的一次真实运行更新（过期豁免双射校验：
+      #   bash scripts/tests/spotbugs-exclude-staleness-check.sh）。
+      # spotless:check   判定依据：pom.xml:488-500 的 <java> 格式化配置（googleJavaFormat GOOGLE），
+      #   该插件块无 <skip>，格式不合规即红。
+      #
+      # pmd:check 已从本步骤移除：pom.xml:457 是字面量 <skip>true</skip>（全仓唯一一处 skip），
+      #   跑它只会打印 "PMD plugin skipped"，不产生任何结论——跑了不产生结论就别装成在跑。
+      #   豁免四要素（项 / 三条理由 / 复测命令 / 到期触发条件）登记在 docs/migration-runbook.md §6.7。
+      #
+      # 命令以 `compile` 开头是必需的，不是冗余：本 job 是独立 checkout，没有前置构建，而 spotbugs:check
+      #   读的是 target/classes。缺产物时它会"无类可分析"地静默通过 —— 又回到"装成在跑"。
+      #   同时 compile 会连带触发 pom 里绑到 validate 阶段的 checkstyle-check（pom.xml:390-397）与
+      #   spotless-check（pom.xml:502-509），后面显式再点一次是为了让这三项在命令行上都能被读到，
+      #   不依赖"有人记得 pom 里绑过阶段"。
+      - name: 静态检查门禁（checkstyle / spotbugs / spotless）
+        run: mvn -B -ntp compile checkstyle:check spotbugs:check spotless:check
 
   # TASK-10：Fail-Fast 启动门禁——依赖不可达时应用必须起不来，且原因指名到组件。
   #   与本地完全同一条命令：bash scripts/fail-fast-gate.sh（脚本自带断言，不靠 grep 拼凑）
@@ -166,7 +199,7 @@ jobs:
           if-no-files-found: ignore
 
   frontend-quality:
-    name: Frontend Lint / Type-check / Build Budget
+    name: Frontend Test / Lint / Type-check / Build Budget
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -199,6 +232,15 @@ jobs:
 
       - name: Type-check
         run: pnpm type-check:check
+
+      # 前端单元轨（Vitest）。此前 tracked 的 *.test.ts 不属于任何会自动执行的检查（spec R3），
+      # 命令口径复用 frontend/AGENTS.md「Testing Guidelines」已声明的 vitest run，不新造并行命令。
+      # 依赖 gen:api 产物（src/api/__tests__ 会 import 生成物），故必须在 Generate API client 之后。
+      # e2e 轨道**不在此处**：frontend/vite.config.ts:66 的 test.exclude 显式排除 ['e2e/**', ...]，
+      # 不是因缺配置而静默跳过；Playwright 需真后端 + 浏览器，成本受 openspec/git-workflow.md §5 闸门约束，
+      # 本提案不接入默认路径（延续 add-frontend-ci 的禁止口径）。
+      - name: 单元测试（Vitest）
+        run: pnpm test
 
       # TASK-20：产物体积门禁。此前这个 job 从不 pnpm build，"包变大"在 CI 里完全不可观测。
       # 阈值不在 YAML 里，而在 frontend/bundle-budget.json（gzip 字节数），且只允许由
