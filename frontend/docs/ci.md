@@ -2,10 +2,15 @@
 
 ## 工作流一览
 
-| 工作流 | 触发时机 | 内容 |
-|--------|---------|------|
-| `ci.yml` | push 到 main、指向 main 的 PR | lint / type-check / build |
-| `e2e-official.yml` | 手动触发（workflow_dispatch） | MySQL + 后端构建 + Playwright E2E，全程官方 Runner |
+前端质量门禁现在**只有一个权威定义处**：仓根的 `.github/workflows/ci.yml` 里的 `frontend-quality` job（`working-directory: frontend`），步骤为 gen:api → lint:check → type-check:check → **vitest 单元轨** → build → gzip 体积预算。
+
+| 位置 | 状态 | 说明 |
+|------|------|------|
+| `.github/workflows/ci.yml` 的 `frontend-quality` | 权威定义 | 本仓 `git remote -v` 为空、`master` 无 upstream，**该 job 今天不会被自动触发**；合并前由 `bash scripts/merge-gate.sh` 在本地跑等价序列 |
+| `frontend/.github/workflows/ci.yml.prev-host-unread` | 已归档（`operationalize-harness-gates` 组 4.3） | 归档原因：宿主不读取嵌套目录下的 `.github/workflows`，且其触发分支写的是 `main`，与本仓默认分支 `master` 不符 |
+| `frontend/.github/workflows/e2e-official.yml.prev-host-unread` | 已归档（同上） | 同上；另依赖私有后端仓检出与 `BACKEND_REPO_TOKEN` |
+
+> 归档文件内容未作改动，保留作历史与恢复参考。**不要按下面"首次配置步骤"去 GitHub 配置那两个文件**——它们已不被读取；那一节保留是为说明归档件的原始意图。
 
 本地等价命令：
 
@@ -14,11 +19,14 @@ pnpm install --frozen-lockfile
 pnpm gen:api
 pnpm lint:check
 pnpm type-check:check
+pnpm test                       # Vitest 单元/组件轨，无需浏览器与后端
 pnpm build
 pnpm exec playwright test e2e/role-permission.spec.ts
 ```
 
 ## 首次配置步骤（在 GitHub 上做一次）
+
+> 适用对象是已归档的 `*.prev-host-unread`，仅当本仓被镜像到托管平台并决定恢复这两条流水线时才用得上。
 
 1. **给前端仓库配置后端访问令牌**
 

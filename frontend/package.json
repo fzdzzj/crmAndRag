@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test": "vitest run",
     "preview": "vite preview",
     "lint": "eslint --ext .js,.vue --fix src && pnpm type-check",
     "lint:check": "eslint --ext .js,.vue src",
