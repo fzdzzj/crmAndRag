@@ -406,6 +406,9 @@
             </plugin>
 
             <!-- SpotBugs:4.8.6.2 - High severity 缺陷扫描 -->
+            <!-- 阈值的唯一读者是本块：threshold=High 定义"什么算缺陷"，excludeFilterFile 承载存量 High 基线
+                 （12 条，2026-09-21 由 mvn -B -ntp compile spotbugs:spotbugs 真实运行落盘生成）。
+                 新出现的 High 不在清单内即变红。ci.yml 的 SPOTBUGS_MAX_HIGH 无读者，不构成本块的输入。 -->
             <plugin>
                 <groupId>com.github.spotbugs</groupId>
                 <artifactId>spotbugs-maven-plugin</artifactId>
@@ -414,8 +417,10 @@
                     <effort>Max</effort>
                     <threshold>High</threshold>
                     <xmlOutput>true</xmlOutput>
-                    <onlyAnalyze>com.slz.crm.**</onlyAnalyze>
-                    <skip>true</skip>
+                    <!-- 包前缀写法只能是 '.-'；'.**' 会被 SpotBugs 4.8.6 当成类名拼进正则，
+                         抛 "Dangling meta character '*'" 并使该 goal 直接 BUILD FAILURE -->
+                    <onlyAnalyze>com.slz.crm.-</onlyAnalyze>
+                    <excludeFilterFile>src/main/resources/spotbugs-exclude.xml</excludeFilterFile>
                 </configuration>
                 <executions>
                     <execution>

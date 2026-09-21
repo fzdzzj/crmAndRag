@@ -161,3 +161,25 @@ mysql -uroot -p -e "DROP DATABASE crm_v1_verify;"
 - surefire 侧同理读 `target/surefire-reports/<类全名>.txt`。
 
 failsafe 侧的当前口径、CI 期望值与"无 Docker 下限"的含义一律看 `.github/workflows/ci.yml` 口径B 注释（该处有"首次 Docker 可用的 CI 跑完后按 `target/failsafe-reports` 实测合计上调"的 TODO）。本文不复制推算值。
+
+### 6.7 已登记豁免：`maven-pmd-plugin` 静态检查当前关闭
+
+登记依据：`openspec/changes/operationalize-harness-gates` 组 3（spec R1 第③要素「项 + 关闭理由 + 复测命令 + 到期触发条件」）。该豁免此前只存在于引入提交 `ba57e2b` 的正文里，本节是它第一次进被跟踪文档。以下数字均为 2026-09-21 离线实测（`mvn -o`），非历史快照。
+
+- **项**：`pom.xml` 的 `maven-pmd-plugin` 插件块（定位用 `grep -n "<artifactId>maven-pmd-plugin" pom.xml`；该块内的 `<skip>true</skip>` 是字面量，`-Dpmd.skip=false` 抬不动）。绑定 `verify` 阶段，即当前 `mvn verify` 与 CI 阶段2 里 PMD 一步都不跑。
+- **关闭理由**（三条，逐条有实测，任一未解都不该打开）：
+  1. **摘除 `<skip>` 后 PMD 会跑，但跑的不是仓库声明的那把尺子**。`grep -n "ruleset" pom.xml` 实测 **0 命中** —— 插件从未通过 `<rulesets>` 引用 `src/main/resources/pmd-rules.xml`，该文件是**孤儿配置**。此时 `mvn -o -B -ntp pmd:check` 退出 1，报 **122 条**违规（9 个规则，priority 3 共 56 条 / priority 4 共 66 条），其中 `UnnecessaryFullyQualifiedName`(62)、`UnusedPrivateMethod`(32)、`CollapsibleIfStatements`(5)、`UselessParentheses`(4)、`UnnecessarySemicolon`(2)、`UnnecessaryModifier`(1) **6 个规则不在仓库声明的 28 条之内**（属插件内置 `rulesets/java/quickstart.xml`）。
+  2. **按声明接线会直接构建硬错**。`src/main/resources/pmd-rules.xml` 的 28 条去重 `ref` 与本地缓存 `pmd-java-7.9.0.jar` 内 7 个 `category/java/*.xml` 比对，实测 **19 条可解析 / 10 条不可解析**：9 条规则名在 7.9.0 已不存在（`codestyle/MultipleStringLiterals`、`codestyle/UnusedImports`、`bestpractices/MethodReturnsNewArray`、`security/HardCodedCrypto`、`security/InsecureCryptoWithIV`、`performance/SimplifyStartsWith`、`errorprone/AvoidCatchingGenericException`、`errorprone/DetectedEmptyClause`、`errorprone/CheckResultSet`，其中 2 条只是搬了分类），另 1 条是分类**文件名**写错（`category/java/codestyle.java/LocalVariableNamingConventions` 应为 `codestyle.xml`）。
+  3. **阈值口径未定夺**：pom 注释写"阈值≤5"、`<failurePriority>4</failurePriority>`（真读者，但与"条数"不可换算）两处互不相干。（本条原列的第三处 —— `ci.yml` 的 `PMD_MAX_VIOLATIONS: 5` —— 已于 2026-09-21 `operationalize-harness-gates` 组 5.1 作为**无读者的装饰性阈值删除**，该 env 现不存在；剩下的两处仍待定夺。）
+  → 修复要动 `src/main/resources/pmd-rules.xml` 并重新定阈值口径，越出组 3"只动 pom 两个插件块"的文件面，**另立项**。
+- **复测命令**（本机离线可复现，产物只落 `target/`）：
+  ```bash
+  grep -n "ruleset" pom.xml                     # 0 命中 = 声明的规则集仍未接线（理由 1 仍未解）
+  grep -o 'ref="category/java/[^"]*"' src/main/resources/pmd-rules.xml | wc -l   # 28
+  # 临时注释掉 pom pmd 块的 <skip> 后：
+  mvn -o -B -ntp pmd:check | tee /tmp/pmd.log; grep -c "PMD Failure" /tmp/pmd.log   # 2026-09-21 实测 122
+  ```
+  跑完**必须把 `<skip>` 原样放回**，否则 `mvn verify` 会因这 122 条红掉。
+- **到期触发条件**：① 下一次任何 Java 侧变更触碰 `pom.xml` 的 pmd 块或 `src/main/resources/pmd-rules.xml` 时，必须复跑上面的复测命令并按实测更新本条；② 阈值口径定夺完成（`failurePriority` 与条数二选一、`ci.yml` 的 env 有读者或删除）时；③ 上述理由 1/2/3 全部消除后本豁免作废并删除 `<skip>`，且需按 6.2 的口径补一次"`mvn verify` 真跑 PMD"的实测记录。
+
+对照记录（同一次变更的另 half，不属豁免）：`spotbugs-maven-plugin` 的 `<skip>` **已于 2026-09-21 删除并启用**，阈值的唯一读者是 pom 该块的 `threshold=High` + `excludeFilterFile=src/main/resources/spotbugs-exclude.xml`（存量 High 基线 12 条，由 `mvn -B -ntp compile spotbugs:spotbugs` 的一次真实运行生成，只允许由同一条命令更新）。新出现的 High 缺陷会让 `mvn -B -ntp spotbugs:check` 与 `mvn verify` 直接变红。
