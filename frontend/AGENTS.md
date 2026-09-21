@@ -28,28 +28,36 @@ Use `pnpm` for all package management.
 - `pnpm lint:check`: run read-only ESLint checks without autofix.
 - `pnpm format`: format `src/` with Prettier.
 - `pnpm check`: run linting and formatting together.
-- `pnpm precommit:check`: run the exact checks used by the pre-commit hook.
+- `pnpm precommit:check`: run the exact checks used by the pre-commit hook (lint + type-check only — it does **not** run Vitest).
+- `pnpm test`: run the whole Vitest unit/component track once (`vitest run`; 16 files / 163 cases). Needs no browser and no backend, and `e2e/**` is excluded via `vite.config.ts`. This is the same command CI's `frontend-quality` job runs, so a red unit track is reproducible locally with one command — and it is also what `bash scripts/merge-gate.sh` covers, since the commit hook does not.
 - `pnpm gen:api`: regenerate `src/api/axios/` from `openapi.yaml`.
 - `pnpm exec vitest run src/utils/__tests__`: run the current utility tests.
 
 ## Git Hook Policy
-本目录以子目录形式落在 `crmAndRag` 仓内，`frontend/` 自身没有独立 `.git`，所以钩子路径要相对**仓根**写。
+本目录以子目录形式落在 `crmAndRag` 仓内，`frontend/` 自身没有独立 `.git`。生效 hooks 目录是 `.git/hooks`（仓库本地 `core.hooksPath` 显式指向它），里面已有 Qoder 遥测钩子 `post-commit` / `post-checkout` —— **不要改 `core.hooksPath` 把它们顶掉**。前端检查器靠一个转发器接入。
 
-- 钩子实体：`.githooks/pre-commit`，内部用脚本自身位置推导 `frontend/` 作为工作目录，不依赖 `git rev-parse --show-toplevel`。
-- 安装（一次性，会写仓库本地 git 配置，执行前需用户同意）：`node scripts/setup-hooks.mjs`，等价于在仓根执行 `git config core.hooksPath frontend/.githooks`。`pnpm install` 会通过 `prepare` 脚本自动做同一件事。
-- 校验：`git config --get core.hooksPath` 期望输出 `frontend/.githooks`（不是 `.githooks`）。
-- 卸载：`git config --unset core.hooksPath`。
+- 检查器实体：`.githooks/pre-commit`，内部用脚本自身位置推导 `frontend/` 作为工作目录，不依赖 `git rev-parse --show-toplevel`；自带"无 staged 前端文件即 `exit 0`"短路（`:9-12`）。
+- 安装（幂等，可重复执行；只写 `.git/hooks/pre-commit`，不动 git 配置，不动别人的钩子）：`node scripts/setup-hooks.mjs`。`pnpm install` 会通过 `prepare` 自动做同一件事。
+- 复验（判别式，在仓根跑）：
+  ```bash
+  h=$(git rev-parse --git-path hooks) && grep -q 'frontend/\.githooks/pre-commit' "$h/pre-commit" && echo "FORWARDER-OK: $h/pre-commit"
+  ```
+  期望输出 `FORWARDER-OK`。只查 `git config --get core.hooksPath` 或只看文件是否存在**都不算**门禁已生效。
+- 生效性以一次真实阻断为凭：故意提交一个带 lint error 的前端文件，`git commit` 必须非零退出并打印 `Running frontend pre-commit checks ...`。首轮实测记录见 `work/mailbox/tasks/GATE-P1/report.md`。
+- 卸载：`node scripts/setup-hooks.mjs --uninstall`（只删本安装器产生的转发器，遇到非本安装器的同名钩子会拒绝并停下，绝不代删）。
+- 安装时机：`.git/hooks` 不入版本控制 → **全新 clone 需重跑一次安装**（`pnpm install` 已覆盖）；本仓的工作树共享主仓 `.git/hooks`，在任一工作树内装一次即全部生效。
 - 正常开发不要绕过钩子（`--no-verify`）。
+- 钩子之外的全局门禁路线（Maven / failsafe / 回归基线）看仓根 `AGENTS.md` 的「项目路线」段，本文不复制其正文。
 
 ## Commit Workflow
-- 每个提交都应通过 pre-commit 钩子。
+- 每个提交都应通过 pre-commit 钩子（生效方式见上节）。
 - The hook runs `pnpm precommit:check`
 - `pnpm precommit:check` is read-only and runs:
   - `pnpm lint:check`
   - `pnpm type-check:check`
 - If it fails, fix the issues and commit again
 - If you want autofix before committing, run `pnpm lint` manually
-- 钩子未安装时（`core.hooksPath` 为空），上面两项必须手动跑，不要假定 CI 会兜住：CI 的 `frontend-quality` 作业跑同样的脚本。
+- 转发器缺失时（上面判别式输出为空或 `grep` 未命中），上面两项必须手动跑，不要假定 CI 会兜住：CI 的 `frontend-quality` 作业跑同样的脚本。
 
 ## Coding Style & Naming Conventions
 This is a Vue 3 + TypeScript repo with strict TypeScript enabled. Prettier enforces single quotes; default formatting yields 2-space indentation. Prefer `@/` imports over deep relative paths. Use PascalCase for Vue component files and component names, for example `CreateSaleModal.vue`. Keep page files under `src/pages/` with the `*.page.vue` suffix so `unplugin-vue-router` can generate routes correctly. Do not call APIs directly from components; add or extend a domain hook in `src/hooks/`.
