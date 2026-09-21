@@ -12,6 +12,21 @@
 4. **SpotBugs 已经趟出可复制的路径，PMD 是同一类缺陷的另一半。** 上一提案（`operationalize-harness-gates` 组 3）把 `spotbugs` 从"skip + 无读者阈值"改成"`threshold=High` + 12 条存量基线台账 + 双射防呆 + 可红自测"，一次真实运行即可复现结论。PMD 现状与当时的 SpotBugs 完全同构，却没有同样处理——`docs/migration-runbook.md` §6.7 末尾的"对照记录"已把这半边的存在写明为不对称。
 5. **豁免登记本身是有寿命的。** §6.7 用"临时跳过、后续启用"的话术登记在提交正文里活了 2 天，进被跟踪文档才 1 天。若无本提案，它会长期停留在"记着但没人接"的状态——这正是本系列提案要消灭的形态。
 
+## 执行期实测补正（PMDC-P1 回传并经主 agent 复算，2026-09-21）
+
+> 本节只改**事实表述**，不改本提案的范围与口径。凡与上文 Why/风险 冲突处，以本节为准。
+
+1. **Why-2 的"10 条不可解析"成立，但另一半数字是错的。** `docs/migration-runbook.md` §6.7 理由 2 写"**19** 条可解析 / 10 条不可解析"——19+10=29 > 声明的 28 条，算术就漏了。本轮用 `pmd-java-7.9.0.jar` 内 7 个 `category/java/*.xml` 逐条比对 HEAD 版 `pmd-rules.xml` 的 28 条 `ref`：**18 条可解析 / 10 条不可解析**，且那 10 条与 §6.7 列出的清单一一对应（含 1 条 `.java` 文件名笔误）。
+2. **失效的不止 `ref`，还有规则「属性名」——这是本提案起草时没料到的第二把锁。** `CognitiveComplexity`/`CyclomaticComplexity`/`NcssCount` 的 `classMax`/`methodMax`、`TooManyMethods` 的 `maxMethods`、`CommentSize` 的 `minLines` 在 7.9.0 全部不存在，只修 ref 时 `pmd:check` 依旧硬错、依旧产不出 `target/pmd.xml`。更阴的是**同一个 `<properties>` 块里首个错误会吞掉后续报文**：一次运行只报 5 条，逐条别名探针才逼出全部。→ 判别式更正："数日志里的错误行数 = 坏条数"不成立，必须逐条二分。
+3. **处置后的尺子是 24 条，覆盖面变化如实登记**（删 4 / 换 3 / 仅改分类路径 2 / 文件名笔误 1）：
+   - 删除项中 3 条在 7.9.0 **确已不存在且无同名搬家**（`MultipleStringLiterals`、`performance/SimplifyStartsWith`、`errorprone/DetectedEmptyClause`），1 条是**去重**（`codestyle/UnusedImports` 与已声明的 `UnnecessaryImport` 是 7.x 改名前后同名规则）。
+   - **未擅自补** `codestyle/EmptyControlStatement`（`DetectedEmptyClause` 的意图近似者）——补它属于"换/加规则"而非"修失效引用"，越出 P1 授权，见 Q4。
+   - `CognitiveComplexity` 的类级阈值 `classMax=75` 是**被平台逼着丢弃**的：7.9.0 该规则只剩 `reportLevel` 一个属性且只 visit 方法/构造子，类级无处可挂。方法级 `25` 原值保留。
+4. **Why-3 的行号与"两处"表述都要改。** 真读者是 `pom.xml:451`（`:446` 是 `artifactId`）；接线后 `failurePriority` 在 `:458`、`<skip>` 在 `:464`。而且装饰性"条数阈值"其实有**第三处**：`src/main/resources/pmd-rules.xml:4` 的头部注释"阈值≤5 violations 通过"——组 1.1 给的普查面（`pom.xml scripts/ docs/`）按定义扫不到它。→ 验收第 3 条的普查面必须扩到 `src/main/resources/*.xml`，否则"全仓不存在第二处条数阈值表述"会假绿。
+5. **"未知量级"这个风险已闭合，取值为 1329。** 声明尺子下的真实底数 = **1329 条**（priority：p1=39 / p3=1290 / p2=p4=0），24 条声明规则全部加载，其中 12 条有命中、12 条 0 命中；内置 quickstart 侧本轮**复现**为 122 条（与 §6.7 登记值一致，非沿用）。分布：86.4% 集中在 3 条规则（`OnlyOneReturn` 732、`CommentSize` 282、`AvoidCatchingGenericException` 134）。两个必须在登记处写明的口径：① PMD 默认源目录**不含 `src/test/java`**（241 个 main 文件，报告里 0 条来自测试代码），与 SpotBugs 那 12 条不是同一口径，不许拿它类比；② 基线取 1329 时，这道门禁短期只拦"新增第 4 种异味"——这正是「风险」第 1 条预告的形态，按 Q2 如实登记，不回头调松规则集。
+6. **本提案的地基判别式已证实：** 注入不存在的规则名 → `mvn -o -B -ntp pmd:check` **exit 1 硬错**（`Unable to find referenced rule ...` + `The ruleset could not be loaded`，且日志里 `PMD Failure` 行数 = 0，即一条源码都没分析）。"失效规则静默隐身"的前提不成立，验收第 2 条已过。
+
+
 ## What Changes
 
 按"先接线、再修尺、后定口径、最后回接门禁"的依赖顺序：
@@ -36,6 +51,10 @@
   - 未变的硬约束：选项 B/C 不采用；`pom.xml:443` 那句与真读者不符的"阈值≤5"注释仍必须删除或改写（A 也要做）。
   - **执行顺序不因拍板而变**：组 1 先测底数 → 组 2 先证明"失效引用会硬错" → 组 3 才写基线值 → 组 4 才摘 `<skip>`。基线数字必须来自组 1 的真实运行，不许先拍一个"看起来合理"的值。
 - **Q2（沿用 `harness-gates` R5 口径）**：不许为了把条数压低而回头调松规则集；若实测条数大到短期拦不住什么，如实登记并在汇报里写明，收紧留给后续按规则分片的独立提案。
+- **Q4（P1 暴露，待 owner 点头，不阻塞组 3/4）**：尺子修好后仍有两处**覆盖面留白**，都不是"修失效引用"而是"要不要换/加规则"，故 P1 未擅动：
+  1. 被删的 `errorprone/DetectedEmptyClause` 从未在任何 PMD 版本存在（名字本身是笔误级别的产物）；7.9.0 里承载同一意图的是 `codestyle/EmptyControlStatement`（实测**它住在 codestyle 而非 errorprone**）。补 = 覆盖面 +1 规则（本轮实测 0 命中，不会推高 1329）。**推荐补**，因为它才是不删该条时原作者想要的检查。
+  2. `SimplifyStartsWith`（7.x 已移除）与 `MultipleStringLiterals`（7.0 移除）无等价物，接受覆盖面缩窄，不回补。
+  → 未拍板前按现状（24 条）落基线；若采纳 1，只把基线重跑一次取新数，不改阈值口径。
 
 ## 风险
 
@@ -57,7 +76,7 @@
 - **逐条判别式**（命令 + 实际输出，缺一不算完成）：
   1. `grep -c ruleset pom.xml` ≥ 1 且指向 `src/main/resources/pmd-rules.xml`；接线后一次真跑的**逐规则命中数**清单里，声明的每条规则要么有命中记录、要么显式为 0 命中，**不得出现"该规则未生效/被跳过"**。
   2. 失效引用可见性：临时把某条 ref 改成不存在的规则名 → `mvn -B -ntp pmd:check` **必须硬错**（而不是静默忽略），随后还原。
-  3. 阈值唯一读者：Q1 选定口径在 pom 里可指到具体配置项；全仓 grep 不到第二处"条数阈值"表述；`pom.xml` 注释与真读者一致。
+  3. 阈值唯一读者：Q1 选定口径在 pom 里可指到具体配置项；全仓 grep 不到第二处"条数阈值"表述；`pom.xml` 注释与真读者一致。**普查面必须覆盖 `pom.xml scripts/ docs/ openspec/ src/main/resources/*.xml`**——`src/main/resources/pmd-rules.xml:4` 的"阈值≤5 violations 通过"就是原普查面（只含前三者）漏掉的第三处，见补正 4。
   4. 基线 ratchet：登记值高于实测值时防呆脚本非零退出；且能证明"新增一条违规 → `pmd:check` 红"。
   5. 门禁回接：`bash scripts/merge-gate.sh` 含 `[pmd]` 且全绿；`ci.yml` 静态步骤含 `pmd:check` 并注明判定依据行号；§6.7 已改写为"已启用"；`mvn -B -ntp test` 计数与 `scripts/test-baseline.txt` 一致（不增减 Java 用例）。
 - **Git 收尾**：分支 `feature/wire-pmd-ruleset`；提案三件套随首个提交入库；`bash scripts/merge-gate.sh` 全绿后 `--no-ff` 合入；汇报带 commit hash + 上述 5 条输出摘录 + 接线前后逐规则命中数对照；**不 push**。
