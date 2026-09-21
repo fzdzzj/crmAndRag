@@ -9,33 +9,14 @@ import java.lang.annotation.Target;
 /**
  * 权限验证注解
  *
- * <p>使用统一的权限枚举常量作为注解值，实现编译时类型安全检查
+ * <p>使用统一的权限枚举常量作为注解值，实现编译时类型安全检查。 取值覆盖客户/销售/任务/系统/财务/报表各管理域，完整清单见 {@link PermissionOperates}。
  *
  * <p>示例：
  *
  * <pre>{@code
- * // 客户管理权限
- * @RequirePermission(PermissionOperates.EXCEL_ADD)
- * @RequirePermission(PermissionOperates.ADD_COMPANY)
- *
- * // 销售管理权限
- * @RequirePermission(PermissionOperates.CREATE_SALE_OPPORTUNITY)
- * @RequirePermission(PermissionOperates.CREATE_CONTRACT)
- *
- * // 任务管理权限
- * @RequirePermission(PermissionOperates.CREATE_TASK)
- * @RequirePermission(PermissionOperates.UPDATE_TASK)
- *
- * // 系统管理权限
- * @RequirePermission(PermissionOperates.CREATE_USER)
- * @RequirePermission(PermissionOperates.CREATE_ROLE)
- *
- * // 财务管理权限
- * @RequirePermission(PermissionOperates.RECORD_PAYMENT)
- * @RequirePermission(PermissionOperates.EDIT_PAYMENT)
- *
- * // 报表管理权限
- * @RequirePermission(PermissionOperates.VIEW_PRESET_REPORT)
+ * @RequirePermission(PermissionOperates.EXCEL_ADD)      // 客户管理
+ * @RequirePermission(PermissionOperates.CREATE_TASK)    // 任务管理
+ * @RequirePermission(PermissionOperates.RECORD_PAYMENT) // 财务管理
  * }</pre>
  */
 @Target(ElementType.METHOD)

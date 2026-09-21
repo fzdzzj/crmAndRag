@@ -96,8 +96,13 @@
     <rule ref="category/java/documentation.xml/CommentSize">
         <properties>
             <!-- PMDC-P1 处置：删除 minLines=1 —— javap CommentSizeRule 只有 maxLines / maxLineLength 两个属性，
-                 无 "最小行数" 概念（1 行本就是下限，删去不改变任何判定）；maxLines=20 原样保留 -->
+                 无 "最小行数" 概念（1 行本就是下限，删去不改变任何判定）；maxLines=20 原样保留。
+                 tighten-pmd-violations 分片 A（Q5，2026-09-21）：补配 maxLineLength=120 —— P1 后该属性
+                 一直未配置，默认值 6 让任何中文注释行都必然超宽（实测 278 条 "Line too long" 全是它打的），
+                 属荒谬默认值校准而非调松（拍板 Q2 禁的是为压条数调松规则）；checkstyle LineLength=800
+                 只管源码行宽，与本属性无冲突读者 -->
             <property name="maxLines" value="20"/>
+            <property name="maxLineLength" value="120"/>
         </properties>
     </rule>
 

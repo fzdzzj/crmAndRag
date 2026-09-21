@@ -16,23 +16,20 @@ import org.springframework.stereotype.Service;
  * 上下文组装器（add-context-compression-and-enrichment）：邻居上下文增强（方案04）+ 超预算压缩（方案10）。
  *
  * <p>邻居增强（任务 1.1）：对每个命中块按 {@code documentId + 相邻 chunkIndex} 从 {@code document_vector_chunk}
- * 快照表取前/后邻居（chunkIndex 为全文档切片序号、0 起， 故 ±1 即紧邻；同一序号出现多行的数据异常场景按「同页优先 + 主键小者」确定性取舍）， 拼装为：
+ * 快照表取前/后邻居（chunkIndex 为全文档切片序号、0 起，故 ±1 即紧邻；同一序号多行按「同页优先 + 主键小者」确定性取舍），拼装为「[n]（前文承接）邻居 / 命中块 /
+ * （后文承接）邻居」。
  *
- * <pre>[n] （前文承接）邻居
- * 命中块
- * （后文承接）邻居</pre>
+ * <p>超预算压缩（任务 2.1/2.2）：拼装结果超过 {@code rag.context.token-budget} 时交给压缩器收敛， 按 {@code
+ * rag.context.compressor.mode = rule | llm} 选择（默认 rule，llm 未装配或值非法落规则链）。
  *
- * <p>超预算压缩（任务 2.1/2.2）：拼装结果超过 {@code rag.context.token-budget} 时交给 压缩器收敛；压缩器按 {@code
- * rag.context.compressor.mode = rule | llm} 选择（默认 rule）， llm 未装配或值非法时落规则链。
- *
- * <p>引用完整性约束（rag-context 规范）：邻居只进上下文、绝不进 {@code SourceReference}—— 引用与跳页锚点仍指命中块；上下文 [n] 编号与 sources
+ * <p>引用完整性约束（rag-context 规范）：邻居只进上下文、绝不进 {@code SourceReference}——引用与跳页 锚点仍指命中块；[n] 编号与 sources
  * 下标的一一对应不受邻居拼装与压缩影响。
  *
- * <p>双粒度父块展开（提案4 任务 3.3，方案03 Small-to-Big）：{@code rag.context.parent-expand = on | off}（默认
- * on）开启后，命中的是挂了父块的子块（语义切分产物）则把父块全文放进上下文 （生成单元），引用与跳页锚点仍指命中小块；未挂父块的命中（fixed 策略全量、单片逻辑段、 评测非数字
- * chunkId、快照行缺失）逐块回退邻居拼装——fixed 策略下父块恒空，输出与提案3完成态一致。
+ * <p>双粒度父块展开（提案4 任务 3.3，方案03 Small-to-Big）：{@code rag.context.parent-expand}（默认 on）
+ * 开启后命中的子块（语义切分产物）带父块则父块全文进上下文（生成单元），引用仍指命中小块；未挂父块的 命中（fixed 全量、单片逻辑段、评测非数字
+ * chunkId、快照行缺失）逐块回退邻居拼装，与提案3完成态一致。
  *
- * <p>开关：{@code rag.context.neighbors = 0 | 1}（默认 1；0 = 关闭，输出与升级前逐字一致）。 失败边界：快照表不可用（DB
+ * <p>开关：{@code rag.context.neighbors = 0 | 1}（默认 1；0 = 关闭，输出与升级前逐字一致）；失败边界： 快照表不可用（DB
  * 异常）时按无邻居/无父块降级并告警，不拖垮检索链。
  */
 @Service
