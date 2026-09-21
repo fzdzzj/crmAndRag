@@ -9,7 +9,7 @@
 
 - **是什么**：一个 Java/Spring Boot **单体**，把原 CRM 系统与原 RAG 系统融合成一个产品。
 - **架构定位（关键，D11）**：**不是**"两个对等系统拼接"，而是 **CRM 为基座** + **AI 助手吸收 RAG 的对话能力** + **知识库能力移植为 `com.slz.crm.knowledge` 模块**。原 RAG 的独立对话层（`chat_*` 表 / `RagChatPipeline` / 匿名问答）**已丢弃**，对话统一走 CRM 的 `ai_session`/`ai_message`。
-- **当前状态**：`master` = 完整融合产品 + **检索链路优化 5 提案已全部落地**（混合检索/上下文压缩/语义切分/查询增强，见 §2.5 与 `openspec/`）；**测试基线阈值只存放在 `scripts/test-baseline.txt`，裁决入口是 `bash scripts/check-test-baseline.sh`（本地与 CI 同一条命令；本文不复制数字，阈值禁止手改，历史阶梯见 `git log -p -- scripts/test-baseline.txt`）**；真库迁移链在本机 Docker 完整应用（该实测记录快照截至 2026-09-16 覆盖到 V26，V27 合入后未复验）；**schema 漂移 7 项遗留已全部定夺豁免**（Known/NEW 二分机制上线，见 §3）；**RAG 基准集已扩容 18→54 条（SUITE_VERSION 2.0）且 v2 锚点已跑**（见 §3）；**未 push**（推送需显式授权）。
+- **当前状态**：`master` = 完整融合产品 + **检索链路优化 5 提案已全部落地**（混合检索/上下文压缩/语义切分/查询增强，见 §2.5 与 `openspec/`）；**测试基线阈值只存放在 `scripts/test-baseline.txt`，裁决入口是 `bash scripts/check-test-baseline.sh`（本地与 CI 同一条命令；本文不复制数字，阈值禁止手改，历史阶梯见 `git log -p -- scripts/test-baseline.txt`）**；真库迁移链在本机 Docker 完整应用（该实测记录快照截至 2026-09-16 覆盖到 V26，V27 合入后未复验）；**schema 漂移 7 项遗留已全部定夺豁免**（Known/NEW 二分机制上线，见 §3）；**RAG 基准集已扩容 18→54 条（SUITE_VERSION 2.0）且 v2 锚点已跑**（见 §3）；**Java 静态分析四道门禁（checkstyle / spotbugs / spotless / pmd）已全部生效**——spotbugs 与 pmd 的 `<skip>` 均已删除，各带"pom 单一读者 + 入库台账 + 过期防呆脚本 + 能变红的自测"，口径与四个陷阱见 §3 末条与 `docs/migration-runbook.md` §6.7（**本文与 `ci.yml` 一律不复制条数**）；**未 push**（推送需显式授权）。
 - **怎么建的**：OpenSpec 规范驱动 + **多 agent 并行**：Wave 0 基座串行（契约冻结）→ Wave 1 四 lane 并行（A 数据权限/B 知识库/C 助手/D 治理）→ Wave 2 E 动态配置 → Wave 3 串行集成。理解这个波次结构对理解代码归属很重要（见 §1/§2）。
 
 ---
@@ -130,7 +130,7 @@ com.slz.crm
 
 ## 5. 接手后的第一步 / 常见任务怎么做
 
-1. **先跑** `mvn test` + `bash scripts/check-test-baseline.sh`（是否绿以该脚本对 `scripts/test-baseline.txt` 的裁决为准，本地与 CI 同口径）+ 跑 `git status --porcelain` 看工作树（**当前不干净**：口径与快照见 §3，`frontend/` 是在途提案工作区）。
+1. **先看工作树、再跑一条聚合门禁**：`git status --porcelain`（**本文不替你记工作树状态**——旧版这里写"当前不干净、`frontend/` 是在途提案工作区"，2026-09-21 实测除 `work/` 外已干净，这类话放着就会过期）。然后跑 **`bash scripts/merge-gate.sh`**：一条命令依次裁决 `scripts/merge-gate.sh` 头部清单里的全部子门禁（surefire / spotbugs / pmd / 回归基线 / 前端单元轨 / 提交期钩子在位 / 两份台账的双射与过期），输出本身就是合入证据；要连 failsafe 一起拿新鲜结论加 `--with-verify`（**本机 Docker 实测在线**，会真起 `mysql:8.0.36`；有没有 Docker 自己 `docker info` 一条命令验，别照抄任何文档，包括本文）。单独跑 `mvn test` + `bash scripts/check-test-baseline.sh` 仍有效，但它只是聚合门禁里的两格。
 2. **理解助手**：读 `server/ai/` + `assistant-decision-tree.md` + SSE 契约（`SseEventName` + `SseContractTest`）。改事件/payload = 契约变更，同步前端 + 测试。
 3. **理解知识库**：`knowledge/` + `contracts-frozen.md §2`；检索管线 = 授权过滤→查询改写→向量/稀疏双路召回→RRF 融合→rerank→ContextBuilder 邻居增强+预算压缩（`KnowledgeRetrievalServiceImpl`；开关矩阵见 §2.5 与 `docs/dynamic-config-keys.md`）。
 4. **改契约**：`contracts-frozen.md` 是权威；改 `platform/contract` 要同步所有消费方 + `SseContractTest`。
