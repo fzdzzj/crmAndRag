@@ -60,65 +60,70 @@ public class KnowledgeReingestRunner implements ApplicationRunner {
   @Override
   public void run(ApplicationArguments args) {
     String trigger = environment.getProperty(TRIGGER_KEY);
-    if (trigger == null || trigger.isBlank()) {
-      return;
-    }
     UserContext operator = resolveOperator();
-    if (operator == null) {
-      return;
-    }
-    List<String> documentIds = resolveDocumentIds(trigger);
-    int success = 0;
-    int failed = 0;
-    for (String documentId : documentIds) {
-      try {
-        ingestionService.reingest(documentId, operator);
-        success++;
-      } catch (Exception exception) {
-        // 单文档失败不中断跑批：授权拒绝/嵌入失败均记审计，修复后幂等重跑
-        failed++;
-        log.error("重建入库失败 documentId={}", documentId, exception);
+    if (trigger != null && !trigger.isBlank() && operator != null) {
+      List<String> documentIds = resolveDocumentIds(trigger);
+      int success = 0;
+      int failed = 0;
+      for (String documentId : documentIds) {
+        try {
+          ingestionService.reingest(documentId, operator);
+          success++;
+        } catch (Exception exception) {
+          // 单文档失败不中断跑批：授权拒绝/嵌入失败均记审计，修复后幂等重跑
+          failed++;
+          log.error("重建入库失败 documentId={}", documentId, exception);
+        }
       }
+      log.info("重建入库跑批完成 total={} success={} failed={}", documentIds.size(), success, failed);
     }
-    log.info("重建入库跑批完成 total={} success={} failed={}", documentIds.size(), success, failed);
   }
 
   /** 操作人身份：必须配置真实用户主键，从 sys_user 加载（roleId/deptId 参与 UserContext 契约自检）。 */
   private UserContext resolveOperator() {
+    UserContext result = null;
     Long operatorId = environment.getProperty(OPERATOR_ID_KEY, Long.class);
     if (operatorId == null) {
       log.error("触发重建入库但未配置操作人 {}，本次不执行", OPERATOR_ID_KEY);
-      return null;
+    } else {
+      UserEntity operatorUser = userMapper.selectById(operatorId);
+      if (operatorUser == null
+          || operatorUser.getRoleId() == null
+          || operatorUser.getDeptId() == null) {
+        log.error("重建入库操作人不存在或身份不完整 operatorId={}", operatorId);
+        result = null;
+      } else {
+        result =
+            new UserContext(
+                operatorUser.getId(),
+                operatorUser.getRoleId(),
+                operatorUser.getDeptId(),
+                DataScopeLevel.NONE,
+                operatorUser.getRealName());
+      }
     }
-    UserEntity operatorUser = userMapper.selectById(operatorId);
-    if (operatorUser == null
-        || operatorUser.getRoleId() == null
-        || operatorUser.getDeptId() == null) {
-      log.error("重建入库操作人不存在或身份不完整 operatorId={}", operatorId);
-      return null;
-    }
-    return new UserContext(
-        operatorUser.getId(),
-        operatorUser.getRoleId(),
-        operatorUser.getDeptId(),
-        DataScopeLevel.NONE,
-        operatorUser.getRealName());
+    return result;
   }
 
   /** all = 全量存量文档（软删除外）；其余按逗号分隔 documentId 列表（去空白、去空项）。 */
   private List<String> resolveDocumentIds(String trigger) {
     String normalized = trigger.strip();
+    List<String> result;
     if (TRIGGER_ALL.equalsIgnoreCase(normalized)) {
-      return uploadedFileMapper
-          .selectList(new QueryWrapper<UploadedFileEntity>().select("document_id"))
-          .stream()
-          .map(UploadedFileEntity::getDocumentId)
-          .filter(id -> id != null && !id.isBlank())
-          .toList();
+      result =
+          uploadedFileMapper
+              .selectList(new QueryWrapper<UploadedFileEntity>().select("document_id"))
+              .stream()
+              .map(UploadedFileEntity::getDocumentId)
+              .filter(id -> id != null && !id.isBlank())
+              .toList();
+    } else {
+      result =
+          Arrays.stream(normalized.split(","))
+              .map(String::strip)
+              .filter(id -> !id.isEmpty())
+              .toList();
     }
-    return Arrays.stream(normalized.split(","))
-        .map(String::strip)
-        .filter(id -> !id.isEmpty())
-        .toList();
+    return result;
   }
 }

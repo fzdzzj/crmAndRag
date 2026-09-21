@@ -111,48 +111,45 @@ public class PdfVisionTranscriber {
    */
   public Optional<String> tryTranscribe(
       PDDocument document, int pageIndex0Based, String pageText, AtomicInteger remainingBudget) {
-    if (document == null || remainingBudget == null || remainingBudget.get() <= 0) {
-      return Optional.empty();
-    }
-    String normalized = normalize(pageText);
-    if (normalized.length() >= resolveMinTextChars()) {
-      return Optional.empty();
-    }
-    // 计入页数帽：过短页才消耗预算（无论成败）
-    remainingBudget.decrementAndGet();
+    Optional<String> outcome = Optional.empty();
+    if (document != null
+        && remainingBudget != null
+        && remainingBudget.get() > 0
+        && normalize(pageText).length() < resolveMinTextChars()) {
+      // 计入页数帽：过短页才消耗预算（无论成败）
+      remainingBudget.decrementAndGet();
 
-    byte[] png;
-    try {
-      png = renderPagePng(document, pageIndex0Based);
-    } catch (Exception renderEx) {
-      log.warn("PDF 页渲染失败，回退文本层: pageIndex={}", pageIndex0Based, renderEx);
-      return Optional.empty();
-    }
-    if (png == null || png.length == 0) {
-      return Optional.empty();
-    }
-
-    ModelCallResult<String> result = null;
-    boolean success = false;
-    try {
-      Media media = new Media(MimeType.valueOf("image/png"), new ByteArrayResource(png));
-      UserMessage userMessage =
-          UserMessage.builder().text(TRANSCRIBE_PROMPT).media(List.of(media)).build();
-      // thinking=false：defaults() 已关闭思维链
-      result = modelProvider.vision(new Prompt(List.of(userMessage)), ModelCallOptions.defaults());
-      String content = result == null ? null : result.content();
-      if (passesQualityGate(content)) {
-        success = true;
-        return Optional.of(content.strip());
+      ModelCallResult<String> result = null;
+      boolean success = false;
+      byte[] png = null;
+      try {
+        png = renderPagePng(document, pageIndex0Based);
+      } catch (Exception renderEx) {
+        log.warn("PDF 页渲染失败，回退文本层: pageIndex={}", pageIndex0Based, renderEx);
       }
-      log.info("视觉转写未过质量闸门，回退文本层: pageIndex={}", pageIndex0Based);
-      return Optional.empty();
-    } catch (Exception visionEx) {
-      log.warn("视觉转写调用失败，回退文本层: pageIndex={}", pageIndex0Based, visionEx);
-      return Optional.empty();
-    } finally {
-      recordUsage(result, success);
+      if (png != null && png.length > 0) {
+        try {
+          Media media = new Media(MimeType.valueOf("image/png"), new ByteArrayResource(png));
+          UserMessage userMessage =
+              UserMessage.builder().text(TRANSCRIBE_PROMPT).media(List.of(media)).build();
+          // thinking=false：defaults() 已关闭思维链
+          result =
+              modelProvider.vision(new Prompt(List.of(userMessage)), ModelCallOptions.defaults());
+          String content = result == null ? null : result.content();
+          if (passesQualityGate(content)) {
+            success = true;
+            outcome = Optional.of(content.strip());
+          } else {
+            log.info("视觉转写未过质量闸门，回退文本层: pageIndex={}", pageIndex0Based);
+          }
+        } catch (Exception visionEx) {
+          log.warn("视觉转写调用失败，回退文本层: pageIndex={}", pageIndex0Based, visionEx);
+        } finally {
+          recordUsage(result, success);
+        }
+      }
     }
+    return outcome;
   }
 
   /** 渲染单页为 PNG（144DPI，宽边 ≤1600）。包内可见便于单测夹具。 */
@@ -168,48 +165,48 @@ public class PdfVisionTranscriber {
   }
 
   static BufferedImage scaleToMaxEdge(BufferedImage src, int maxEdge) {
-    if (src == null) {
-      return null;
+    BufferedImage result = src;
+    if (src != null) {
+      int w = src.getWidth();
+      int h = src.getHeight();
+      int max = Math.max(w, h);
+      if (max > maxEdge) {
+        double scale = (double) maxEdge / (double) max;
+        int nw = Math.max(1, (int) Math.round(w * scale));
+        int nh = Math.max(1, (int) Math.round(h * scale));
+        BufferedImage out = new BufferedImage(nw, nh, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = out.createGraphics();
+        try {
+          g.setRenderingHint(
+              RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+          g.drawImage(src, 0, 0, nw, nh, null);
+        } finally {
+          g.dispose();
+        }
+        result = out;
+      }
     }
-    int w = src.getWidth();
-    int h = src.getHeight();
-    int max = Math.max(w, h);
-    if (max <= maxEdge) {
-      return src;
-    }
-    double scale = (double) maxEdge / (double) max;
-    int nw = Math.max(1, (int) Math.round(w * scale));
-    int nh = Math.max(1, (int) Math.round(h * scale));
-    BufferedImage out = new BufferedImage(nw, nh, BufferedImage.TYPE_INT_RGB);
-    Graphics2D g = out.createGraphics();
-    try {
-      g.setRenderingHint(
-          RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-      g.drawImage(src, 0, 0, nw, nh, null);
-    } finally {
-      g.dispose();
-    }
-    return out;
+    return result;
   }
 
   /** 质量闸门：blank / 去空白后 &lt;40 字 / 「（截图不清）」次数÷汉字数 &gt;0.4 → 失败。 */
   static boolean passesQualityGate(String raw) {
-    if (raw == null || raw.isBlank()) {
-      return false;
+    boolean ok = raw != null && !raw.isBlank();
+    int unclear = 0;
+    int han = 0;
+    if (ok) {
+      String compact = raw.replaceAll("\\s+", "");
+      ok = compact.length() >= MIN_TRANSCRIPT_CHARS;
+      unclear = countOccurrences(raw, UNCLEAR_MARK);
+      han = countHan(raw);
+      if (ok && unclear > 0 && han == 0) {
+        ok = false;
+      }
+      if (ok && han > 0 && ((double) unclear / (double) han) > UNCLEAR_HAN_RATIO_LIMIT) {
+        ok = false;
+      }
     }
-    String compact = raw.replaceAll("\\s+", "");
-    if (compact.length() < MIN_TRANSCRIPT_CHARS) {
-      return false;
-    }
-    int unclear = countOccurrences(raw, UNCLEAR_MARK);
-    int han = countHan(raw);
-    if (unclear > 0 && han == 0) {
-      return false;
-    }
-    if (han > 0 && ((double) unclear / (double) han) > UNCLEAR_HAN_RATIO_LIMIT) {
-      return false;
-    }
-    return true;
+    return ok;
   }
 
   private void recordUsage(ModelCallResult<String> result, boolean success) {
@@ -249,10 +246,11 @@ public class PdfVisionTranscriber {
         config == null
             ? null
             : config.get(MIN_TEXT_CHARS_KEY, Integer.class, DEFAULT_MIN_TEXT_CHARS);
-    if (configured == null || configured < 1) {
-      return DEFAULT_MIN_TEXT_CHARS;
+    int value = DEFAULT_MIN_TEXT_CHARS;
+    if (configured != null && configured >= 1) {
+      value = Math.min(configured, 2000);
     }
-    return Math.min(configured, 2000);
+    return value;
   }
 
   private int resolveMaxPages() {
@@ -260,10 +258,11 @@ public class PdfVisionTranscriber {
         dynamicConfigProvider == null ? null : dynamicConfigProvider.getIfAvailable();
     Integer configured =
         config == null ? null : config.get(MAX_PAGES_KEY, Integer.class, DEFAULT_MAX_PAGES);
-    if (configured == null || configured < 1) {
-      return DEFAULT_MAX_PAGES;
+    int value = DEFAULT_MAX_PAGES;
+    if (configured != null && configured >= 1) {
+      value = Math.min(configured, 20);
     }
-    return Math.min(configured, 20);
+    return value;
   }
 
   private static String normalize(String text) {
@@ -271,30 +270,28 @@ public class PdfVisionTranscriber {
   }
 
   private static int countOccurrences(String text, String needle) {
-    if (text == null || needle == null || needle.isEmpty()) {
-      return 0;
-    }
     int count = 0;
-    int from = 0;
-    while (true) {
-      int at = text.indexOf(needle, from);
-      if (at < 0) {
-        break;
+    if (text != null && needle != null && !needle.isEmpty()) {
+      int from = 0;
+      while (true) {
+        int at = text.indexOf(needle, from);
+        if (at < 0) {
+          break;
+        }
+        count++;
+        from = at + needle.length();
       }
-      count++;
-      from = at + needle.length();
     }
     return count;
   }
 
   private static int countHan(String text) {
-    if (text == null || text.isEmpty()) {
-      return 0;
-    }
     int count = 0;
-    Matcher matcher = HAN_PATTERN.matcher(text);
-    while (matcher.find()) {
-      count++;
+    if (text != null && !text.isEmpty()) {
+      Matcher matcher = HAN_PATTERN.matcher(text);
+      while (matcher.find()) {
+        count++;
+      }
     }
     return count;
   }

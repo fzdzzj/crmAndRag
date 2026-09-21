@@ -61,26 +61,28 @@ public final class ParagraphChunkingStrategy implements ChunkingStrategy {
 
   /** 在 {@code [start, end)} 内找最后一处段落界起点：优先 {@code \n\n}，否则 {@code \n}；没有则 -1。 */
   static int findLastBoundary(String text, int start, int end) {
+    int result = -1;
     if (end - start >= 2) {
       int dbl = text.lastIndexOf("\n\n", end - 2);
       if (dbl >= start) {
-        return dbl;
+        result = dbl;
       }
     }
-    if (end - start >= 1) {
+    if (result < 0 && end - start >= 1) {
       int nl = text.lastIndexOf('\n', end - 1);
       if (nl >= start) {
-        return nl;
+        result = nl;
       }
     }
-    return -1;
+    return result;
   }
 
   /** {@code end} 处边界宽度：{@code \n\n} → 2，否则按单 {@code \n} → 1。 */
   static int boundaryLength(String text, int end) {
+    int result = 1;
     if (end + 1 < text.length() && text.charAt(end) == '\n' && text.charAt(end + 1) == '\n') {
-      return 2;
+      result = 2;
     }
-    return 1;
+    return result;
   }
 }

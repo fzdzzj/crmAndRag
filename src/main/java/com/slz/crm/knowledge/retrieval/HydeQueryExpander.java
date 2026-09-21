@@ -55,40 +55,40 @@ public class HydeQueryExpander {
 
   /** 生成假设答案文本；关闭/失败/空输出/超时返回 null（调用方跳过 HyDE 路）。 返回值只允许用于嵌入，不得进入生成上下文（隔离硬约束见类注释）。 */
   public String hypotheticalAnswer(String query) {
-    if (query == null || query.isBlank() || !enabled()) {
-      return null;
+    String result = null;
+    if (query != null && !query.isBlank() && enabled()) {
+      try {
+        List<Message> messages =
+            List.of(new SystemMessage(SYSTEM_PROMPT), new UserMessage(query.strip()));
+        ModelCallOptions options =
+            new ModelCallOptions(null, false, 0.3d, 256, null, null, Map.of());
+        CompletableFuture<String> future =
+            CompletableFuture.supplyAsync(
+                () -> modelProvider.chat(new Prompt(messages), options).content());
+        result = sanitize(future.get(resolveTimeoutMs(), TimeUnit.MILLISECONDS));
+      } catch (InterruptedException exception) {
+        Thread.currentThread().interrupt();
+        log.warn("HyDE 假设答案生成被中断，跳过 HyDE 路");
+      } catch (Exception exception) {
+        log.warn("HyDE 假设答案生成失败，跳过 HyDE 路: {}", exception.getMessage());
+      }
     }
-    try {
-      List<Message> messages =
-          List.of(new SystemMessage(SYSTEM_PROMPT), new UserMessage(query.strip()));
-      ModelCallOptions options = new ModelCallOptions(null, false, 0.3d, 256, null, null, Map.of());
-      CompletableFuture<String> future =
-          CompletableFuture.supplyAsync(
-              () -> modelProvider.chat(new Prompt(messages), options).content());
-      return sanitize(future.get(resolveTimeoutMs(), TimeUnit.MILLISECONDS));
-    } catch (InterruptedException exception) {
-      Thread.currentThread().interrupt();
-      log.warn("HyDE 假设答案生成被中断，跳过 HyDE 路");
-      return null;
-    } catch (Exception exception) {
-      log.warn("HyDE 假设答案生成失败，跳过 HyDE 路: {}", exception.getMessage());
-      return null;
-    }
+    return result;
   }
 
   /** 空输出/占位词/超长统一归一为 null 或定长文本。 */
   private String sanitize(String content) {
-    if (content == null || content.isBlank()) {
-      return null;
+    String result = null;
+    if (content != null && !content.isBlank()) {
+      String value = content.strip().replaceAll("[\\r\\n]+", " ");
+      if (value.length() > MAX_LENGTH) {
+        value = value.substring(0, MAX_LENGTH).strip();
+      }
+      if (!value.isBlank() && !"无".equals(value) && !"无。".equals(value)) {
+        result = value;
+      }
     }
-    String value = content.strip().replaceAll("[\\r\\n]+", " ");
-    if (value.length() > MAX_LENGTH) {
-      value = value.substring(0, MAX_LENGTH).strip();
-    }
-    if (value.isBlank() || "无".equals(value) || "无。".equals(value)) {
-      return null;
-    }
-    return value;
+    return result;
   }
 
   private boolean enabled() {

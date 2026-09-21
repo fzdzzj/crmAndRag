@@ -64,13 +64,15 @@ public class MinioFileStorageService implements FileStorageService {
 
   @Override
   public boolean exists(String storageKey) {
+    boolean result = false;
     try {
       minioClient.statObject(
           StatObjectArgs.builder().bucket(properties.getBucket()).object(storageKey).build());
-      return true;
+      result = true;
     } catch (Exception exception) {
-      return false;
+      result = false;
     }
+    return result;
   }
 
   /** 生成日期前缀 + UUID 的对象 Key，避免中文文件名和重名问题。 */

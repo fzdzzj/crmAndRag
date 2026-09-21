@@ -232,54 +232,56 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
 
   @Override
   public boolean probe() {
+    boolean result = false;
     try {
-      return Boolean.TRUE.equals(
-          client.collectionExistsAsync(properties.getCollection()).get(2, TimeUnit.SECONDS));
+      result =
+          Boolean.TRUE.equals(
+              client.collectionExistsAsync(properties.getCollection()).get(2, TimeUnit.SECONDS));
     } catch (Exception exception) {
-      return false;
+      result = false;
     }
+    return result;
   }
 
   /** 集合存在性缓存只减少启动检查；真实读写前仍会在同一锁内确认。 */
   private void ensureCollection() throws Exception {
-    if (collectionChecked) {
-      return;
-    }
-    synchronized (collectionLock) {
-      if (collectionChecked) {
-        return;
+    if (!collectionChecked) {
+      synchronized (collectionLock) {
+        if (!collectionChecked) {
+          executeWithRetry(
+              () -> {
+                Boolean exists =
+                    client
+                        .collectionExistsAsync(properties.getCollection())
+                        .get(properties.getTimeoutMs(), TimeUnit.MILLISECONDS);
+                if (!Boolean.TRUE.equals(exists)) {
+                  // protobuf 消息类只暴露 getter 与静态 newBuilder，setter/build 全在 Builder 上，
+                  // 反射查找必须落在 builder 实例的运行时类（与 toPoint 同法）
+                  Object paramsBuilder = VECTOR_PARAMS_CLASS.getMethod("newBuilder").invoke(null);
+                  Class<?> paramsBuilderClass = paramsBuilder.getClass();
+                  paramsBuilderClass
+                      .getMethod("setSize", long.class)
+                      .invoke(paramsBuilder, (long) properties.getDimensions());
+                  paramsBuilderClass
+                      .getMethod("setDistance", DISTANCE_CLASS)
+                      .invoke(
+                          paramsBuilder,
+                          Enum.valueOf(
+                              (Class<? extends Enum>) DISTANCE_CLASS.asSubclass(Enum.class),
+                              "Cosine"));
+                  Object params = paramsBuilderClass.getMethod("build").invoke(paramsBuilder);
+                  ((java.util.concurrent.Future<?>)
+                          QdrantClient.class
+                              .getMethod("createCollectionAsync", String.class, VECTOR_PARAMS_CLASS)
+                              .invoke(client, properties.getCollection(), params))
+                      .get(properties.getTimeoutMs(), TimeUnit.MILLISECONDS);
+                }
+                collectionChecked = true;
+                return null;
+              },
+              "Qdrant collection check/create");
+        }
       }
-      executeWithRetry(
-          () -> {
-            Boolean exists =
-                client
-                    .collectionExistsAsync(properties.getCollection())
-                    .get(properties.getTimeoutMs(), TimeUnit.MILLISECONDS);
-            if (!Boolean.TRUE.equals(exists)) {
-              // protobuf 消息类只暴露 getter 与静态 newBuilder，setter/build 全在 Builder 上，
-              // 反射查找必须落在 builder 实例的运行时类（与 toPoint 同法）
-              Object paramsBuilder = VECTOR_PARAMS_CLASS.getMethod("newBuilder").invoke(null);
-              Class<?> paramsBuilderClass = paramsBuilder.getClass();
-              paramsBuilderClass
-                  .getMethod("setSize", long.class)
-                  .invoke(paramsBuilder, (long) properties.getDimensions());
-              paramsBuilderClass
-                  .getMethod("setDistance", DISTANCE_CLASS)
-                  .invoke(
-                      paramsBuilder,
-                      Enum.valueOf(
-                          (Class<? extends Enum>) DISTANCE_CLASS.asSubclass(Enum.class), "Cosine"));
-              Object params = paramsBuilderClass.getMethod("build").invoke(paramsBuilder);
-              ((java.util.concurrent.Future<?>)
-                      QdrantClient.class
-                          .getMethod("createCollectionAsync", String.class, VECTOR_PARAMS_CLASS)
-                          .invoke(client, properties.getCollection(), params))
-                  .get(properties.getTimeoutMs(), TimeUnit.MILLISECONDS);
-            }
-            collectionChecked = true;
-            return null;
-          },
-          "Qdrant collection check/create");
     }
   }
 
@@ -314,19 +316,19 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
   }
 
   private static Object valueOf(Object value) {
+    Object result;
     if (value instanceof String stringValue) {
-      return invokeStatic(VALUE_FACTORY_CLASS, "value", String.class, stringValue);
+      result = invokeStatic(VALUE_FACTORY_CLASS, "value", String.class, stringValue);
+    } else if (value instanceof Boolean boolValue) {
+      result = invokeStatic(VALUE_FACTORY_CLASS, "value", long.class, boolValue ? 1L : 0L);
+    } else if (value instanceof Double doubleValue) {
+      result = invokeStatic(VALUE_FACTORY_CLASS, "value", double.class, doubleValue);
+    } else if (value instanceof Number numberValue) {
+      result = invokeStatic(VALUE_FACTORY_CLASS, "value", long.class, numberValue.longValue());
+    } else {
+      result = invokeStatic(VALUE_FACTORY_CLASS, "value", String.class, String.valueOf(value));
     }
-    if (value instanceof Boolean boolValue) {
-      return invokeStatic(VALUE_FACTORY_CLASS, "value", long.class, boolValue ? 1L : 0L);
-    }
-    if (value instanceof Double doubleValue) {
-      return invokeStatic(VALUE_FACTORY_CLASS, "value", double.class, doubleValue);
-    }
-    if (value instanceof Number numberValue) {
-      return invokeStatic(VALUE_FACTORY_CLASS, "value", long.class, numberValue.longValue());
-    }
-    return invokeStatic(VALUE_FACTORY_CLASS, "value", String.class, String.valueOf(value));
+    return result;
   }
 
   private static Object toFilter(Map<String, Object> filter) {
@@ -362,16 +364,17 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
   }
 
   private static Object toCondition(String key, Object value) {
+    Object result;
     if (value instanceof String stringValue) {
-      return ConditionFactory.matchKeyword(key, stringValue);
+      result = ConditionFactory.matchKeyword(key, stringValue);
+    } else if (value instanceof Boolean boolValue) {
+      result = ConditionFactory.match(key, boolValue ? 1L : 0L);
+    } else if (value instanceof Number numberValue) {
+      result = ConditionFactory.match(key, numberValue.longValue());
+    } else {
+      result = ConditionFactory.matchKeyword(key, String.valueOf(value));
     }
-    if (value instanceof Boolean boolValue) {
-      return ConditionFactory.match(key, boolValue ? 1L : 0L);
-    }
-    if (value instanceof Number numberValue) {
-      return ConditionFactory.match(key, numberValue.longValue());
-    }
-    return ConditionFactory.matchKeyword(key, String.valueOf(value));
+    return result;
   }
 
   private static Map<String, Object> toMetadata(Map<?, ?> payload) {

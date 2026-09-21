@@ -70,31 +70,35 @@ public class LlmContextCompressor implements Compressor {
 
   @Override
   public String compress(String context, int tokenBudget) {
+    String result;
     if (context == null
         || context.isEmpty()
         || tokenBudget <= 0
         || TokenEstimator.estimate(context) <= tokenBudget) {
-      return context;
-    }
-    try {
-      ModelCallResult<String> result = callModel(context, tokenBudget);
-      recordUsage(result, true);
-      String output = result == null ? null : result.content();
-      if (!isValid(output, context, tokenBudget)) {
-        log.info("LLM 压缩输出不可用（空/编号不完整/仍超预算），回退规则压缩链");
-        return fallbackCompressor.compress(context, tokenBudget);
+      result = context;
+    } else {
+      try {
+        ModelCallResult<String> callResult = callModel(context, tokenBudget);
+        recordUsage(callResult, true);
+        String output = callResult == null ? null : callResult.content();
+        if (!isValid(output, context, tokenBudget)) {
+          log.info("LLM 压缩输出不可用（空/编号不完整/仍超预算），回退规则压缩链");
+          result = fallbackCompressor.compress(context, tokenBudget);
+        } else {
+          result = output.strip();
+        }
+      } catch (InterruptedException exception) {
+        Thread.currentThread().interrupt();
+        log.warn("LLM 压缩被中断，回退规则压缩链: {}", exception.getMessage());
+        recordUsage(null, false);
+        result = fallbackCompressor.compress(context, tokenBudget);
+      } catch (Exception exception) {
+        log.warn("LLM 压缩失败，回退规则压缩链: {}", exception.getMessage());
+        recordUsage(null, false);
+        result = fallbackCompressor.compress(context, tokenBudget);
       }
-      return output.strip();
-    } catch (InterruptedException exception) {
-      Thread.currentThread().interrupt();
-      log.warn("LLM 压缩被中断，回退规则压缩链: {}", exception.getMessage());
-      recordUsage(null, false);
-      return fallbackCompressor.compress(context, tokenBudget);
-    } catch (Exception exception) {
-      log.warn("LLM 压缩失败，回退规则压缩链: {}", exception.getMessage());
-      recordUsage(null, false);
-      return fallbackCompressor.compress(context, tokenBudget);
     }
+    return result;
   }
 
   /** 要点化压缩调用：带超时护栏（超时走 catch 回退）。 */
@@ -113,11 +117,13 @@ public class LlmContextCompressor implements Compressor {
 
   /** 输出校验：非空、编号序列与输入完全一致（引用编号完整性，任务 3.1 依赖）、 且压缩后不超过预算——任一不满足即回退规则链。 */
   private boolean isValid(String output, String input, int tokenBudget) {
-    if (output == null || output.isBlank()) {
-      return false;
+    boolean valid = false;
+    if (output != null && !output.isBlank()) {
+      valid =
+          sectionNumbers(output).equals(sectionNumbers(input))
+              && TokenEstimator.estimate(output) <= tokenBudget;
     }
-    return sectionNumbers(output).equals(sectionNumbers(input))
-        && TokenEstimator.estimate(output) <= tokenBudget;
+    return valid;
   }
 
   /** 提取输出中行首 {@code [n]} 编号序列（只认递增编号，正文内编号不误伤）。 */

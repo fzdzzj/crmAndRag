@@ -31,42 +31,42 @@ public final class ConstraintQuerySplitter {
    * @return 不可变列表；[0]=原查询（strip），可能再跟左、右两路
    */
   public static List<String> split(String query) {
-    if (query == null || query.isBlank()) {
-      return List.of();
-    }
-    String trimmed = query.strip();
-    List<String> routes = new ArrayList<>(3);
-    routes.add(trimmed);
+    List<String> result = List.of();
+    if (query != null && !query.isBlank()) {
+      String trimmed = query.strip();
+      List<String> routes = new ArrayList<>(3);
+      routes.add(trimmed);
 
-    Matcher matcher = SEPARATOR.matcher(trimmed);
-    if (!matcher.find()) {
-      return List.copyOf(routes);
+      Matcher matcher = SEPARATOR.matcher(trimmed);
+      if (matcher.find()) {
+        String left = trimmed.substring(0, matcher.start()).strip();
+        String right = trimmed.substring(matcher.end()).strip();
+        if (isQualified(left) && isQualified(right)) {
+          routes.add(left);
+          routes.add(right);
+        }
+      }
+      result = List.copyOf(routes);
     }
-    String left = trimmed.substring(0, matcher.start()).strip();
-    String right = trimmed.substring(matcher.end()).strip();
-    if (isQualified(left) && isQualified(right)) {
-      routes.add(left);
-      routes.add(right);
-    }
-    return List.copyOf(routes);
+    return result;
   }
 
   /** 一侧够格：汉字 ≥4，或含长度 ≥2 的 ASCII 词。 */
   static boolean isQualified(String side) {
-    if (side == null || side.isEmpty()) {
-      return false;
-    }
-    int hanCount = 0;
-    for (int index = 0; index < side.length(); ) {
-      int codePoint = side.codePointAt(index);
-      if (Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.HAN) {
-        hanCount++;
-        if (hanCount >= 4) {
-          return true;
+    boolean result = side != null && !side.isEmpty();
+    if (result) {
+      int hanCount = 0;
+      boolean found = false;
+      for (int index = 0; index < side.length() && !found; ) {
+        int codePoint = side.codePointAt(index);
+        if (Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.HAN) {
+          hanCount++;
+          found = hanCount >= 4;
         }
+        index += Character.charCount(codePoint);
       }
-      index += Character.charCount(codePoint);
+      result = found || ASCII_WORD.matcher(side).find();
     }
-    return ASCII_WORD.matcher(side).find();
+    return result;
   }
 }

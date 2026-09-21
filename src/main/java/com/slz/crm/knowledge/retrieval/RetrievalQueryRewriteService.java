@@ -36,22 +36,25 @@ public class RetrievalQueryRewriteService {
 
   /** 使用中立 ModelCallOptions 改写；失败或空输出回退原查询。 */
   public String rewrite(String query) {
-    if (query == null || query.isBlank()) {
-      return "";
+    String result = "";
+    if (query != null && !query.isBlank()) {
+      if (rewriteEnabled()) {
+        try {
+          List<Message> messages =
+              List.of(new SystemMessage(SYSTEM_PROMPT), new UserMessage(query.strip()));
+          ModelCallOptions options =
+              new ModelCallOptions(null, false, 0.1d, 128, null, null, Map.of());
+          String rewritten = sanitize(modelProvider.chat(new Prompt(messages), options).content());
+          result = rewritten.isBlank() ? query.strip() : rewritten;
+        } catch (Exception exception) {
+          log.warn("查询改写失败，使用原查询继续检索: {}", exception.getMessage());
+          result = query.strip();
+        }
+      } else {
+        result = query.strip();
+      }
     }
-    if (!rewriteEnabled()) {
-      return query.strip();
-    }
-    try {
-      List<Message> messages =
-          List.of(new SystemMessage(SYSTEM_PROMPT), new UserMessage(query.strip()));
-      ModelCallOptions options = new ModelCallOptions(null, false, 0.1d, 128, null, null, Map.of());
-      String rewritten = sanitize(modelProvider.chat(new Prompt(messages), options).content());
-      return rewritten.isBlank() ? query.strip() : rewritten;
-    } catch (Exception exception) {
-      log.warn("查询改写失败，使用原查询继续检索: {}", exception.getMessage());
-      return query.strip();
-    }
+    return result;
   }
 
   private boolean rewriteEnabled() {
@@ -60,18 +63,18 @@ public class RetrievalQueryRewriteService {
   }
 
   private String sanitize(String content) {
-    if (content == null) {
-      return "";
-    }
-    String value = content.strip().replaceAll("(?i)^(改写后查询|查询|rewritten query)\\s*[:：]\\s*", "");
-    value = value.replaceAll("[\\r\\n]+", " ").strip();
-    if (value.length() > 256) {
-      value = value.substring(0, 256).strip();
-    }
-    if (value.length() >= 2
-        && ((value.startsWith("\"") && value.endsWith("\""))
-            || (value.startsWith("“") && value.endsWith("”")))) {
-      value = value.substring(1, value.length() - 1).strip();
+    String value = content == null ? "" : content.strip();
+    if (!value.isEmpty()) {
+      value = value.replaceAll("(?i)^(改写后查询|查询|rewritten query)\\s*[:：]\\s*", "");
+      value = value.replaceAll("[\\r\\n]+", " ").strip();
+      if (value.length() > 256) {
+        value = value.substring(0, 256).strip();
+      }
+      if (value.length() >= 2
+          && ((value.startsWith("\"") && value.endsWith("\""))
+              || (value.startsWith("“") && value.endsWith("”")))) {
+        value = value.substring(1, value.length() - 1).strip();
+      }
     }
     return value;
   }

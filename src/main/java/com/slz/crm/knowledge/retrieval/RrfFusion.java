@@ -37,21 +37,24 @@ public class RrfFusion {
    * {@code Σ_路 1/(k + rank)}； 同一切片（fusionKey 相同）跨路命中得分累加，hit 保留先出现路的条目。 空路/null 路安全跳过；全部为空返回空列表。
    */
   public List<RetrievalCandidate> fuseAll(List<List<RetrievalCandidate>> routes, int k) {
-    if (routes == null || routes.isEmpty()) {
-      return List.of();
+    List<RetrievalCandidate> result = List.of();
+    if (routes != null && !routes.isEmpty()) {
+      Map<String, Double> scores = new HashMap<>();
+      Map<String, RetrievalCandidate> hits = new LinkedHashMap<>();
+      for (List<RetrievalCandidate> route : routes) {
+        accumulate(scores, hits, route, k);
+      }
+      if (!scores.isEmpty()) {
+        result =
+            scores.entrySet().stream()
+                .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
+                .map(
+                    entry ->
+                        new RetrievalCandidate(hits.get(entry.getKey()).hit(), entry.getValue()))
+                .toList();
+      }
     }
-    Map<String, Double> scores = new HashMap<>();
-    Map<String, RetrievalCandidate> hits = new LinkedHashMap<>();
-    for (List<RetrievalCandidate> route : routes) {
-      accumulate(scores, hits, route, k);
-    }
-    if (scores.isEmpty()) {
-      return List.of();
-    }
-    return scores.entrySet().stream()
-        .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
-        .map(entry -> new RetrievalCandidate(hits.get(entry.getKey()).hit(), entry.getValue()))
-        .toList();
+    return result;
   }
 
   /** 路内按分数降序取排名后累加 RRF 分；空路/缺路（null）安全跳过。 */

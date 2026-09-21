@@ -80,15 +80,17 @@ public class InMemoryVectorStore implements CrmVectorStore, CrmVectorStoreHealth
 
   /** metadata 语义与 Qdrant 一致：等值匹配，Boolean 视为 1/0。 */
   private boolean matchesFilter(Map<String, Object> metadata, Map<String, Object> filter) {
+    boolean matches = true;
     for (Map.Entry<String, Object> entry : filter.entrySet()) {
       Object actual = metadata.get(entry.getKey());
       Object expected =
           entry.getValue() instanceof Boolean bool ? (bool ? 1L : 0L) : entry.getValue();
       if (!Objects.equals(actual, expected)) {
-        return false;
+        matches = false;
+        break;
       }
     }
-    return true;
+    return matches;
   }
 
   /** 余弦相似度统一折算 0~1，零向量返回 0。 */
@@ -104,9 +106,10 @@ public class InMemoryVectorStore implements CrmVectorStore, CrmVectorStoreHealth
       leftNorm += (double) left[index] * left[index];
       rightNorm += (double) right[index] * right[index];
     }
-    if (leftNorm == 0 || rightNorm == 0) {
-      return 0;
+    double result = 0;
+    if (leftNorm != 0 && rightNorm != 0) {
+      result = Math.max(0, Math.min(1, dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm))));
     }
-    return Math.max(0, Math.min(1, dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm))));
+    return result;
   }
 }

@@ -80,13 +80,15 @@ public class ContextBuilder {
    * <p>输出契约：第 i 个候选对应且仅对应 {@code [i+1]} 段，与调用方 sources 列表下标一一对应。
    */
   public String build(List<RetrievalCandidate> candidates) {
+    String context;
     if (candidates == null || candidates.isEmpty()) {
-      return "";
+      context = "";
+    } else {
+      context =
+          parentExpandEnabled()
+              ? assembleWithParentExpand(candidates)
+              : neighborsEnabled() ? assembleWithNeighbors(candidates) : plainNumbered(candidates);
     }
-    String context =
-        parentExpandEnabled()
-            ? assembleWithParentExpand(candidates)
-            : neighborsEnabled() ? assembleWithNeighbors(candidates) : plainNumbered(candidates);
     return enforceTokenBudget(context);
   }
 
@@ -139,22 +141,21 @@ public class ContextBuilder {
    */
   private String lookupParentText(VectorSearchHit hit) {
     String chunkId = hit.chunkId();
-    if (chunkId == null || !chunkId.chars().allMatch(Character::isDigit)) {
-      return null;
-    }
-    try {
-      DocumentVectorChunkEntity child = chunkMapper.selectById(Long.parseLong(chunkId));
-      if (child == null || child.getParentChunkId() == null) {
-        return null;
+    String result = null;
+    if (chunkId != null && chunkId.chars().allMatch(Character::isDigit)) {
+      try {
+        DocumentVectorChunkEntity child = chunkMapper.selectById(Long.parseLong(chunkId));
+        if (child != null && child.getParentChunkId() != null) {
+          DocumentVectorChunkEntity parent = chunkMapper.selectById(child.getParentChunkId());
+          if (parent != null && parent.getChunkText() != null && !parent.getChunkText().isBlank()) {
+            result = parent.getChunkText();
+          }
+        }
+      } catch (Exception exception) {
+        log.warn("父块展开查询失败，按邻居模式降级: {}", exception.getMessage());
       }
-      DocumentVectorChunkEntity parent = chunkMapper.selectById(child.getParentChunkId());
-      return parent == null || parent.getChunkText() == null || parent.getChunkText().isBlank()
-          ? null
-          : parent.getChunkText();
-    } catch (Exception exception) {
-      log.warn("父块展开查询失败，按邻居模式降级: {}", exception.getMessage());
-      return null;
     }
+    return result;
   }
 
   private String assembleWithNeighbors(List<RetrievalCandidate> candidates) {
@@ -189,47 +190,47 @@ public class ContextBuilder {
   /** 查询命中块的潜在邻居行（chunkIndex-1 与 chunkIndex+1，同文档）。 chunkIndex 缺失或查询失败时返回空列表（无邻居降级，不抛错）。 */
   private List<DocumentVectorChunkEntity> fetchNeighbors(VectorSearchHit hit) {
     Integer chunkIndex = chunkIndex(hit);
-    if (chunkIndex == null
-        || chunkIndex < 0
-        || hit.documentId() == null
-        || hit.documentId().isBlank()) {
-      return List.of();
+    List<DocumentVectorChunkEntity> result = List.of();
+    if (chunkIndex != null
+        && chunkIndex >= 0
+        && hit.documentId() != null
+        && !hit.documentId().isBlank()) {
+      List<Integer> targets = new ArrayList<>();
+      if (chunkIndex > 0) {
+        targets.add(chunkIndex - 1);
+      }
+      targets.add(chunkIndex + 1);
+      try {
+        result =
+            chunkMapper.selectList(
+                new QueryWrapper<DocumentVectorChunkEntity>()
+                    .eq("document_id", hit.documentId())
+                    .eq("chunk_role", CHUNK_ROLE_CHILD)
+                    .in("chunk_index", targets));
+      } catch (Exception exception) {
+        log.warn("邻居切片查询失败，按无邻居降级: {}", exception.getMessage());
+      }
     }
-    List<Integer> targets = new ArrayList<>();
-    if (chunkIndex > 0) {
-      targets.add(chunkIndex - 1);
-    }
-    targets.add(chunkIndex + 1);
-    try {
-      return chunkMapper.selectList(
-          new QueryWrapper<DocumentVectorChunkEntity>()
-              .eq("document_id", hit.documentId())
-              .eq("chunk_role", CHUNK_ROLE_CHILD)
-              .in("chunk_index", targets));
-    } catch (Exception exception) {
-      log.warn("邻居切片查询失败，按无邻居降级: {}", exception.getMessage());
-      return List.of();
-    }
+    return result;
   }
 
   /** 取目标序号的邻居行：SQL 已按 document_id 收敛，此处再过滤跨文档行兜底； 同序号多行按「同页优先、主键小者」确定性取舍（同页优先，任务 1.1）。 */
   private DocumentVectorChunkEntity neighborAt(
       List<DocumentVectorChunkEntity> rows, int targetIndex, VectorSearchHit hit) {
-    if (targetIndex < 0) {
-      return null;
-    }
     Integer hitPageNo = positivePageNo(hit);
     DocumentVectorChunkEntity best = null;
-    for (DocumentVectorChunkEntity row : rows) {
-      if (row.getChunkIndex() == null
-          || row.getChunkIndex() != targetIndex
-          || row.getChunkText() == null
-          || row.getDocumentId() == null
-          || !row.getDocumentId().equals(hit.documentId())) {
-        continue;
-      }
-      if (best == null || betterNeighbor(row, best, hitPageNo)) {
-        best = row;
+    if (targetIndex >= 0) {
+      for (DocumentVectorChunkEntity row : rows) {
+        if (row.getChunkIndex() == null
+            || row.getChunkIndex() != targetIndex
+            || row.getChunkText() == null
+            || row.getDocumentId() == null
+            || !row.getDocumentId().equals(hit.documentId())) {
+          continue;
+        }
+        if (best == null || betterNeighbor(row, best, hitPageNo)) {
+          best = row;
+        }
       }
     }
     return best;
@@ -241,12 +242,16 @@ public class ContextBuilder {
     boolean candidateSamePage =
         candidate.getPageNo() != null && candidate.getPageNo().equals(hitPageNo);
     boolean currentSamePage = current.getPageNo() != null && current.getPageNo().equals(hitPageNo);
+    boolean result;
     if (candidateSamePage != currentSamePage) {
-      return candidateSamePage;
+      result = candidateSamePage;
+    } else {
+      result =
+          candidate.getId() != null
+              && current.getId() != null
+              && candidate.getId() < current.getId();
     }
-    return candidate.getId() != null
-        && current.getId() != null
-        && candidate.getId() < current.getId();
+    return result;
   }
 
   private Integer chunkIndex(VectorSearchHit hit) {
@@ -256,11 +261,14 @@ public class ContextBuilder {
 
   private Integer positivePageNo(VectorSearchHit hit) {
     Object value = hit.metadata().get("pageNo");
+    Integer result = null;
     if (value instanceof Number number) {
       long pageNo = number.longValue();
-      return pageNo > 0 ? (int) pageNo : null;
+      if (pageNo > 0) {
+        result = (int) pageNo;
+      }
     }
-    return null;
+    return result;
   }
 
   // ---------------------------------------------------------------- 超预算压缩（方案10）
@@ -268,10 +276,13 @@ public class ContextBuilder {
   /** 超预算触发压缩（任务 2.4：未超预算原文逐字保留，压缩器不会被调用）。 */
   private String enforceTokenBudget(String context) {
     int budget = resolveTokenBudget();
+    String result;
     if (TokenEstimator.estimate(context) <= budget) {
-      return context;
+      result = context;
+    } else {
+      result = activeCompressor().compress(context, budget);
     }
-    return activeCompressor().compress(context, budget);
+    return result;
   }
 
   /** token 预算：{@code rag.context.token-budget}（默认 4096）；&lt;1 回落默认。 */
@@ -286,12 +297,13 @@ public class ContextBuilder {
   private Compressor activeCompressor() {
     DynamicConfigService config = dynamicConfigProvider.getIfAvailable();
     String mode = config == null ? null : config.get(COMPRESSOR_MODE_KEY, String.class, "rule");
+    Compressor result = ruleCompressor;
     if (mode != null
         && COMPRESSOR_MODE_LLM.equalsIgnoreCase(mode.strip())
         && llmCompressor != null) {
-      return llmCompressor;
+      result = llmCompressor;
     }
-    return ruleCompressor;
+    return result;
   }
 
   // ---------------------------------------------------------------- 开关与邻居解析

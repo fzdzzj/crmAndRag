@@ -62,35 +62,39 @@ public class LlmReranker implements Reranker {
 
   @Override
   public List<RetrievalCandidate> rerank(String query, List<RetrievalCandidate> candidates) {
+    List<RetrievalCandidate> result;
     if (candidates == null || candidates.isEmpty()) {
-      return List.of();
-    }
-    int maxCandidates = resolveMaxCandidates();
-    List<RetrievalCandidate> head =
-        candidates.size() <= maxCandidates ? candidates : candidates.subList(0, maxCandidates);
-    List<RetrievalCandidate> tail =
-        candidates.size() <= maxCandidates
-            ? List.of()
-            : candidates.subList(maxCandidates, candidates.size());
-    try {
-      int[] order = parseOrder(callModel(query, head), head.size());
-      if (order == null) {
-        return fallbackReranker.rerank(query, candidates);
+      result = List.of();
+    } else {
+      int maxCandidates = resolveMaxCandidates();
+      List<RetrievalCandidate> head =
+          candidates.size() <= maxCandidates ? candidates : candidates.subList(0, maxCandidates);
+      List<RetrievalCandidate> tail =
+          candidates.size() <= maxCandidates
+              ? List.of()
+              : candidates.subList(maxCandidates, candidates.size());
+      try {
+        int[] order = parseOrder(callModel(query, head), head.size());
+        if (order == null) {
+          result = fallbackReranker.rerank(query, candidates);
+        } else {
+          List<RetrievalCandidate> reordered = new ArrayList<>(candidates.size());
+          for (int index : order) {
+            reordered.add(head.get(index));
+          }
+          reordered.addAll(tail);
+          result = scoreByPosition(reordered);
+        }
+      } catch (InterruptedException exception) {
+        Thread.currentThread().interrupt();
+        log.warn("LLM 重排被中断，回退默认重排链: {}", exception.getMessage());
+        result = fallbackReranker.rerank(query, candidates);
+      } catch (Exception exception) {
+        log.warn("LLM 重排失败，回退默认重排链: {}", exception.getMessage());
+        result = fallbackReranker.rerank(query, candidates);
       }
-      List<RetrievalCandidate> reordered = new ArrayList<>(candidates.size());
-      for (int index : order) {
-        reordered.add(head.get(index));
-      }
-      reordered.addAll(tail);
-      return scoreByPosition(reordered);
-    } catch (InterruptedException exception) {
-      Thread.currentThread().interrupt();
-      log.warn("LLM 重排被中断，回退默认重排链: {}", exception.getMessage());
-      return fallbackReranker.rerank(query, candidates);
-    } catch (Exception exception) {
-      log.warn("LLM 重排失败，回退默认重排链: {}", exception.getMessage());
-      return fallbackReranker.rerank(query, candidates);
     }
+    return result;
   }
 
   /** listwise 排序调用：带超时护栏（超时走 catch 回退），候选项过多时只精排头部。 */
@@ -118,24 +122,24 @@ public class LlmReranker implements Reranker {
 
   /** 解析 "[3,1,2]" 型输出为 0 基下标顺序：非法/越界编号忽略；解析不出任何编号 → null（回退）； 部分缺失的候选按原顺序补在尾部，保证候选全集不丢。 */
   private int[] parseOrder(String output, int size) {
-    if (output == null || output.isBlank()) {
-      return null;
-    }
-    Set<Integer> indices = new LinkedHashSet<>();
-    Matcher matcher = NUMBER_PATTERN.matcher(output);
-    while (matcher.find() && indices.size() < size) {
-      int index = Integer.parseInt(matcher.group()) - 1;
-      if (index >= 0 && index < size) {
-        indices.add(index);
+    int[] result = null;
+    if (output != null && !output.isBlank()) {
+      Set<Integer> indices = new LinkedHashSet<>();
+      Matcher matcher = NUMBER_PATTERN.matcher(output);
+      while (matcher.find() && indices.size() < size) {
+        int index = Integer.parseInt(matcher.group()) - 1;
+        if (index >= 0 && index < size) {
+          indices.add(index);
+        }
+      }
+      if (!indices.isEmpty()) {
+        for (int index = 0; index < size; index++) {
+          indices.add(index);
+        }
+        result = indices.stream().mapToInt(Integer::intValue).toArray();
       }
     }
-    if (indices.isEmpty()) {
-      return null;
-    }
-    for (int index = 0; index < size; index++) {
-      indices.add(index);
-    }
-    return indices.stream().mapToInt(Integer::intValue).toArray();
+    return result;
   }
 
   /** 名次折算单调递减分：(N - 名次) / N，名次 1 起。 */

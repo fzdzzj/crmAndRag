@@ -237,6 +237,7 @@ public class DocumentIngestionService {
 
   /** 重建沿用的旧类目快照：取旧切片行首个非空类目；无历史行（上次失败在切分前）返回 null。 */
   private String legacyCategoryOf(String documentId) {
+    String result = null;
     try {
       DocumentVectorChunkEntity row =
           chunkMapper.selectOne(
@@ -244,11 +245,14 @@ public class DocumentIngestionService {
                   .eq("document_id", documentId)
                   .isNotNull("category")
                   .last("LIMIT 1"));
-      return row == null ? null : row.getCategory();
+      if (row != null) {
+        result = row.getCategory();
+      }
     } catch (Exception exception) {
       log.warn("读取旧切片类目失败，重建按无类目继续 documentId={}", documentId, exception);
-      return null;
+      result = null;
     }
+    return result;
   }
 
   /** 重建入库审计（任务 4.3）：record 内部吞异常不阻断业务，这里不重复兜底。 */
@@ -342,19 +346,18 @@ public class DocumentIngestionService {
   /** 从 index 起的同一逻辑段连续区段：parentText 非空逐字相同且页锚点一致才延续。 */
   private int groupRunEnd(List<DocumentChunk> chunks, int index) {
     DocumentChunk first = chunks.get(index);
-    if (first.parentText() == null) {
-      return index + 1;
-    }
     int end = index + 1;
-    while (end < chunks.size()) {
-      DocumentChunk next = chunks.get(end);
-      if (next.parentText() == null
-          || !next.parentText().equals(first.parentText())
-          || !Objects.equals(next.pageNo(), first.pageNo())
-          || !Objects.equals(next.rowIndex(), first.rowIndex())) {
-        break;
+    if (first.parentText() != null) {
+      while (end < chunks.size()) {
+        DocumentChunk next = chunks.get(end);
+        if (next.parentText() == null
+            || !next.parentText().equals(first.parentText())
+            || !Objects.equals(next.pageNo(), first.pageNo())
+            || !Objects.equals(next.rowIndex(), first.rowIndex())) {
+          break;
+        }
+        end++;
       }
-      end++;
     }
     return end;
   }
@@ -419,6 +422,7 @@ public class DocumentIngestionService {
   }
 
   private String sha256OfStoredObject(String storageKey) {
+    String result = null;
     try (InputStream content = fileStorageService.open(storageKey)) {
       MessageDigest digest = MessageDigest.getInstance("SHA-256");
       byte[] buffer = new byte[8192];
@@ -426,10 +430,11 @@ public class DocumentIngestionService {
       while ((read = content.read(buffer)) >= 0) {
         digest.update(buffer, 0, read);
       }
-      return HexFormat.of().formatHex(digest.digest());
+      result = HexFormat.of().formatHex(digest.digest());
     } catch (Exception exception) {
-      return null;
+      result = null;
     }
+    return result;
   }
 
   private String sha256(String text) {
@@ -442,10 +447,11 @@ public class DocumentIngestionService {
   }
 
   private String fileType(String filename) {
-    if (filename == null || filename.lastIndexOf('.') < 0) {
-      return "file";
+    String result = "file";
+    if (filename != null && filename.lastIndexOf('.') >= 0) {
+      result = filename.substring(filename.lastIndexOf('.') + 1).toLowerCase(java.util.Locale.ROOT);
     }
-    return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase(java.util.Locale.ROOT);
+    return result;
   }
 
   private String shortMessage(Exception exception) {

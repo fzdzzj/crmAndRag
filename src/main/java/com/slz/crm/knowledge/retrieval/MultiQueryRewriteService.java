@@ -54,65 +54,72 @@ public class MultiQueryRewriteService {
 
   /** 产出查询路列表：首元素恒为原始查询，其后为去重后的 LLM 变体。 永不返回空列表、永不抛出——所有失败路径退化为单查询。 */
   public List<String> expand(String primaryQuery) {
+    List<String> result;
     if (primaryQuery == null || primaryQuery.isBlank()) {
-      return List.of("");
+      result = List.of("");
+    } else {
+      String normalized = primaryQuery.strip();
+      if (!enabled()) {
+        result = List.of(normalized);
+      } else {
+        int variants = resolveVariants();
+        try {
+          List<Message> messages =
+              List.of(
+                  new SystemMessage(SYSTEM_PROMPT.formatted(variants)),
+                  new UserMessage(normalized));
+          ModelCallOptions options =
+              new ModelCallOptions(null, false, 0.2d, 512, null, null, Map.of());
+          String output = modelProvider.chat(new Prompt(messages), options).content();
+          List<String> parsed = parseVariants(output, variants, normalized);
+          List<String> routes = new ArrayList<>(parsed.size() + 1);
+          routes.add(normalized);
+          routes.addAll(parsed);
+          result = List.copyOf(routes);
+        } catch (Exception exception) {
+          log.warn("多查询变体生成失败，回退单查询: {}", exception.getMessage());
+          result = List.of(normalized);
+        }
+      }
     }
-    String normalized = primaryQuery.strip();
-    if (!enabled()) {
-      return List.of(normalized);
-    }
-    int variants = resolveVariants();
-    try {
-      List<Message> messages =
-          List.of(
-              new SystemMessage(SYSTEM_PROMPT.formatted(variants)), new UserMessage(normalized));
-      ModelCallOptions options = new ModelCallOptions(null, false, 0.2d, 512, null, null, Map.of());
-      String output = modelProvider.chat(new Prompt(messages), options).content();
-      List<String> parsed = parseVariants(output, variants, normalized);
-      List<String> routes = new ArrayList<>(parsed.size() + 1);
-      routes.add(normalized);
-      routes.addAll(parsed);
-      return List.copyOf(routes);
-    } catch (Exception exception) {
-      log.warn("多查询变体生成失败，回退单查询: {}", exception.getMessage());
-      return List.of(normalized);
-    }
+    return result;
   }
 
   /** 变体解析：逐行 → 净化 → 去重（含与原始查询重复）→ 截断到变体数上限。 */
   private List<String> parseVariants(String output, int variants, String primary) {
-    if (output == null || output.isBlank()) {
-      return List.of();
-    }
-    Set<String> seen = new LinkedHashSet<>();
-    seen.add(primary.toLowerCase(Locale.ROOT));
     List<String> result = new ArrayList<>(variants);
-    for (String line : output.split("\\r?\\n")) {
-      String variant = sanitize(line);
-      if (variant.isBlank() || !seen.add(variant.toLowerCase(Locale.ROOT))) {
-        continue;
-      }
-      result.add(variant);
-      if (result.size() >= variants) {
-        break;
+    if (output != null && !output.isBlank()) {
+      Set<String> seen = new LinkedHashSet<>();
+      seen.add(primary.toLowerCase(Locale.ROOT));
+      for (String line : output.split("\\r?\\n")) {
+        String variant = sanitize(line);
+        if (variant.isBlank() || !seen.add(variant.toLowerCase(Locale.ROOT))) {
+          continue;
+        }
+        result.add(variant);
+        if (result.size() >= variants) {
+          break;
+        }
       }
     }
     return result;
   }
 
   private String sanitize(String content) {
+    String value;
     if (content == null) {
-      return "";
-    }
-    String value = content.strip().replaceAll("^\\s*\\d+\\s*[.、)．]\\s*", "");
-    value = value.replaceAll("[\\r\\n]+", " ").strip();
-    if (value.length() > 256) {
-      value = value.substring(0, 256).strip();
-    }
-    if (value.length() >= 2
-        && ((value.startsWith("\"") && value.endsWith("\""))
-            || (value.startsWith("“") && value.endsWith("”")))) {
-      value = value.substring(1, value.length() - 1).strip();
+      value = "";
+    } else {
+      value = content.strip().replaceAll("^\\s*\\d+\\s*[.、)．]\\s*", "");
+      value = value.replaceAll("[\\r\\n]+", " ").strip();
+      if (value.length() > 256) {
+        value = value.substring(0, 256).strip();
+      }
+      if (value.length() >= 2
+          && ((value.startsWith("\"") && value.endsWith("\""))
+              || (value.startsWith("“") && value.endsWith("”")))) {
+        value = value.substring(1, value.length() - 1).strip();
+      }
     }
     return value;
   }
@@ -126,9 +133,10 @@ public class MultiQueryRewriteService {
     DynamicConfigService config = dynamicConfigProvider.getIfAvailable();
     Integer configured =
         config == null ? null : config.get(VARIANTS_KEY, Integer.class, DEFAULT_VARIANTS);
-    if (configured == null || configured < 1) {
-      return DEFAULT_VARIANTS;
+    int result = DEFAULT_VARIANTS;
+    if (configured != null && configured >= 1) {
+      result = Math.min(configured, MAX_VARIANTS);
     }
-    return Math.min(configured, MAX_VARIANTS);
+    return result;
   }
 }

@@ -143,13 +143,13 @@ public class DocumentService {
         dynamicConfigProvider == null ? null : dynamicConfigProvider.getIfAvailable();
     String strategy =
         config == null ? null : config.get(STRATEGY_KEY, String.class, STRATEGY_FIXED);
+    ChunkingStrategy result = FixedChunkingStrategy.INSTANCE;
     if (strategy != null && STRATEGY_PARAGRAPH.equalsIgnoreCase(strategy.strip())) {
-      return ParagraphChunkingStrategy.INSTANCE;
+      result = ParagraphChunkingStrategy.INSTANCE;
+    } else if (strategy != null && STRATEGY_SEMANTIC.equalsIgnoreCase(strategy.strip())) {
+      result = new SemanticChunkingStrategy(resolveMaxChunkSize(config));
     }
-    if (strategy != null && STRATEGY_SEMANTIC.equalsIgnoreCase(strategy.strip())) {
-      return new SemanticChunkingStrategy(resolveMaxChunkSize(config));
-    }
-    return FixedChunkingStrategy.INSTANCE;
+    return result;
   }
 
   /** 语义切分单块上限：{@code rag.chunking.max-chunk-size}（默认 480）；&lt;1 回落默认。 */
@@ -213,20 +213,22 @@ public class DocumentService {
 
   /** 仅当 vision-pdf.enabled=true 且转写器已装配时返回实例；默认关路径零 vision 调用。 */
   private PdfVisionTranscriber resolveVisionTranscriber() {
-    if (visionTranscriberProvider == null) {
-      return null;
+    PdfVisionTranscriber result = null;
+    if (visionTranscriberProvider != null) {
+      PdfVisionTranscriber transcriber = visionTranscriberProvider.getIfAvailable();
+      if (transcriber != null) {
+        DynamicConfigService config =
+            dynamicConfigProvider == null ? null : dynamicConfigProvider.getIfAvailable();
+        Boolean enabled =
+            config == null
+                ? Boolean.FALSE
+                : config.get(PdfVisionTranscriber.ENABLED_KEY, Boolean.class, Boolean.FALSE);
+        if (Boolean.TRUE.equals(enabled)) {
+          result = transcriber;
+        }
+      }
     }
-    PdfVisionTranscriber transcriber = visionTranscriberProvider.getIfAvailable();
-    if (transcriber == null) {
-      return null;
-    }
-    DynamicConfigService config =
-        dynamicConfigProvider == null ? null : dynamicConfigProvider.getIfAvailable();
-    Boolean enabled =
-        config == null
-            ? Boolean.FALSE
-            : config.get(PdfVisionTranscriber.ENABLED_KEY, Boolean.class, Boolean.FALSE);
-    return Boolean.TRUE.equals(enabled) ? transcriber : null;
+    return result;
   }
 
   /**
@@ -238,22 +240,21 @@ public class DocumentService {
   private ParsedDocument parseExcel(InputStream content) {
     List<Map<Integer, String>> rows = EasyExcel.read(content).headRowNumber(0).sheet().doReadSync();
     List<DocumentPage> pages = new ArrayList<>();
-    if (rows.isEmpty()) {
-      return new ParsedDocument("excel", pages);
-    }
-    Map<Integer, String> firstRow = rows.get(0);
-    boolean projectHeaders = looksLikeHeaderRow(firstRow);
-    Map<Integer, String> headers = projectHeaders ? buildHeaderNames(firstRow) : Map.of();
+    if (!rows.isEmpty()) {
+      Map<Integer, String> firstRow = rows.get(0);
+      boolean projectHeaders = looksLikeHeaderRow(firstRow);
+      Map<Integer, String> headers = projectHeaders ? buildHeaderNames(firstRow) : Map.of();
 
-    int rowIndex = 0;
-    for (Map<Integer, String> row : rows) {
-      rowIndex++;
-      if (projectHeaders && rowIndex == 1) {
-        continue; // 列名已投影到数据行，独立表头块会占 top-K
-      }
-      String text = projectHeaders ? projectRow(headers, row) : normalizeRow(row);
-      if (!text.isEmpty()) {
-        pages.add(new DocumentPage(1, rowIndex, text));
+      int rowIndex = 0;
+      for (Map<Integer, String> row : rows) {
+        rowIndex++;
+        if (projectHeaders && rowIndex == 1) {
+          continue; // 列名已投影到数据行，独立表头块会占 top-K
+        }
+        String text = projectHeaders ? projectRow(headers, row) : normalizeRow(row);
+        if (!text.isEmpty()) {
+          pages.add(new DocumentPage(1, rowIndex, text));
+        }
       }
     }
     return new ParsedDocument("excel", pages);
@@ -261,24 +262,28 @@ public class DocumentService {
 
   /** 表头启发式（add-excel-header-projection 任务 1.2）：非空格 ≥ 2 且每格长度 ≤ 32。 */
   private boolean looksLikeHeaderRow(Map<Integer, String> row) {
-    if (row == null || row.isEmpty()) {
-      return false;
+    boolean result = row != null && !row.isEmpty();
+    if (result) {
+      int nonEmpty = 0;
+      for (String raw : row.values()) {
+        if (raw == null) {
+          continue;
+        }
+        String value = raw.strip();
+        if (value.isEmpty()) {
+          continue;
+        }
+        if (value.length() > HEADER_CELL_MAX_LEN) {
+          result = false;
+          break;
+        }
+        nonEmpty++;
+      }
+      if (result) {
+        result = nonEmpty >= HEADER_MIN_NON_EMPTY;
+      }
     }
-    int nonEmpty = 0;
-    for (String raw : row.values()) {
-      if (raw == null) {
-        continue;
-      }
-      String value = raw.strip();
-      if (value.isEmpty()) {
-        continue;
-      }
-      if (value.length() > HEADER_CELL_MAX_LEN) {
-        return false;
-      }
-      nonEmpty++;
-    }
-    return nonEmpty >= HEADER_MIN_NON_EMPTY;
+    return result;
   }
 
   /** 为表头行建立列下标 → 列名；空列名回退 {@code 列{1-based}}，重名加 {@code _2} 后缀。 */
@@ -299,52 +304,57 @@ public class DocumentService {
    * 列{1-based}}。
    */
   private String projectRow(Map<Integer, String> headers, Map<Integer, String> row) {
-    if (row == null || row.isEmpty()) {
-      return "";
+    String result = "";
+    if (row != null && !row.isEmpty()) {
+      result =
+          row.keySet().stream()
+              .sorted()
+              .map(
+                  col -> {
+                    String raw = row.get(col);
+                    if (raw == null) {
+                      return null;
+                    }
+                    String value = raw.strip();
+                    if (value.isEmpty()) {
+                      return null;
+                    }
+                    String name = headers.get(col);
+                    if (name == null || name.isEmpty()) {
+                      name = "列" + (col + 1);
+                    }
+                    return name + "：" + value;
+                  })
+              .filter(Objects::nonNull)
+              .reduce((left, right) -> left + "\t" + right)
+              .orElse("");
     }
-    return row.keySet().stream()
-        .sorted()
-        .map(
-            col -> {
-              String raw = row.get(col);
-              if (raw == null) {
-                return null;
-              }
-              String value = raw.strip();
-              if (value.isEmpty()) {
-                return null;
-              }
-              String name = headers.get(col);
-              if (name == null || name.isEmpty()) {
-                name = "列" + (col + 1);
-              }
-              return name + "：" + value;
-            })
-        .filter(Objects::nonNull)
-        .reduce((left, right) -> left + "\t" + right)
-        .orElse("");
+    return result;
   }
 
   /** 升级前行为：单元格值 strip 后按列下标 tab 拼接（无列名）。 */
   private String normalizeRow(Map<Integer, String> row) {
-    if (row == null || row.isEmpty()) {
-      return "";
+    String result = "";
+    if (row != null && !row.isEmpty()) {
+      result =
+          row.keySet().stream()
+              .sorted()
+              .map(row::get)
+              .filter(Objects::nonNull)
+              .map(String::strip)
+              .filter(value -> !value.isEmpty())
+              .reduce((left, right) -> left + "\t" + right)
+              .orElse("");
     }
-    return row.keySet().stream()
-        .sorted()
-        .map(row::get)
-        .filter(Objects::nonNull)
-        .map(String::strip)
-        .filter(value -> !value.isEmpty())
-        .reduce((left, right) -> left + "\t" + right)
-        .orElse("");
+    return result;
   }
 
   private String fileType(String filename) {
-    if (filename == null || filename.lastIndexOf('.') < 0) {
-      return "";
+    String result = "";
+    if (filename != null && filename.lastIndexOf('.') >= 0) {
+      result = filename.substring(filename.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
     }
-    return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
+    return result;
   }
 
   private String normalize(String text) {
@@ -353,21 +363,23 @@ public class DocumentService {
 
   /** 轻量关键词提取；不引入 IK 依赖，仅保留高频中英文 token。包内可见：父块行关键词复用。 */
   List<String> extractKeywords(String text) {
-    if (text.length() < MIN_TEXT_LENGTH) {
-      return List.of();
-    }
-    Map<String, Integer> counts = new LinkedHashMap<>();
-    Matcher matcher = KEYWORD_PATTERN.matcher(text);
-    while (matcher.find()) {
-      String token = matcher.group();
-      if (!STOP_WORDS.contains(token)) {
-        counts.merge(token, 1, Integer::sum);
+    List<String> result = List.of();
+    if (text.length() >= MIN_TEXT_LENGTH) {
+      Map<String, Integer> counts = new LinkedHashMap<>();
+      Matcher matcher = KEYWORD_PATTERN.matcher(text);
+      while (matcher.find()) {
+        String token = matcher.group();
+        if (!STOP_WORDS.contains(token)) {
+          counts.merge(token, 1, Integer::sum);
+        }
       }
+      result =
+          counts.entrySet().stream()
+              .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+              .limit(KEYWORD_COUNT)
+              .map(Map.Entry::getKey)
+              .toList();
     }
-    return counts.entrySet().stream()
-        .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
-        .limit(KEYWORD_COUNT)
-        .map(Map.Entry::getKey)
-        .toList();
+    return result;
   }
 }

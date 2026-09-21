@@ -16,7 +16,7 @@
 - [x] 2.2 common 批（34）：合并多 return 为单一出口（行为等价），pmd:check → --update → pom 同步 → merge-gate → 提交 ｜实测：1047→1013（-34，本模块 OnlyOneReturn 清零 0，其他规则无新增）；台账 1013/172、pom 469 行=1013；merge-gate 8 子门禁全 PASS（[unit] surefire 724 不变）
 - [x] 2.3 pojo 批（22）：合并多 return 为单一出口（行为等价），pmd:check → --update → pom 同步 → merge-gate → 提交 ｜实测：1013→991（-22，pojo OnlyOneReturn 清零 0）；台账 991/154、pom 469 行=991；merge-gate 8 子门禁全 PASS（[unit] surefire 724 不变）
 - [x] 2.4 quality 批（3）：合并多 return 为单一出口（行为等价），pmd:check → --update → pom 同步 → merge-gate → 提交 ｜实测：991→988（-3，quality OnlyOneReturn 清零 0）；台账 988/153、pom 469 行=988；merge-gate 8 子门禁全 PASS（[unit] surefire 724 不变）
-- [ ] 2.5 knowledge 批（134）｜实测：
+- [x] 2.5 knowledge 批（134）：合并多 return 为单一出口（行为等价），pmd:check → --update → pom 同步 → merge-gate → 提交 ｜实测：988→858（knowledge OnlyOneReturn 清零 0，本模块 134 处）；台账 858/145、pom 469 行=858；merge-gate 8 子门禁全 PASS（[unit] surefire 计数不变）
 - [ ] 2.6 platform 批（71）｜实测：
 - [ ] 2.7 server 批（468）｜实测：
 

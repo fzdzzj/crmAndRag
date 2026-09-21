@@ -120,15 +120,14 @@ public class DerivedQuestionService {
               exception);
         }
       }
-      if (records.isEmpty()) {
-        return;
+      Set<String> currentChunkIds =
+          records.isEmpty() ? Set.of() : currentChunkIds(file.getDocumentId());
+      if (!records.isEmpty()) {
+        records.removeIf(record -> !currentChunkIds.contains(record.chunkId()));
       }
-      Set<String> currentChunkIds = currentChunkIds(file.getDocumentId());
-      records.removeIf(record -> !currentChunkIds.contains(record.chunkId()));
-      if (records.isEmpty()) {
-        return;
+      if (!records.isEmpty()) {
+        vectorStore.upsertAll(records);
       }
-      vectorStore.upsertAll(records);
     } catch (Exception exception) {
       log.warn("衍生问题旁路失败（不阻塞入库主链）documentId={}", file.getDocumentId(), exception);
     }
@@ -194,37 +193,36 @@ public class DerivedQuestionService {
 
   /** 问题解析：逐行 → 去编号/净化 → 去重 → 截断到上限。 */
   private List<String> parseQuestions(String output, int maxQuestions) {
-    if (output == null || output.isBlank()) {
-      return List.of();
-    }
     Set<String> seen = new LinkedHashSet<>();
     List<String> questions = new ArrayList<>(maxQuestions);
-    for (String line : output.split("\\r?\\n")) {
-      String question = sanitize(line);
-      if (question.isBlank() || !seen.add(question.toLowerCase(Locale.ROOT))) {
-        continue;
-      }
-      questions.add(question);
-      if (questions.size() >= maxQuestions) {
-        break;
+    if (output != null && !output.isBlank()) {
+      for (String line : output.split("\\r?\\n")) {
+        String question = sanitize(line);
+        if (question.isBlank() || !seen.add(question.toLowerCase(Locale.ROOT))) {
+          continue;
+        }
+        questions.add(question);
+        if (questions.size() >= maxQuestions) {
+          break;
+        }
       }
     }
     return questions;
   }
 
   private String sanitize(String content) {
-    if (content == null) {
-      return "";
-    }
-    String value = content.strip().replaceAll("^\\s*\\d+\\s*[.、)．]\\s*", "");
-    value = value.replaceAll("[\\r\\n]+", " ").strip();
-    if (value.length() > 256) {
-      value = value.substring(0, 256).strip();
-    }
-    if (value.length() >= 2
-        && ((value.startsWith("\"") && value.endsWith("\""))
-            || (value.startsWith("“") && value.endsWith("”")))) {
-      value = value.substring(1, value.length() - 1).strip();
+    String value = content == null ? "" : content.strip();
+    if (!value.isEmpty()) {
+      value = value.replaceAll("^\\s*\\d+\\s*[.、)．]\\s*", "");
+      value = value.replaceAll("[\\r\\n]+", " ").strip();
+      if (value.length() > 256) {
+        value = value.substring(0, 256).strip();
+      }
+      if (value.length() >= 2
+          && ((value.startsWith("\"") && value.endsWith("\""))
+              || (value.startsWith("“") && value.endsWith("”")))) {
+        value = value.substring(1, value.length() - 1).strip();
+      }
     }
     return value;
   }
@@ -262,11 +260,15 @@ public class DerivedQuestionService {
   }
 
   private Long parseKnowledgeBaseId(UploadedFileEntity file) {
-    try {
-      return file.getKnowledgeBase() == null ? null : Long.valueOf(file.getKnowledgeBase());
-    } catch (NumberFormatException exception) {
-      return null;
+    Long result = null;
+    if (file.getKnowledgeBase() != null) {
+      try {
+        result = Long.valueOf(file.getKnowledgeBase());
+      } catch (NumberFormatException exception) {
+        result = null;
+      }
     }
+    return result;
   }
 
   private boolean enabled() {
@@ -278,9 +280,10 @@ public class DerivedQuestionService {
     DynamicConfigService config = dynamicConfigProvider.getIfAvailable();
     Integer configured =
         config == null ? null : config.get(MAX_PER_CHUNK_KEY, Integer.class, DEFAULT_MAX_PER_CHUNK);
-    if (configured == null || configured < 1) {
-      return DEFAULT_MAX_PER_CHUNK;
+    int value = DEFAULT_MAX_PER_CHUNK;
+    if (configured != null && configured >= 1) {
+      value = Math.min(configured, MAX_PER_CHUNK_LIMIT);
     }
-    return Math.min(configured, MAX_PER_CHUNK_LIMIT);
+    return value;
   }
 }

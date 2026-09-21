@@ -40,22 +40,23 @@ public class SparseRecallService {
    */
   public List<RetrievalCandidate> recall(
       String query, List<Long> authorizedKbIds, String category, int limit) {
-    if (query == null
-        || query.isBlank()
-        || authorizedKbIds == null
-        || authorizedKbIds.isEmpty()
-        || limit <= 0) {
-      return List.of();
+    List<RetrievalCandidate> result = List.of();
+    if (query != null
+        && !query.isBlank()
+        && authorizedKbIds != null
+        && !authorizedKbIds.isEmpty()
+        && limit > 0) {
+      List<String> kbIds = authorizedKbIds.stream().map(String::valueOf).toList();
+      try {
+        result =
+            chunkMapper.fulltextSearch(query.strip(), kbIds, blankToNull(category), limit).stream()
+                .map(SparseRecallService::toCandidate)
+                .toList();
+      } catch (Exception exception) {
+        log.warn("稀疏召回落空，按空结果降级: {}", exception.getMessage());
+      }
     }
-    List<String> kbIds = authorizedKbIds.stream().map(String::valueOf).toList();
-    try {
-      return chunkMapper.fulltextSearch(query.strip(), kbIds, blankToNull(category), limit).stream()
-          .map(SparseRecallService::toCandidate)
-          .toList();
-    } catch (Exception exception) {
-      log.warn("稀疏召回落空，按空结果降级: {}", exception.getMessage());
-      return List.of();
-    }
+    return result;
   }
 
   private static RetrievalCandidate toCandidate(SparseChunkRow row) {

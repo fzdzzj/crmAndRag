@@ -19,19 +19,18 @@ public final class TokenEstimator {
    * @return 估算 token 数（不小于 0）
    */
   public static int estimate(String text) {
-    if (text == null || text.isEmpty()) {
-      return 0;
-    }
     int cjk = 0;
     int other = 0;
-    for (int index = 0; index < text.length(); ) {
-      int codePoint = text.codePointAt(index);
-      if (isCjk(codePoint)) {
-        cjk++;
-      } else {
-        other++;
+    if (text != null && !text.isEmpty()) {
+      for (int index = 0; index < text.length(); ) {
+        int codePoint = text.codePointAt(index);
+        if (isCjk(codePoint)) {
+          cjk++;
+        } else {
+          other++;
+        }
+        index += Character.charCount(codePoint);
       }
-      index += Character.charCount(codePoint);
     }
     return cjk + (other + 3) / 4;
   }

@@ -29,42 +29,48 @@ public class DefaultWeightedReranker implements Reranker {
 
   @Override
   public List<RetrievalCandidate> rerank(String query, List<RetrievalCandidate> candidates) {
+    List<RetrievalCandidate> reranked;
     if (candidates == null || candidates.isEmpty()) {
-      return List.of();
-    }
-    List<Double> vectorScores =
-        candidates.stream().map(candidate -> candidate.hit().score()).toList();
-    List<Double> bm25Scores =
-        bm25Scorer.score(
-            query, candidates.stream().map(candidate -> candidate.hit().text()).toList());
-    List<Double> normalizedVectorScores = normalizeScores(vectorScores);
-    List<Double> normalizedBm25Scores = normalizeScores(bm25Scores);
+      reranked = List.of();
+    } else {
+      List<Double> vectorScores =
+          candidates.stream().map(candidate -> candidate.hit().score()).toList();
+      List<Double> bm25Scores =
+          bm25Scorer.score(
+              query, candidates.stream().map(candidate -> candidate.hit().text()).toList());
+      List<Double> normalizedVectorScores = normalizeScores(vectorScores);
+      List<Double> normalizedBm25Scores = normalizeScores(bm25Scores);
 
-    double vectorWeight = resolveRatio("rag.retrieval.rerank.vector-weight", DEFAULT_VECTOR_WEIGHT);
-    double bm25Weight = resolveRatio("rag.retrieval.rerank.bm25-weight", DEFAULT_BM25_WEIGHT);
-    List<RetrievalCandidate> reranked = new ArrayList<>(candidates.size());
-    for (int index = 0; index < candidates.size(); index++) {
-      double score =
-          normalizedVectorScores.get(index) * vectorWeight
-              + normalizedBm25Scores.get(index) * bm25Weight;
-      reranked.add(new RetrievalCandidate(candidates.get(index).hit(), score));
+      double vectorWeight =
+          resolveRatio("rag.retrieval.rerank.vector-weight", DEFAULT_VECTOR_WEIGHT);
+      double bm25Weight = resolveRatio("rag.retrieval.rerank.bm25-weight", DEFAULT_BM25_WEIGHT);
+      reranked = new ArrayList<>(candidates.size());
+      for (int index = 0; index < candidates.size(); index++) {
+        double score =
+            normalizedVectorScores.get(index) * vectorWeight
+                + normalizedBm25Scores.get(index) * bm25Weight;
+        reranked.add(new RetrievalCandidate(candidates.get(index).hit(), score));
+      }
     }
     return reranked;
   }
 
   private List<Double> normalizeScores(List<Double> scores) {
+    List<Double> result;
     if (scores.isEmpty()) {
-      return List.of();
+      result = List.of();
+    } else {
+      double min = scores.stream().mapToDouble(Double::doubleValue).min().orElse(0);
+      double max = scores.stream().mapToDouble(Double::doubleValue).max().orElse(0);
+      if (max <= 0) {
+        result = java.util.Collections.nCopies(scores.size(), 0.0);
+      } else if (max == min) {
+        result = java.util.Collections.nCopies(scores.size(), 1.0);
+      } else {
+        result = scores.stream().map(score -> (score - min) / (max - min)).toList();
+      }
     }
-    double min = scores.stream().mapToDouble(Double::doubleValue).min().orElse(0);
-    double max = scores.stream().mapToDouble(Double::doubleValue).max().orElse(0);
-    if (max <= 0) {
-      return java.util.Collections.nCopies(scores.size(), 0.0);
-    }
-    if (max == min) {
-      return java.util.Collections.nCopies(scores.size(), 1.0);
-    }
-    return scores.stream().map(score -> (score - min) / (max - min)).toList();
+    return result;
   }
 
   private double resolveRatio(String key, double defaultValue) {

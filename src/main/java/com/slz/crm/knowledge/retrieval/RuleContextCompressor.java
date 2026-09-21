@@ -39,29 +39,35 @@ public class RuleContextCompressor implements Compressor {
 
   @Override
   public String compress(String context, int tokenBudget) {
+    String result;
     if (context == null
         || context.isEmpty()
         || tokenBudget <= 0
         || TokenEstimator.estimate(context) <= tokenBudget) {
-      return context;
+      result = context;
+    } else {
+      Parsed parsed = parse(context);
+      String joined;
+      if (parsed.sections().isEmpty()) {
+        result = context;
+      } else {
+        dedupConsecutiveSentences(parsed.sections());
+        joined = join(parsed);
+        if (TokenEstimator.estimate(joined) <= tokenBudget) {
+          result = joined;
+        } else {
+          selectSentencesByBudget(parsed, tokenBudget);
+          joined = join(parsed);
+          if (TokenEstimator.estimate(joined) <= tokenBudget) {
+            result = joined;
+          } else {
+            trimToBudget(parsed, tokenBudget);
+            result = join(parsed);
+          }
+        }
+      }
     }
-    Parsed parsed = parse(context);
-    if (parsed.sections().isEmpty()) {
-      return context;
-    }
-    dedupConsecutiveSentences(parsed.sections());
-    String joined = join(parsed);
-    if (TokenEstimator.estimate(joined) <= tokenBudget) {
-      return joined;
-    }
-
-    selectSentencesByBudget(parsed, tokenBudget);
-    joined = join(parsed);
-    if (TokenEstimator.estimate(joined) <= tokenBudget) {
-      return joined;
-    }
-    trimToBudget(parsed, tokenBudget);
-    return join(parsed);
+    return result;
   }
 
   // ---------------------------------------------------------------- 解析与拼装
@@ -179,25 +185,28 @@ public class RuleContextCompressor implements Compressor {
    */
   private List<String> selectSentences(List<String> sentences, long target) {
     int size = sentences.size();
+    List<String> kept;
     if (size == 0) {
-      return sentences;
-    }
-    String first = sentences.get(0);
-    String last = size > 1 ? sentences.get(size - 1) : null;
-    long used = TokenEstimator.estimate(first) + (last == null ? 0 : TokenEstimator.estimate(last));
-    long middleBudget = Math.max(0, target - used);
-    List<String> kept = new ArrayList<>(size);
-    kept.add(first);
-    for (int index = 1; index < size - 1; index++) {
-      String sentence = sentences.get(index);
-      long cost = TokenEstimator.estimate(sentence);
-      if (cost <= middleBudget || isLoadBearing(sentence)) {
-        kept.add(sentence);
-        middleBudget -= cost;
+      kept = sentences;
+    } else {
+      String first = sentences.get(0);
+      String last = size > 1 ? sentences.get(size - 1) : null;
+      long used =
+          TokenEstimator.estimate(first) + (last == null ? 0 : TokenEstimator.estimate(last));
+      long middleBudget = Math.max(0, target - used);
+      kept = new ArrayList<>(size);
+      kept.add(first);
+      for (int index = 1; index < size - 1; index++) {
+        String sentence = sentences.get(index);
+        long cost = TokenEstimator.estimate(sentence);
+        if (cost <= middleBudget || isLoadBearing(sentence)) {
+          kept.add(sentence);
+          middleBudget -= cost;
+        }
       }
-    }
-    if (last != null) {
-      kept.add(last);
+      if (last != null) {
+        kept.add(last);
+      }
     }
     return kept;
   }
@@ -241,12 +250,11 @@ public class RuleContextCompressor implements Compressor {
   }
 
   private boolean containsDigit(String sentence) {
-    for (int index = 0; index < sentence.length(); index++) {
-      if (Character.isDigit(sentence.charAt(index))) {
-        return true;
-      }
+    boolean found = false;
+    for (int index = 0; index < sentence.length() && !found; index++) {
+      found = Character.isDigit(sentence.charAt(index));
     }
-    return false;
+    return found;
   }
 
   private long tokensOf(List<String> sentences) {
