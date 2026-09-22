@@ -359,12 +359,24 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
     return file.getContractId();
   }
 
-  /** 部门上司读取权限预留点，待组织架构的上下属规则确定后集中实现。 */
+  /**
+   * 部门上司读取权限预留点，待组织架构的上下属规则确定后集中实现。
+   *
+   * <p>tighten-pmd-residual-325 任务 4.3：三个参数是待实现逻辑（上下属规则）的签名契约，当前方法恒返回 false
+   * 故参数未被读取；按「签名契约只豁免、不删参」登记，不删参数以保留未来实现所需的输入意图。
+   */
+  @SuppressWarnings("PMD.UnusedFormalParameter") // 预留扩展点：参数即未来实现的签名契约，删参等于删掉接口意图
   private boolean departmentManagerReadReserved(String modelName, Long recordId, Long userId) {
     return false;
   }
 
-  /** 部门上司写权限预留点，与读取权限分开，避免查看权限自动变成上传/删除权限。 */
+  /**
+   * 部门上司写权限预留点，与读取权限分开，避免查看权限自动变成上传/删除权限。
+   *
+   * <p>tighten-pmd-residual-325 任务 4.3：同 {@link #departmentManagerReadReserved}，参数为签名契约保留， 当前恒返回
+   * false 故未读取。
+   */
+  @SuppressWarnings("PMD.UnusedFormalParameter") // 同上：读写两处预留点的参数是对称的签名契约，不删
   private boolean departmentManagerWriteReserved(String modelName, Long recordId, Long userId) {
     return false;
   }

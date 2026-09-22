@@ -938,8 +938,6 @@ public class BusinessActivityServiceImpl
     }
     Map<Long, List<AssistVO>> byRecord =
         allAssists.stream().collect(Collectors.groupingBy(AssistVO::getRecordId));
-    UserEntity currentUser = userMapper.selectById(currentId);
-    boolean isAdmin = currentUser != null && Objects.equals(currentUser.getRoleId(), 1L);
     for (BusinessActivityVO vo : voList) {
       List<AssistVO> list = byRecord.getOrDefault(vo.getId(), Collections.emptyList());
       if (list.isEmpty()) {

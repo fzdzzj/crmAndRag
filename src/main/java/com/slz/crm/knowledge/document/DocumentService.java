@@ -103,7 +103,7 @@ public class DocumentService {
   public List<DocumentChunk> process(InputStream content, String filename, String category)
       throws Exception {
     String fileType = fileType(filename);
-    ParsedDocument parsed = parse(content, filename, fileType);
+    ParsedDocument parsed = parse(content, fileType);
     ChunkingStrategy strategy = resolveStrategy();
     List<DocumentChunk> chunks = new ArrayList<>();
     for (DocumentPage page : parsed.pages()) {
@@ -161,8 +161,7 @@ public class DocumentService {
     return configured == null || configured < 1 ? DEFAULT_MAX_CHUNK_SIZE : configured;
   }
 
-  private ParsedDocument parse(InputStream content, String filename, String fileType)
-      throws Exception {
+  private ParsedDocument parse(InputStream content, String fileType) throws Exception {
     return switch (fileType) {
       case "txt", "md", "markdown" ->
           new ParsedDocument(

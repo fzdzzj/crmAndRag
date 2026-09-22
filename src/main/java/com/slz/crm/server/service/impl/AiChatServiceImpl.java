@@ -185,8 +185,7 @@ public class AiChatServiceImpl implements AiChatService {
       Lock takeoverLock = aiStreamRegistry.takeoverLock(finalSessionId);
       takeoverLock.lock();
       try {
-        AiStreamRegistry.ActiveStream oldStream = aiStreamRegistry.get(finalSessionId);
-        // 接管只顶替注册表；旧流在下一个 shouldAbort 检查点协作退出。
+        // 接管只顶替注册表；旧流在下一个 shouldAbort 检查点协作退出，此处不需要旧流句柄。
 
         String message = request.message();
         List<Message> messages = promptService.buildMessages(finalSessionId, message);
@@ -200,8 +199,7 @@ public class AiChatServiceImpl implements AiChatService {
         if (retrieval.context() != null && !retrieval.context().isBlank()) {
           messages.add(imageContext.isPresent() ? 2 : 1, new SystemMessage(retrieval.context()));
         }
-        AiMessageEntity userMessage =
-            aiMessageService.saveMessage(finalSessionId, "user", "text", message, null);
+        aiMessageService.saveMessage(finalSessionId, "user", "text", message, null);
         AiMessageEntity assistantMessage = assistantMessageStore.createPlaceholder(finalSessionId);
         AiStreamRegistry.ActiveStream activeStream =
             new AiStreamRegistry.ActiveStream(
@@ -310,7 +308,8 @@ public class AiChatServiceImpl implements AiChatService {
   /** 图片资料块恒定注入；KB 开关不影响图片理解。 */
   private String toImageContextPrompt(
       AiChatImageUnderstandingService.UnderstandingContext context) {
-    StringBuilder prompt = new StringBuilder("【图片资料】");
+    StringBuilder prompt = new StringBuilder(128);
+    prompt.append("【图片资料】");
     if (context.ocrText() != null && !context.ocrText().isBlank()) {
       prompt.append("\nOCR：").append(context.ocrText().trim());
     }

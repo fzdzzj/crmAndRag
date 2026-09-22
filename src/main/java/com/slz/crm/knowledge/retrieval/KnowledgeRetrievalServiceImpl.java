@@ -264,13 +264,7 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
           hasImageVector
               ? reranker.rerank(
                   retrievalQuery,
-                  recall(
-                      retrievalQuery,
-                      query.imageVector(),
-                      knowledgeBaseIds,
-                      category,
-                      candidateLimit,
-                      minScore))
+                  recall(query.imageVector(), knowledgeBaseIds, category, candidateLimit, minScore))
               : List.of();
       List<RetrievalCandidate> candidates =
           fuseRoutes(textCandidates, imageCandidates).stream()
@@ -304,7 +298,7 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
       int candidateLimit,
       double minScore) {
     List<RetrievalCandidate> vectorCandidates =
-        recall(query, queryVector, knowledgeBaseIds, category, candidateLimit, minScore);
+        recall(queryVector, knowledgeBaseIds, category, candidateLimit, minScore);
     List<RetrievalCandidate> result;
     if (sparseRecallService == null || rrfFusion == null || !useRrfFusion()) {
       result = vectorCandidates;
@@ -382,13 +376,7 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
         try {
           float[] hypothesisVector = embeddingService.embed(hypothesis);
           routes.add(
-              recall(
-                  hypothesis,
-                  hypothesisVector,
-                  knowledgeBaseIds,
-                  category,
-                  candidateLimit,
-                  minScore));
+              recall(hypothesisVector, knowledgeBaseIds, category, candidateLimit, minScore));
         } catch (RuntimeException exception) {
           log.warn("HyDE 路召回失败，该路跳过: {}", exception.getMessage());
         }
@@ -415,7 +403,6 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
    * chunkId（命中即回原块），同键命中保留最高分一条， 防止同切片多向量挤占 topK；无衍生向量时键唯一，行为与升级前逐条一致。
    */
   private List<RetrievalCandidate> recall(
-      String query,
       float[] queryVector,
       List<Long> knowledgeBaseIds,
       String category,

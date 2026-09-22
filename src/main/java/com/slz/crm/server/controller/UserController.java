@@ -93,7 +93,7 @@ public class UserController {
   @PostMapping("/password")
   //    @RequirePermission(PermissionOperates.SYSTEM_UPDATE_PASSWORD)
   private Result<Boolean> updatePassword(@RequestBody String password) {
-    boolean b = userService.updatePassword(password);
+    userService.updatePassword(password);
     return Result.success();
   }
 

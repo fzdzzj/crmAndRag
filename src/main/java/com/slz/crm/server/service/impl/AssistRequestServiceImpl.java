@@ -47,9 +47,14 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 协助申请服务实现 */
+/**
+ * 协助申请服务实现。
+ *
+ * <p>tighten-pmd-residual-325 任务 4.5：本类方法数超阈值，拆类会切开同一聚合根的事务边界与权限收敛逻辑， 收益低于风险；按「类过大默认豁免」登记，不拆。
+ */
 @Service
 @Slf4j
+@SuppressWarnings("PMD.TooManyMethods") // 拆类触面大、收益低：同一聚合根的事务边界不宜被切开
 public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, AssistRequestEntity>
     implements AssistRequestService {
 

@@ -147,6 +147,7 @@ public class QueryWrapperAspect {
    * @param joinPoint 连接点
    * @return 带 QueryWrapper 参数的方法,如果找不到返回 null
    */
+  @SuppressWarnings("PMD.EmptyCatchBlock") // 有意吞：NoSuchMethodException 是「接口无该重载」的正常答案，非异常
   private Method findMethodWithWrapper(ProceedingJoinPoint joinPoint) {
     MethodSignature signature = (MethodSignature) joinPoint.getSignature();
     String methodName = signature.getName();

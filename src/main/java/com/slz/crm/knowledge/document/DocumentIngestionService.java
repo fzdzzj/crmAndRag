@@ -150,11 +150,11 @@ public class DocumentIngestionService {
       return new DocumentIngestionResult(
           file.getId(), documentId, savedChunks.size(), savedChunks.size());
     } catch (RuntimeException exception) {
-      markFailed(file, documentId, savedChunks, exception);
+      markFailed(file, documentId, exception);
       throw exception;
     } catch (Exception exception) {
       RuntimeException wrapped = new IllegalStateException("文档入库失败", exception);
-      markFailed(file, documentId, savedChunks, wrapped);
+      markFailed(file, documentId, wrapped);
       throw wrapped;
     }
   }
@@ -204,12 +204,12 @@ public class DocumentIngestionService {
       return new DocumentIngestionResult(
           file.getId(), documentId, children.size(), children.size());
     } catch (RuntimeException exception) {
-      markFailed(file, documentId, List.of(), exception);
+      markFailed(file, documentId, exception);
       auditReingest(documentId, user, GovernanceAuditResult.FAILED, shortMessage(exception));
       throw exception;
     } catch (Exception exception) {
       RuntimeException wrapped = new IllegalStateException("文档重建入库失败", exception);
-      markFailed(file, documentId, List.of(), wrapped);
+      markFailed(file, documentId, wrapped);
       auditReingest(documentId, user, GovernanceAuditResult.FAILED, shortMessage(wrapped));
       throw wrapped;
     }
@@ -406,11 +406,7 @@ public class DocumentIngestionService {
 
   /** 失败时保留原始文件和 DB 记录，清理向量与切片（物理删，保证重建可重试不留半量）。 */
   @SuppressWarnings("PMD.AvoidCatchingGenericException") // 清理边界：向量/切片清理各自单独吞异常，不阻断失败标记
-  private void markFailed(
-      UploadedFileEntity file,
-      String documentId,
-      List<DocumentVectorChunkEntity> savedChunks,
-      Exception exception) {
+  private void markFailed(UploadedFileEntity file, String documentId, Exception exception) {
     try {
       vectorStore.deleteByDocumentId(documentId);
     } catch (Exception cleanupException) {

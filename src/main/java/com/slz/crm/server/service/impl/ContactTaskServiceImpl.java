@@ -692,8 +692,6 @@ public class ContactTaskServiceImpl extends ServiceImpl<ContactTaskMapper, Conta
     }
     Map<Long, List<AssistVO>> byRecord =
         allAssists.stream().collect(Collectors.groupingBy(AssistVO::getRecordId));
-    UserEntity currentUser = userMapper.selectById(currentId);
-    boolean isAdmin = currentUser != null && Objects.equals(currentUser.getRoleId(), 1L);
     for (ContactTaskVO vo : voList) {
       List<AssistVO> list = byRecord.getOrDefault(vo.getId(), Collections.emptyList());
       if (list.isEmpty()) {

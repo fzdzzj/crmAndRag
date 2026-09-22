@@ -195,7 +195,8 @@ public class AiChatImageUnderstandingService {
       ModelProvider provider) {
     float[] floats;
     try {
-      StringBuilder text = new StringBuilder("图片理解：");
+      StringBuilder text = new StringBuilder(128);
+      text.append("图片理解：");
       if (context.imageSummary() != null && !context.imageSummary().isBlank()) {
         text.append(context.imageSummary().trim());
       }
