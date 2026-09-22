@@ -120,21 +120,29 @@ public class AiChatServiceImpl implements AiChatService {
     Long userId = currentUser == null ? null : currentUser.getId();
 
     try {
-      if (rejectIfBlankMessage(request, emitter)) {
+      if (AiChatResumeSupport.rejectIfBlankMessage(request, emitter, eventWriter)) {
         return;
       }
 
-      Long requestedSessionId = parseSessionId(request.sessionId(), emitter);
+      Long requestedSessionId =
+          AiChatResumeSupport.parseSessionId(request.sessionId(), emitter, eventWriter);
       if (requestedSessionId == null
           && request.sessionId() != null
           && !request.sessionId().isBlank()) {
         return;
       }
-      if (resumeRequestedAndCompleted(currentUser, emitter, resume, requestedSessionId)) {
+      if (AiChatResumeSupport.resumeRequestedAndCompleted(
+          currentUser,
+          emitter,
+          resume,
+          requestedSessionId,
+          aiSessionService,
+          aiStreamRegistry,
+          eventWriter)) {
         return;
       }
 
-      if (rejectIfRateLimited(userId, emitter)) {
+      if (AiChatResumeSupport.rejectIfRateLimited(userId, emitter, eventWriter, aiRateLimiter)) {
         return;
       }
 
@@ -146,7 +154,7 @@ public class AiChatServiceImpl implements AiChatService {
       if (session == null) {
         session = aiSessionService.createSession(userId, null);
         isNewSession = true;
-      } else if (rejectIfArchived(session, emitter)) {
+      } else if (AiChatResumeSupport.rejectIfArchived(session, emitter, eventWriter)) {
         return;
       }
 
@@ -165,55 +173,6 @@ public class AiChatServiceImpl implements AiChatService {
     } finally {
       BaseUnit.removeCurrentId();
     }
-  }
-
-  /** 消息内容空校验：为空发 PARAM_INVALID 错误事件并 complete 会话 */
-  private boolean rejectIfBlankMessage(AssistantChatRequest request, SseEmitter emitter) {
-    boolean rejected = request.message() == null || request.message().isBlank();
-    if (rejected) {
-      eventWriter.sendError(emitter, "PARAM_INVALID", "消息内容不能为空");
-      emitter.complete();
-    }
-    return rejected;
-  }
-
-  /** 限流检查：未取得令牌发 RATE_LIMITED 错误事件并 complete 会话 */
-  private boolean rejectIfRateLimited(Long userId, SseEmitter emitter) {
-    boolean rejected = !aiRateLimiter.tryAcquire(userId);
-    if (rejected) {
-      eventWriter.sendError(emitter, "RATE_LIMITED", "操作过于频繁，请稍后再试");
-      emitter.complete();
-    }
-    return rejected;
-  }
-
-  /** 已归档会话检查：发 SESSION_ARCHIVED 错误事件并 complete 会话 */
-  private boolean rejectIfArchived(AiSessionEntity session, SseEmitter emitter) {
-    boolean archived = session.getStatus() != null && session.getStatus() == 0;
-    if (archived) {
-      eventWriter.sendError(emitter, "SESSION_ARCHIVED", "会话已归档，请新建会话");
-      emitter.complete();
-    }
-    return archived;
-  }
-
-  /**
-   * 恢复中断流检查：携带有效 generationId 且接管成功时完成流式续传并返回 true（拆自 doStreamChat，行为等价）。
-   *
-   * @param currentUser 当前用户
-   * @param emitter SSE 发射器
-   * @param resume 恢复上下文
-   * @param requestedSessionId 解析出的会话 ID
-   * @return true 表示恢复分支已完成流式输出，调用方应直接终止
-   */
-  private boolean resumeRequestedAndCompleted(
-      RoleAO currentUser, SseEmitter emitter, AiChatResume resume, Long requestedSessionId) {
-    boolean resumeCompleted =
-        resume != null
-            && resume.generationId() != null
-            && !resume.generationId().isBlank()
-            && tryResume(currentUser, requestedSessionId, emitter, resume);
-    return resumeCompleted;
   }
 
   /** 图片上下文准备结果；null 表示图片分支已发错误并终止会话 */
@@ -271,12 +230,17 @@ public class AiChatServiceImpl implements AiChatService {
       String message = request.message();
       List<Message> messages = promptService.buildMessages(finalSessionId, message);
       imageContext.ifPresent(
-          context -> messages.add(1, new SystemMessage(toImageContextPrompt(context))));
+          context ->
+              messages.add(
+                  1, new SystemMessage(AiChatResumeSupport.toImageContextPrompt(context))));
       AiChatKnowledgeRetrievalService.RetrievalOutcome retrieval =
           knowledgeRetrievalService == null
               ? AiChatKnowledgeRetrievalService.RetrievalOutcome.empty()
               : knowledgeRetrievalService.retrieve(
-                  lastUserMessage(messages), userId, imageVector, request.useKnowledgeBase());
+                  AiChatResumeSupport.lastUserMessage(messages),
+                  userId,
+                  imageVector,
+                  request.useKnowledgeBase());
       if (retrieval.context() != null && !retrieval.context().isBlank()) {
         messages.add(imageContext.isPresent() ? 2 : 1, new SystemMessage(retrieval.context()));
       }
@@ -330,73 +294,6 @@ public class AiChatServiceImpl implements AiChatService {
     } finally {
       takeoverLock.unlock();
     }
-  }
-
-  private String lastUserMessage(List<Message> messages) {
-    for (int index = messages.size() - 1; index >= 0; index--) {
-      Message message = messages.get(index);
-      if (message instanceof org.springframework.ai.chat.messages.UserMessage userMessage
-          && userMessage.getText() != null) {
-        return userMessage.getText();
-      }
-    }
-    return "";
-  }
-
-  private boolean tryResume(
-      RoleAO currentUser, Long sessionId, SseEmitter emitter, AiChatResume resume) {
-    Long userId = currentUser == null ? null : currentUser.getId();
-    if (sessionId == null || aiSessionService.getOwnedSession(sessionId, userId) == null) {
-      eventWriter.sendError(emitter, "UNAUTHORIZED", "会话不存在或无权访问");
-      emitter.complete();
-      return true;
-    }
-    AiStreamRegistry.ActiveStream activeStream =
-        aiStreamRegistry.getByGenerationId(resume.generationId());
-    if (activeStream == null || !sessionId.equals(activeStream.getSessionId())) {
-      eventWriter.sendError(emitter, "RESUME_UNAVAILABLE", "会话输出已不在缓冲区，请查看已生成的回答");
-      emitter.complete();
-      return true;
-    }
-    if (!eventWriter.resume(activeStream, emitter, resume.lastEventId())) {
-      eventWriter.sendError(emitter, "RESUME_UNAVAILABLE", "会话输出已不在缓冲区，请查看已生成的回答");
-      emitter.complete();
-    }
-    return true;
-  }
-
-  private Long parseSessionId(String sessionId, SseEmitter emitter) {
-    Long result = null;
-    if (sessionId != null && !sessionId.isBlank()) {
-      try {
-        result = Long.valueOf(sessionId);
-      } catch (NumberFormatException ignored) {
-        eventWriter.sendError(emitter, "PARAM_INVALID", "sessionId 必须是数字");
-        emitter.complete();
-        result = null;
-      }
-    }
-    return result;
-  }
-
-  /** 图片资料块恒定注入；KB 开关不影响图片理解。 */
-  private String toImageContextPrompt(
-      AiChatImageUnderstandingService.UnderstandingContext context) {
-    StringBuilder prompt = new StringBuilder(128);
-    prompt.append("【图片资料】");
-    if (context.ocrText() != null && !context.ocrText().isBlank()) {
-      prompt.append("\nOCR：").append(context.ocrText().trim());
-    }
-    if (context.imageSummary() != null && !context.imageSummary().isBlank()) {
-      prompt.append("\n图片摘要：").append(context.imageSummary().trim());
-    }
-    if (context.keyEntities() != null && !context.keyEntities().isEmpty()) {
-      prompt.append("\n关键实体：").append(String.join("、", context.keyEntities()));
-    }
-    if (context.focusedSummary() != null && !context.focusedSummary().isBlank()) {
-      prompt.append("\n问题聚焦：").append(context.focusedSummary().trim());
-    }
-    return prompt.toString();
   }
 
   private void generateTitleAsync(

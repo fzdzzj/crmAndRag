@@ -10,10 +10,6 @@ import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.common.untils.IOUtils;
 import com.slz.crm.pojo.dto.ApprovalAttachmentDTO;
 import com.slz.crm.pojo.entity.ApprovalAttachmentEntity;
-import com.slz.crm.pojo.entity.AssistRequestEntity;
-import com.slz.crm.pojo.entity.BusinessActivityEntity;
-import com.slz.crm.pojo.entity.ContactTaskEntity;
-import com.slz.crm.pojo.entity.SalesStageApprovalEntity;
 import com.slz.crm.pojo.entity.UserEntity;
 import com.slz.crm.pojo.vo.ApprovalAttachmentVO;
 import com.slz.crm.pojo.vo.AttachmentDeleteResultVO;
@@ -46,10 +42,6 @@ public class ApprovalAttachmentServiceImpl
 
   @Autowired private AttachmentDownloadTokenUtil downloadTokenUtil;
 
-  @Autowired private HttpServletRequest request;
-
-  @Autowired private UserMapper userMapper;
-
   @Autowired private BusinessActivityMapper businessActivityMapper;
 
   @Autowired private ContactTaskMapper contactTaskMapper;
@@ -58,7 +50,24 @@ public class ApprovalAttachmentServiceImpl
 
   @Autowired private SalesStageApprovalMapper salesStageApprovalMapper;
 
+  @Autowired private HttpServletRequest request;
+
+  @Autowired private UserMapper userMapper;
+
   @Autowired private AttachmentAccessService attachmentAccessService;
+
+  /** VO 组装与删除权判定协作类工厂：以本类既有依赖构造，保持单测零注入可测（任务 6.3 拆出）。 */
+  private ApprovalAttachmentVoSupport voSupport() {
+    return new ApprovalAttachmentVoSupport(
+        baseMapper,
+        userMapper,
+        businessActivityMapper,
+        contactTaskMapper,
+        assistRequestMapper,
+        salesStageApprovalMapper,
+        downloadTokenUtil,
+        attachmentAccessService);
+  }
 
   @Override
   public void saveBatch(List<ApprovalAttachmentDTO> list) {
@@ -135,42 +144,7 @@ public class ApprovalAttachmentServiceImpl
             new LambdaQueryWrapper<ApprovalAttachmentEntity>()
                 .in(ApprovalAttachmentEntity::getAndId, andIds)
                 .eq(ApprovalAttachmentEntity::getModelName, modelName));
-
-    List<ApprovalAttachmentVO> vos = IOUtils.readFile(entities);
-
-    // 批量填充上传人姓名
-    Set<Long> uploaderIds =
-        entities.stream()
-            .map(ApprovalAttachmentEntity::getUploaderId)
-            .filter(Objects::nonNull)
-            .collect(Collectors.toSet());
-    Map<Long, String> uploaderNameMap =
-        uploaderIds.isEmpty()
-            ? Collections.emptyMap()
-            : userMapper.selectBatchIds(uploaderIds).stream()
-                .collect(
-                    Collectors.toMap(
-                        u -> u.getId(), u -> u.getRealName() == null ? "" : u.getRealName()));
-    for (ApprovalAttachmentVO vo : vos) {
-      vo.setUploaderName(uploaderNameMap.get(vo.getUploaderId()));
-    }
-
-    // 为每个附件生成带令牌的下载URL（包含用户ID）
-    String baseUrl = getBaseUrl();
-    Long currentUserId = BaseUnit.getCurrentId();
-    for (ApprovalAttachmentVO vo : vos) {
-      String token =
-          activeAssistId == null
-              ? downloadTokenUtil.generateDownloadToken(
-                  vo.getId(), currentUserId, "approval_attachment", modelName)
-              : downloadTokenUtil.generateAssistSourceDownloadToken(
-                  vo.getId(), currentUserId, "approval_attachment", modelName, activeAssistId);
-      vo.setDownloadUrl(baseUrl + "/public/attachment/download?token=" + token);
-      // 清空文件数据，避免返回列表时传输大量二进制数据
-      vo.setFileData(null);
-    }
-
-    return vos;
+    return voSupport().readFileWithEnrichment(entities, modelName, activeAssistId, getBaseUrl());
   }
 
   /**
@@ -214,37 +188,38 @@ public class ApprovalAttachmentServiceImpl
 
   @Override
   public void removeByAndIds(List<Long> andIds, String modelName) {
-    if (andIds == null || andIds.isEmpty()) {
-      return;
-    }
-    List<ApprovalAttachmentEntity> entities =
-        baseMapper.selectList(
+    if (andIds != null && !andIds.isEmpty()) {
+      List<ApprovalAttachmentEntity> entities =
+          baseMapper.selectList(
+              new LambdaQueryWrapper<ApprovalAttachmentEntity>()
+                  .in(ApprovalAttachmentEntity::getAndId, andIds)
+                  .eq(ApprovalAttachmentEntity::getModelName, modelName));
+      if (entities != null && !entities.isEmpty()) {
+        IOUtils.deleteFile(entities);
+        baseMapper.delete(
             new LambdaQueryWrapper<ApprovalAttachmentEntity>()
                 .in(ApprovalAttachmentEntity::getAndId, andIds)
                 .eq(ApprovalAttachmentEntity::getModelName, modelName));
-    if (entities == null || entities.isEmpty()) {
-      return;
+      }
     }
-    IOUtils.deleteFile(entities);
-    baseMapper.delete(
-        new LambdaQueryWrapper<ApprovalAttachmentEntity>()
-            .in(ApprovalAttachmentEntity::getAndId, andIds)
-            .eq(ApprovalAttachmentEntity::getModelName, modelName));
   }
 
   @Override
   public void assertCanDelete(List<Long> attachmentIds, String modelName) {
-    if (attachmentIds == null || attachmentIds.isEmpty()) {
-      return;
+    if (attachmentIds != null && !attachmentIds.isEmpty()) {
+      List<ApprovalAttachmentEntity> entities =
+          baseMapper.selectList(
+              new LambdaQueryWrapper<ApprovalAttachmentEntity>()
+                  .in(ApprovalAttachmentEntity::getId, attachmentIds)
+                  .eq(ApprovalAttachmentEntity::getModelName, modelName));
+      if (entities != null && !entities.isEmpty()) {
+        assertCanDeleteEntities(entities);
+      }
     }
-    List<ApprovalAttachmentEntity> entities =
-        baseMapper.selectList(
-            new LambdaQueryWrapper<ApprovalAttachmentEntity>()
-                .in(ApprovalAttachmentEntity::getId, attachmentIds)
-                .eq(ApprovalAttachmentEntity::getModelName, modelName));
-    if (entities == null || entities.isEmpty()) {
-      return;
-    }
+  }
+
+  /** 对已加载实体逐条判定删除权：管理员放行，其余须为上传人/申请人/创建人 */
+  private void assertCanDeleteEntities(List<ApprovalAttachmentEntity> entities) {
     Long currentId = BaseUnit.getCurrentId();
     UserEntity currentUser = userMapper.selectById(currentId);
     boolean isAdmin = currentUser != null && Objects.equals(currentUser.getRoleId(), 1L);
@@ -257,7 +232,7 @@ public class ApprovalAttachmentServiceImpl
         continue;
       }
       // 申请人 / 业务创建人：可删
-      if (isApplicantOrCreator(entity, currentId)) {
+      if (voSupport().isApplicantOrCreator(entity, currentId)) {
         continue;
       }
       throw new com.slz.crm.common.exiception.BaseException(
@@ -274,74 +249,29 @@ public class ApprovalAttachmentServiceImpl
             ? Collections.emptyList()
             : attachmentIds.stream().filter(Objects::nonNull).distinct().toList();
     if (!distinctIds.isEmpty()) {
-      deleteAuthorizedAttachments(result, distinctIds, modelName, expectedAndId);
+      voSupport().deleteAuthorizedAttachments(result, distinctIds, modelName, expectedAndId);
     }
     return result;
-  }
-
-  /** 逐条判定删除权限并执行删除：缺失进 notFound，越权进 denied，放行的删除文件与记录 */
-  private void deleteAuthorizedAttachments(
-      AttachmentDeleteResultVO result,
-      List<Long> distinctIds,
-      String modelName,
-      Long expectedAndId) {
-    Map<Long, ApprovalAttachmentEntity> entityById =
-        baseMapper.selectBatchIds(distinctIds).stream()
-            .collect(Collectors.toMap(ApprovalAttachmentEntity::getId, Function.identity()));
-    Long currentId = BaseUnit.getCurrentId();
-    UserEntity currentUser = userMapper.selectById(currentId);
-    boolean isAdmin = currentUser != null && Objects.equals(currentUser.getRoleId(), 1L);
-    List<ApprovalAttachmentEntity> allowed = new java.util.ArrayList<>();
-
-    for (Long attachmentId : distinctIds) {
-      ApprovalAttachmentEntity entity = entityById.get(attachmentId);
-      if (entity == null) {
-        result.getNotFoundIds().add(attachmentId);
-      } else if (!Objects.equals(modelName, entity.getModelName())) {
-        result.getDenied().put(attachmentId, "附件不属于当前模块");
-      } else if (expectedAndId != null && !Objects.equals(expectedAndId, entity.getAndId())) {
-        result.getDenied().put(attachmentId, "附件不属于当前业务记录");
-      } else if (canDeleteAttachment(entity, isAdmin, currentId)) {
-        allowed.add(entity);
-      } else {
-        result.getDenied().put(attachmentId, "仅上传人本人、申请人或业务创建人可删除该附件");
-      }
-    }
-    if (!allowed.isEmpty()) {
-      IOUtils.deleteFile(allowed);
-      List<Long> allowedIds = allowed.stream().map(ApprovalAttachmentEntity::getId).toList();
-      baseMapper.deleteBatchIds(allowedIds);
-      result.setDeletedIds(allowedIds);
-    }
-  }
-
-  /** 删除权判定：管理员/上传人本人/申请人或业务创建人，或非协助交付物且对业务记录有写权限。 */
-  private boolean canDeleteAttachment(
-      ApprovalAttachmentEntity entity, boolean isAdmin, Long currentId) {
-    return isAdmin
-        || Objects.equals(entity.getUploaderId(), currentId)
-        || isApplicantOrCreator(entity, currentId)
-        // 普通业务附件的记录级权限统一由 AttachmentAccessService 管理；
-        // 协助交付物仍由 AssistController 的生命周期校验负责。
-        || (!ModelName.ASSIST_REQUEST.equals(entity.getModelName())
-            && attachmentAccessService.canWriteAttachments(
-                entity.getModelName(), entity.getAndId(), currentId));
   }
 
   @Override
   public AttachmentDeleteResultVO removeSourceAttachments(
       List<Long> attachmentIds, String modelName, Long sourceRecordId) {
     AttachmentDeleteResultVO result = new AttachmentDeleteResultVO();
-    if (attachmentIds == null
-        || attachmentIds.isEmpty()
-        || modelName == null
-        || sourceRecordId == null) {
-      return result;
+    List<Long> distinctIds =
+        attachmentIds == null
+            ? Collections.emptyList()
+            : attachmentIds.stream().filter(Objects::nonNull).distinct().toList();
+    if (modelName != null && sourceRecordId != null && !distinctIds.isEmpty()) {
+      result = removeSourceAttachmentsByDistinctIds(distinctIds, modelName, sourceRecordId);
     }
-    List<Long> distinctIds = attachmentIds.stream().filter(Objects::nonNull).distinct().toList();
-    if (distinctIds.isEmpty()) {
-      return result;
-    }
+    return result;
+  }
+
+  /** 主体删除：非当前协助来源的进 denied，放行的删除文件与记录 */
+  private AttachmentDeleteResultVO removeSourceAttachmentsByDistinctIds(
+      List<Long> distinctIds, String modelName, Long sourceRecordId) {
+    AttachmentDeleteResultVO result = new AttachmentDeleteResultVO();
     Map<Long, ApprovalAttachmentEntity> entityById =
         baseMapper.selectBatchIds(distinctIds).stream()
             .collect(Collectors.toMap(ApprovalAttachmentEntity::getId, Function.identity()));
@@ -368,49 +298,20 @@ public class ApprovalAttachmentServiceImpl
 
   @Override
   public Set<Long> getRelatedRecordIds(List<Long> attachmentIds, String modelName) {
-    if (attachmentIds == null || attachmentIds.isEmpty()) {
-      return Collections.emptySet();
+    Set<Long> result = Collections.emptySet();
+    if (attachmentIds != null && !attachmentIds.isEmpty()) {
+      result =
+          baseMapper
+              .selectList(
+                  new LambdaQueryWrapper<ApprovalAttachmentEntity>()
+                      .in(ApprovalAttachmentEntity::getId, attachmentIds)
+                      .eq(ApprovalAttachmentEntity::getModelName, modelName))
+              .stream()
+              .map(ApprovalAttachmentEntity::getAndId)
+              .filter(Objects::nonNull)
+              .collect(Collectors.toSet());
     }
-    return baseMapper
-        .selectList(
-            new LambdaQueryWrapper<ApprovalAttachmentEntity>()
-                .in(ApprovalAttachmentEntity::getId, attachmentIds)
-                .eq(ApprovalAttachmentEntity::getModelName, modelName))
-        .stream()
-        .map(ApprovalAttachmentEntity::getAndId)
-        .filter(Objects::nonNull)
-        .collect(Collectors.toSet());
-  }
-
-  /** 判断当前用户是否为附件所属业务的申请人/创建人 */
-  private boolean isApplicantOrCreator(ApprovalAttachmentEntity entity, Long userId) {
-    if (entity.getAndId() == null) {
-      return false;
-    }
-    return switch (entity.getModelName()) {
-      case ModelName.BUSINESS_ACTIVITY -> {
-        BusinessActivityEntity activity = businessActivityMapper.selectById(entity.getAndId());
-        yield activity != null && Objects.equals(activity.getCreatorId(), userId);
-      }
-      case ModelName.CONTACT_TASK -> {
-        ContactTaskEntity task = contactTaskMapper.selectById(entity.getAndId());
-        yield task != null
-            && (Objects.equals(task.getCreatorId(), userId)
-                || Objects.equals(task.getAssignerId(), userId)
-                || Objects.equals(task.getAssigneeId(), userId));
-      }
-      case ModelName.ASSIST_REQUEST -> {
-        AssistRequestEntity assist = assistRequestMapper.selectById(entity.getAndId());
-        yield assist != null && Objects.equals(assist.getApplicantId(), userId);
-      }
-      case ModelName.APPROVAL_ATTACHMENT, ModelName.SALES_STAGE_APPROVAL -> {
-        SalesStageApprovalEntity approval = salesStageApprovalMapper.selectById(entity.getAndId());
-        yield approval != null
-            && (Objects.equals(approval.getApplicantId(), userId)
-                || Objects.equals(approval.getApproverId(), userId));
-      }
-      default -> false;
-    };
+    return result;
   }
 
   @Override
