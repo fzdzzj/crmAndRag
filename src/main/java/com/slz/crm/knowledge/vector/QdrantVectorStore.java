@@ -6,17 +6,14 @@ import com.slz.crm.platform.contract.CrmVectorStoreHealth;
 import com.slz.crm.platform.contract.VectorRecord;
 import com.slz.crm.platform.contract.VectorSearchHit;
 import com.slz.crm.platform.contract.VectorSearchRequest;
-import io.qdrant.client.ConditionFactory;
 import io.qdrant.client.QdrantClient;
 import io.qdrant.client.QdrantGrpcClient;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,24 +29,14 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
       classFor("io.qdrant.client.grpc.Points$SearchPoints");
   private static final Class<?> WITH_PAYLOAD_CLASS =
       classFor("io.qdrant.client.grpc.Points$WithPayloadSelector");
-  private static final Class<?> FILTER_CLASS = classFor("io.qdrant.client.grpc.Points$Filter");
-  private static final Class<?> CONDITION_CLASS =
-      classFor("io.qdrant.client.grpc.Points$Condition");
-  private static final Class<?> SCORED_POINT_CLASS =
-      classFor("io.qdrant.client.grpc.Points$ScoredPoint");
   private static final Class<?> VECTOR_PARAMS_CLASS =
       classFor("io.qdrant.client.grpc.Collections$VectorParams");
   private static final Class<?> DISTANCE_CLASS =
       classFor("io.qdrant.client.grpc.Collections$Distance");
-  private static final Class<?> POINT_STRUCT_CLASS =
-      classFor("io.qdrant.client.grpc.Points$PointStruct");
-  private static final Class<?> POINT_ID_CLASS = classFor("io.qdrant.client.grpc.Points$PointId");
-  private static final Class<?> VECTORS_CLASS = classFor("io.qdrant.client.grpc.Points$Vectors");
+  private static final Class<?> FILTER_CLASS = classFor("io.qdrant.client.grpc.Points$Filter");
+  private static final Class<?> SCORED_POINT_CLASS =
+      classFor("io.qdrant.client.grpc.Points$ScoredPoint");
   private static final Class<?> VALUE_CLASS = classFor("io.qdrant.client.grpc.JsonWithInt$Value");
-  private static final Class<?> POINT_ID_FACTORY_CLASS =
-      classFor("io.qdrant.client.PointIdFactory");
-  private static final Class<?> VECTORS_FACTORY_CLASS = classFor("io.qdrant.client.VectorsFactory");
-  private static final Class<?> VALUE_FACTORY_CLASS = classFor("io.qdrant.client.ValueFactory");
 
   private final QdrantProperties properties;
   private final QdrantClient client;
@@ -138,7 +125,7 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
                 .invoke(builder, properties.getCollection());
             searchBuilderClass
                 .getMethod("addAllVector", Iterable.class)
-                .invoke(builder, toFloatList(request.queryVector()));
+                .invoke(builder, QdrantReflectionSupport.toFloatList(request.queryVector()));
             searchBuilderClass
                 .getMethod("setLimit", long.class)
                 .invoke(builder, (long) request.topK());
@@ -168,7 +155,7 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
               @SuppressWarnings("unchecked")
               Map<?, ?> payload =
                   (Map<?, ?>) SCORED_POINT_CLASS.getMethod("getPayloadMap").invoke(point);
-              Map<String, Object> metadata = toMetadata(payload);
+              Map<String, Object> metadata = QdrantReflectionSupport.toMetadata(payload);
               String text =
                   (String)
                       VALUE_CLASS
@@ -176,7 +163,7 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
                           .invoke(
                               SCORED_POINT_CLASS
                                   .getMethod("getPayloadOrDefault", String.class, VALUE_CLASS)
-                                  .invoke(point, "text", valueOf("")));
+                                  .invoke(point, "text", QdrantReflectionSupport.valueOf("")));
               hits.add(
                   new VectorSearchHit(
                       metadata.getOrDefault("chunkId", "").toString(),
@@ -203,7 +190,7 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
       ensureCollection();
       executeWithRetry(
           () -> {
-            Object filter = documentFilter(documentId);
+            Object filter = QdrantReflectionSupport.documentFilter(documentId);
             ((java.util.concurrent.Future<?>)
                     QdrantClient.class
                         .getMethod("deleteAsync", String.class, FILTER_CLASS)
@@ -291,146 +278,26 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
     }
   }
 
-  /** metadata 统一遵循 String 类目/ID、Long 0/1 布尔约定。 */
+  // ==== 反射装配委托（保留同签名入口，QdrantVectorStoreReflectionTest 经反射锁定） ====
+
   @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射+工厂外呼多源，统一包装上抛
   private static Object toPoint(VectorRecord record) {
-    try {
-      Map<String, Object> payload = new HashMap<>();
-      record.metadata().forEach((key, value) -> payload.put(key, valueOf(value)));
-      payload.put("documentId", valueOf(record.documentId()));
-      payload.put("chunkId", valueOf(record.chunkId()));
-      payload.put(
-          "chunkIndex",
-          valueOf(record.chunkIndex() == null ? 0L : record.chunkIndex().longValue()));
-      payload.put("text", valueOf(record.text()));
-      Object pointId =
-          POINT_ID_FACTORY_CLASS
-              .getMethod("id", UUID.class)
-              .invoke(null, UUID.fromString(record.id()));
-      Object vectors =
-          VECTORS_FACTORY_CLASS
-              .getMethod("vectors", float[].class)
-              .invoke(null, (Object) record.embedding());
-      Object builder = POINT_STRUCT_CLASS.getMethod("newBuilder").invoke(null);
-      Class<?> builderClass = builder.getClass();
-      builderClass.getMethod("setId", POINT_ID_CLASS).invoke(builder, pointId);
-      builderClass.getMethod("setVectors", VECTORS_CLASS).invoke(builder, vectors);
-      builderClass.getMethod("putAllPayload", Map.class).invoke(builder, payload);
-      return builderClass.getMethod("build").invoke(builder);
-    } catch (Exception exception) {
-      throw new IllegalStateException("构建 Qdrant PointStruct 失败", exception);
-    }
+    return QdrantReflectionSupport.toPoint(record);
   }
 
-  private static Object valueOf(Object value) {
-    Object result;
-    if (value instanceof String stringValue) {
-      result = invokeStatic(VALUE_FACTORY_CLASS, "value", String.class, stringValue);
-    } else if (value instanceof Boolean boolValue) {
-      result = invokeStatic(VALUE_FACTORY_CLASS, "value", long.class, boolValue ? 1L : 0L);
-    } else if (value instanceof Double doubleValue) {
-      result = invokeStatic(VALUE_FACTORY_CLASS, "value", double.class, doubleValue);
-    } else if (value instanceof Number numberValue) {
-      result = invokeStatic(VALUE_FACTORY_CLASS, "value", long.class, numberValue.longValue());
-    } else {
-      result = invokeStatic(VALUE_FACTORY_CLASS, "value", String.class, String.valueOf(value));
-    }
-    return result;
-  }
-
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射+toCondition多源，含lambda内catch，统一包装上抛
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射+toCondition多源，统一包装上抛
   private static Object toFilter(Map<String, Object> filter) {
-    try {
-      Object builder = FILTER_CLASS.getMethod("newBuilder").invoke(null);
-      Class<?> filterBuilderClass = builder.getClass();
-      filter.forEach(
-          (key, value) -> {
-            try {
-              filterBuilderClass
-                  .getMethod("addMust", CONDITION_CLASS)
-                  .invoke(builder, toCondition(key, value));
-            } catch (Exception exception) {
-              throw new IllegalStateException("构建 Qdrant filter 失败", exception);
-            }
-          });
-      return filterBuilderClass.getMethod("build").invoke(builder);
-    } catch (Exception exception) {
-      throw new IllegalStateException("构建 Qdrant filter 失败", exception);
-    }
+    return QdrantReflectionSupport.toFilter(filter);
   }
 
   @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射+ConditionFactory外呼多源，统一包装上抛
   private static Object documentFilter(String documentId) {
-    try {
-      Object builder = FILTER_CLASS.getMethod("newBuilder").invoke(null);
-      Class<?> filterBuilderClass = builder.getClass();
-      Object condition = ConditionFactory.matchKeyword("documentId", documentId);
-      filterBuilderClass.getMethod("addMust", CONDITION_CLASS).invoke(builder, condition);
-      return filterBuilderClass.getMethod("build").invoke(builder);
-    } catch (Exception exception) {
-      throw new IllegalStateException("构建 Qdrant document filter 失败", exception);
-    }
+    return QdrantReflectionSupport.documentFilter(documentId);
   }
 
-  private static Object toCondition(String key, Object value) {
-    Object result;
-    if (value instanceof String stringValue) {
-      result = ConditionFactory.matchKeyword(key, stringValue);
-    } else if (value instanceof Boolean boolValue) {
-      result = ConditionFactory.match(key, boolValue ? 1L : 0L);
-    } else if (value instanceof Number numberValue) {
-      result = ConditionFactory.match(key, numberValue.longValue());
-    } else {
-      result = ConditionFactory.matchKeyword(key, String.valueOf(value));
-    }
-    return result;
-  }
-
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射getter多源，含lambda内catch，统一包装上抛
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射getter多源，统一包装上抛
   private static Map<String, Object> toMetadata(Map<?, ?> payload) {
-    Map<String, Object> metadata = new HashMap<>();
-    payload.forEach(
-        (key, value) -> {
-          try {
-            if ((Boolean) VALUE_CLASS.getMethod("hasStringValue").invoke(value)) {
-              metadata.put(
-                  String.valueOf(key), VALUE_CLASS.getMethod("getStringValue").invoke(value));
-            } else if ((Boolean) VALUE_CLASS.getMethod("hasIntegerValue").invoke(value)) {
-              metadata.put(
-                  String.valueOf(key), VALUE_CLASS.getMethod("getIntegerValue").invoke(value));
-            } else if ((Boolean) VALUE_CLASS.getMethod("hasDoubleValue").invoke(value)) {
-              metadata.put(
-                  String.valueOf(key), VALUE_CLASS.getMethod("getDoubleValue").invoke(value));
-            } else if ((Boolean) VALUE_CLASS.getMethod("hasBoolValue").invoke(value)) {
-              metadata.put(
-                  String.valueOf(key),
-                  (Boolean) VALUE_CLASS.getMethod("getBoolValue").invoke(value) ? 1L : 0L);
-            } else {
-              metadata.put(String.valueOf(key), String.valueOf(value));
-            }
-          } catch (Exception exception) {
-            throw new IllegalStateException("解析 Qdrant payload 失败", exception);
-          }
-        });
-    return metadata;
-  }
-
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射getMethod/invoke多源，统一包装上抛
-  private static Object invokeStatic(
-      Class<?> type, String methodName, Class<?> parameterType, Object argument) {
-    try {
-      return type.getMethod(methodName, parameterType).invoke(null, argument);
-    } catch (Exception exception) {
-      throw new IllegalStateException("调用 Qdrant 工厂方法失败: " + methodName, exception);
-    }
-  }
-
-  private static List<Float> toFloatList(float[] values) {
-    List<Float> result = new ArrayList<>(values.length);
-    for (float value : values) {
-      result.add(value);
-    }
-    return result;
+    return QdrantReflectionSupport.toMetadata(payload);
   }
 
   private static Class<?> classFor(String className) {

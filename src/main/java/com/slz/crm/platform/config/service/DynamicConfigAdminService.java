@@ -12,7 +12,6 @@ import com.slz.crm.platform.config.ConfigValueType;
 import com.slz.crm.platform.config.CurrentUserResolver;
 import com.slz.crm.platform.config.DynamicConfigCache;
 import com.slz.crm.platform.config.DynamicConfigKeyRegistry;
-import com.slz.crm.platform.config.audit.DynamicConfigAuditEvent;
 import com.slz.crm.platform.config.audit.DynamicConfigAuditRecorder;
 import com.slz.crm.platform.config.audit.NoOpDynamicConfigAuditRecorder;
 import com.slz.crm.platform.config.entity.DynamicConfigHistoryEntity;
@@ -89,7 +88,7 @@ public class DynamicConfigAdminService {
         itemMapper.selectList(null).stream()
             .collect(Collectors.toMap(DynamicConfigItemEntity::getConfigKey, Function.identity()));
     return registry.byNamespace(namespace).stream()
-        .map(def -> toView(rowsByKey.get(def.key()), def))
+        .map(def -> DynamicConfigViewSupport.toView(rowsByKey.get(def.key()), def))
         .toList();
   }
 
@@ -101,7 +100,7 @@ public class DynamicConfigAdminService {
   public ConfigItemView getItem(String key) {
     requireSuperAdmin();
     ConfigKeyDefinition def = requireDefinition(key);
-    return toView(findByKeyAny(key), def);
+    return DynamicConfigViewSupport.toView(findByKeyAny(key), def);
   }
 
   /**
@@ -117,18 +116,7 @@ public class DynamicConfigAdminService {
             new LambdaQueryWrapper<DynamicConfigHistoryEntity>()
                 .eq(DynamicConfigHistoryEntity::getConfigKey, key)
                 .orderByDesc(DynamicConfigHistoryEntity::getVersion));
-    return rows.stream()
-        .map(
-            h ->
-                new ConfigHistoryView(
-                    h.getVersion(),
-                    h.getOperationType(),
-                    mask(h.getOldValue(), def.sensitive()),
-                    mask(h.getNewValue(), def.sensitive()),
-                    h.getOperatorRef(),
-                    h.getRemark(),
-                    h.getCreateTime()))
-        .toList();
+    return rows.stream().map(h -> DynamicConfigViewSupport.toHistoryView(h, def)).toList();
   }
 
   // ==================== 写操作（仅超管） ====================
@@ -223,19 +211,21 @@ public class DynamicConfigAdminService {
     row.setUpdateTime(now());
     String rollbackRemark =
         (remark == null || remark.isBlank()) ? "回滚到版本 " + targetVersion : remark;
-    appendHistory(
-        row.getId(),
-        def,
-        newVersion,
-        ConfigOperationType.ROLLBACK,
-        oldValue,
-        parsed.canonical(),
-        op,
-        rollbackRemark);
-    recordAudit(
-        def, ConfigOperationType.ROLLBACK, oldValue, parsed.canonical(), op, rollbackRemark);
+    trail()
+        .appendHistory(
+            row.getId(),
+            def,
+            newVersion,
+            ConfigOperationType.ROLLBACK,
+            oldValue,
+            parsed.canonical(),
+            op,
+            rollbackRemark);
+    trail()
+        .recordAudit(
+            def, ConfigOperationType.ROLLBACK, oldValue, parsed.canonical(), op, rollbackRemark);
     cache.invalidate(key);
-    return toView(row, def);
+    return DynamicConfigViewSupport.toView(row, def);
   }
 
   /**
@@ -272,11 +262,12 @@ public class DynamicConfigAdminService {
     row.setVersion(newVersion);
     row.setUpdatedBy(op.ref());
     row.setUpdateTime(now());
-    appendHistory(
-        row.getId(), def, newVersion, ConfigOperationType.DELETE, oldValue, null, op, remark);
-    recordAudit(def, ConfigOperationType.DELETE, oldValue, null, op, remark);
+    trail()
+        .appendHistory(
+            row.getId(), def, newVersion, ConfigOperationType.DELETE, oldValue, null, op, remark);
+    trail().recordAudit(def, ConfigOperationType.DELETE, oldValue, null, op, remark);
     cache.invalidate(key);
-    return toView(row, def);
+    return DynamicConfigViewSupport.toView(row, def);
   }
 
   /**
@@ -287,6 +278,11 @@ public class DynamicConfigAdminService {
   public int refreshCache() {
     requireSuperAdmin();
     return cache.refreshAll();
+  }
+
+  /** 审计/历史旁路协作对象（经工厂构造，复用主类依赖，保持测试构造签名不变） */
+  private DynamicConfigAuditTrail trail() {
+    return new DynamicConfigAuditTrail(historyMapper, auditRecorders);
   }
 
   // ==================== 内部实现 ====================
@@ -312,10 +308,12 @@ public class DynamicConfigAdminService {
     item.setCreateTime(now);
     item.setUpdateTime(now);
     itemMapper.insert(item);
-    appendHistory(item.getId(), def, 1, ConfigOperationType.CREATE, null, canonical, op, remark);
-    recordAudit(def, ConfigOperationType.CREATE, null, canonical, op, remark);
+    trail()
+        .appendHistory(
+            item.getId(), def, 1, ConfigOperationType.CREATE, null, canonical, op, remark);
+    trail().recordAudit(def, ConfigOperationType.CREATE, null, canonical, op, remark);
     cache.invalidate(def.key());
-    return toView(item, def);
+    return DynamicConfigViewSupport.toView(item, def);
   }
 
   /** 既有项更新（值相同则幂等成功；否则版本 +1 乐观更新） */
@@ -329,7 +327,7 @@ public class DynamicConfigAdminService {
     ConfigItemView result;
     if (Objects.equals(row.getConfigValue(), canonical)) {
       // 幂等：值未变化，不产生历史与审计，直接返回现状
-      result = toView(row, def);
+      result = DynamicConfigViewSupport.toView(row, def);
     } else {
       String oldValue = row.getConfigValue();
       int newVersion = row.getVersion() + 1;
@@ -351,18 +349,19 @@ public class DynamicConfigAdminService {
       row.setVersion(newVersion);
       row.setUpdatedBy(op.ref());
       row.setUpdateTime(now);
-      appendHistory(
-          row.getId(),
-          def,
-          newVersion,
-          ConfigOperationType.UPDATE,
-          oldValue,
-          canonical,
-          op,
-          remark);
-      recordAudit(def, ConfigOperationType.UPDATE, oldValue, canonical, op, remark);
+      trail()
+          .appendHistory(
+              row.getId(),
+              def,
+              newVersion,
+              ConfigOperationType.UPDATE,
+              oldValue,
+              canonical,
+              op,
+              remark);
+      trail().recordAudit(def, ConfigOperationType.UPDATE, oldValue, canonical, op, remark);
       cache.invalidate(def.key());
-      result = toView(row, def);
+      result = DynamicConfigViewSupport.toView(row, def);
     }
     return result;
   }
@@ -396,64 +395,19 @@ public class DynamicConfigAdminService {
     row.setVersion(newVersion);
     row.setUpdatedBy(op.ref());
     row.setUpdateTime(now);
-    appendHistory(
-        row.getId(), def, newVersion, ConfigOperationType.REVIVE, oldValue, canonical, op, remark);
-    recordAudit(def, ConfigOperationType.REVIVE, oldValue, canonical, op, remark);
+    trail()
+        .appendHistory(
+            row.getId(),
+            def,
+            newVersion,
+            ConfigOperationType.REVIVE,
+            oldValue,
+            canonical,
+            op,
+            remark);
+    trail().recordAudit(def, ConfigOperationType.REVIVE, oldValue, canonical, op, remark);
     cache.invalidate(def.key());
-    return toView(row, def);
-  }
-
-  /** 追加一行版本历史（存真实值，回滚需要；展示层再掩码） */
-  private void appendHistory(
-      Long configId,
-      ConfigKeyDefinition def,
-      int version,
-      ConfigOperationType operation,
-      String oldValue,
-      String newValue,
-      ConfigOperator op,
-      String remark) {
-    DynamicConfigHistoryEntity history = new DynamicConfigHistoryEntity();
-    history.setConfigId(configId);
-    history.setConfigKey(def.key());
-    history.setValueType(def.type().name());
-    history.setVersion(version);
-    history.setOperationType(operation.name());
-    history.setOldValue(oldValue);
-    history.setNewValue(newValue);
-    history.setOperatorRef(op.ref());
-    history.setRemark(remark);
-    history.setCreateTime(now());
-    historyMapper.insert(history);
-  }
-
-  /** 审计事件（敏感值掩码后交 D 审计流 / 过渡期日志兜底） */
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 审计旁路：recorder实现可抛任意运行时，不打断配置主流程
-  private void recordAudit(
-      ConfigKeyDefinition def,
-      ConfigOperationType operation,
-      String oldValue,
-      String newValue,
-      ConfigOperator op,
-      String remark) {
-    DynamicConfigAuditRecorder recorder =
-        auditRecorders.getIfAvailable(NoOpDynamicConfigAuditRecorder::new);
-    try {
-      recorder.record(
-          new DynamicConfigAuditEvent(
-              op.ref(),
-              op.displayName(),
-              def.key(),
-              def.namespace(),
-              operation.name(),
-              mask(oldValue, def.sensitive()),
-              mask(newValue, def.sensitive()),
-              remark,
-              now()));
-    } catch (RuntimeException e) {
-      // 审计是旁路：实现方异常不得打断配置主流程（规范见 DynamicConfigAuditRecorder 类注释）
-      log.warn("动态配置审计记录失败（已降级）：key={}, operation={}", def.key(), operation, e);
-    }
+    return DynamicConfigViewSupport.toView(row, def);
   }
 
   /** 仅超管（roleId=1）可进入管理路径；未登录抛 UNAUTHORIZED，非超管抛 FORBIDDEN */
@@ -482,40 +436,6 @@ public class DynamicConfigAdminService {
     return itemMapper.selectOne(
         new LambdaQueryWrapper<DynamicConfigItemEntity>()
             .eq(DynamicConfigItemEntity::getConfigKey, key));
-  }
-
-  /** 实体 + 注册表元数据 → 管理端视图（敏感值掩码、软删置空 value） */
-  private ConfigItemView toView(DynamicConfigItemEntity row, ConfigKeyDefinition def) {
-    boolean deleted = row != null && Boolean.TRUE.equals(row.getIsDeleted());
-    String value = (row == null || deleted) ? null : row.getConfigValue();
-    return new ConfigItemView(
-        def.key(),
-        def.namespace(),
-        def.type().name(),
-        value == null ? null : mask(value, def.sensitive()),
-        mask(def.defaultValue(), def.sensitive()),
-        def.description(),
-        row == null ? null : row.getVersion(),
-        row == null ? null : row.getUpdateTime(),
-        row == null ? null : row.getUpdatedBy(),
-        deleted,
-        def.sensitive(),
-        def.minValue(),
-        def.maxValue(),
-        def.allowedValues().isEmpty() ? null : def.allowedValues());
-  }
-
-  /** 敏感值掩码：全掩为 {@code ******}，不泄露任何片段（长度也不给，避免辅助爆破）。 空值显示 {@code (空)} 以便与“有值但被掩码”区分。 */
-  private String mask(String raw, boolean sensitive) {
-    String result;
-    if (!sensitive) {
-      result = raw;
-    } else if (raw == null || raw.isBlank()) {
-      result = "(空)";
-    } else {
-      result = "******";
-    }
-    return result;
   }
 
   private LocalDateTime now() {
