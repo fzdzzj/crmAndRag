@@ -182,6 +182,7 @@ public class DocumentService {
    * <p>add-vision-pdf-ingest-pilot 任务 2.1：开关开且转写器给出非空转写时替换该页文本， pageNo 不变；开关关 / 未装配 / 闸门失败 →
    * 保留文本层，视觉异常不向外抛。
    */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 视觉外呼旁路：tryTranscribe异常只回退文本层，绝不可打断整篇解析
   private ParsedDocument parsePdf(InputStream content) throws Exception {
     byte[] bytes = content.readAllBytes();
     try (PDDocument document = Loader.loadPDF(bytes)) {

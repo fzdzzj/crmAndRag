@@ -38,6 +38,7 @@ public class SparseRecallService {
    * @param category 类目过滤（null/空 = 不过滤；语义与向量路一致，只窄化不放大）
    * @param limit 候选上限
    */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // ORM全文检索+流多源，失败按空结果降级
   public List<RetrievalCandidate> recall(
       String query, List<Long> authorizedKbIds, String category, int limit) {
     List<RetrievalCandidate> result = List.of();

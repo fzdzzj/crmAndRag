@@ -139,6 +139,7 @@ public class ContextBuilder {
    * 查命中块的父块全文：chunkId 须为快照表数字主键（评测占位 id 非数字直接视为不可展开）； 子块未挂父块或父块行缺失/空白返回 null（调用方回退邻居模式）。DB
    * 异常降级不拖垮检索链。
    */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // ORM查询边界：chunkMapper查询多源，失败按无父块降级
   private String lookupParentText(VectorSearchHit hit) {
     String chunkId = hit.chunkId();
     String result = null;
@@ -188,6 +189,7 @@ public class ContextBuilder {
   }
 
   /** 查询命中块的潜在邻居行（chunkIndex-1 与 chunkIndex+1，同文档）。 chunkIndex 缺失或查询失败时返回空列表（无邻居降级，不抛错）。 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // ORM查询边界：chunkMapper批查多源，失败按无邻居降级
   private List<DocumentVectorChunkEntity> fetchNeighbors(VectorSearchHit hit) {
     Integer chunkIndex = chunkIndex(hit);
     List<DocumentVectorChunkEntity> result = List.of();

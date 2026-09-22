@@ -69,6 +69,7 @@ public class LlmContextCompressor implements Compressor {
   }
 
   @Override
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // LLM压缩外呼多源，失败回退规则压缩链
   public String compress(String context, int tokenBudget) {
     String result;
     if (context == null

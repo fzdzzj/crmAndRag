@@ -26,6 +26,7 @@ public class MinioFileStorageService implements FileStorageService {
   }
 
   @Override
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // MinIO SDK 外呼多源抛出，统一包装为 StorageException
   public String store(InputStream content, String filename, String contentType) {
     String storageKey = buildStorageKey(filename);
     try {
@@ -43,6 +44,7 @@ public class MinioFileStorageService implements FileStorageService {
   }
 
   @Override
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // MinIO SDK 外呼多源抛出，统一包装为 StorageException
   public InputStream open(String storageKey) {
     try {
       return minioClient.getObject(
@@ -53,6 +55,7 @@ public class MinioFileStorageService implements FileStorageService {
   }
 
   @Override
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // MinIO SDK 外呼多源抛出，统一包装为 StorageException
   public void delete(String storageKey) {
     try {
       minioClient.removeObject(
@@ -63,6 +66,7 @@ public class MinioFileStorageService implements FileStorageService {
   }
 
   @Override
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 存在性探针边界：外呼失败按不存在处理不抛
   public boolean exists(String storageKey) {
     boolean result = false;
     try {

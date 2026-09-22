@@ -19,6 +19,7 @@ import com.slz.crm.server.mapper.UploadedFileMapper;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
@@ -115,6 +116,7 @@ public class DocumentIngestionService {
   }
 
   /** 入库前先做知识库写授权；未授权直接拒绝，不做任何文件写入。 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 文件I/O+DB+嵌入/向量外呼多源，宽捕获包装并标记失败后上抛
   public DocumentIngestionResult ingest(DocumentIngestionCommand command) {
     Objects.requireNonNull(command.knowledgeBaseId(), "knowledgeBaseId 不能为空");
     Objects.requireNonNull(command.user(), "UserContext 不能为空");
@@ -164,6 +166,7 @@ public class DocumentIngestionService {
    * <p>授权：仅知识库写授权用户可触发（超管/库主/成员写角色）；类目沿用旧切片行的 快照（uploaded_file 不落类目，保证重建不改检索过滤口径）。每次触发（成功/失败/拒绝）
    * 均落平台治理审计（任务 4.3）。
    */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 文件I/O+DB+嵌入外呼多源，宽捕获标记失败并审计后上抛
   public DocumentIngestionResult reingest(String documentId, UserContext user) {
     Objects.requireNonNull(documentId, "documentId 不能为空");
     Objects.requireNonNull(user, "UserContext 不能为空");
@@ -236,6 +239,7 @@ public class DocumentIngestionService {
   }
 
   /** 重建沿用的旧类目快照：取旧切片行首个非空类目；无历史行（上次失败在切分前）返回 null。 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // ORM查询边界：失败按无类目继续重建
   private String legacyCategoryOf(String documentId) {
     String result = null;
     try {
@@ -401,6 +405,7 @@ public class DocumentIngestionService {
   }
 
   /** 失败时保留原始文件和 DB 记录，清理向量与切片（物理删，保证重建可重试不留半量）。 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 清理边界：向量/切片清理各自单独吞异常，不阻断失败标记
   private void markFailed(
       UploadedFileEntity file,
       String documentId,
@@ -421,6 +426,7 @@ public class DocumentIngestionService {
     uploadedFileMapper.updateById(file);
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 流边界+摘要多源，失败返回null不抛
   private String sha256OfStoredObject(String storageKey) {
     String result = null;
     try (InputStream content = fileStorageService.open(storageKey)) {
@@ -441,7 +447,7 @@ public class DocumentIngestionService {
     try {
       MessageDigest digest = MessageDigest.getInstance("SHA-256");
       return HexFormat.of().formatHex(digest.digest(text.getBytes(StandardCharsets.UTF_8)));
-    } catch (Exception exception) {
+    } catch (NoSuchAlgorithmException exception) {
       throw new IllegalStateException("计算切片哈希失败", exception);
     }
   }

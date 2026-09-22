@@ -70,6 +70,7 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
   }
 
   /** 启动检查集合，但失败不阻断应用，健康检查会继续暴露。 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 启动兜底：集合检查为反射+外呼SDK多源抛出，失败只告警不阻断启动
   @PostConstruct
   public void initialize() {
     if (!properties.isInitializeOnStartup()) {
@@ -88,6 +89,8 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
   }
 
   @Override
+  @SuppressWarnings(
+      "PMD.AvoidCatchingGenericException") // 反射+Qdrant外呼混抛（NoSuchMethod/InvocationTarget/超时等），统一包装上抛
   public void upsertAll(List<VectorRecord> records) {
     if (records == null || records.isEmpty()) {
       return;
@@ -114,6 +117,7 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
   }
 
   @Override
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射+Qdrant外呼混抛，统一包装上抛
   public List<VectorSearchHit> search(VectorSearchRequest request) {
     if (request.queryVector().length != properties.getDimensions()) {
       throw new IllegalArgumentException(
@@ -193,6 +197,7 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
   }
 
   @Override
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射+Qdrant外呼混抛，统一包装上抛
   public void deleteByDocumentId(String documentId) {
     try {
       ensureCollection();
@@ -231,6 +236,7 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
   }
 
   @Override
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 健康探针兜底边界：外呼失败按不可用处理，不抛
   public boolean probe() {
     boolean result = false;
     try {
@@ -286,6 +292,7 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
   }
 
   /** metadata 统一遵循 String 类目/ID、Long 0/1 布尔约定。 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射+工厂外呼多源，统一包装上抛
   private static Object toPoint(VectorRecord record) {
     try {
       Map<String, Object> payload = new HashMap<>();
@@ -331,6 +338,7 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
     return result;
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射+toCondition多源，含lambda内catch，统一包装上抛
   private static Object toFilter(Map<String, Object> filter) {
     try {
       Object builder = FILTER_CLASS.getMethod("newBuilder").invoke(null);
@@ -351,6 +359,7 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
     }
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射+ConditionFactory外呼多源，统一包装上抛
   private static Object documentFilter(String documentId) {
     try {
       Object builder = FILTER_CLASS.getMethod("newBuilder").invoke(null);
@@ -377,6 +386,7 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
     return result;
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射getter多源，含lambda内catch，统一包装上抛
   private static Map<String, Object> toMetadata(Map<?, ?> payload) {
     Map<String, Object> metadata = new HashMap<>();
     payload.forEach(
@@ -405,6 +415,7 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
     return metadata;
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射getMethod/invoke多源，统一包装上抛
   private static Object invokeStatic(
       Class<?> type, String methodName, Class<?> parameterType, Object argument) {
     try {
@@ -437,6 +448,7 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
   }
 
   /** 指数退避重试执行器。 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 重试兜底边界：捕获action任意异常以指数退避继续尝试
   private <T> T executeWithRetry(Retryable<T> action, String operation) throws Exception {
     Exception lastException = null;
     Duration delay = INITIAL_RETRY_DELAY;

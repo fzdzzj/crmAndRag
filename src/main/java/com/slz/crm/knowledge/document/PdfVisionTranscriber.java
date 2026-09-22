@@ -109,6 +109,7 @@ public class PdfVisionTranscriber {
    * @param remainingBudget 本文档剩余可调用 vision 的页数；≤0 时直接 empty；实际发起 vision 前减 1
    * @return 过闸门的转写正文；否则 empty（调用方保留文本层）
    */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 渲染+视觉外呼多源，失败回退文本层，不打断摄取
   public Optional<String> tryTranscribe(
       PDDocument document, int pageIndex0Based, String pageText, AtomicInteger remainingBudget) {
     Optional<String> outcome = Optional.empty();
@@ -209,6 +210,7 @@ public class PdfVisionTranscriber {
     return ok;
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 计量上报边界：失败忽略不挡摄取
   private void recordUsage(ModelCallResult<String> result, boolean success) {
     TokenUsageRecorder recorder =
         tokenUsageRecorderProvider == null ? null : tokenUsageRecorderProvider.getIfAvailable();

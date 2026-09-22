@@ -35,6 +35,7 @@ public class RetrievalQueryRewriteService {
   }
 
   /** 使用中立 ModelCallOptions 改写；失败或空输出回退原查询。 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // LLM外呼多源，失败回退原查询
   public String rewrite(String query) {
     String result = "";
     if (query != null && !query.isBlank()) {

@@ -61,6 +61,7 @@ public class LlmReranker implements Reranker {
   }
 
   @Override
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // LLM重排外呼多源，失败回退默认重排链
   public List<RetrievalCandidate> rerank(String query, List<RetrievalCandidate> candidates) {
     List<RetrievalCandidate> result;
     if (candidates == null || candidates.isEmpty()) {

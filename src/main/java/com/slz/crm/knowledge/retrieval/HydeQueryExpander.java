@@ -54,6 +54,8 @@ public class HydeQueryExpander {
   }
 
   /** 生成假设答案文本；关闭/失败/空输出/超时返回 null（调用方跳过 HyDE 路）。 返回值只允许用于嵌入，不得进入生成上下文（隔离硬约束见类注释）。 */
+  @SuppressWarnings(
+      "PMD.AvoidCatchingGenericException") // LLM外呼+CompletableFuture.get多源，失败跳过HyDE路不抛
   public String hypotheticalAnswer(String query) {
     String result = null;
     if (query != null && !query.isBlank() && enabled()) {

@@ -53,6 +53,7 @@ public class MultiQueryRewriteService {
   }
 
   /** 产出查询路列表：首元素恒为原始查询，其后为去重后的 LLM 变体。 永不返回空列表、永不抛出——所有失败路径退化为单查询。 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // LLM外呼多源，失败退化为仅原始单查询
   public List<String> expand(String primaryQuery) {
     List<String> result;
     if (primaryQuery == null || primaryQuery.isBlank()) {

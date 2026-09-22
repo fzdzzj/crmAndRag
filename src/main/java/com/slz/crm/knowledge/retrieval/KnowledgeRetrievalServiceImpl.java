@@ -191,6 +191,7 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
   }
 
   @Override
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 多查询路join降级兜底：各异步路异常源多，单路失败跳过不影响他路
   public KnowledgeRetrievalPort.RetrievalResult retrieve(
       KnowledgeRetrievalPort.RetrievalQuery query) {
     UserContext user = UserContextHolder.require();
@@ -323,6 +324,7 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
    * 多查询变体路（提案5 任务 1.1/1.2）：expand 产出 原始 + N 变体（关闭/失败退化为仅原始）， 变体路经 routeExecutor 并行执行「嵌入 +
    * 文本路召回」，单路失败降级为空路（exceptionally 兜底）， 已完成路照常参与融合；全部失败时路由 0 仍走单查询现行为。
    */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 多查询扩展异常源多（expand/嵌入/召回），失败回退单查询
   private List<CompletableFuture<List<RetrievalCandidate>>> submitVariantRoutes(
       String primaryQuery,
       List<Long> knowledgeBaseIds,
@@ -366,6 +368,7 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
    * HyDE 路（提案5 任务 2.1）：假设答案<b>只用于产生检索向量</b>（隔离硬约束——该文本 不进入任何候选/上下文/引用），走纯向量召回（稀疏路对假设文本无意义）。 生成失败返回
    * null、嵌入/召回失败吞掉——HyDE 路缺席不影响其他路。
    */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // HyDE路嵌入+召回多源，失败该路跳过不影响他路
   private void addHydeRoute(
       String primaryQuery,
       List<List<RetrievalCandidate>> routes,

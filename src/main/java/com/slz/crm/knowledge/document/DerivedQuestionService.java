@@ -91,6 +91,7 @@ public class DerivedQuestionService {
   }
 
   /** 入库/重建成功后的旁路提交入口（DocumentIngestionService 主链尾段调用）。 契约：<b>永不抛出</b>、不产生主链可感知的副作用；开关关闭时零开销直接返回。 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 旁路提交顶层兜底：阻塞式执行器可抛多种运行时异常，捕获后不阻塞入库主链
   public void submitAfterIngest(UploadedFileEntity file, List<DocumentVectorChunkEntity> children) {
     if (file == null || children == null || children.isEmpty() || !enabled()) {
       return;
@@ -105,6 +106,7 @@ public class DerivedQuestionService {
   }
 
   /** 旁路主体：逐块生成→嵌入→聚合 upsert；整体兜底捕获，绝不向提交方抛出。（public 供跨包单测直调） */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 旁路整体+单块双层兜底：底稿为外呼SDK/嵌入多源抛出，按块降级不冒泡到主链
   public void generateForDocument(
       UploadedFileEntity file, List<DocumentVectorChunkEntity> children) {
     try {
@@ -134,6 +136,7 @@ public class DerivedQuestionService {
   }
 
   /** 单块：一次 LLM 生成 N 问 → 逐问嵌入 → 关联原块的向量记录。失败抛出由上层按块降级。 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // LLM外呼与嵌入外呼混抛（SDK多源含checked），原样上抛由外层按块降级
   private List<VectorRecord> questionsForChunk(
       UploadedFileEntity file, DocumentVectorChunkEntity child) {
     int maxQuestions = resolveMaxPerChunk();

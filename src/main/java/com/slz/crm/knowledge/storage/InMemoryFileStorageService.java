@@ -11,6 +11,8 @@ public class InMemoryFileStorageService implements FileStorageService {
   private final Map<String, byte[]> objects = new ConcurrentHashMap<>();
 
   @Override
+  @SuppressWarnings(
+      "PMD.AvoidCatchingGenericException") // 流边界兜底：输入流读+UUID+正则多源，统一包装为StorageException
   public String store(InputStream content, String filename, String contentType) {
     try {
       String storageKey =

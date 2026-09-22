@@ -58,6 +58,7 @@ public class KnowledgeReingestRunner implements ApplicationRunner {
   }
 
   @Override
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 调度跑批兜底：单文档失败计数继续，不中断批量重建
   public void run(ApplicationArguments args) {
     String trigger = environment.getProperty(TRIGGER_KEY);
     UserContext operator = resolveOperator();
