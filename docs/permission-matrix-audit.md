@@ -1,8 +1,9 @@
 # 全量端点权限矩阵审计报告（audit-permission-matrix）
 
-> ⚠️ **建议映射未经用户拍板，禁止直接落地。** 本报告是"拍板输入"，40+ 端点挂注解 / 新增权限常量
-> 属行为变更（角色访问面变化），**不在本提案预授权范围内**；用户对映射表拍板后另立提案执行。
-> 本提案只交付：审计设施 + 永久门禁 + 本报告（零运行期行为变更，¥0 外发）。
+> **状态（2026-09-22 对账回填）**：本报告首轮交付的是"拍板输入"——审计设施 + 永久门禁 + 本报告（零运行期行为变更，¥0 外发）。
+> 用户已于 2026-09-14 拍板（见 §6），**§4 建议映射已由 `apply-permission-matrix` 全部落地并 `--no-ff` 合入 master `fad493b`**：
+> AI 800 段常量 800-807 + 三 AI controller 逐方法注解 + 报表 501/502 激活 + `V26__permission_seed.sql` 种植授权 +
+> 冻结/离职状态检查前置。**下文 §1–§5 保留首轮审计原貌（历史证据，含当时的"待拍板"措辞），当前实况以 §6 为准。**
 
 - 审计时间：2026-09-13（扫描实测）
 - 审计方式：ClassPath 静态扫描 `@RestController`/`@Controller`（`com.slz.crm`），读注解元数据不解析源码；
@@ -21,7 +22,10 @@
 | PENDING_DECISION（零注解待拍板） | 40 | **57** | 摸底 40 外**新发现 17**（User 6 / DynamicConfig 7 / template×2 / auditor / getMyRole） |
 | CRITICAL（写裸奔未登记） | — | **0** | 首轮全登记，门禁放行（显式知情制） |
 
-**四档分布：208 = SECURED 146 + INTENTIONAL_OPEN 5 + PENDING_DECISION 57 + CRITICAL 0 + WARN 0。**
+**四档分布（首轮实测，含 add-knowledge-admin-api 补登记后的 28 个 controller）：215 = SECURED 153 + INTENTIONAL_OPEN 5 + PENDING_DECISION 57 + CRITICAL 0 + WARN 0。**
+（首轮 2026-09-13 扫描为 27 controller × 208 端点 = SECURED 146 / OPEN 5 / PENDING 57；2026-09-18 新增
+`KnowledgeAdminController` 7 端点并挂 900 权限码后补登记，故上表与本节口径同步为 28 × 215 / SECURED 153。
+**落地后的实测分布见 §6。**）
 
 摸底 40 的构成偏差：Assist 实为 23（非 22）、AiChat 实为 7（非 8），40 合计恰一致；摸底**漏掉了**
 UserController、DynamicConfigAdminController、CustomerCompany/CustomerContact 模板端点、
@@ -33,7 +37,7 @@ RoleController#getMyRole 等 17 个零注解端点——这正是"无门禁时�
 `OpenEndpointRegistry` INTENTIONAL_OPEN（附理由）；③ 登记 PENDING_DECISION（待拍板）。
 任何端点不满足 → 写语义（POST/PUT/DELETE）判 CRITICAL 门禁直接红；读语义（GET/ANY）判 WARN，
 **WARN 非空同样判 fail**（实现口径：零注解读端点若未登记进 PENDING/OPEN 即视为遗漏登记，一律报红）。
-controller 扫描数 ≠ 登记数（27）→ 抛错红。新 controller 必须同步登记，防漏审。
+controller 扫描数 ≠ 登记数（28）→ 抛错红。新 controller 必须同步登记，防漏审。
 
 ## 3. 各 controller 端点矩阵（28 × 215）
 
@@ -69,10 +73,11 @@ controller 扫描数 ≠ 登记数（27）→ 抛错红。新 controller 必须�
  | KnowledgeAdminController | 7 | 7 | 0 | 0 |
 | **合计** | **215** | **153** | **5** | **57** |
 
-### 3.1 SECURED 146（合规，摘要）
+### 3.1 SECURED 153（合规，摘要）
 含 `close-permission-read-gap` 三端点自然校验：`ANY /permission/list`、`POST /permission/addORDeletePermissionsToRole`、
-`GET /permission/getByRole` 均落 SECURED 档（606，不回退）。其余 143 为 20 个 controller 既有注解端点
-（客户/销售/财务/任务/系统/组织各模块），权限值覆盖 101–2295/301–4045 段，与本报告无关不做逐条展开。
+`GET /permission/getByRole` 均落 SECURED 档（606，不回退）。其余 150 为 20 个 controller 既有注解端点
+（客户/销售/财务/任务/系统/组织各模块）+ `KnowledgeAdminController` 7 端点（900，add-knowledge-admin-api 补登记），
+权限值覆盖 101–2295/301–4045/900 段，与本报告无关不做逐条展开。
 
 ### 3.2 INTENTIONAL_OPEN 5（有意开放，已登记）
 
@@ -86,7 +91,8 @@ controller 扫描数 ≠ 登记数（27）→ 抛错红。新 controller 必须�
 
 ## 4. 零注解端点映射建议（拍板输入，57 端点）
 
-> 以下"建议映射"为**待拍板**，合入后门禁对 PENDING_DECISION 放行，落地由用户拍板后另立提案。
+> 以下"建议映射"在首轮为**待拍板**（门禁对 PENDING_DECISION 放行）；**2026-09-14 用户拍板后已由
+> `apply-permission-matrix` 落地**（见 §6），PENDING_DECISION 区随之清零——本节保留首轮表格原貌作决策留痕。
 
 ### 4.1 Assist / AiChat / AiAction（34 端点）——方案 A/B 两案并列
 
@@ -212,9 +218,27 @@ controller 扫描数 ≠ 登记数（27）→ 抛错红。新 controller 必须�
 2. **`GET /company/template` / `GET /contact/template` 转 INTENTIONAL_OPEN**（不挂 118/107）：模板是静态资源
    无数据暴露面；挂导出权限会把"登录可下模板"收紧为"有导出权限才可下"，可能破坏 Excel 导入流程。
 
-**消解结果**：57 条 PENDING_DECISION 全消解——42 条挂注解转 SECURED（SECURED 146→188：
-AI 34 + 报表 6 + `DELETE /user`/`POST /user/find` 2）+ 15 条转 INTENTIONAL_OPEN（OPEN 5→20）；
-PENDING_DECISION 57→0。§4 建议映射不再待拍板。
+**消解结果**：57 条 PENDING_DECISION 全消解——42 条挂注解转 SECURED（AI 34 + 报表 6 +
+`DELETE /user` / `POST /user/find` 2）+ 15 条转 INTENTIONAL_OPEN；PENDING_DECISION 57→0。
+
+**落地后门禁实测（2026-09-22，`PermissionCoverageAuditIT` 真跑，2 tests 绿）**：
+
+```
+===== 端点权限覆盖审计：controller=28（登记 28），端点=215，四档分布
+       SECURED=195 / INTENTIONAL_OPEN=20 / PENDING_DECISION=0 / CRITICAL=0 / WARN=0 =====
+```
+
+| 档 | 首轮（2026-09-13，27×208） | 补登记 KnowledgeAdmin 后（28×215） | 落地后实测（28×215） |
+|---|---:|---:|---:|
+| SECURED | 146 | 153 | **195** |
+| INTENTIONAL_OPEN | 5 | 5 | **20** |
+| PENDING_DECISION | 57 | 57 | **0** |
+| CRITICAL / WARN | 0 / 0 | 0 / 0 | **0 / 0** |
+
+**口径勘误（交付时 tasks.md 3.6 的期望值 186/22/0 是错的，勿再引用）**：那组数字出自**首轮 27 × 208 口径的推算**，两处偏差——
+① 2026-09-18 `add-knowledge-admin-api` 新增 `KnowledgeAdminController` 7 端点并挂 900 权限码，扫描面变为 28 × 215，SECURED 基线 146→153；
+② 该期望值把"转 INTENTIONAL_OPEN"记成 17 条，实际只有 15 条（自服务 4 + 模板 2 + 下拉/自查 2 + DynamicConfig 7——§4.3 的 17 条里有 2 条是挂注解的 `DELETE /user` / `POST /user/find`）。
+故正确口径为 **215 = 195 + 20 + 0**，三档一律以本表实测为准。
 
 ## 7. OPTIONS 与已知口径
 
@@ -229,5 +253,6 @@ PENDING_DECISION 57→0。§4 建议映射不再待拍板。
 > 拍板已由用户在 2026-09-14 完成（见 §6），§4 建议映射已由 `apply-permission-matrix` 落地；
 > 本节（§6/§7）为产权与口径说明，不再构成"待拍板输入"。
 
-> ⚠️ **再次强调：本报告的"建议映射"均为待拍板输入，未经用户拍板，禁止直接落地。**
-> 落地（挂注解 / 新增 800 段常量 / 种植权限）属下一提案，执行方必须停下等用户拍板。
+> 落地证据：`--no-ff` 合并提交 **`fad493b`**（分支 `feature/apply-permission-matrix`；任务组提交
+> `d96e920` 0.x / `b402018` 1.x-2.x / `337de73` 3.x / `a3911b7` 4.x）；逐项证据见
+> `openspec/changes/apply-permission-matrix/tasks.md`。**本报告至此不再构成"待拍板输入"，§4 建议映射已全部生效。**

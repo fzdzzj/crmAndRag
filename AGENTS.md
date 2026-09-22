@@ -81,14 +81,20 @@
 - `pojo` —— entity / dto / vo / ao / excel
 - `quality` —— RAG 质量评测（benchmark 与评分）
 
-## 已闭合的授权缺口（close-permission-read-gap，已合入）
+## 已闭合的权限缺口与端点矩阵落地（close-permission-read-gap / audit-permission-matrix / apply-permission-matrix，均已合入 master）
 
 - **已闭合**：`GET /permission/list` 与 `GET /permission/getByRole` 已加 `@RequirePermission(PermissionOperates.SYSTEM_ASSIGN_PERMISSION)`（取值复用 606，读写同权，用户已拍板，不新增 608 常量），任何登录用户不再能枚举全量权限清单。
-- **机制（保留说明）**：鉴权靠方法级注解 `com.slz.crm.common.annotation.RequirePermission`（`@Target(METHOD)`，打在类上不生效），由 `PermissionsInterceptor#preHandle` 执行（`WebMvcConfiguration#addInterceptors` 注册）；**注解缺失时拦截器直接放行**，校验不过才抛 `ErrorCode.PERMISSION_DENIED`（code 12002）。
+- **机制（保留说明）**：鉴权靠方法级注解 `com.slz.crm.common.annotation.RequirePermission`（`@Target(METHOD)`，打在类上不生效），由 `PermissionsInterceptor#preHandle` 执行（`WebMvcConfiguration#addInterceptors` 注册）；**注解缺失时拦截器直接放行**，校验不过才抛 `ErrorCode.PERMISSION_DENIED`（code 12002）。放行前先过**用户状态闸**（冻结 roleId=0 → 12006 / 离职 roleId=2 → 12007 / 其他非正常状态 → 状态异常），该闸自 apply-permission-matrix 起位于注解判空**之前**（详见下条）；`deptId` 填充仍在权限判断之前、位置未变。
 - **当前状态**：`PermissionController` 三处 `@RequirePermission(PermissionOperates.SYSTEM_ASSIGN_PERMISSION)`（list / addORDeletePermissionsToRole / getByRole）。
 - **测试**：`src/test/java/com/slz/crm/integration/controller/PermissionControllerIT.java` 两个 `@Disabled` 已移除并启用（2 反向 + 1 正向共 3 绿，本地 Docker 实测）。
 - **不放开**：`getMyPermission`（自查）、`/auditor`（审批人下拉）仍为业务必需的开放接口，不在收紧范围。
-- **覆盖门禁（audit-permission-matrix，已合入）**：`src/test/java/com/slz/crm/integration/permission/PermissionCoverageAuditIT` 永久门禁（纯 JVM 静态扫描，无 Docker，本地与 CI 均真跑）——每个端点强制三选一：方法级 `@RequirePermission` / `OpenEndpointRegistry` INTENTIONAL_OPEN 登记 / PENDING_DECISION 登记，写语义裸奔端点直接红；**新增 controller 必须同步登记 `PermissionCoverageScanner.CONTROLLER_REGISTRY`**，否则门禁红。首轮审计报告 `docs/permission-matrix-audit.md`（27×208 端点矩阵 + 57 零注解端点映射建议，**映射待用户拍板，落地另立提案**）。
+- **覆盖门禁（audit-permission-matrix，已合入）**：`src/test/java/com/slz/crm/integration/permission/PermissionCoverageAuditIT` 永久门禁（纯 JVM 静态扫描，无 Docker，本地与 CI 均真跑）——每个端点强制三选一：方法级 `@RequirePermission` / `OpenEndpointRegistry` INTENTIONAL_OPEN 登记 / PENDING_DECISION 登记，写语义裸奔端点直接红；**新增 controller 必须同步登记 `PermissionCoverageScanner.CONTROLLER_REGISTRY`**，否则门禁红。首轮审计报告 `docs/permission-matrix-audit.md`。
+- **矩阵已落地（apply-permission-matrix，已合入 master `fad493b`）**：首轮 57 条 PENDING_DECISION（= 摸底 40 + 新发现 17）**已全部消解，PENDING_DECISION 区已清零**（`OpenEndpointRegistry#buildPendingDecision` 返回空表，任何新零注解端点直接触发门禁 CRITICAL/WARN）。落地内容四条：
+  1. **800 段 AI 模块权限常量**（D1 方案A）：`PermissionOperates` 新增 `AI_ASSIST_VIEW(800)` / `AI_ASSIST_APPLY(801)` / `AI_ASSIST_HANDLE(802)` / `AI_CHAT_SESSION(803)` / `AI_CHAT_STREAM(804)` / `AI_CHAT_CANCEL(805)` / `AI_ACTION_VIEW(806)` / `AI_ACTION_CONFIRM(807)`，Assist(23)/AiChat(7)/AiAction(4) 三 controller 逐方法挂注解；
+  2. **报表权限激活**（D2）：Report 挂 501、DataStatistics 按 501/502 挂，`V26__permission_seed.sql` 补种 501-504 与 800-807 并给全部业务角色授权（roleId 0/1/2 特殊角色不授，超管由拦截器直通）；
+  3. **冻结/离职绕过修复**（D3）：用户状态检查已**前置**到 `@RequirePermission` 判空之前（`PermissionsInterceptor#authorize`），零注解端点不再被冻结/离职用户绕过，反向 IT `PermissionsInterceptorStatusIT` 覆盖；
+  4. 拍板记录与实测四档分布见 `docs/permission-matrix-audit.md` §6（**本文件不复制门禁计数**）。
+- **新 controller/端点加入时的校验面**：门禁三档（SECURED / INTENTIONAL_OPEN / PENDING_DECISION）里 PENDING_DECISION 已关闭，所以新零注解端点**只有两条合法出路**——挂方法级注解，或登记 INTENTIONAL_OPEN 并附理由；登记表变更后 `PermissionCoverageComparatorTest` / `PermissionCoverageScannerTest` 会一并校验。
 
   ```bash
   grep -n "@RequirePermission" src/main/java/com/slz/crm/server/controller/PermissionController.java
