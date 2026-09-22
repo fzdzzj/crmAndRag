@@ -3,9 +3,6 @@ package com.slz.crm.server.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.exiception.BaseException;
@@ -13,7 +10,6 @@ import com.slz.crm.pojo.dto.ai.AiDraftResult;
 import com.slz.crm.pojo.entity.AiPendingActionEntity;
 import com.slz.crm.pojo.vo.AiConfirmResultVO;
 import com.slz.crm.pojo.vo.AiPendingActionVO;
-import com.slz.crm.server.ai.AiReferenceCollector;
 import com.slz.crm.server.ai.enums.ActionTypeEnum;
 import com.slz.crm.server.ai.enums.PendingActionStatus;
 import com.slz.crm.server.ai.executor.AiActionExecutor;
@@ -26,15 +22,11 @@ import com.slz.crm.server.service.PendingActionService;
 import com.slz.crm.server.service.PermissionService;
 import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ThreadLocalRandom;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
@@ -49,8 +41,6 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class PendingActionServiceImpl
     extends ServiceImpl<AiPendingActionMapper, AiPendingActionEntity>
     implements PendingActionService {
-
-  private static final DateTimeFormatter PENDING_ID_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
 
   @Autowired private AiProperties aiProperties;
 
@@ -67,8 +57,6 @@ public class PendingActionServiceImpl
 
   /** actionType → 执行器 */
   private final Map<String, AiActionExecutor> executorMap = new HashMap<>();
-
-  private final ObjectMapper objectMapper = new ObjectMapper();
 
   @PostConstruct
   void initStrategyMaps() {
@@ -90,7 +78,7 @@ public class PendingActionServiceImpl
 
     AiPendingActionEntity entity = new AiPendingActionEntity();
 
-    entity.setPendingId(generatePendingId());
+    entity.setPendingId(PendingActionPayloadSupport.generatePendingId());
 
     entity.setSessionId(sessionId);
 
@@ -116,16 +104,16 @@ public class PendingActionServiceImpl
 
       entity.setStatus(PendingActionStatus.PENDING.getValue());
 
-      entity.setPreview(buildPreview(effectivePayload));
+      entity.setPreview(PendingActionPayloadSupport.buildPreview(effectivePayload));
 
     } else {
       entity.setStatus(PendingActionStatus.DRAFTING.getValue());
 
-      entity.setMissingFields(toJson(vr.getMissingFields()));
+      entity.setMissingFields(PendingActionPayloadSupport.toJson(vr.getMissingFields()));
     }
     save(entity);
 
-    return toDraftResult(entity, vr);
+    return PendingActionPayloadSupport.toDraftResult(entity, vr);
   }
 
   @Override
@@ -139,7 +127,8 @@ public class PendingActionServiceImpl
     }
 
     // 合并增量参数到 payload（增量覆盖/补入）
-    String mergedPayload = mergePayload(entity.getPayload(), incrementJson);
+    String mergedPayload =
+        PendingActionPayloadSupport.mergePayload(entity.getPayload(), incrementJson);
 
     entity.setAskRound(entity.getAskRound() + 1);
 
@@ -161,16 +150,16 @@ public class PendingActionServiceImpl
 
       entity.setExpireTime(LocalDateTime.now().plusMinutes(aiProperties.getPendingExpireMinutes()));
 
-      entity.setPreview(buildPreview(effectivePayload));
+      entity.setPreview(PendingActionPayloadSupport.buildPreview(effectivePayload));
 
     } else {
       entity.setStatus(PendingActionStatus.DRAFTING.getValue());
 
-      entity.setMissingFields(toJson(vr.getMissingFields()));
+      entity.setMissingFields(PendingActionPayloadSupport.toJson(vr.getMissingFields()));
     }
     updateById(entity);
 
-    return toDraftResult(entity, vr);
+    return PendingActionPayloadSupport.toDraftResult(entity, vr);
   }
 
   @Override
@@ -190,7 +179,7 @@ public class PendingActionServiceImpl
       String idempotentResult =
           entity.getResult() != null ? entity.getResult() : "{\"message\":\"操作已处理\"}";
 
-      result = toConfirmResult(idempotentResult, List.of());
+      result = PendingActionPayloadSupport.toConfirmResult(idempotentResult, List.of());
     } else {
       result = executePendingAction(entity, pendingId, userId);
     }
@@ -271,7 +260,8 @@ public class PendingActionServiceImpl
 
       throw new BaseException(ErrorCode.AI_ACTION_EXECUTE_FAILED, "执行失败，请稍后重试");
     }
-    return toConfirmResult(execResult.getResult(), execResult.getReferences());
+    return PendingActionPayloadSupport.toConfirmResult(
+        execResult.getResult(), execResult.getReferences());
   }
 
   @Override
@@ -386,16 +376,16 @@ public class PendingActionServiceImpl
       // expire_time 重算
       entity.setExpireTime(LocalDateTime.now().plusMinutes(aiProperties.getPendingExpireMinutes()));
 
-      entity.setPreview(buildPreview(effectivePayload));
+      entity.setPreview(PendingActionPayloadSupport.buildPreview(effectivePayload));
 
     } else {
       entity.setStatus(PendingActionStatus.DRAFTING.getValue());
 
-      entity.setMissingFields(toJson(vr.getMissingFields()));
+      entity.setMissingFields(PendingActionPayloadSupport.toJson(vr.getMissingFields()));
     }
     updateById(entity);
 
-    return toVO(entity);
+    return PendingActionPayloadSupport.toVO(entity);
   }
 
   @Override
@@ -408,7 +398,7 @@ public class PendingActionServiceImpl
 
       result = null;
     } else {
-      result = toVO(entity);
+      result = PendingActionPayloadSupport.toVO(entity);
     }
     return result;
   }
@@ -448,35 +438,6 @@ public class PendingActionServiceImpl
 
   // ==================== 私有方法 ====================
 
-  /** 组装确认结果（执行结果 + 新创建实体引用） */
-  private AiConfirmResultVO toConfirmResult(
-      String result, List<AiReferenceCollector.Reference> references) {
-    AiConfirmResultVO vo = new AiConfirmResultVO();
-
-    vo.setResult(result);
-
-    List<AiConfirmResultVO.ReferenceItem> items = new ArrayList<>();
-
-    if (references != null) {
-
-      for (AiReferenceCollector.Reference reference : references) {
-
-        AiConfirmResultVO.ReferenceItem item = new AiConfirmResultVO.ReferenceItem();
-
-        item.setType(reference.type());
-
-        item.setId(reference.id());
-
-        item.setName(reference.name());
-
-        items.add(item);
-      }
-    }
-    vo.setReferences(items);
-
-    return vo;
-  }
-
   /** 按 actionType 校验当前用户是否有对应写权限 */
   private void requirePermission(String actionType, Long userId) {
     PermissionOperates required = ActionTypeEnum.getRequiredPermission(actionType);
@@ -498,16 +459,6 @@ public class PendingActionServiceImpl
     return validator;
   }
 
-  /** 生成 pendingId（PA + 日期 + 8位随机字符） */
-  private String generatePendingId() {
-    String date = LocalDateTime.now().format(PENDING_ID_FMT);
-
-    String random =
-        Long.toHexString(ThreadLocalRandom.current().nextLong()).substring(0, 8).toUpperCase();
-
-    return "PA" + date + random;
-  }
-
   /** 获取实体（不存在则抛异常） */
   private AiPendingActionEntity getOwnedEntity(String pendingId, Long userId) {
     AiPendingActionEntity entity = getByPendingId(pendingId);
@@ -517,72 +468,5 @@ public class PendingActionServiceImpl
       throw new BaseException(ErrorCode.PARAM_REQUIRED, "操作不存在");
     }
     return entity;
-  }
-
-  /** 合并 payload（增量覆盖/补入） */
-  private String mergePayload(String existingPayload, String incrementJson) {
-    String result;
-    try {
-      Map<String, Object> existing =
-          objectMapper.readValue(existingPayload, new TypeReference<Map<String, Object>>() {});
-
-      Map<String, Object> increment =
-          objectMapper.readValue(incrementJson, new TypeReference<Map<String, Object>>() {});
-
-      increment.remove("pendingId"); // pendingId 不属于业务参数
-
-      existing.putAll(increment);
-
-      result = objectMapper.writeValueAsString(existing);
-
-    } catch (JsonProcessingException e) {
-
-      log.error("合并 payload 失败", e);
-
-      result = incrementJson;
-    }
-    return result;
-  }
-
-  /** 构建确认卡片预览摘要（以 payload 为准，不依赖模型总结） */
-  private String buildPreview(String payloadJson) {
-    Map<String, Object> preview = new HashMap<>();
-
-    preview.put("summary", "请确认以下操作参数");
-
-    preview.put("payload", payloadJson);
-
-    return toJson(preview);
-  }
-
-  private AiDraftResult toDraftResult(AiPendingActionEntity entity, AiValidationResult vr) {
-    return AiDraftResult.builder()
-        .pendingId(entity.getPendingId())
-        .status(entity.getStatus())
-        .missingFields(vr.getMissingFields())
-        .questions(vr.getQuestions())
-        .askRound(entity.getAskRound())
-        .preview(entity.getPreview())
-        .build();
-  }
-
-  private AiPendingActionVO toVO(AiPendingActionEntity entity) {
-    AiPendingActionVO vo = new AiPendingActionVO();
-
-    BeanUtils.copyProperties(entity, vo);
-
-    return vo;
-  }
-
-  private String toJson(Object obj) {
-    String result;
-    try {
-      result = objectMapper.writeValueAsString(obj);
-
-    } catch (JsonProcessingException e) {
-
-      result = "[]";
-    }
-    return result;
   }
 }
