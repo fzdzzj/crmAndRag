@@ -40,6 +40,17 @@
   `pojo/**` 与其他序列化/反射依赖命名处只豁免不改名，非契约侧命名按 PMD 口径改名（全仓引用同步，编译器兜底）。
 - **分片 F（复杂度类 126 + OnlyOneReturn 残留 141，拍板前置）**：盘点产出逐例处置表（位置/复杂度成因/候选处置：
   拆方法 / 拆 helper 类 / `@SuppressWarnings` 豁免 / 保留不修），**停下向 owner 上会拍板**后才动代码。
+  **拍板已完成（见下"拍板记录 Q7"）**，按批执行：F-1 方法级拆方法 → F-2 低风险类级拆 helper →
+  F-3 高风险类（SSE/数据权限/附件越权，配套反向用例）→ F-4 AssistRequestServiceImpl 巨类单批 → F-5 收尾归档。
+
+## 拍板记录
+
+- **Q7（2026-09-22 owner 拍板："全部拆完"）**：分片 F 全量处置，不留"保留不修"。落地口径：
+  1. 方法级复杂度（圈 56 / 认知 22 / NCSS 2）行为等价拆方法，OnlyOneReturn 残留的 66 个方法随所在方法的拆分**顺带单出口化**；经拆分后仍无法等价合并的守卫式早返回，允许 `@SuppressWarnings("PMD.OnlyOneReturn")` + 中文理由豁免——**禁为压数做伤害可读性的机械合并**（Q2 遗训同源）。
+  2. 类级超标 46 条拆 helper/协作类，不改公共 API 与冻结契约（`platform/contract` 命中处只豁免）。
+  3. 高风险面（SSE 生命周期 `AiChatStreamLifecycle`/`AiChatSseEventWriter`、数据权限 `DataScopeServiceImpl`（超集不变量必须保持）、附件越权 `AttachmentAccessServiceImpl`）单独批次并**配套反向用例**——本分片允许 surefire 只增（基线 `--update` 只增不减），这是本提案对"计数锁死"的唯一例外。
+  4. `AssistRequestServiceImpl` 巨类单批拆分，拆完**同步移除分片 D 任务 4.5 的 `TooManyMethods` 豁免**（口径自洽，两条规则不许互相打脸）。
+  5. 分批推进、每批独立收尾（pmd:check 实测 → --update → pom 照抄 → merge-gate 全绿 → 提交）；批间以新鲜 pmd 实测重排剩余项，不照抄旧数字。
 
 每分片收尾（缺一不可，沿用第一轮口径）：`mvn -B -ntp pmd:check` 实测 → `bash scripts/tests/pmd-baseline-check.sh --update`
 下调台账 → pom `<maxAllowedViolations>` 照抄同值 → `bash scripts/merge-gate.sh` 全绿（surefire 计数不变）→ 限路径直落 master 提交。

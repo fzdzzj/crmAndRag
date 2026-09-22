@@ -1,7 +1,7 @@
 # Tasks — tighten-pmd-residual-325
 
 > 执行契约见 `openspec/git-workflow.md`（限路径直落 master、不 push）与 proposal.md 的分片定义。
-> 硬约束：surefire 计数不变（锁 `scripts/test-baseline.txt`）；台账只下调（`--update` 且只许变严）；每分片收尾 = pmd:check 实测 → --update → pom 照抄 → merge-gate 全绿 → 提交。
+> 硬约束：surefire 计数不变（锁 `scripts/test-baseline.txt`；**唯一例外 = 任务 6.4 起的配套反向用例，允许只增，由一次真实运行 `--update` 写入**）；台账只下调（`--update` 且只许变严）；每分片收尾 = pmd:check 实测 → --update → pom 照抄 → merge-gate 全绿 → 提交。
 > 每完成一步立刻勾选并在行尾补实测证据。
 
 ## 4. 分片 D：死参/死变量/小异味（19 条 → ≈0）
@@ -22,8 +22,11 @@
 ## 6. 分片 F：复杂度类 126 + OnlyOneReturn 残留 141（拍板前置，未拍板前禁动代码）
 
 - [x] 6.1 盘点 267 条逐例处置表：位置 / 复杂度成因 / 候选处置（拆方法 / 拆 helper 类 / 豁免+理由 / 保留不修），落 `work/pmd-residual-f.md`，产出拍板输入报告后**停下等 owner 拍板** ｜实测：`work/pmd-residual-f.md`（336 行）+ 复算脚本 `work/_pmd_f_dump.py` / `_pmd_f_enrich.py` / `_pmd_f_report.py` + 明细 `work/pmd-residual-f.tsv`。实测 267 = CyclomaticComplexity 75（方法 56/类 19）+ NcssCount 29（方法 2/类 27）+ CognitiveComplexity 22 + OnlyOneReturn 141；**OnlyOneReturn 141 条实际只落在 66 个方法**（单方法最多 8 处早返回）；临界（超阈值 +1..3）合计 40 条；类级 46 条集中在 28 个类，最大者 AssistRequestServiceImpl（NCSS 830/圈 442）与分片 D 已豁免的 TooManyMethods 同源。**未动任何代码**，决策点见报告 §4（Q-F1..Q-F5）
-- [ ] 6.2 （拍板后执行）按拍板结论分批处置，每批：surefire 全绿 + pmd:check → --update → pom → merge-gate → 提交 ｜实测：＿＿
-- [ ] 6.3 全案收尾：HANDOFF §3 补本提案记录；台账 source-revision 更新；汇报含 325→终值全程阶梯 ｜实测：＿＿
+- [ ] 6.2 F-1 批（方法级 80 条：圈 56 + 认知 22 + NCSS 2；66 个 OnlyOneReturn 方法随拆顺带单出口化）：行为等价拆方法，不改公共签名；守卫式早返回经拆分仍无法等价者 `@SuppressWarnings("PMD.OnlyOneReturn")` + 中文理由；批收尾 = pmd:check → --update → pom → merge-gate 全绿 → 限路径提交 ｜实测：＿＿
+- [ ] 6.3 F-2 批（F-1 合入后**新鲜 pmd 实测重排**类级剩余项）：拆无行为敏感标记的类为 helper/协作类，不改公共 API 与冻结契约 ｜实测：＿＿
+- [ ] 6.4 F-3 批（高风险类：AiChatStreamLifecycle / AiChatSseEventWriter / DataScopeServiceImpl（超集不变量保持）/ AttachmentAccessServiceImpl / ModelProviderImpl）：单独拆分并**配套反向用例**（SseContractTest 必须全绿）；本批起 surefire 允许只增，基线由一次真实运行 `--update` 写入 ｜实测：＿＿
+- [ ] 6.5 F-4 批（AssistRequestServiceImpl 巨类单批拆分）：拆完**同步移除分片 D 任务 4.5 的 `PMD.TooManyMethods` 豁免**（口径自洽） ｜实测：＿＿
+- [ ] 6.6 F-5 全案收尾：pmd 终值台账（接近 0，残留必须逐条豁免留痕）；HANDOFF §3 补本提案记录；台账 source-revision 更新；汇报含 325→终值全程阶梯与豁免清单 ｜实测：＿＿
 
 ## Git 操作
 
