@@ -11,7 +11,6 @@ import com.slz.crm.pojo.dto.InvoiceInfoDTO;
 import com.slz.crm.pojo.entity.ContractEntity;
 import com.slz.crm.pojo.entity.InvoiceInfoEntity;
 import com.slz.crm.pojo.entity.PaymentRecordEntity;
-import com.slz.crm.pojo.entity.UserEntity;
 import com.slz.crm.pojo.vo.InvoiceInfoVO;
 import com.slz.crm.server.mapper.ContractMapper;
 import com.slz.crm.server.mapper.InvoiceInfoMapper;
@@ -202,7 +201,7 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
       throw new BaseException("开票信息不存在");
     }
 
-    return convertToVO(entity);
+    return InvoiceVoSupport.convertToVO(entity, contractMapper, paymentRecordMapper, userMapper);
   }
 
   @Override
@@ -232,13 +231,13 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
     }
 
     // 开票日期范围查询
-    applyInvoiceDateRange(queryWrapper, dto);
+    InvoiceVoSupport.applyInvoiceDateRange(queryWrapper, dto);
 
     // 开票金额范围查询
-    applyInvoiceAmountRange(queryWrapper, dto);
+    InvoiceVoSupport.applyInvoiceAmountRange(queryWrapper, dto);
 
     // 创建时间范围查询
-    applyCreateTimeRange(queryWrapper, dto);
+    InvoiceVoSupport.applyCreateTimeRange(queryWrapper, dto);
 
     // 按创建时间倒序
     queryWrapper.orderByDesc(InvoiceInfoEntity::getCreateTime);
@@ -250,51 +249,15 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
     BeanUtils.copyProperties(entityPage, voPage, "records");
 
     List<InvoiceInfoVO> voList =
-        entityPage.getRecords().stream().map(this::convertToVO).collect(Collectors.toList());
+        entityPage.getRecords().stream()
+            .map(
+                entity ->
+                    InvoiceVoSupport.convertToVO(
+                        entity, contractMapper, paymentRecordMapper, userMapper))
+            .collect(Collectors.toList());
     voPage.setRecords(voList);
 
     return voPage;
-  }
-
-  /** 开票日期范围查询：双界 between，仅单界时 ge/le */
-  private void applyInvoiceDateRange(
-      LambdaQueryWrapper<InvoiceInfoEntity> queryWrapper, InvoiceInfoDTO dto) {
-    if (dto.getMinInvoiceDate() != null && dto.getMaxInvoiceDate() != null) {
-      queryWrapper.between(
-          InvoiceInfoEntity::getInvoiceDate, dto.getMinInvoiceDate(), dto.getMaxInvoiceDate());
-    } else if (dto.getMinInvoiceDate() != null) {
-      queryWrapper.ge(InvoiceInfoEntity::getInvoiceDate, dto.getMinInvoiceDate());
-    } else if (dto.getMaxInvoiceDate() != null) {
-      queryWrapper.le(InvoiceInfoEntity::getInvoiceDate, dto.getMaxInvoiceDate());
-    }
-  }
-
-  /** 开票金额范围查询：双界 between，仅单界时 ge/le */
-  private void applyInvoiceAmountRange(
-      LambdaQueryWrapper<InvoiceInfoEntity> queryWrapper, InvoiceInfoDTO dto) {
-    if (dto.getMinInvoiceAmount() != null && dto.getMaxInvoiceAmount() != null) {
-      queryWrapper.between(
-          InvoiceInfoEntity::getInvoiceAmount,
-          dto.getMinInvoiceAmount(),
-          dto.getMaxInvoiceAmount());
-    } else if (dto.getMinInvoiceAmount() != null) {
-      queryWrapper.ge(InvoiceInfoEntity::getInvoiceAmount, dto.getMinInvoiceAmount());
-    } else if (dto.getMaxInvoiceAmount() != null) {
-      queryWrapper.le(InvoiceInfoEntity::getInvoiceAmount, dto.getMaxInvoiceAmount());
-    }
-  }
-
-  /** 创建时间范围查询：双界 between，仅单界时 ge/le */
-  private void applyCreateTimeRange(
-      LambdaQueryWrapper<InvoiceInfoEntity> queryWrapper, InvoiceInfoDTO dto) {
-    if (dto.getMinCreateTime() != null && dto.getMaxCreateTime() != null) {
-      queryWrapper.between(
-          InvoiceInfoEntity::getCreateTime, dto.getMinCreateTime(), dto.getMaxCreateTime());
-    } else if (dto.getMinCreateTime() != null) {
-      queryWrapper.ge(InvoiceInfoEntity::getCreateTime, dto.getMinCreateTime());
-    } else if (dto.getMaxCreateTime() != null) {
-      queryWrapper.le(InvoiceInfoEntity::getCreateTime, dto.getMaxCreateTime());
-    }
   }
 
   @Override
@@ -309,7 +272,13 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
       queryWrapper.orderByDesc(InvoiceInfoEntity::getCreateTime);
 
       List<InvoiceInfoEntity> entityList = invoiceInfoMapper.selectList(queryWrapper);
-      result = entityList.stream().map(this::convertToVO).collect(Collectors.toList());
+      result =
+          entityList.stream()
+              .map(
+                  entity ->
+                      InvoiceVoSupport.convertToVO(
+                          entity, contractMapper, paymentRecordMapper, userMapper))
+              .collect(Collectors.toList());
     }
     return result;
   }
@@ -326,7 +295,13 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
       queryWrapper.orderByDesc(InvoiceInfoEntity::getCreateTime);
 
       List<InvoiceInfoEntity> entityList = invoiceInfoMapper.selectList(queryWrapper);
-      result = entityList.stream().map(this::convertToVO).collect(Collectors.toList());
+      result =
+          entityList.stream()
+              .map(
+                  entity ->
+                      InvoiceVoSupport.convertToVO(
+                          entity, contractMapper, paymentRecordMapper, userMapper))
+              .collect(Collectors.toList());
     }
     return result;
   }
@@ -351,48 +326,5 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
     // 更新为已作废状态（status=1）
     entity.setStatus(1);
     return invoiceInfoMapper.updateById(entity) > 0;
-  }
-
-  /** 转换Entity为VO */
-  private InvoiceInfoVO convertToVO(InvoiceInfoEntity entity) {
-    InvoiceInfoVO vo = new InvoiceInfoVO();
-    BeanUtils.copyProperties(entity, vo);
-
-    // 设置状态描述（0=已开具, 1=已作废）
-    String statusDesc =
-        switch (entity.getStatus()) {
-          case 0 -> "已开具";
-          case 1 -> "已作废";
-          default -> "未知状态";
-        };
-    vo.setStatusDesc(statusDesc);
-
-    // 查询合同信息
-    if (entity.getContractId() != null) {
-      ContractEntity contract = contractMapper.selectById(entity.getContractId());
-      if (contract != null) {
-        vo.setContractNo(contract.getContractNo());
-        vo.setContractName(contract.getContractName());
-      }
-    }
-
-    // 查询回款信息
-    if (entity.getPaymentId() != null) {
-      PaymentRecordEntity payment = paymentRecordMapper.selectById(entity.getPaymentId());
-      if (payment != null) {
-        vo.setPaymentNo(payment.getPaymentNo());
-        vo.setPaymentAmount(payment.getPaymentAmount());
-      }
-    }
-
-    // 查询创建人信息
-    if (entity.getCreatorId() != null) {
-      UserEntity creator = userMapper.selectById(entity.getCreatorId());
-      if (creator != null) {
-        vo.setCreatorName(creator.getRealName());
-      }
-    }
-
-    return vo;
   }
 }
