@@ -95,6 +95,34 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
     }
 
     // 同一次申请中重复选择同一人是明确的输入错误，不能静默取最后一条。
+    Map<Long, AssistApplyItem> itemMap = validateAndDedupApplyItems(applyList, applicantId);
+    for (AssistApplyItem item : itemMap.values()) {
+      if (trimToNull(item.getApplyPurpose()) == null
+          || trimToNull(item.getApplyRequirement()) == null) {
+        throw new BaseException(ErrorCode.PARAM_REQUIRED, "每位协助人都必须填写协作目的与协作要求");
+      }
+    }
+    Set<Long> distinctIds = new LinkedHashSet<>(itemMap.keySet());
+
+    assertNoPendingDuplicate(modelName, recordId, distinctIds);
+    assertAssistUsersActive(distinctIds);
+
+    List<AssistRequestEntity> entities =
+        buildAssistEntities(modelName, recordId, applicantId, itemMap, distinctIds);
+
+    for (AssistRequestEntity entity : entities) {
+      try {
+        save(entity);
+        assistMessageService.appendSystemMessage(entity.getId(), "已发起协助申请");
+      } catch (DuplicateKeyException e) {
+        throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "该协助人已有待协助申请，请勿重复提交");
+      }
+    }
+  }
+
+  /** 校验申请项：协助人必选、不能是申请人自己、不重复，返回按协助人去重后的申请项映射 */
+  private Map<Long, AssistApplyItem> validateAndDedupApplyItems(
+      List<AssistApplyItem> applyList, Long applicantId) {
     Map<Long, AssistApplyItem> itemMap = new LinkedHashMap<>();
     for (AssistApplyItem item : applyList) {
       if (item == null || item.getAssistUserId() == null) {
@@ -110,15 +138,11 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
     if (itemMap.isEmpty()) {
       throw new BaseException(ErrorCode.PARAM_REQUIRED, "请选择协助人");
     }
-    for (AssistApplyItem item : itemMap.values()) {
-      if (trimToNull(item.getApplyPurpose()) == null
-          || trimToNull(item.getApplyRequirement()) == null) {
-        throw new BaseException(ErrorCode.PARAM_REQUIRED, "每位协助人都必须填写协作目的与协作要求");
-      }
-    }
-    Set<Long> distinctIds = new LinkedHashSet<>(itemMap.keySet());
+    return itemMap;
+  }
 
-    // 幂等：同一业务记录上同一协助人不能同时存在两条待协助记录。
+  /** 幂等校验：同一业务记录上同一协助人不能同时存在两条待协助记录。 */
+  private void assertNoPendingDuplicate(String modelName, Long recordId, Set<Long> distinctIds) {
     List<AssistRequestEntity> existing =
         list(
             new LambdaQueryWrapper<AssistRequestEntity>()
@@ -130,8 +154,10 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
     if (!existing.isEmpty()) {
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "该协助人已有待协助申请，请勿重复发起");
     }
+  }
 
-    // 校验协助人存在且在职（status=1）
+  /** 校验协助人存在且在职（status=1） */
+  private void assertAssistUsersActive(Set<Long> distinctIds) {
     List<UserEntity> users = userMapper.selectBatchIds(distinctIds);
     Set<Long> activeIds =
         users.stream()
@@ -143,34 +169,32 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
         throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "协助人不存在或已冻结/离职：用户ID " + assistUserId);
       }
     }
+  }
 
-    List<AssistRequestEntity> entities =
-        distinctIds.stream()
-            .map(
-                assistUserId -> {
-                  AssistApplyItem item = itemMap.get(assistUserId);
-                  AssistRequestEntity entity = new AssistRequestEntity();
-                  entity.setModelName(modelName);
-                  entity.setRecordId(recordId);
-                  entity.setApplicantId(applicantId);
-                  entity.setApplyPurpose(trimToNull(item.getApplyPurpose()));
-                  entity.setApplyRequirement(trimToNull(item.getApplyRequirement()));
-                  entity.setAssistUserId(assistUserId);
-                  entity.setAssistStatus(0);
-                  entity.setPendingKey("PENDING");
-                  entity.setCreateTime(LocalDateTime.now());
-                  return entity;
-                })
-            .collect(Collectors.toList());
-
-    for (AssistRequestEntity entity : entities) {
-      try {
-        save(entity);
-        assistMessageService.appendSystemMessage(entity.getId(), "已发起协助申请");
-      } catch (DuplicateKeyException e) {
-        throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "该协助人已有待协助申请，请勿重复提交");
-      }
-    }
+  /** 由申请项构建待保存的协助申请实体列表（状态置待协助、pendingKey=PENDING） */
+  private List<AssistRequestEntity> buildAssistEntities(
+      String modelName,
+      Long recordId,
+      Long applicantId,
+      Map<Long, AssistApplyItem> itemMap,
+      Set<Long> distinctIds) {
+    return distinctIds.stream()
+        .map(
+            assistUserId -> {
+              AssistApplyItem item = itemMap.get(assistUserId);
+              AssistRequestEntity entity = new AssistRequestEntity();
+              entity.setModelName(modelName);
+              entity.setRecordId(recordId);
+              entity.setApplicantId(applicantId);
+              entity.setApplyPurpose(trimToNull(item.getApplyPurpose()));
+              entity.setApplyRequirement(trimToNull(item.getApplyRequirement()));
+              entity.setAssistUserId(assistUserId);
+              entity.setAssistStatus(0);
+              entity.setPendingKey("PENDING");
+              entity.setCreateTime(LocalDateTime.now());
+              return entity;
+            })
+        .collect(Collectors.toList());
   }
 
   @Override
@@ -181,6 +205,26 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
       return;
     }
 
+    Map<Long, AssistApplyItem> itemMap = validateApplyItemsForUpdate(applyList, applicantId);
+    List<AssistRequestEntity> pendingAssists = listPendingAssists(modelName, recordId, applicantId);
+    Map<Long, AssistRequestEntity> existingByUser =
+        pendingAssists.stream()
+            .collect(Collectors.toMap(AssistRequestEntity::getAssistUserId, entity -> entity));
+
+    removeVanishedPendingAssists(pendingAssists, itemMap);
+    updateExistingPendingAssists(pendingAssists, itemMap);
+
+    List<AssistApplyItem> additions =
+        itemMap.entrySet().stream()
+            .filter(entry -> !existingByUser.containsKey(entry.getKey()))
+            .map(Map.Entry::getValue)
+            .collect(Collectors.toList());
+    createAssists(modelName, recordId, applicantId, additions);
+  }
+
+  /** 更新场景的申请项校验：协助人必选、不能是申请人自己、目的/要求必填、不重复 */
+  private Map<Long, AssistApplyItem> validateApplyItemsForUpdate(
+      List<AssistApplyItem> applyList, Long applicantId) {
     Map<Long, AssistApplyItem> itemMap = new LinkedHashMap<>();
     for (AssistApplyItem item : applyList) {
       if (item == null || item.getAssistUserId() == null) {
@@ -197,18 +241,23 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
         throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "同一次协助申请不能重复选择同一协助人");
       }
     }
+    return itemMap;
+  }
 
-    List<AssistRequestEntity> pendingAssists =
-        list(
-            new LambdaQueryWrapper<AssistRequestEntity>()
-                .eq(AssistRequestEntity::getModelName, modelName)
-                .eq(AssistRequestEntity::getRecordId, recordId)
-                .eq(AssistRequestEntity::getApplicantId, applicantId)
-                .eq(AssistRequestEntity::getAssistStatus, 0));
-    Map<Long, AssistRequestEntity> existingByUser =
-        pendingAssists.stream()
-            .collect(Collectors.toMap(AssistRequestEntity::getAssistUserId, entity -> entity));
+  /** 查询该业务记录上该申请人的全部待协助申请 */
+  private List<AssistRequestEntity> listPendingAssists(
+      String modelName, Long recordId, Long applicantId) {
+    return list(
+        new LambdaQueryWrapper<AssistRequestEntity>()
+            .eq(AssistRequestEntity::getModelName, modelName)
+            .eq(AssistRequestEntity::getRecordId, recordId)
+            .eq(AssistRequestEntity::getApplicantId, applicantId)
+            .eq(AssistRequestEntity::getAssistStatus, 0));
+  }
 
+  /** 删除本轮申请中已不再出现的待协助记录（连带清理附件），删除失败报错 */
+  private void removeVanishedPendingAssists(
+      List<AssistRequestEntity> pendingAssists, Map<Long, AssistApplyItem> itemMap) {
     List<Long> removedIds =
         pendingAssists.stream()
             .filter(entity -> !itemMap.containsKey(entity.getAssistUserId()))
@@ -220,7 +269,11 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
         throw new BaseException(ErrorCode.UPDATE_FAILED, "删除协助人失败");
       }
     }
+  }
 
+  /** 就地更新仍保留的待协助记录的目的/要求字段 */
+  private void updateExistingPendingAssists(
+      List<AssistRequestEntity> pendingAssists, Map<Long, AssistApplyItem> itemMap) {
     List<AssistRequestEntity> updates =
         pendingAssists.stream()
             .filter(entity -> itemMap.containsKey(entity.getAssistUserId()))
@@ -234,13 +287,6 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
     if (!updates.isEmpty() && !updateBatchById(updates)) {
       throw new BaseException(ErrorCode.UPDATE_FAILED, "更新协助申请失败");
     }
-
-    List<AssistApplyItem> additions =
-        itemMap.entrySet().stream()
-            .filter(entry -> !existingByUser.containsKey(entry.getKey()))
-            .map(Map.Entry::getValue)
-            .collect(Collectors.toList());
-    createAssists(modelName, recordId, applicantId, additions);
   }
 
   private String trimToNull(String value) {
@@ -377,6 +423,30 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
 
   @Override
   public Boolean handleAssist(AssistHandleDTO dto) {
+    validateAssistHandle(dto);
+
+    AssistRequestEntity entity = loadAssistForHandle(dto);
+
+    // 必须先捕获终态前一刻的实时范围，再改变状态；这样快照与待协助期间
+    // 协助人实际能看到的记录边界保持一致，快照失败时事务不会留下半更新状态。
+    String recordSnapshot = buildRecordSnapshot(entity);
+
+    applyAssistDecision(entity, dto, recordSnapshot);
+    if (!updateById(entity)) {
+      throw new BaseException(ErrorCode.UPDATE_FAILED, "协助状态更新失败");
+    }
+    assistMessageService.appendSystemMessage(
+        entity.getId(),
+        switch (dto.getAssistStatus()) {
+          case 1 -> "协助已完成";
+          case 2 -> "协助已驳回";
+          default -> "协助已拒绝";
+        });
+    return true;
+  }
+
+  /** 协助处理入参校验：记录必填、终态合法、按终态要求内容/理由必填 */
+  private void validateAssistHandle(AssistHandleDTO dto) {
     if (dto == null || dto.getId() == null) {
       throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
@@ -394,7 +464,10 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
         && (dto.getRejectReason() == null || dto.getRejectReason().trim().isEmpty())) {
       throw new BaseException(ErrorCode.PARAM_REQUIRED, "驳回/拒绝理由不能为空");
     }
+  }
 
+  /** 加载待处理协助记录并校验：存在、当前用户是协助人、仍处于待协助状态 */
+  private AssistRequestEntity loadAssistForHandle(AssistHandleDTO dto) {
     AssistRequestEntity entity = getById(dto.getId());
     if (entity == null) {
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "协助记录不存在");
@@ -406,11 +479,12 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
     if (!Objects.equals(entity.getAssistStatus(), 0)) {
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "该协助申请已处理");
     }
+    return entity;
+  }
 
-    // 必须先捕获终态前一刻的实时范围，再改变状态；这样快照与待协助期间
-    // 协助人实际能看到的记录边界保持一致，快照失败时事务不会留下半更新状态。
-    String recordSnapshot = buildRecordSnapshot(entity);
-
+  /** 按处理决定改写实体状态字段并冻结业务快照（1 已协助填内容，2/3 驳回/拒绝填理由） */
+  private void applyAssistDecision(
+      AssistRequestEntity entity, AssistHandleDTO dto, String recordSnapshot) {
     entity.setAssistStatus(dto.getAssistStatus());
     entity.setPendingKey(null);
     if (dto.getAssistStatus().equals(1)) {
@@ -423,17 +497,6 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
     // 任一终态均冻结按来源模型收窄后的业务快照；交付物不写入快照，单独按 assistId 查询。
     entity.setRecordSnapshot(recordSnapshot);
     entity.setAssistTime(LocalDateTime.now());
-    if (!updateById(entity)) {
-      throw new BaseException(ErrorCode.UPDATE_FAILED, "协助状态更新失败");
-    }
-    assistMessageService.appendSystemMessage(
-        entity.getId(),
-        switch (dto.getAssistStatus()) {
-          case 1 -> "协助已完成";
-          case 2 -> "协助已驳回";
-          default -> "协助已拒绝";
-        });
-    return true;
   }
 
   /** 构建审批推进协助需要的完整商机详情。该方法只在协助结束时调用， 不能用于业务活动/联络任务协助，也不能用于待协助详情。 */
@@ -599,77 +662,7 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
       snapshot.put("related", relatedSnapshot);
       snapshot.put("opportunity", null);
 
-      Map<String, Object> record = new LinkedHashMap<>();
-      switch (assist.getModelName()) {
-        case ModelName.SALES_STAGE_APPROVAL -> {
-          SalesStageApprovalEntity approval =
-              salesStageApprovalMapper.selectById(assist.getRecordId());
-          // 审批推进是商机级协助：只有这里才冻结商机下全部活动及活动附件。
-          snapshot.put("opportunity", buildOpportunitySnapshotData(related.getOpportunityId()));
-          record.put("type", "salesStageApproval");
-          record.put("approvalId", assist.getRecordId());
-          record.put("opportunityId", approval == null ? null : approval.getOpportunityId());
-          record.put("currentStage", approval == null ? null : approval.getCurrentStage());
-          record.put("targetStage", approval == null ? null : approval.getTargetStage());
-          record.put("approvalStatus", approval == null ? null : approval.getApprovalStatus());
-          record.put("message", approval == null ? null : approval.getMessage());
-          record.put("approvalOpinion", approval == null ? null : approval.getApprovalOpinion());
-          record.put("applyTime", approval == null ? null : approval.getApplyTime());
-          record.put("approvalTime", approval == null ? null : approval.getApprovalTime());
-          record.put(
-              "attachments",
-              attachmentMetadataForAssist(
-                  assist.getRecordId(), ModelName.APPROVAL_ATTACHMENT, assist.getId()));
-        }
-        case ModelName.BUSINESS_ACTIVITY -> {
-          BusinessActivityEntity activity = businessActivityMapper.selectById(assist.getRecordId());
-          snapshot.put("opportunity", buildOpportunitySummaryData(related.getOpportunityId()));
-          record.put("type", "businessActivity");
-          record.put("activityId", assist.getRecordId());
-          record.put("title", activity == null ? null : activity.getActivityTitle());
-          record.put("activityType", activity == null ? null : activity.getActivityType());
-          record.put("content", activity == null ? null : activity.getActivityContent());
-          record.put("time", activity == null ? null : activity.getActivityTime());
-          record.put("activityDuration", activity == null ? null : activity.getActivityDuration());
-          record.put("companyId", activity == null ? null : activity.getCompanyId());
-          record.put("opportunityId", activity == null ? null : activity.getOpportunityId());
-          record.put("creatorId", activity == null ? null : activity.getCreatorId());
-          record.put("remark", activity == null ? null : activity.getRemark());
-          record.put("taskId", activity == null ? null : activity.getTaskId());
-          record.put(
-              "attachments",
-              attachmentMetadataForAssist(
-                  assist.getRecordId(), ModelName.BUSINESS_ACTIVITY, assist.getId()));
-        }
-        case ModelName.CONTACT_TASK -> {
-          ContactTaskEntity task = contactTaskMapper.selectById(assist.getRecordId());
-          snapshot.put("opportunity", buildOpportunitySummaryData(related.getOpportunityId()));
-          record.put("type", "contactTask");
-          record.put("taskId", assist.getRecordId());
-          record.put("title", task == null ? null : task.getTaskTitle());
-          record.put("taskType", task == null ? null : task.getTaskType());
-          record.put("content", task == null ? null : task.getTaskContent());
-          record.put("startTime", task == null ? null : toLocalDateTime(task.getStartTime()));
-          record.put("endTime", task == null ? null : toLocalDateTime(task.getEndTime()));
-          record.put("companyId", task == null ? null : task.getCompanyId());
-          record.put("contactId", task == null ? null : task.getContactId());
-          record.put("opportunityId", task == null ? null : task.getOpportunityId());
-          record.put("priority", task == null ? null : task.getPriority());
-          record.put("status", task == null ? null : task.getStatus());
-          record.put("assigneeId", task == null ? null : task.getAssigneeId());
-          record.put("assignerId", task == null ? null : task.getAssignerId());
-          record.put("creatorId", task == null ? null : task.getCreatorId());
-          record.put(
-              "attachments",
-              attachmentMetadataForAssist(
-                  assist.getRecordId(), ModelName.CONTACT_TASK, assist.getId()));
-          List<BusinessActivityEntity> linkedActivities =
-              businessActivityMapper.selectByTaskId(assist.getRecordId());
-          record.put("relatedActivities", activitySnapshotList(linkedActivities));
-        }
-        default -> throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "暂不支持该协助来源的快照");
-      }
-      snapshot.put("record", record);
+      snapshot.put("record", buildRecordSection(assist, related, snapshot));
       String serialized = objectMapper.writeValueAsString(snapshot);
       if (serialized == null || serialized.isBlank()) {
         throw new BaseException(ErrorCode.INTERNAL_SERVER_ERROR, "协助历史快照写入失败");
@@ -682,6 +675,96 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
       }
       throw new BaseException(ErrorCode.INTERNAL_SERVER_ERROR, "协助历史快照写入失败");
     }
+  }
+
+  /** 按来源模型装配 record 段：审批/业务活动/联络任务各有专属字段与附件，并按需填充商机快照 */
+  private Map<String, Object> buildRecordSection(
+      AssistRequestEntity assist, AssistRelatedRecordVO related, Map<String, Object> snapshot) {
+    return switch (assist.getModelName()) {
+      case ModelName.SALES_STAGE_APPROVAL ->
+          buildSalesStageApprovalRecord(assist, related, snapshot);
+      case ModelName.BUSINESS_ACTIVITY -> buildBusinessActivityRecord(assist, related, snapshot);
+      case ModelName.CONTACT_TASK -> buildContactTaskRecord(assist, related, snapshot);
+      default -> throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "暂不支持该协助来源的快照");
+    };
+  }
+
+  /** 销售阶段推进审批快照段：审批推进是商机级协助，只有这里才冻结商机下全部活动及活动附件。 */
+  private Map<String, Object> buildSalesStageApprovalRecord(
+      AssistRequestEntity assist, AssistRelatedRecordVO related, Map<String, Object> snapshot) {
+    Map<String, Object> record = new LinkedHashMap<>();
+    SalesStageApprovalEntity approval = salesStageApprovalMapper.selectById(assist.getRecordId());
+    snapshot.put("opportunity", buildOpportunitySnapshotData(related.getOpportunityId()));
+    record.put("type", "salesStageApproval");
+    record.put("approvalId", assist.getRecordId());
+    record.put("opportunityId", approval == null ? null : approval.getOpportunityId());
+    record.put("currentStage", approval == null ? null : approval.getCurrentStage());
+    record.put("targetStage", approval == null ? null : approval.getTargetStage());
+    record.put("approvalStatus", approval == null ? null : approval.getApprovalStatus());
+    record.put("message", approval == null ? null : approval.getMessage());
+    record.put("approvalOpinion", approval == null ? null : approval.getApprovalOpinion());
+    record.put("applyTime", approval == null ? null : approval.getApplyTime());
+    record.put("approvalTime", approval == null ? null : approval.getApprovalTime());
+    record.put(
+        "attachments",
+        attachmentMetadataForAssist(
+            assist.getRecordId(), ModelName.APPROVAL_ATTACHMENT, assist.getId()));
+    return record;
+  }
+
+  /** 业务活动快照段：只冻结本活动字段与附件，商机侧仅取摘要 */
+  private Map<String, Object> buildBusinessActivityRecord(
+      AssistRequestEntity assist, AssistRelatedRecordVO related, Map<String, Object> snapshot) {
+    Map<String, Object> record = new LinkedHashMap<>();
+    BusinessActivityEntity activity = businessActivityMapper.selectById(assist.getRecordId());
+    snapshot.put("opportunity", buildOpportunitySummaryData(related.getOpportunityId()));
+    record.put("type", "businessActivity");
+    record.put("activityId", assist.getRecordId());
+    record.put("title", activity == null ? null : activity.getActivityTitle());
+    record.put("activityType", activity == null ? null : activity.getActivityType());
+    record.put("content", activity == null ? null : activity.getActivityContent());
+    record.put("time", activity == null ? null : activity.getActivityTime());
+    record.put("activityDuration", activity == null ? null : activity.getActivityDuration());
+    record.put("companyId", activity == null ? null : activity.getCompanyId());
+    record.put("opportunityId", activity == null ? null : activity.getOpportunityId());
+    record.put("creatorId", activity == null ? null : activity.getCreatorId());
+    record.put("remark", activity == null ? null : activity.getRemark());
+    record.put("taskId", activity == null ? null : activity.getTaskId());
+    record.put(
+        "attachments",
+        attachmentMetadataForAssist(
+            assist.getRecordId(), ModelName.BUSINESS_ACTIVITY, assist.getId()));
+    return record;
+  }
+
+  /** 联络任务快照段：任务字段 + 按 task_id 明确关联的活动列表（不按商机反查全部活动） */
+  private Map<String, Object> buildContactTaskRecord(
+      AssistRequestEntity assist, AssistRelatedRecordVO related, Map<String, Object> snapshot) {
+    Map<String, Object> record = new LinkedHashMap<>();
+    ContactTaskEntity task = contactTaskMapper.selectById(assist.getRecordId());
+    snapshot.put("opportunity", buildOpportunitySummaryData(related.getOpportunityId()));
+    record.put("type", "contactTask");
+    record.put("taskId", assist.getRecordId());
+    record.put("title", task == null ? null : task.getTaskTitle());
+    record.put("taskType", task == null ? null : task.getTaskType());
+    record.put("content", task == null ? null : task.getTaskContent());
+    record.put("startTime", task == null ? null : toLocalDateTime(task.getStartTime()));
+    record.put("endTime", task == null ? null : toLocalDateTime(task.getEndTime()));
+    record.put("companyId", task == null ? null : task.getCompanyId());
+    record.put("contactId", task == null ? null : task.getContactId());
+    record.put("opportunityId", task == null ? null : task.getOpportunityId());
+    record.put("priority", task == null ? null : task.getPriority());
+    record.put("status", task == null ? null : task.getStatus());
+    record.put("assigneeId", task == null ? null : task.getAssigneeId());
+    record.put("assignerId", task == null ? null : task.getAssignerId());
+    record.put("creatorId", task == null ? null : task.getCreatorId());
+    record.put(
+        "attachments",
+        attachmentMetadataForAssist(assist.getRecordId(), ModelName.CONTACT_TASK, assist.getId()));
+    List<BusinessActivityEntity> linkedActivities =
+        businessActivityMapper.selectByTaskId(assist.getRecordId());
+    record.put("relatedActivities", activitySnapshotList(linkedActivities));
+    return record;
   }
 
   /** 查询一个来源记录下的附件，并转换为可冻结在快照中的最小元数据。 */
@@ -822,126 +905,151 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
     }
     Map<String, Map<Long, RecordBrief>> briefsByModel = new HashMap<>();
 
-    // 订单推进审批：商机名称 + 审批备注 + 申请时间
+    putIfNotEmpty(briefsByModel, ModelName.SALES_STAGE_APPROVAL, collectApprovalBriefs(voList));
+    putIfNotEmpty(briefsByModel, ModelName.BUSINESS_ACTIVITY, collectActivityBriefs(voList));
+    putIfNotEmpty(briefsByModel, ModelName.CONTACT_TASK, collectTaskBriefs(voList));
+
+    applyBriefs(voList, briefsByModel);
+    fillCompanyContactNames(voList);
+  }
+
+  /** 非空摘要映射才放进按模型分组的字典，保持与原「空集合不登记」行为一致 */
+  private void putIfNotEmpty(
+      Map<String, Map<Long, RecordBrief>> briefsByModel,
+      String modelName,
+      Map<Long, RecordBrief> briefs) {
+    if (briefs != null && !briefs.isEmpty()) {
+      briefsByModel.put(modelName, briefs);
+    }
+  }
+
+  /** 销售阶段推进审批摘要：商机名称 + 审批备注 + 申请时间（批量查商机避免 N+1） */
+  private Map<Long, RecordBrief> collectApprovalBriefs(List<AssistVO> voList) {
     Set<Long> approvalIds = collectRecordIds(voList, ModelName.SALES_STAGE_APPROVAL);
-    if (!approvalIds.isEmpty()) {
-      Map<Long, RecordBrief> map = new HashMap<>();
-      // 批量查询关联商机名称，避免逐条 N+1
-      Set<Long> opportunityIds = new HashSet<>();
-      List<SalesStageApprovalEntity> approvals =
-          salesStageApprovalMapper.selectBatchIds(approvalIds);
-      for (SalesStageApprovalEntity approval : approvals) {
-        if (approval.getOpportunityId() != null) {
-          opportunityIds.add(approval.getOpportunityId());
-        }
-      }
-      Map<Long, SalesOpportunityEntity> opportunityMap =
-          opportunityIds.isEmpty()
-              ? Collections.emptyMap()
-              : salesOpportunityMapper.selectBatchIds(opportunityIds).stream()
-                  .collect(Collectors.toMap(SalesOpportunityEntity::getId, Function.identity()));
-      for (SalesStageApprovalEntity approval : approvals) {
-        SalesOpportunityEntity opportunity =
-            approval.getOpportunityId() == null
-                ? null
-                : opportunityMap.get(approval.getOpportunityId());
-        String opportunityName = opportunity == null ? null : opportunity.getOpportunityName();
-        StringBuilder content = new StringBuilder();
-        if (opportunityName != null && !opportunityName.isEmpty()) {
-          content.append("商机：").append(opportunityName);
-        }
-        if (approval.getMessage() != null && !approval.getMessage().isEmpty()) {
-          if (content.length() > 0) {
-            content.append("；");
-          }
-          content.append("备注：").append(approval.getMessage());
-        }
-        map.put(
-            approval.getId(),
-            new RecordBrief(
-                "销售阶段推进审批",
-                content.toString(),
-                approval.getApplyTime(),
-                approval.getOpportunityId(),
-                opportunityName,
-                opportunity == null ? null : opportunity.getCompanyId(),
-                opportunity == null ? null : opportunity.getContactId()));
-      }
-      briefsByModel.put(ModelName.SALES_STAGE_APPROVAL, map);
+    if (approvalIds.isEmpty()) {
+      return Collections.emptyMap();
     }
+    Map<Long, RecordBrief> map = new HashMap<>();
+    // 批量查询关联商机名称，避免逐条 N+1
+    Set<Long> opportunityIds = new HashSet<>();
+    List<SalesStageApprovalEntity> approvals = salesStageApprovalMapper.selectBatchIds(approvalIds);
+    for (SalesStageApprovalEntity approval : approvals) {
+      if (approval.getOpportunityId() != null) {
+        opportunityIds.add(approval.getOpportunityId());
+      }
+    }
+    Map<Long, SalesOpportunityEntity> opportunityMap = loadOpportunityMap(opportunityIds);
+    for (SalesStageApprovalEntity approval : approvals) {
+      SalesOpportunityEntity opportunity =
+          approval.getOpportunityId() == null
+              ? null
+              : opportunityMap.get(approval.getOpportunityId());
+      String opportunityName = opportunity == null ? null : opportunity.getOpportunityName();
+      StringBuilder content = new StringBuilder();
+      if (opportunityName != null && !opportunityName.isEmpty()) {
+        content.append("商机：").append(opportunityName);
+      }
+      if (approval.getMessage() != null && !approval.getMessage().isEmpty()) {
+        if (content.length() > 0) {
+          content.append("；");
+        }
+        content.append("备注：").append(approval.getMessage());
+      }
+      map.put(
+          approval.getId(),
+          new RecordBrief(
+              "销售阶段推进审批",
+              content.toString(),
+              approval.getApplyTime(),
+              approval.getOpportunityId(),
+              opportunityName,
+              opportunity == null ? null : opportunity.getCompanyId(),
+              opportunity == null ? null : opportunity.getContactId()));
+    }
+    return map;
+  }
 
-    // 业务活动：活动标题 + 活动内容 + 活动时间
+  /** 业务活动摘要：活动标题 + 活动内容 + 活动时间 */
+  private Map<Long, RecordBrief> collectActivityBriefs(List<AssistVO> voList) {
     Set<Long> activityIds = collectRecordIds(voList, ModelName.BUSINESS_ACTIVITY);
-    if (!activityIds.isEmpty()) {
-      Map<Long, RecordBrief> map = new HashMap<>();
-      List<BusinessActivityEntity> activities = businessActivityMapper.selectBatchIds(activityIds);
-      Set<Long> opportunityIds =
-          activities.stream()
-              .map(BusinessActivityEntity::getOpportunityId)
-              .filter(Objects::nonNull)
-              .collect(Collectors.toSet());
-      Map<Long, SalesOpportunityEntity> opportunityMap =
-          opportunityIds.isEmpty()
-              ? Collections.emptyMap()
-              : salesOpportunityMapper.selectBatchIds(opportunityIds).stream()
-                  .collect(Collectors.toMap(SalesOpportunityEntity::getId, Function.identity()));
-      for (BusinessActivityEntity activity : activities) {
-        SalesOpportunityEntity opportunity =
-            activity.getOpportunityId() == null
-                ? null
-                : opportunityMap.get(activity.getOpportunityId());
-        map.put(
-            activity.getId(),
-            new RecordBrief(
-                "业务活动：" + (activity.getActivityTitle() == null ? "" : activity.getActivityTitle()),
-                activity.getActivityContent(),
-                activity.getActivityTime(),
-                activity.getOpportunityId(),
-                opportunity == null ? null : opportunity.getOpportunityName(),
-                activity.getCompanyId() != null
-                    ? activity.getCompanyId()
-                    : opportunity == null ? null : opportunity.getCompanyId(),
-                opportunity == null ? null : opportunity.getContactId()));
-      }
-      briefsByModel.put(ModelName.BUSINESS_ACTIVITY, map);
+    if (activityIds.isEmpty()) {
+      return Collections.emptyMap();
     }
+    Map<Long, RecordBrief> map = new HashMap<>();
+    List<BusinessActivityEntity> activities = businessActivityMapper.selectBatchIds(activityIds);
+    Set<Long> opportunityIds =
+        activities.stream()
+            .map(BusinessActivityEntity::getOpportunityId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+    Map<Long, SalesOpportunityEntity> opportunityMap = loadOpportunityMap(opportunityIds);
+    for (BusinessActivityEntity activity : activities) {
+      SalesOpportunityEntity opportunity =
+          activity.getOpportunityId() == null
+              ? null
+              : opportunityMap.get(activity.getOpportunityId());
+      map.put(
+          activity.getId(),
+          new RecordBrief(
+              "业务活动：" + (activity.getActivityTitle() == null ? "" : activity.getActivityTitle()),
+              activity.getActivityContent(),
+              activity.getActivityTime(),
+              activity.getOpportunityId(),
+              opportunity == null ? null : opportunity.getOpportunityName(),
+              activity.getCompanyId() != null
+                  ? activity.getCompanyId()
+                  : opportunity == null ? null : opportunity.getCompanyId(),
+              opportunity == null ? null : opportunity.getContactId()));
+    }
+    return map;
+  }
 
-    // 联络任务：任务标题 + 任务内容 + 结束时间
+  /** 联络任务摘要：任务标题 + 任务内容 + 结束时间 */
+  private Map<Long, RecordBrief> collectTaskBriefs(List<AssistVO> voList) {
     Set<Long> taskIds = collectRecordIds(voList, ModelName.CONTACT_TASK);
-    if (!taskIds.isEmpty()) {
-      Map<Long, RecordBrief> map = new HashMap<>();
-      List<ContactTaskEntity> tasks = contactTaskMapper.selectBatchIds(taskIds);
-      Set<Long> opportunityIds =
-          tasks.stream()
-              .map(ContactTaskEntity::getOpportunityId)
-              .filter(Objects::nonNull)
-              .collect(Collectors.toSet());
-      Map<Long, SalesOpportunityEntity> opportunityMap =
-          opportunityIds.isEmpty()
-              ? Collections.emptyMap()
-              : salesOpportunityMapper.selectBatchIds(opportunityIds).stream()
-                  .collect(Collectors.toMap(SalesOpportunityEntity::getId, Function.identity()));
-      for (ContactTaskEntity task : tasks) {
-        SalesOpportunityEntity opportunity =
-            task.getOpportunityId() == null ? null : opportunityMap.get(task.getOpportunityId());
-        map.put(
-            task.getId(),
-            new RecordBrief(
-                "联络任务：" + (task.getTaskTitle() == null ? "" : task.getTaskTitle()),
-                task.getTaskContent(),
-                toLocalDateTime(task.getEndTime()),
-                task.getOpportunityId(),
-                opportunity == null ? null : opportunity.getOpportunityName(),
-                task.getCompanyId() != null
-                    ? task.getCompanyId()
-                    : opportunity == null ? null : opportunity.getCompanyId(),
-                task.getContactId() != null
-                    ? task.getContactId()
-                    : opportunity == null ? null : opportunity.getContactId()));
-      }
-      briefsByModel.put(ModelName.CONTACT_TASK, map);
+    if (taskIds.isEmpty()) {
+      return Collections.emptyMap();
     }
+    Map<Long, RecordBrief> map = new HashMap<>();
+    List<ContactTaskEntity> tasks = contactTaskMapper.selectBatchIds(taskIds);
+    Set<Long> opportunityIds =
+        tasks.stream()
+            .map(ContactTaskEntity::getOpportunityId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+    Map<Long, SalesOpportunityEntity> opportunityMap = loadOpportunityMap(opportunityIds);
+    for (ContactTaskEntity task : tasks) {
+      SalesOpportunityEntity opportunity =
+          task.getOpportunityId() == null ? null : opportunityMap.get(task.getOpportunityId());
+      map.put(
+          task.getId(),
+          new RecordBrief(
+              "联络任务：" + (task.getTaskTitle() == null ? "" : task.getTaskTitle()),
+              task.getTaskContent(),
+              toLocalDateTime(task.getEndTime()),
+              task.getOpportunityId(),
+              opportunity == null ? null : opportunity.getOpportunityName(),
+              task.getCompanyId() != null
+                  ? task.getCompanyId()
+                  : opportunity == null ? null : opportunity.getCompanyId(),
+              task.getContactId() != null
+                  ? task.getContactId()
+                  : opportunity == null ? null : opportunity.getContactId()));
+    }
+    return map;
+  }
 
+  /** 按商机 ID 集合批量加载商机实体映射，空集合直接返回空映射 */
+  private Map<Long, SalesOpportunityEntity> loadOpportunityMap(Set<Long> opportunityIds) {
+    return opportunityIds.isEmpty()
+        ? Collections.emptyMap()
+        : salesOpportunityMapper.selectBatchIds(opportunityIds).stream()
+            .collect(Collectors.toMap(SalesOpportunityEntity::getId, Function.identity()));
+  }
+
+  /** 将各模型摘要回填到 VO；模型或记录缺失时跳过该 VO */
+  private void applyBriefs(
+      List<AssistVO> voList, Map<String, Map<Long, RecordBrief>> briefsByModel) {
     for (AssistVO vo : voList) {
       if (vo.getModelName() == null || vo.getRecordId() == null) {
         continue;
@@ -958,7 +1066,10 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
         vo.setContactId(brief.contactId);
       }
     }
+  }
 
+  /** 批量填充 VO 上的公司/联系人名称 */
+  private void fillCompanyContactNames(List<AssistVO> voList) {
     // 批量填充公司/联系人名称
     Set<Long> companyIds =
         voList.stream()
@@ -1477,6 +1588,19 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
     if (assist == null) {
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "协助记录不存在");
     }
+    requireAssistParticipant(assist, userId, "当前用户不是本次协助参与人");
+    if (!Objects.equals(assist.getAssistStatus(), 0)) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "协助已结束，不再提供实时来源附件");
+    }
+    if (expectedModelName != null && !Objects.equals(expectedModelName, assist.getModelName())) {
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "协助来源与请求详情类型不匹配");
+    }
+    return assist;
+  }
+
+  /** 校验用户存在且在职，并要求是本次协助参与人（管理员或申请人/协助人） */
+  private void requireAssistParticipant(
+      AssistRequestEntity assist, Long userId, String participantMessage) {
     UserEntity user = userMapper.selectById(userId);
     if (user == null || !Objects.equals(user.getStatus(), 1)) {
       throw new BaseException(ErrorCode.PERMISSION_DENIED, "当前用户不可访问协助来源附件");
@@ -1487,15 +1611,8 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
             || Objects.equals(assist.getApplicantId(), userId)
             || Objects.equals(assist.getAssistUserId(), userId);
     if (!participant) {
-      throw new BaseException(ErrorCode.PERMISSION_DENIED, "当前用户不是本次协助参与人");
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, participantMessage);
     }
-    if (!Objects.equals(assist.getAssistStatus(), 0)) {
-      throw new BaseException(ErrorCode.PERMISSION_DENIED, "协助已结束，不再提供实时来源附件");
-    }
-    if (expectedModelName != null && !Objects.equals(expectedModelName, assist.getModelName())) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "协助来源与请求详情类型不匹配");
-    }
-    return assist;
   }
 
   /**
@@ -1515,6 +1632,15 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
     if (!ModelName.CONTACT_TASK.equals(assist.getModelName())) {
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "当前协助来源不是联络任务");
     }
+    requireTaskParticipant(assist, userId);
+    if (!Objects.equals(assist.getAssistStatus(), 0)) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "协助已结束，不再提供实时来源附件");
+    }
+    return assist;
+  }
+
+  /** 校验用户存在且在职，并要求是本次协助的任务参与人（管理员/申请人/协助人/业务负责人） */
+  private void requireTaskParticipant(AssistRequestEntity assist, Long userId) {
     UserEntity user = userMapper.selectById(userId);
     if (user == null || !Objects.equals(user.getStatus(), 1)) {
       throw new BaseException(ErrorCode.PERMISSION_DENIED, "当前用户不可访问协助来源附件");
@@ -1527,15 +1653,30 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
     if (!participant) {
       throw new BaseException(ErrorCode.PERMISSION_DENIED, "当前用户不是本次协助的任务参与人");
     }
-    if (!Objects.equals(assist.getAssistStatus(), 0)) {
-      throw new BaseException(ErrorCode.PERMISSION_DENIED, "协助已结束，不再提供实时来源附件");
-    }
-    return assist;
   }
 
   @Override
   @Transactional(rollbackFor = Exception.class)
   public Long reapply(Long originalAssistId, List<AssistApplyItem> applyList) {
+    AssistRequestEntity original = requireReappliableOriginal(originalAssistId);
+    Long currentId = BaseUnit.getCurrentId();
+    AssistApplyItem item = validateReapplyItem(applyList, original, currentId);
+    assertNoPendingOrReapplied(original, originalAssistId);
+    assertReapplyAssistUserActive(original);
+
+    AssistRequestEntity entity = buildReapplyEntity(original, currentId, item, originalAssistId);
+    try {
+      save(entity);
+      assistMessageService.appendSystemMessage(entity.getId(), "已重新发起协助申请");
+      return entity.getId();
+    } catch (DuplicateKeyException e) {
+      // 并发请求可能同时通过上面的查询；唯一索引是最后一道防线。
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "该协助申请已重新发起，请勿重复提交");
+    }
+  }
+
+  /** 重新申请的前置校验：原记录存在、当前用户是申请人或业务负责人、且原记录处于已驳回状态 */
+  private AssistRequestEntity requireReappliableOriginal(Long originalAssistId) {
     if (originalAssistId == null) {
       throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
@@ -1551,6 +1692,12 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
     if (!Objects.equals(original.getAssistStatus(), 2)) {
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "仅已驳回的协助申请可以重新申请");
     }
+    return original;
+  }
+
+  /** 重新申请的条目校验：仅一条、协助人必选且必须是原协助人、不能是自己、目的/要求必填；返回该条目 */
+  private AssistApplyItem validateReapplyItem(
+      List<AssistApplyItem> applyList, AssistRequestEntity original, Long currentId) {
     if (applyList == null || applyList.size() != 1) {
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "重新申请只能针对原协助人逐条发起");
     }
@@ -1569,7 +1716,11 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
     if (purpose == null || requirement == null) {
       throw new BaseException(ErrorCode.PARAM_REQUIRED, "协作目的与协作要求不能为空");
     }
+    return item;
+  }
 
+  /** 幂等校验：同一业务同一协助人不能有待协助记录；重申请链只能针对最新驳回记录继续 */
+  private void assertNoPendingOrReapplied(AssistRequestEntity original, Long originalAssistId) {
     // 同一业务的同一协助人只能保留一条待协助记录，避免重复待办。
     long pendingCount =
         count(
@@ -1588,32 +1739,32 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
         > 0) {
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "该协助申请已有重新申请记录，请针对最新驳回记录重新申请");
     }
+  }
 
+  /** 校验原协助人仍存在且在职（status=1） */
+  private void assertReapplyAssistUserActive(AssistRequestEntity original) {
     UserEntity assistUser = userMapper.selectById(original.getAssistUserId());
     if (assistUser == null || !Objects.equals(assistUser.getStatus(), 1)) {
       throw new BaseException(
           ErrorCode.PARAM_FORMAT_ERROR, "协助人不存在或已冻结/离职：用户ID " + original.getAssistUserId());
     }
+  }
 
+  /** 由原记录与新条目构建重申请实体（挂 parentId 形成重申请链） */
+  private AssistRequestEntity buildReapplyEntity(
+      AssistRequestEntity original, Long currentId, AssistApplyItem item, Long originalAssistId) {
     AssistRequestEntity entity = new AssistRequestEntity();
     entity.setModelName(original.getModelName());
     entity.setRecordId(original.getRecordId());
     entity.setApplicantId(currentId);
-    entity.setApplyPurpose(purpose);
-    entity.setApplyRequirement(requirement);
+    entity.setApplyPurpose(trimToNull(item.getApplyPurpose()));
+    entity.setApplyRequirement(trimToNull(item.getApplyRequirement()));
     entity.setAssistUserId(original.getAssistUserId());
     entity.setAssistStatus(0);
     entity.setPendingKey("PENDING");
     entity.setParentId(originalAssistId);
     entity.setCreateTime(LocalDateTime.now());
-    try {
-      save(entity);
-      assistMessageService.appendSystemMessage(entity.getId(), "已重新发起协助申请");
-      return entity.getId();
-    } catch (DuplicateKeyException e) {
-      // 并发请求可能同时通过上面的查询；唯一索引是最后一道防线。
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "该协助申请已重新发起，请勿重复提交");
-    }
+    return entity;
   }
 
   @Override
