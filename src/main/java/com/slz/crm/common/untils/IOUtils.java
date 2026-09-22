@@ -136,64 +136,11 @@ public class IOUtils {
     ApprovalAttachmentEntity attachment = new ApprovalAttachmentEntity();
 
     try {
-      // 如果 fileName 为空，使用上传文件的原始文件名
-      if ((dto.getFileName() == null || dto.getFileName().trim().isEmpty())
-          && dto.getFileData() != null
-          && dto.getFileData().getOriginalFilename() != null) {
-        dto.setFileName(dto.getFileData().getOriginalFilename());
-      }
-
-      // 在文件名后面添加时间戳后缀（在扩展名之前）
-      String originalFileName = dto.getFileName();
-      String fileExtension = "";
-      String fileNameWithoutExt = originalFileName;
-
-      // 分离文件扩展名
-      int lastDotIndex = originalFileName.lastIndexOf(".");
-      if (lastDotIndex > 0) {
-        fileExtension = originalFileName.substring(lastDotIndex); // 包含点号，如 ".png"
-        fileNameWithoutExt = originalFileName.substring(0, lastDotIndex);
-      }
-
-      // 生成时间戳（毫秒级）
-      String timestamp = String.valueOf(System.currentTimeMillis());
-
-      // 组合新文件名：原始文件名-时间戳.扩展名
-      String newFileName = fileNameWithoutExt + "-" + timestamp + fileExtension;
-      dto.setFileName(newFileName);
+      applyTimestampedFileName(dto);
 
       File file = getFileByDTO(dto);
 
-      File parentDir = file.getParentFile();
-
-      // 检查父目录路径是否被一个文件占用了
-      if (parentDir.exists() && parentDir.isFile()) {
-        LOG.warn("父目录路径被一个文件占用了，将删除该文件: {}", parentDir.getAbsolutePath());
-        boolean deleteSuccess = parentDir.delete();
-        if (!deleteSuccess) {
-          throw new IOException("无法删除占用父目录路径的文件: " + parentDir.getAbsolutePath());
-        }
-      }
-
-      if (!parentDir.exists()) {
-        // 递归创建多级目录
-        boolean mkdirsSuccess = parentDir.mkdirs();
-        if (!mkdirsSuccess) {
-          throw new IOException("无法创建目录: " + parentDir.getAbsolutePath());
-        }
-        // 再次验证目录是否真的创建成功
-        if (!parentDir.exists()) {
-          throw new IOException("目录创建失败: " + parentDir.getAbsolutePath());
-        }
-      }
-
-      // 如果文件已存在，先删除
-      if (file.exists()) {
-        boolean deleteSuccess = file.delete();
-        if (!deleteSuccess) {
-          throw new IOException("无法删除已存在的文件: " + file.getAbsolutePath());
-        }
-      }
+      prepareTargetFile(file);
 
       MultipartFile fileData = dto.getFileData();
       if (fileData != null) {
@@ -201,32 +148,96 @@ public class IOUtils {
       }
 
       BeanUtils.copyProperties(dto, attachment);
-      // 设置文件类型
-      if (fileData != null) {
-        attachment.setFileType(fileData.getContentType());
-      }
-      // 设置文件路径
-      if (fileData != null) {
-        String modelName = dto.getModelName() != null ? dto.getModelName() : "default";
-        attachment.setFilePath(
-            filePath
-                + FILE_SEPARATOR
-                + modelName
-                + FILE_SEPARATOR
-                + dto.getAndId()
-                + FILE_SEPARATOR);
-      }
-      // 设置文件大小
-      if (fileData != null) {
-        attachment.setFileSize(fileData.getSize());
-      }
-      // 设置上传时间
-      attachment.setUploadTime(java.time.LocalDateTime.now());
+      fillAttachmentMetadata(attachment, dto, fileData);
 
       return attachment;
     } catch (IOException e) {
       throw new ServiceException(MessageConstant.FILE_CREATE_ERROR, e);
     }
+  }
+
+  /** 生成带时间戳的文件名：fileName 为空时回退上传原始文件名，时间戳插在扩展名之前 */
+  private static void applyTimestampedFileName(ApprovalAttachmentDTO dto) {
+    // 如果 fileName 为空，使用上传文件的原始文件名
+    if ((dto.getFileName() == null || dto.getFileName().trim().isEmpty())
+        && dto.getFileData() != null
+        && dto.getFileData().getOriginalFilename() != null) {
+      dto.setFileName(dto.getFileData().getOriginalFilename());
+    }
+
+    // 在文件名后面添加时间戳后缀（在扩展名之前）
+    String originalFileName = dto.getFileName();
+    String fileExtension = "";
+    String fileNameWithoutExt = originalFileName;
+
+    // 分离文件扩展名
+    int lastDotIndex = originalFileName.lastIndexOf(".");
+    if (lastDotIndex > 0) {
+      fileExtension = originalFileName.substring(lastDotIndex); // 包含点号，如 ".png"
+      fileNameWithoutExt = originalFileName.substring(0, lastDotIndex);
+    }
+
+    // 生成时间戳（毫秒级）
+    String timestamp = String.valueOf(System.currentTimeMillis());
+
+    // 组合新文件名：原始文件名-时间戳.扩展名
+    String newFileName = fileNameWithoutExt + "-" + timestamp + fileExtension;
+    dto.setFileName(newFileName);
+  }
+
+  /** 准备目标文件位置：清理被文件占用的父目录路径、递归建目录、删除已存在的同名文件 */
+  private static void prepareTargetFile(File file) throws IOException {
+    File parentDir = file.getParentFile();
+
+    // 检查父目录路径是否被一个文件占用了
+    if (parentDir.exists() && parentDir.isFile()) {
+      LOG.warn("父目录路径被一个文件占用了，将删除该文件: {}", parentDir.getAbsolutePath());
+      boolean deleteSuccess = parentDir.delete();
+      if (!deleteSuccess) {
+        throw new IOException("无法删除占用父目录路径的文件: " + parentDir.getAbsolutePath());
+      }
+    }
+
+    if (!parentDir.exists()) {
+      // 递归创建多级目录
+      boolean mkdirsSuccess = parentDir.mkdirs();
+      if (!mkdirsSuccess) {
+        throw new IOException("无法创建目录: " + parentDir.getAbsolutePath());
+      }
+      // 再次验证目录是否真的创建成功
+      if (!parentDir.exists()) {
+        throw new IOException("目录创建失败: " + parentDir.getAbsolutePath());
+      }
+    }
+
+    // 如果文件已存在，先删除
+    if (file.exists()) {
+      boolean deleteSuccess = file.delete();
+      if (!deleteSuccess) {
+        throw new IOException("无法删除已存在的文件: " + file.getAbsolutePath());
+      }
+    }
+  }
+
+  /** 在实体上填充文件元数据：类型 / 路径 / 大小（有上传数据才填）与上传时间 */
+  private static void fillAttachmentMetadata(
+      ApprovalAttachmentEntity attachment, ApprovalAttachmentDTO dto, MultipartFile fileData) {
+    // 设置文件类型
+    if (fileData != null) {
+      attachment.setFileType(fileData.getContentType());
+    }
+    // 设置文件路径
+    if (fileData != null) {
+      String modelName = dto.getModelName() != null ? dto.getModelName() : "default";
+      attachment.setFilePath(
+          filePath + FILE_SEPARATOR + modelName + FILE_SEPARATOR + dto.getAndId() + FILE_SEPARATOR);
+    }
+    // 设置文件大小
+    if (fileData != null) {
+      attachment.setFileSize(fileData.getSize());
+    }
+    // 设置上传时间
+    attachment.setUploadTime(java.time.LocalDateTime.now());
   }
 
   /**
@@ -411,66 +422,87 @@ public class IOUtils {
       }
 
       // 检查所有分片是否都存在
-      for (int i = 0; i < dto.getTotalChunks(); i++) {
-        File chunkFile = getChunkFile(dto.getFileIdentifier(), i);
-        if (!chunkFile.exists()) {
-          throw new ServiceException(String.format(MessageConstant.CHUNK_FILE_NOT_EXIST, i));
-        }
-      }
+      assertAllChunksExist(dto);
 
       // 创建目标文件
-      ApprovalAttachmentDTO attachmentDTO = new ApprovalAttachmentDTO();
-      attachmentDTO.setAndId(dto.getAndId());
-      attachmentDTO.setModelName(dto.getModelName());
-      attachmentDTO.setFileName(dto.getFileName());
-      attachmentDTO.setFileType(dto.getFileType());
-
-      File targetFile = getFileByDTO(attachmentDTO);
-      File parentDir = targetFile.getParentFile();
-      if (!parentDir.exists()) {
-        boolean mkdirsSuccess = parentDir.mkdirs();
-        if (!mkdirsSuccess) {
-          throw new IOException("无法创建目录: " + parentDir.getAbsolutePath());
-        }
-      }
+      File targetFile = prepareMergeTargetFile(dto);
 
       // 合并分片
-      try (FileOutputStream fos = new FileOutputStream(targetFile)) {
-        for (int i = 0; i < dto.getTotalChunks(); i++) {
-          File chunkFile = getChunkFile(dto.getFileIdentifier(), i);
-          try (FileInputStream fis = new FileInputStream(chunkFile)) {
-            byte[] buffer = new byte[8192];
-            int bytesRead;
-            while ((bytesRead = fis.read(buffer)) != -1) {
-              fos.write(buffer, 0, bytesRead);
-            }
-          }
-        }
-      }
+      writeMergedChunks(dto, targetFile);
 
-      // 创建文件实体
-      ApprovalAttachmentEntity entity = new ApprovalAttachmentEntity();
-      entity.setAndId(dto.getAndId());
-      entity.setModelName(dto.getModelName());
-      entity.setFileName(dto.getFileName());
-      entity.setFileType(dto.getFileType());
-      // 优先使用实际文件大小，如果totalSize为null则使用合并后的文件大小
-      if (dto.getTotalSize() != null && dto.getTotalSize() > 0) {
-        entity.setFileSize(dto.getTotalSize());
-      } else {
-        // 从合并后的文件获取实际大小
-        long actualFileSize = targetFile.length();
-        entity.setFileSize(actualFileSize);
-      }
-
-      String modelName = dto.getModelName() != null ? dto.getModelName() : "default";
-      entity.setFilePath(
-          filePath + FILE_SEPARATOR + modelName + FILE_SEPARATOR + dto.getAndId() + FILE_SEPARATOR);
-
-      return entity;
+      return buildMergedEntity(dto, targetFile);
     } catch (IOException e) {
       throw new ServiceException(MessageConstant.FILE_CREATE_ERROR, e);
     }
+  }
+
+  /** 校验全部分片文件是否都已上传，缺任一片即报错 */
+  private static void assertAllChunksExist(ChunkMergeDTO dto) {
+    for (int i = 0; i < dto.getTotalChunks(); i++) {
+      File chunkFile = getChunkFile(dto.getFileIdentifier(), i);
+      if (!chunkFile.exists()) {
+        throw new ServiceException(String.format(MessageConstant.CHUNK_FILE_NOT_EXIST, i));
+      }
+    }
+  }
+
+  /** 根据合并 DTO 构造目标文件对象，父目录不存在时递归创建 */
+  private static File prepareMergeTargetFile(ChunkMergeDTO dto) throws IOException {
+    ApprovalAttachmentDTO attachmentDTO = new ApprovalAttachmentDTO();
+    attachmentDTO.setAndId(dto.getAndId());
+    attachmentDTO.setModelName(dto.getModelName());
+    attachmentDTO.setFileName(dto.getFileName());
+    attachmentDTO.setFileType(dto.getFileType());
+
+    File targetFile = getFileByDTO(attachmentDTO);
+    File parentDir = targetFile.getParentFile();
+    if (!parentDir.exists()) {
+      boolean mkdirsSuccess = parentDir.mkdirs();
+      if (!mkdirsSuccess) {
+        throw new IOException("无法创建目录: " + parentDir.getAbsolutePath());
+      }
+    }
+    return targetFile;
+  }
+
+  /** 按分片顺序将各分片内容顺序写入目标文件 */
+  private static void writeMergedChunks(ChunkMergeDTO dto, File targetFile) throws IOException {
+    try (FileOutputStream fos = new FileOutputStream(targetFile)) {
+      for (int i = 0; i < dto.getTotalChunks(); i++) {
+        File chunkFile = getChunkFile(dto.getFileIdentifier(), i);
+        try (FileInputStream fis = new FileInputStream(chunkFile)) {
+          byte[] buffer = new byte[8192];
+          int bytesRead;
+          while ((bytesRead = fis.read(buffer)) != -1) {
+            fos.write(buffer, 0, bytesRead);
+          }
+        }
+      }
+    }
+  }
+
+  /** 由合并 DTO 与实际落盘文件构建附件实体（文件大小优先取 DTO 声明值，否则取实际大小） */
+  private static ApprovalAttachmentEntity buildMergedEntity(ChunkMergeDTO dto, File targetFile) {
+    // 创建文件实体
+    ApprovalAttachmentEntity entity = new ApprovalAttachmentEntity();
+    entity.setAndId(dto.getAndId());
+    entity.setModelName(dto.getModelName());
+    entity.setFileName(dto.getFileName());
+    entity.setFileType(dto.getFileType());
+    // 优先使用实际文件大小，如果totalSize为null则使用合并后的文件大小
+    if (dto.getTotalSize() != null && dto.getTotalSize() > 0) {
+      entity.setFileSize(dto.getTotalSize());
+    } else {
+      // 从合并后的文件获取实际大小
+      long actualFileSize = targetFile.length();
+      entity.setFileSize(actualFileSize);
+    }
+
+    String modelName = dto.getModelName() != null ? dto.getModelName() : "default";
+    entity.setFilePath(
+        filePath + FILE_SEPARATOR + modelName + FILE_SEPARATOR + dto.getAndId() + FILE_SEPARATOR);
+
+    return entity;
   }
 
   /**

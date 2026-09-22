@@ -76,13 +76,21 @@ public class CustomerContactListener implements ReadListener<CustomerContactExce
     if (customerContact.getCreatorId() == null) {
       customerContact.setCreatorId(ownerId);
     }
-    // 判断是否通过公司名称添加公司
-    CustomerCompanyEntity customerCompany;
+    resolveCompany(customerContact, customerContactExcel);
 
-    // 判断是否填写公司 ID，如果没有填写，则通过公司名称进行添加
+    // 存储备注数据（与 dataList 索引对应）
+    List<CustomerContactRemarkEntity> remarks = parseRemarks(customerContactExcel, ownerId);
+    remarkList.add(remarks);
+
+    dataList.add(customerContact);
+  }
+
+  /** 判断是否通过公司名称添加公司：未填公司 ID 时按名称查询（只查未删除的），查不到报错 */
+  private void resolveCompany(
+      CustomerContactEntity customerContact, CustomerContactExcel customerContactExcel) {
     if (customerContactExcel.getCompanyId() == null) {
       // 通过公司名称添加公司（只查询未删除的公司）
-      customerCompany =
+      CustomerCompanyEntity customerCompany =
           customerCompanyMapper.selectOne(
               new LambdaQueryWrapper<CustomerCompanyEntity>()
                   .eq(CustomerCompanyEntity::getCompanyName, customerContactExcel.getCompanyName())
@@ -97,12 +105,6 @@ public class CustomerContactListener implements ReadListener<CustomerContactExce
 
       customerContact.setCompanyId(customerCompany.getId());
     }
-
-    // 存储备注数据（与 dataList 索引对应）
-    List<CustomerContactRemarkEntity> remarks = parseRemarks(customerContactExcel, ownerId);
-    remarkList.add(remarks);
-
-    dataList.add(customerContact);
   }
 
   /** 解析 Excel 中的备注列，生成备注实体列表 */
@@ -145,31 +147,40 @@ public class CustomerContactListener implements ReadListener<CustomerContactExce
 
     // 4. 解析亲属信息（类型 4，格式：姓名:日期;姓名:日期）
     if (excel.getRelativeInfo() != null && !excel.getRelativeInfo().trim().isEmpty()) {
-      String[] relativeItems = excel.getRelativeInfo().trim().split(";");
-      for (String item : relativeItems) {
-        if (item.trim().isEmpty()) {
-          continue;
-        }
-        String[] parts = item.trim().split(":");
-        if (parts.length != 2) {
-          throw new BaseException(ErrorCode.EXCEL_FORMAT_ERROR, "亲属信息格式错误，应为：姓名:日期;姓名:日期");
-        }
-        try {
-          String name = parts[0].trim();
-          LocalDate birthday = LocalDate.parse(parts[1].trim(), formatter);
-          CustomerContactRemarkEntity remark = new CustomerContactRemarkEntity();
-          remark.setRemarkType(4);
-          remark.setRemarkName(name);
-          remark.setRemarkDate(birthday);
-          remark.setCreatorId(creatorId);
-          remarkList.add(remark);
-        } catch (DateTimeParseException e) {
-          throw new BaseException(ErrorCode.EXCEL_FORMAT_ERROR, "亲属信息中日期格式错误，应为 yyyy-MM-dd");
-        }
-      }
+      parseRelativeRemarks(excel.getRelativeInfo(), creatorId, formatter, remarkList);
     }
 
     return remarkList;
+  }
+
+  /** 解析亲属信息备注项（格式：姓名:日期;姓名:日期），逐项生成类型 4 的备注实体 */
+  private void parseRelativeRemarks(
+      String relativeInfo,
+      Long creatorId,
+      DateTimeFormatter formatter,
+      List<CustomerContactRemarkEntity> remarkList) {
+    String[] relativeItems = relativeInfo.trim().split(";");
+    for (String item : relativeItems) {
+      if (item.trim().isEmpty()) {
+        continue;
+      }
+      String[] parts = item.trim().split(":");
+      if (parts.length != 2) {
+        throw new BaseException(ErrorCode.EXCEL_FORMAT_ERROR, "亲属信息格式错误，应为：姓名:日期;姓名:日期");
+      }
+      try {
+        String name = parts[0].trim();
+        LocalDate birthday = LocalDate.parse(parts[1].trim(), formatter);
+        CustomerContactRemarkEntity remark = new CustomerContactRemarkEntity();
+        remark.setRemarkType(4);
+        remark.setRemarkName(name);
+        remark.setRemarkDate(birthday);
+        remark.setCreatorId(creatorId);
+        remarkList.add(remark);
+      } catch (DateTimeParseException e) {
+        throw new BaseException(ErrorCode.EXCEL_FORMAT_ERROR, "亲属信息中日期格式错误，应为 yyyy-MM-dd");
+      }
+    }
   }
 
   @Override
