@@ -111,16 +111,16 @@ public class AiChatServiceImpl implements AiChatService {
     streamChat(request, emitter, null);
   }
 
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // LLM流式+异步编排多源，失败统一送错误事件并收尾
+  @SuppressWarnings({"PMD.AvoidCatchingGenericException", "PMD.OnlyOneReturn"})
+  // OnlyOneReturn 豁免理由（tighten-pmd-residual-325 任务 6.2）：前置校验各失败分支均需「发错误事件 + complete 后终止」，属守卫式早返回；
+  // 拆分后仍无法等价合并为单出口，机械合并需引入完成标志贯穿全流程，伤害可读性（Q7 拍板口径）。
   private void doStreamChat(
       RoleAO currentUser, AssistantChatRequest request, SseEmitter emitter, AiChatResume resume) {
     BaseUnit.setCurrentRole(currentUser);
     Long userId = currentUser == null ? null : currentUser.getId();
 
     try {
-      if (request.message() == null || request.message().isBlank()) {
-        eventWriter.sendError(emitter, "PARAM_INVALID", "消息内容不能为空");
-        emitter.complete();
+      if (rejectIfBlankMessage(request, emitter)) {
         return;
       }
 
@@ -137,9 +137,7 @@ public class AiChatServiceImpl implements AiChatService {
         return;
       }
 
-      if (!aiRateLimiter.tryAcquire(userId)) {
-        eventWriter.sendError(emitter, "RATE_LIMITED", "操作过于频繁，请稍后再试");
-        emitter.complete();
+      if (rejectIfRateLimited(userId, emitter)) {
         return;
       }
 
@@ -151,110 +149,170 @@ public class AiChatServiceImpl implements AiChatService {
       if (session == null) {
         session = aiSessionService.createSession(userId, null);
         isNewSession = true;
-      } else if (session.getStatus() != null && session.getStatus() == 0) {
-        eventWriter.sendError(emitter, "SESSION_ARCHIVED", "会话已归档，请新建会话");
-        emitter.complete();
+      } else if (rejectIfArchived(session, emitter)) {
         return;
       }
 
-      Long finalSessionId = session.getId();
       boolean needTitle = isNewSession || DEFAULT_TITLE.equals(session.getTitle());
-      java.util.Optional<AiChatImageUnderstandingService.UnderstandingContext> imageContext =
-          java.util.Optional.empty();
-      if (request.imageRef() != null && !request.imageRef().isBlank()) {
-        if (aiChatImageService == null || aiChatImageUnderstandingService == null) {
-          eventWriter.sendError(emitter, "DEPENDENCY_UNAVAILABLE", "图片服务未就绪");
-          emitter.complete();
-          return;
-        }
-        java.util.Optional<AiChatImageEntity> image =
-            aiChatImageService.findByRef(finalSessionId, request.imageRef());
-        if (image.isEmpty()) {
-          eventWriter.sendError(emitter, "PARAM_INVALID", "图片引用无效或无权访问");
-          emitter.complete();
-          return;
-        }
-        imageContext =
-            aiChatImageUnderstandingService.understand(
-                image.get(), request.message(), request.useKnowledgeBase());
+      ImagePreparation imagePrep = prepareImageContext(session.getId(), request, emitter);
+      if (imagePrep == null) {
+        // 图片分支内部已发错误事件并 complete，直接终止
+        return;
       }
-      float[] imageVector =
-          imageContext
-              .map(AiChatImageUnderstandingService.UnderstandingContext::imageVector)
-              .orElse(null);
-      Lock takeoverLock = aiStreamRegistry.takeoverLock(finalSessionId);
-      takeoverLock.lock();
-      try {
-        // 接管只顶替注册表；旧流在下一个 shouldAbort 检查点协作退出，此处不需要旧流句柄。
 
-        String message = request.message();
-        List<Message> messages = promptService.buildMessages(finalSessionId, message);
-        imageContext.ifPresent(
-            context -> messages.add(1, new SystemMessage(toImageContextPrompt(context))));
-        AiChatKnowledgeRetrievalService.RetrievalOutcome retrieval =
-            knowledgeRetrievalService == null
-                ? AiChatKnowledgeRetrievalService.RetrievalOutcome.empty()
-                : knowledgeRetrievalService.retrieve(
-                    lastUserMessage(messages), userId, imageVector, request.useKnowledgeBase());
-        if (retrieval.context() != null && !retrieval.context().isBlank()) {
-          messages.add(imageContext.isPresent() ? 2 : 1, new SystemMessage(retrieval.context()));
-        }
-        aiMessageService.saveMessage(finalSessionId, "user", "text", message, null);
-        AiMessageEntity assistantMessage = assistantMessageStore.createPlaceholder(finalSessionId);
-        AiStreamRegistry.ActiveStream activeStream =
-            new AiStreamRegistry.ActiveStream(
-                finalSessionId, emitter, java.util.UUID.randomUUID().toString());
-        activeStream.setAssistantMessageId(assistantMessage.getId());
-        eventWriter.sendBufferedEvent(
-            activeStream,
-            "start",
-            eventWriter.toStartJson(
-                String.valueOf(finalSessionId),
-                assistantMessage.getId(),
-                activeStream.getGenerationId()));
-        eventWriter.sendBufferedEvent(
-            activeStream,
-            "meta",
-            eventWriter.toMetaJson(
-                resolveProvider(),
-                resolveModelName(),
-                request.useKnowledgeBase(),
-                request.thinking()));
-        if (retrieval.hasSources()) {
-          eventWriter.sendBufferedEvent(
-              activeStream, "sources", eventWriter.toSourcesJson(retrieval.sources()));
-        }
-
-        List<ToolCallback> toolCallbacks = permittedToolCallbacks(currentUser);
-        activeStream.setContext(
-            AiChatStreamContext.initial(
-                finalSessionId,
-                emitter,
-                messages,
-                toolCallbacks,
-                System.currentTimeMillis(),
-                currentUser,
-                request.thinking()));
-        activeStream.setSources(retrieval.sources());
-        aiStreamRegistry.register(finalSessionId, activeStream);
-        emitter.onCompletion(() -> streamLifecycle.cleanup(activeStream, "onCompletion"));
-        emitter.onTimeout(() -> streamLifecycle.cleanup(activeStream, "onTimeout"));
-        generateTitleAsync(finalSessionId, userId, message, needTitle, activeStream);
-        if (activeStream.isFinished()) {
-          assistantMessageStore.deleteIfEmpty(activeStream.getAssistantMessageId());
-          return;
-        }
-
-        streamLifecycle.subscribe(activeStream, activeStream.getContext());
-      } finally {
-        takeoverLock.unlock();
-      }
+      dispatchChatStream(currentUser, request, emitter, session, imagePrep, needTitle);
     } catch (Exception exception) {
       log.error("AI chat failed, sessionId={}", request.sessionId(), exception);
       eventWriter.sendError(emitter, "LLM_ERROR", "模型调用失败，请稍后重试");
       emitter.complete();
     } finally {
       BaseUnit.removeCurrentId();
+    }
+  }
+
+  /** 消息内容空校验：为空发 PARAM_INVALID 错误事件并 complete 会话 */
+  private boolean rejectIfBlankMessage(AssistantChatRequest request, SseEmitter emitter) {
+    boolean rejected = request.message() == null || request.message().isBlank();
+    if (rejected) {
+      eventWriter.sendError(emitter, "PARAM_INVALID", "消息内容不能为空");
+      emitter.complete();
+    }
+    return rejected;
+  }
+
+  /** 限流检查：未取得令牌发 RATE_LIMITED 错误事件并 complete 会话 */
+  private boolean rejectIfRateLimited(Long userId, SseEmitter emitter) {
+    boolean rejected = !aiRateLimiter.tryAcquire(userId);
+    if (rejected) {
+      eventWriter.sendError(emitter, "RATE_LIMITED", "操作过于频繁，请稍后再试");
+      emitter.complete();
+    }
+    return rejected;
+  }
+
+  /** 已归档会话检查：发 SESSION_ARCHIVED 错误事件并 complete 会话 */
+  private boolean rejectIfArchived(AiSessionEntity session, SseEmitter emitter) {
+    boolean archived = session.getStatus() != null && session.getStatus() == 0;
+    if (archived) {
+      eventWriter.sendError(emitter, "SESSION_ARCHIVED", "会话已归档，请新建会话");
+      emitter.complete();
+    }
+    return archived;
+  }
+
+  /** 图片上下文准备结果；null 表示图片分支已发错误并终止会话 */
+  private record ImagePreparation(
+      java.util.Optional<AiChatImageUnderstandingService.UnderstandingContext> context) {}
+
+  /** 解析图片引用为理解上下文：未带图片引用返回空上下文；服务未就绪或引用无效时发错误事件并 complete 后返回 null。 */
+  private ImagePreparation prepareImageContext(
+      Long finalSessionId, AssistantChatRequest request, SseEmitter emitter) {
+    ImagePreparation result;
+    if (request.imageRef() == null || request.imageRef().isBlank()) {
+      result = new ImagePreparation(java.util.Optional.empty());
+    } else if (aiChatImageService == null || aiChatImageUnderstandingService == null) {
+      eventWriter.sendError(emitter, "DEPENDENCY_UNAVAILABLE", "图片服务未就绪");
+      emitter.complete();
+      result = null;
+    } else {
+      java.util.Optional<AiChatImageEntity> image =
+          aiChatImageService.findByRef(finalSessionId, request.imageRef());
+      if (image.isEmpty()) {
+        eventWriter.sendError(emitter, "PARAM_INVALID", "图片引用无效或无权访问");
+        emitter.complete();
+        result = null;
+      } else {
+        result =
+            new ImagePreparation(
+                aiChatImageUnderstandingService.understand(
+                    image.get(), request.message(), request.useKnowledgeBase()));
+      }
+    }
+    return result;
+  }
+
+  /** 持有接管锁后的主链路：构建消息与检索上下文 → 落库占位 → 注册活跃流 → 订阅模型流式输出 */
+  private void dispatchChatStream(
+      RoleAO currentUser,
+      AssistantChatRequest request,
+      SseEmitter emitter,
+      AiSessionEntity session,
+      ImagePreparation imagePrep,
+      boolean needTitle) {
+    Long finalSessionId = session.getId();
+    Long userId = currentUser == null ? null : currentUser.getId();
+    java.util.Optional<AiChatImageUnderstandingService.UnderstandingContext> imageContext =
+        imagePrep.context();
+    float[] imageVector =
+        imageContext
+            .map(AiChatImageUnderstandingService.UnderstandingContext::imageVector)
+            .orElse(null);
+    Lock takeoverLock = aiStreamRegistry.takeoverLock(finalSessionId);
+    takeoverLock.lock();
+    try {
+      // 接管只顶替注册表；旧流在下一个 shouldAbort 检查点协作退出，此处不需要旧流句柄。
+
+      String message = request.message();
+      List<Message> messages = promptService.buildMessages(finalSessionId, message);
+      imageContext.ifPresent(
+          context -> messages.add(1, new SystemMessage(toImageContextPrompt(context))));
+      AiChatKnowledgeRetrievalService.RetrievalOutcome retrieval =
+          knowledgeRetrievalService == null
+              ? AiChatKnowledgeRetrievalService.RetrievalOutcome.empty()
+              : knowledgeRetrievalService.retrieve(
+                  lastUserMessage(messages), userId, imageVector, request.useKnowledgeBase());
+      if (retrieval.context() != null && !retrieval.context().isBlank()) {
+        messages.add(imageContext.isPresent() ? 2 : 1, new SystemMessage(retrieval.context()));
+      }
+      aiMessageService.saveMessage(finalSessionId, "user", "text", message, null);
+      AiMessageEntity assistantMessage = assistantMessageStore.createPlaceholder(finalSessionId);
+      AiStreamRegistry.ActiveStream activeStream =
+          new AiStreamRegistry.ActiveStream(
+              finalSessionId, emitter, java.util.UUID.randomUUID().toString());
+      activeStream.setAssistantMessageId(assistantMessage.getId());
+      eventWriter.sendBufferedEvent(
+          activeStream,
+          "start",
+          eventWriter.toStartJson(
+              String.valueOf(finalSessionId),
+              assistantMessage.getId(),
+              activeStream.getGenerationId()));
+      eventWriter.sendBufferedEvent(
+          activeStream,
+          "meta",
+          eventWriter.toMetaJson(
+              resolveProvider(),
+              resolveModelName(),
+              request.useKnowledgeBase(),
+              request.thinking()));
+      if (retrieval.hasSources()) {
+        eventWriter.sendBufferedEvent(
+            activeStream, "sources", eventWriter.toSourcesJson(retrieval.sources()));
+      }
+
+      List<ToolCallback> toolCallbacks = permittedToolCallbacks(currentUser);
+      activeStream.setContext(
+          AiChatStreamContext.initial(
+              finalSessionId,
+              emitter,
+              messages,
+              toolCallbacks,
+              System.currentTimeMillis(),
+              currentUser,
+              request.thinking()));
+      activeStream.setSources(retrieval.sources());
+      aiStreamRegistry.register(finalSessionId, activeStream);
+      emitter.onCompletion(() -> streamLifecycle.cleanup(activeStream, "onCompletion"));
+      emitter.onTimeout(() -> streamLifecycle.cleanup(activeStream, "onTimeout"));
+      generateTitleAsync(finalSessionId, userId, message, needTitle, activeStream);
+      if (activeStream.isFinished()) {
+        assistantMessageStore.deleteIfEmpty(activeStream.getAssistantMessageId());
+        return;
+      }
+
+      streamLifecycle.subscribe(activeStream, activeStream.getContext());
+    } finally {
+      takeoverLock.unlock();
     }
   }
 

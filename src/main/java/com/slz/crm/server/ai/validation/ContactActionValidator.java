@@ -109,6 +109,16 @@ public class ContactActionValidator implements AiActionValidator {
       }
     }
 
+    return finishValidation(payload, missingFields, questions, resolved);
+  }
+
+  /** 校验收尾：完全通过时返回 ok（发生字段重写则序列化修正后的 payload），否则返回补问 */
+  private AiValidationResult finishValidation(
+      AiContactDraftPayloadDTO payload,
+      Set<String> missingFields,
+      List<String> questions,
+      boolean resolved) {
+    AiValidationResult result;
     if (missingFields.isEmpty()) {
       if (resolved) {
         try {

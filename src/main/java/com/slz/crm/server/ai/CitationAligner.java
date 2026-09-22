@@ -114,34 +114,13 @@ public final class CitationAligner {
     while (leftEnd > 0 && Character.isWhitespace(answer.charAt(leftEnd - 1))) {
       leftEnd--;
     }
-    int start = leftEnd;
-    while (start > 0) {
-      char c = answer.charAt(start - 1);
-      if (isClauseDelimiter(c)) {
-        break;
-      }
-      if (c == ']' && looksLikeCitationClose(answer, start - 1)) {
-        break;
-      }
-      start--;
-    }
+    int start = clauseStartBefore(answer, leftEnd);
 
     int end = citationEnd;
     while (end < answer.length() && Character.isWhitespace(answer.charAt(end))) {
       end++;
     }
-    int right = end;
-    while (right < answer.length()) {
-      char c = answer.charAt(right);
-      if (isClauseDelimiter(c)) {
-        break;
-      }
-      // 下一处引用 [n] 起边界
-      if (c == '[' && looksLikeCitationOpen(answer, right)) {
-        break;
-      }
-      right++;
-    }
+    int right = clauseEndAfter(answer, end);
 
     String left = answer.substring(start, leftEnd).trim();
     String rightPart = answer.substring(end, right).trim();
@@ -154,6 +133,39 @@ public final class CitationAligner {
       result = left + rightPart;
     }
     return result;
+  }
+
+  /** 从引用编号左端向左扫描子句起点：遇子句分隔符或上一处引用 [n] 闭括号即止 */
+  private static int clauseStartBefore(String answer, int leftEnd) {
+    int start = leftEnd;
+    while (start > 0) {
+      char c = answer.charAt(start - 1);
+      if (isClauseDelimiter(c)) {
+        break;
+      }
+      if (c == ']' && looksLikeCitationClose(answer, start - 1)) {
+        break;
+      }
+      start--;
+    }
+    return start;
+  }
+
+  /** 从引用编号右端向右扫描子句终点：遇子句分隔符或下一处引用 [n] 起边界即止 */
+  private static int clauseEndAfter(String answer, int end) {
+    int right = end;
+    while (right < answer.length()) {
+      char c = answer.charAt(right);
+      if (isClauseDelimiter(c)) {
+        break;
+      }
+      // 下一处引用 [n] 起边界
+      if (c == '[' && looksLikeCitationOpen(answer, right)) {
+        break;
+      }
+      right++;
+    }
+    return right;
   }
 
   private static boolean looksLikeCitationOpen(String answer, int openIdx) {
