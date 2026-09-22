@@ -38,6 +38,7 @@ public final class RagQualityEvaluator {
    * @param k recall@k / precision@k / MRR 的截断排名
    * @return 聚合指标 + 逐条评分的报告
    */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 评估兜底边界：任一用例检索异常也按失败计、整轮继续，需宽捕获
   public static Report evaluate(List<RagBenchmarkCase> suite, RetrievalFunction retrieval, int k) {
     List<CaseScore> scores = new ArrayList<>();
     int n = 0;
