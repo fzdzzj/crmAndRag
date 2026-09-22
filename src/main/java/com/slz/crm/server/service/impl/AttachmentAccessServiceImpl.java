@@ -154,11 +154,27 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
     if (attachment == null || assistId == null || userId == null) {
       throw new BaseException(ErrorCode.PERMISSION_DENIED, "协助附件关联信息不完整");
     }
+    UserEntity user = requireActiveUser(userId, "当前用户不可访问协助附件");
+    AssistRequestEntity assist = assistRequestMapper.selectById(assistId);
+    if (!canReadLiveAssist(assist, user, userId)) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "协助已结束或当前用户不是协助参与人");
+    }
+    if (!attachmentBelongsToAssist(assist, attachment)) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "附件不属于当前协助来源");
+    }
+  }
+
+  /** 校验用户存在且在职（status=1），否则抛指定文案的权限异常；返回用户实体供后续判定复用。 */
+  private UserEntity requireActiveUser(Long userId, String message) {
     UserEntity user = userMapper.selectById(userId);
     if (user == null || !Objects.equals(user.getStatus(), 1)) {
-      throw new BaseException(ErrorCode.PERMISSION_DENIED, "当前用户不可访问协助附件");
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, message);
     }
-    AssistRequestEntity assist = assistRequestMapper.selectById(assistId);
+    return user;
+  }
+
+  /** 实时来源附件的参与人判定：协助存在、当前用户是参与人（申请人/协助人/超管/联络任务实际参与人）且协助未结束。 */
+  private boolean canReadLiveAssist(AssistRequestEntity assist, UserEntity user, Long userId) {
     boolean participant =
         assist != null
             && (Objects.equals(assist.getApplicantId(), userId)
@@ -166,15 +182,16 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
                 || Objects.equals(user.getRoleId(), 1L)
                 // 仅联络任务协助允许任务实际参与人读取本条实时来源附件。
                 || isContactTaskAssistParticipant(assist, userId));
-    if (!participant || !Objects.equals(assist.getAssistStatus(), 0)) {
-      throw new BaseException(ErrorCode.PERMISSION_DENIED, "协助已结束或当前用户不是协助参与人");
-    }
-    if (!Objects.equals(assist.getModelName(), attachment.getModelName())
-        || !Objects.equals(assist.getRecordId(), attachment.getAndId())
-        || (!ModelName.BUSINESS_ACTIVITY.equals(attachment.getModelName())
-            && !ModelName.CONTACT_TASK.equals(attachment.getModelName()))) {
-      throw new BaseException(ErrorCode.PERMISSION_DENIED, "附件不属于当前协助来源");
-    }
+    return participant && Objects.equals(assist.getAssistStatus(), 0);
+  }
+
+  /** 附件必须确实挂在该协助的来源模型与业务记录上，且来源限定为业务活动/联络任务。 */
+  private boolean attachmentBelongsToAssist(
+      AssistRequestEntity assist, ApprovalAttachmentEntity attachment) {
+    return Objects.equals(assist.getModelName(), attachment.getModelName())
+        && Objects.equals(assist.getRecordId(), attachment.getAndId())
+        && (ModelName.BUSINESS_ACTIVITY.equals(attachment.getModelName())
+            || ModelName.CONTACT_TASK.equals(attachment.getModelName()));
   }
 
   private boolean isContactTaskAssistParticipant(AssistRequestEntity assist, Long userId) {
@@ -203,10 +220,7 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
     }
 
     // 第一步：令牌中的用户必须仍是有效在职用户。
-    UserEntity user = userMapper.selectById(userId);
-    if (user == null || !Objects.equals(user.getStatus(), 1)) {
-      throw new BaseException(ErrorCode.PERMISSION_DENIED, "当前用户不可访问历史附件");
-    }
+    UserEntity user = requireActiveUser(userId, "当前用户不可访问历史附件");
 
     // 第二步：历史令牌只服务于终态协助；待协助附件必须走实时授权入口。
     AssistRequestEntity assist = assistRequestMapper.selectById(assistId);
@@ -215,11 +229,20 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
     }
 
     // 第三步：只有超管、该申请的申请人或协助人可以查看这份历史。
+    // 第四步：参与人也不能凭任意附件 ID 下载，附件必须真实出现在该协助冻结的快照中。
+    assertHistoricalSnapshotAccess(assist, user, userId, attachment);
+  }
+
+  /** 历史附件的参与人与快照归属复核：超管/申请人/协助人之一，且附件真实出现在冻结快照中。 */
+  private void assertHistoricalSnapshotAccess(
+      AssistRequestEntity assist,
+      UserEntity user,
+      Long userId,
+      ApprovalAttachmentEntity attachment) {
     boolean participant =
         Objects.equals(user.getRoleId(), 1L)
             || Objects.equals(assist.getApplicantId(), userId)
             || Objects.equals(assist.getAssistUserId(), userId);
-    // 第四步：参与人也不能凭任意附件 ID 下载，附件必须真实出现在该协助冻结的快照中。
     if (!participant || !snapshotContainsAttachment(assist.getRecordSnapshot(), attachment)) {
       throw new BaseException(ErrorCode.PERMISSION_DENIED, "附件不属于该协助历史快照");
     }
@@ -280,40 +303,47 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
 
   @Override
   public boolean canReadProjectFile(ProjectFileEntity file, Long userId) {
+    boolean result;
     if (file == null || file.getId() == null || userId == null) {
-      return false;
+      result = false;
+    } else {
+      UserEntity user = userMapper.selectById(userId);
+      if (user == null || !Objects.equals(user.getStatus(), 1)) {
+        result = false;
+      } else if (Objects.equals(user.getRoleId(), 1L)) {
+        result = true;
+      } else {
+        result = canReadProjectFileByDimension(file, userId);
+      }
     }
-    UserEntity user = userMapper.selectById(userId);
-    if (user == null || !Objects.equals(user.getStatus(), 1)) {
-      return false;
-    }
-    if (Objects.equals(user.getRoleId(), 1L)) {
-      return true;
-    }
+    return result;
+  }
+
+  /** 非超管的记录级判定：项目文件可能同时挂多个归属维度，任一维度可读即放行； 无任何归属维度的独立上传文件仅上传人本人可见；其余走部门主管保留通道。 */
+  private boolean canReadProjectFileByDimension(ProjectFileEntity file, Long userId) {
+    boolean result = false;
     // 项目文件可能同时挂多个归属维度，任一维度可读即放行
-    boolean hasDimension = false;
-    if (file.getActivityId() != null) {
-      hasDimension = true;
-      if (canReadBusinessActivityAttachments(
-          file.getActivityId(), userId, ModelName.BUSINESS_ACTIVITY)) {
-        return true;
+    boolean hasDimension = file.getActivityId() != null || file.getOpportunityId() != null;
+    if (!result && file.getActivityId() != null) {
+      result =
+          canReadBusinessActivityAttachments(
+              file.getActivityId(), userId, ModelName.BUSINESS_ACTIVITY);
+    }
+    if (!result && file.getOpportunityId() != null) {
+      result = canReadSalesOpportunity(file.getOpportunityId(), userId);
+    }
+    if (!result) {
+      Long contractId = resolveContractId(file);
+      if (contractId != null && canReadContract(contractId, userId)) {
+        result = true;
+      } else if (!hasDimension && contractId == null) {
+        // 无任何归属维度的独立上传文件：仅上传人本人可见（超管已在上方放行）
+        result = Objects.equals(file.getUploaderId(), userId);
+      } else {
+        result = departmentManagerReadReserved(ModelName.PROJECT_FILE, file.getId(), userId);
       }
     }
-    if (file.getOpportunityId() != null) {
-      hasDimension = true;
-      if (canReadSalesOpportunity(file.getOpportunityId(), userId)) {
-        return true;
-      }
-    }
-    Long contractId = resolveContractId(file);
-    if (contractId != null && canReadContract(contractId, userId)) {
-      return true;
-    }
-    // 无任何归属维度的独立上传文件：仅上传人本人可见（超管已在上方放行）
-    if (!hasDimension && contractId == null) {
-      return Objects.equals(file.getUploaderId(), userId);
-    }
-    return departmentManagerReadReserved(ModelName.PROJECT_FILE, file.getId(), userId);
+    return result;
   }
 
   private boolean canReadBusinessActivityAttachments(Long recordId, Long userId, String modelName) {

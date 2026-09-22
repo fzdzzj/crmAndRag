@@ -593,41 +593,43 @@ public class CustomerCompanyServiceImpl
 
     LambdaQueryWrapper<CustomerCompanyEntity> wrapper = new LambdaQueryWrapper<>();
 
-    if (customerCompanyDTO.getCompanyName() != null
-        && !customerCompanyDTO.getCompanyName().isBlank()) {
-      wrapper.like(CustomerCompanyEntity::getCompanyName, customerCompanyDTO.getCompanyName());
-    }
-    if (customerCompanyDTO.getIndustry() != null && !customerCompanyDTO.getIndustry().isBlank()) {
-      wrapper.like(CustomerCompanyEntity::getIndustry, customerCompanyDTO.getIndustry());
-    }
-    if (customerCompanyDTO.getCustomerType() != null
-        && !customerCompanyDTO.getCustomerType().isBlank()) {
-      wrapper.eq(CustomerCompanyEntity::getCustomerType, customerCompanyDTO.getCustomerType());
-    }
-    if (customerCompanyDTO.getBelongGroup() != null
-        && !customerCompanyDTO.getBelongGroup().isBlank()) {
-      wrapper.like(CustomerCompanyEntity::getBelongGroup, customerCompanyDTO.getBelongGroup());
-    }
-    if (customerCompanyDTO.getDept() != null && !customerCompanyDTO.getDept().isBlank()) {
-      wrapper.like(CustomerCompanyEntity::getDept, customerCompanyDTO.getDept());
-    }
-    if (customerCompanyDTO.getAddress() != null && !customerCompanyDTO.getAddress().isBlank()) {
-      wrapper.like(CustomerCompanyEntity::getAddress, customerCompanyDTO.getAddress());
-    }
-    if (customerCompanyDTO.getPhone() != null && !customerCompanyDTO.getPhone().isBlank()) {
-      wrapper.like(CustomerCompanyEntity::getPhone, customerCompanyDTO.getPhone());
-    }
-    if (customerCompanyDTO.getWebsite() != null && !customerCompanyDTO.getWebsite().isBlank()) {
-      wrapper.like(CustomerCompanyEntity::getWebsite, customerCompanyDTO.getWebsite());
-    }
-    if (customerCompanyDTO.getDescription() != null
-        && !customerCompanyDTO.getDescription().isBlank()) {
-      wrapper.like(CustomerCompanyEntity::getDescription, customerCompanyDTO.getDescription());
-    }
+    likeIfNotBlank(
+        wrapper, CustomerCompanyEntity::getCompanyName, customerCompanyDTO.getCompanyName());
+    likeIfNotBlank(wrapper, CustomerCompanyEntity::getIndustry, customerCompanyDTO.getIndustry());
+    eqIfNotBlank(
+        wrapper, CustomerCompanyEntity::getCustomerType, customerCompanyDTO.getCustomerType());
+    likeIfNotBlank(
+        wrapper, CustomerCompanyEntity::getBelongGroup, customerCompanyDTO.getBelongGroup());
+    likeIfNotBlank(wrapper, CustomerCompanyEntity::getDept, customerCompanyDTO.getDept());
+    likeIfNotBlank(wrapper, CustomerCompanyEntity::getAddress, customerCompanyDTO.getAddress());
+    likeIfNotBlank(wrapper, CustomerCompanyEntity::getPhone, customerCompanyDTO.getPhone());
+    likeIfNotBlank(wrapper, CustomerCompanyEntity::getWebsite, customerCompanyDTO.getWebsite());
+    likeIfNotBlank(
+        wrapper, CustomerCompanyEntity::getDescription, customerCompanyDTO.getDescription());
     if (customerCompanyDTO.getIsDeleted() != null) {
       wrapper.eq(CustomerCompanyEntity::getIsDeleted, customerCompanyDTO.getIsDeleted());
     }
     return getCustomerCompanyVOPage(wrapper, page);
+  }
+
+  /** 文本字段非空白即追加 like 条件 */
+  private void likeIfNotBlank(
+      LambdaQueryWrapper<CustomerCompanyEntity> wrapper,
+      com.baomidou.mybatisplus.core.toolkit.support.SFunction<CustomerCompanyEntity, ?> column,
+      String value) {
+    if (value != null && !value.isBlank()) {
+      wrapper.like(column, value);
+    }
+  }
+
+  /** 文本字段非空白即追加 eq 条件 */
+  private void eqIfNotBlank(
+      LambdaQueryWrapper<CustomerCompanyEntity> wrapper,
+      com.baomidou.mybatisplus.core.toolkit.support.SFunction<CustomerCompanyEntity, ?> column,
+      String value) {
+    if (value != null && !value.isBlank()) {
+      wrapper.eq(column, value);
+    }
   }
 
   /**

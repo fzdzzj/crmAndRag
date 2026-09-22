@@ -322,27 +322,56 @@ public class BusinessActivityServiceImpl
     }
     // 创建人名称模糊搜索
     if (queryDTO.getCreatorName() != null && !queryDTO.getCreatorName().isEmpty()) {
-      Set<Long> creatorIds = userMapper.selectUserIdsByUserName(queryDTO.getCreatorName());
-      if (!creatorIds.isEmpty()) {
-        queryWrapper.in(BusinessActivityEntity::getCreatorId, creatorIds);
-      } else {
-        queryWrapper.eq(BusinessActivityEntity::getCreatorId, -1);
-      }
+      applyCreatorNameFilter(queryWrapper, queryDTO.getCreatorName());
     }
     // 销售机会名称模糊搜索
     if (queryDTO.getOpportunityName() != null && !queryDTO.getOpportunityName().isEmpty()) {
-      Set<Long> opportunityIds =
-          salesOpportunityMapper.selectOpportunityIdsByName(queryDTO.getOpportunityName());
-      if (!opportunityIds.isEmpty()) {
-        queryWrapper.in(BusinessActivityEntity::getOpportunityId, opportunityIds);
-      } else {
-        queryWrapper.eq(BusinessActivityEntity::getOpportunityId, -1);
-      }
+      applyOpportunityNameFilter(queryWrapper, queryDTO.getOpportunityName());
     }
     // 备注模糊搜索
     if (queryDTO.getRemark() != null && !queryDTO.getRemark().isEmpty()) {
       queryWrapper.like(BusinessActivityEntity::getRemark, queryDTO.getRemark());
     }
+    applyTimeRangeFilters(queryWrapper, queryDTO);
+    // 活动时长搜索
+    if (queryDTO.getActivityDuration() != null) {
+      queryWrapper.eq(BusinessActivityEntity::getActivityDuration, queryDTO.getActivityDuration());
+    }
+
+    // 默认按创建时间倒序
+    queryWrapper.orderByDesc(BusinessActivityEntity::getCreateTime);
+
+    // 普通列表只按正常业务关系过滤；协助人从协助页进入单条详情，不扩大列表范围
+    applyVisibilityFilter(queryWrapper);
+
+    return queryWrapper;
+  }
+
+  /** 创建人名称模糊搜索：先反查用户 ID 集，查不到任何人时固定条件恒假 */
+  private void applyCreatorNameFilter(
+      LambdaQueryWrapper<BusinessActivityEntity> queryWrapper, String creatorName) {
+    Set<Long> creatorIds = userMapper.selectUserIdsByUserName(creatorName);
+    if (!creatorIds.isEmpty()) {
+      queryWrapper.in(BusinessActivityEntity::getCreatorId, creatorIds);
+    } else {
+      queryWrapper.eq(BusinessActivityEntity::getCreatorId, -1);
+    }
+  }
+
+  /** 销售机会名称模糊搜索：先反查商机 ID 集，查不到任何商机时固定条件恒假 */
+  private void applyOpportunityNameFilter(
+      LambdaQueryWrapper<BusinessActivityEntity> queryWrapper, String opportunityName) {
+    Set<Long> opportunityIds = salesOpportunityMapper.selectOpportunityIdsByName(opportunityName);
+    if (!opportunityIds.isEmpty()) {
+      queryWrapper.in(BusinessActivityEntity::getOpportunityId, opportunityIds);
+    } else {
+      queryWrapper.eq(BusinessActivityEntity::getOpportunityId, -1);
+    }
+  }
+
+  /** 创建时间与活动日期两个范围条件（两者同时给出上下界才生效） */
+  private void applyTimeRangeFilters(
+      LambdaQueryWrapper<BusinessActivityEntity> queryWrapper, BusinessActivityQueryDTO queryDTO) {
     // 创建时间范围搜索
     if (queryDTO.getMinCreateTime() != null && queryDTO.getMaxCreateTime() != null) {
       queryWrapper.between(
@@ -357,18 +386,6 @@ public class BusinessActivityServiceImpl
           queryDTO.getMinActivityTime(),
           queryDTO.getMaxActivityTime());
     }
-    // 活动时长搜索
-    if (queryDTO.getActivityDuration() != null) {
-      queryWrapper.eq(BusinessActivityEntity::getActivityDuration, queryDTO.getActivityDuration());
-    }
-
-    // 默认按创建时间倒序
-    queryWrapper.orderByDesc(BusinessActivityEntity::getCreateTime);
-
-    // 普通列表只按正常业务关系过滤；协助人从协助页进入单条详情，不扩大列表范围
-    applyVisibilityFilter(queryWrapper);
-
-    return queryWrapper;
   }
 
   /**
@@ -516,6 +533,38 @@ public class BusinessActivityServiceImpl
                 .collect(Collectors.toMap(CustomerContactEntity::getId, Function.identity()));
 
     // 复用已查询的用户信息，添加活动中关联的用户
+    Map<Long, UserEntity> activityUserMap = mergeActivityUserMap(userMap, activityUserIds);
+
+    // 构建VO列表
+    for (BusinessActivityEntity businessActivityEntity : pageResult.getRecords()) {
+      String[] names =
+          getBusinessActivityNamesWithMaps(businessActivityEntity, userMap, opportunityMap);
+      BusinessActivityVO businessActivityVO =
+          BusinessActivityVO.fromEntity(businessActivityEntity, names[0], names[1]);
+
+      // 填充联系人信息
+      fillActivityContacts(
+          businessActivityVO,
+          contactRelationMap.getOrDefault(businessActivityEntity.getId(), Collections.emptyList()),
+          contactMap);
+
+      // 填充用户信息
+      fillActivityUsers(
+          businessActivityVO,
+          userRelationMap.getOrDefault(businessActivityEntity.getId(), Collections.emptyList()),
+          activityUserMap);
+
+      ans.add(businessActivityVO);
+    }
+
+    // 批量组装协助人（按可见性过滤）
+    fillAssistUsers(ans, BaseUnit.getCurrentId());
+    return ans;
+  }
+
+  /** 复用已查询的用户信息，合并活动中关联用户的批量查询结果 */
+  private Map<Long, UserEntity> mergeActivityUserMap(
+      Map<Long, UserEntity> userMap, Set<Long> activityUserIds) {
     Map<Long, UserEntity> activityUserMap;
     if (!activityUserIds.isEmpty()) {
       Set<Long> allUserIds = new HashSet<>(userMap.keySet());
@@ -526,65 +575,57 @@ public class BusinessActivityServiceImpl
     } else {
       activityUserMap = userMap;
     }
+    return activityUserMap;
+  }
 
-    // 构建VO列表
-    for (BusinessActivityEntity businessActivityEntity : pageResult.getRecords()) {
-      String[] names =
-          getBusinessActivityNamesWithMaps(businessActivityEntity, userMap, opportunityMap);
-      BusinessActivityVO businessActivityVO =
-          BusinessActivityVO.fromEntity(businessActivityEntity, names[0], names[1]);
-
-      // 填充联系人信息
-      List<BusinessActivityContactEntity> contacts =
-          contactRelationMap.getOrDefault(businessActivityEntity.getId(), Collections.emptyList());
-      if (!contacts.isEmpty()) {
-        List<BusinessActivityVO.ActivityContactVO> contactVOList =
-            contacts.stream()
-                .map(
-                    contactRel -> {
-                      BusinessActivityVO.ActivityContactVO contactVO =
-                          new BusinessActivityVO.ActivityContactVO();
-                      contactVO.setContactId(contactRel.getContactId());
-                      CustomerContactEntity contactEntity =
-                          contactMap.get(contactRel.getContactId());
-                      if (contactEntity != null) {
-                        contactVO.setContactName(contactEntity.getName());
-                      }
-                      contactVO.setContactRole(contactRel.getContactRole());
-                      return contactVO;
-                    })
-                .toList();
-        businessActivityVO.setContacts(contactVOList);
-      }
-
-      // 填充用户信息
-      List<BusinessActivityUserEntity> users =
-          userRelationMap.getOrDefault(businessActivityEntity.getId(), Collections.emptyList());
-      if (!users.isEmpty()) {
-        List<BusinessActivityVO.ActivityUserVO> userVOList =
-            users.stream()
-                .map(
-                    userRel -> {
-                      BusinessActivityVO.ActivityUserVO userVO =
-                          new BusinessActivityVO.ActivityUserVO();
-                      userVO.setUserId(userRel.getUserId());
-                      UserEntity userEntity = activityUserMap.get(userRel.getUserId());
-                      if (userEntity != null) {
-                        userVO.setUserName(userEntity.getRealName());
-                      }
-                      userVO.setUserRole(userRel.getUserRole());
-                      return userVO;
-                    })
-                .toList();
-        businessActivityVO.setUsers(userVOList);
-      }
-
-      ans.add(businessActivityVO);
+  /** 为单个活动 VO 填充关联联系人（含联系人姓名） */
+  private void fillActivityContacts(
+      BusinessActivityVO businessActivityVO,
+      List<BusinessActivityContactEntity> contacts,
+      Map<Long, CustomerContactEntity> contactMap) {
+    if (!contacts.isEmpty()) {
+      List<BusinessActivityVO.ActivityContactVO> contactVOList =
+          contacts.stream()
+              .map(
+                  contactRel -> {
+                    BusinessActivityVO.ActivityContactVO contactVO =
+                        new BusinessActivityVO.ActivityContactVO();
+                    contactVO.setContactId(contactRel.getContactId());
+                    CustomerContactEntity contactEntity = contactMap.get(contactRel.getContactId());
+                    if (contactEntity != null) {
+                      contactVO.setContactName(contactEntity.getName());
+                    }
+                    contactVO.setContactRole(contactRel.getContactRole());
+                    return contactVO;
+                  })
+              .toList();
+      businessActivityVO.setContacts(contactVOList);
     }
+  }
 
-    // 批量组装协助人（按可见性过滤）
-    fillAssistUsers(ans, BaseUnit.getCurrentId());
-    return ans;
+  /** 为单个活动 VO 填充关联用户（含用户姓名） */
+  private void fillActivityUsers(
+      BusinessActivityVO businessActivityVO,
+      List<BusinessActivityUserEntity> users,
+      Map<Long, UserEntity> activityUserMap) {
+    if (!users.isEmpty()) {
+      List<BusinessActivityVO.ActivityUserVO> userVOList =
+          users.stream()
+              .map(
+                  userRel -> {
+                    BusinessActivityVO.ActivityUserVO userVO =
+                        new BusinessActivityVO.ActivityUserVO();
+                    userVO.setUserId(userRel.getUserId());
+                    UserEntity userEntity = activityUserMap.get(userRel.getUserId());
+                    if (userEntity != null) {
+                      userVO.setUserName(userEntity.getRealName());
+                    }
+                    userVO.setUserRole(userRel.getUserRole());
+                    return userVO;
+                  })
+              .toList();
+      businessActivityVO.setUsers(userVOList);
+    }
   }
 
   @Override
@@ -637,82 +678,97 @@ public class BusinessActivityServiceImpl
 
       List<BusinessActivityUserDTO> userIdList = businessActivityDTO.getUserIdList();
       // 修改活动关联的用户
-      if (userIdList != null && !userIdList.isEmpty()) {
-        if (businessActivityDTO.isAddUser()) {
-          // 新增关联用户
-          // 使用for循环替代forEach，确保异常能正确抛出
-          for (BusinessActivityUserDTO userDTO : userIdList) {
-            // 检查是否存在重复关联
-            int count =
-                businessActivityUserMapper.existsByActivityIdAndUserId(
-                    businessActivityEntity.getId(), userDTO.getUserId());
-            if (count == 1) {
-              throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_USER_DUPLICATE);
-            }
-            BusinessActivityUserEntity userEntity = new BusinessActivityUserEntity();
-            BeanUtils.copyProperties(userDTO, userEntity);
-            userEntity.setActivityId(businessActivityEntity.getId());
-            userEntity.setCreatorId(currentId);
-            businessActivityUserMapper.insert(userEntity);
-          }
-        } else {
-          // 删除关联用户
-          // 使用for循环替代forEach，确保异常能正确抛出
-          for (BusinessActivityUserDTO userDTO : userIdList) {
-            int count =
-                businessActivityUserMapper.existsByActivityIdAndUserId(
-                    businessActivityEntity.getId(), userDTO.getUserId());
-            if (count == 1) {
-              businessActivityUserMapper.deleteByActivityIdAndUserId(
-                  businessActivityEntity.getId(), userDTO.getUserId());
-            } else {
-              throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_USER_NOT_EXIST);
-            }
-          }
-        }
-      }
+      applyActivityUserRelations(businessActivityDTO, businessActivityEntity, currentId);
 
       // 修改活动关联的联系人
-      List<BusinessActivityContactDTO> contactIdList = businessActivityDTO.getContactIdList();
-      if (contactIdList != null && !contactIdList.isEmpty()) {
-        if (businessActivityDTO.isAddContact()) {
-          // 新增关联联系人
-          // 使用for循环替代forEach，确保异常能正确抛出
-          for (BusinessActivityContactDTO contactDTO : contactIdList) {
-            // 检查是否存在重复关联
-            int count =
-                businessActivityContactMapper.existsByActivityIdAndContactId(
-                    businessActivityEntity.getId(), contactDTO.getContactId());
-            if (count == 1) {
-              throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_CONTACT_ALREADY_EXIST);
-            }
-            BusinessActivityContactEntity contactEntity = new BusinessActivityContactEntity();
-            BeanUtils.copyProperties(contactDTO, contactEntity);
-            contactEntity.setActivityId(businessActivityEntity.getId());
-            contactEntity.setCreatorId(currentId);
-            businessActivityContactMapper.insert(contactEntity);
-          }
-        } else {
-          // 删除关联联系人
-          // 使用for循环替代forEach，确保异常能正确抛出
-          for (BusinessActivityContactDTO contactDTO : contactIdList) {
-            int count =
-                businessActivityContactMapper.existsByActivityIdAndContactId(
-                    businessActivityEntity.getId(), contactDTO.getContactId());
-            if (count == 1) {
-              businessActivityContactMapper.deleteByActivityIdAndContactId(
-                  businessActivityEntity.getId(), contactDTO.getContactId());
-            } else {
-              throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_CONTACT_NOT_EXIST);
-            }
-          }
-        }
-      }
+      applyActivityContactRelations(businessActivityDTO, businessActivityEntity, currentId);
     }
 
     updateBatchById(businessActivityEntityList);
 
     return businessActivityEntityList.size();
+  }
+
+  /** 按增/删模式同步活动的关联用户；重复新增或删除不存在的关联都会抛错 */
+  private void applyActivityUserRelations(
+      BusinessActivityDTO businessActivityDTO,
+      BusinessActivityEntity businessActivityEntity,
+      Long currentId) {
+    List<BusinessActivityUserDTO> userIdList = businessActivityDTO.getUserIdList();
+    if (userIdList == null || userIdList.isEmpty()) {
+      return;
+    }
+    if (businessActivityDTO.isAddUser()) {
+      // 新增关联用户（使用for循环替代forEach，确保异常能正确抛出）
+      for (BusinessActivityUserDTO userDTO : userIdList) {
+        // 检查是否存在重复关联
+        int count =
+            businessActivityUserMapper.existsByActivityIdAndUserId(
+                businessActivityEntity.getId(), userDTO.getUserId());
+        if (count == 1) {
+          throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_USER_DUPLICATE);
+        }
+        BusinessActivityUserEntity userEntity = new BusinessActivityUserEntity();
+        BeanUtils.copyProperties(userDTO, userEntity);
+        userEntity.setActivityId(businessActivityEntity.getId());
+        userEntity.setCreatorId(currentId);
+        businessActivityUserMapper.insert(userEntity);
+      }
+    } else {
+      // 删除关联用户（使用for循环替代forEach，确保异常能正确抛出）
+      for (BusinessActivityUserDTO userDTO : userIdList) {
+        int count =
+            businessActivityUserMapper.existsByActivityIdAndUserId(
+                businessActivityEntity.getId(), userDTO.getUserId());
+        if (count == 1) {
+          businessActivityUserMapper.deleteByActivityIdAndUserId(
+              businessActivityEntity.getId(), userDTO.getUserId());
+        } else {
+          throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_USER_NOT_EXIST);
+        }
+      }
+    }
+  }
+
+  /** 按增/删模式同步活动的关联联系人；重复新增或删除不存在的关联都会抛错 */
+  private void applyActivityContactRelations(
+      BusinessActivityDTO businessActivityDTO,
+      BusinessActivityEntity businessActivityEntity,
+      Long currentId) {
+    List<BusinessActivityContactDTO> contactIdList = businessActivityDTO.getContactIdList();
+    if (contactIdList == null || contactIdList.isEmpty()) {
+      return;
+    }
+    if (businessActivityDTO.isAddContact()) {
+      // 新增关联联系人（使用for循环替代forEach，确保异常能正确抛出）
+      for (BusinessActivityContactDTO contactDTO : contactIdList) {
+        // 检查是否存在重复关联
+        int count =
+            businessActivityContactMapper.existsByActivityIdAndContactId(
+                businessActivityEntity.getId(), contactDTO.getContactId());
+        if (count == 1) {
+          throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_CONTACT_ALREADY_EXIST);
+        }
+        BusinessActivityContactEntity contactEntity = new BusinessActivityContactEntity();
+        BeanUtils.copyProperties(contactDTO, contactEntity);
+        contactEntity.setActivityId(businessActivityEntity.getId());
+        contactEntity.setCreatorId(currentId);
+        businessActivityContactMapper.insert(contactEntity);
+      }
+    } else {
+      // 删除关联联系人（使用for循环替代forEach，确保异常能正确抛出）
+      for (BusinessActivityContactDTO contactDTO : contactIdList) {
+        int count =
+            businessActivityContactMapper.existsByActivityIdAndContactId(
+                businessActivityEntity.getId(), contactDTO.getContactId());
+        if (count == 1) {
+          businessActivityContactMapper.deleteByActivityIdAndContactId(
+              businessActivityEntity.getId(), contactDTO.getContactId());
+        } else {
+          throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_CONTACT_NOT_EXIST);
+        }
+      }
+    }
   }
 
   @Transactional(rollbackFor = Exception.class)
@@ -862,12 +918,18 @@ public class BusinessActivityServiceImpl
       throw new BaseException(ErrorCode.BUSINESS_ACTIVITY_NOT_EXISTS.getMessage());
     }
 
-    if (request == null) {
-      return true;
+    if (request != null) {
+      // 批量删除联系人关联
+      deleteActivityContactAssociations(activityId, request.getContactIds());
+      // 批量删除用户关联
+      deleteActivityUserAssociations(activityId, request.getUserIds());
     }
 
-    // 批量删除联系人关联
-    List<Long> contactIds = request.getContactIds();
+    return true;
+  }
+
+  /** 批量删除活动的联系人关联：任一关联不存在即抛错 */
+  private void deleteActivityContactAssociations(Long activityId, List<Long> contactIds) {
     if (contactIds != null && !contactIds.isEmpty()) {
       for (Long contactId : contactIds) {
         int count =
@@ -878,9 +940,10 @@ public class BusinessActivityServiceImpl
         businessActivityContactMapper.deleteByActivityIdAndContactId(activityId, contactId);
       }
     }
+  }
 
-    // 批量删除用户关联
-    List<Long> userIds = request.getUserIds();
+  /** 批量删除活动的用户关联：任一关联不存在即抛错 */
+  private void deleteActivityUserAssociations(Long activityId, List<Long> userIds) {
     if (userIds != null && !userIds.isEmpty()) {
       for (Long userId : userIds) {
         int count = businessActivityUserMapper.existsByActivityIdAndUserId(activityId, userId);
@@ -890,8 +953,6 @@ public class BusinessActivityServiceImpl
         businessActivityUserMapper.deleteByActivityIdAndUserId(activityId, userId);
       }
     }
-
-    return true;
   }
 
   /**

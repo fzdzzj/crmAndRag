@@ -84,6 +84,19 @@ public class CompanyDeptServiceImpl extends ServiceImpl<CompanyDeptMapper, Compa
     if (existing == null) {
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "部门不存在");
     }
+    String deptName = requireValidDeptName(dto);
+    Long groupId =
+        requireExistingGroupId(dto.getGroupId() != null ? dto.getGroupId() : existing.getGroupId());
+    requireNoDuplicateDeptName(dto.getId(), groupId, deptName);
+    existing.setGroupId(groupId);
+    existing.setDeptName(deptName);
+    existing.setUpdateTime(LocalDateTime.now());
+    updateById(existing);
+    return existing;
+  }
+
+  /** 校验部门名称非空且不超过 50 字符，返回去空格后的名称 */
+  private String requireValidDeptName(CompanyDeptDTO dto) {
     if (!StringUtils.hasText(dto.getDeptName())) {
       throw new BaseException(ErrorCode.PARAM_EMPTY, "部门名称不能为空");
     }
@@ -91,24 +104,28 @@ public class CompanyDeptServiceImpl extends ServiceImpl<CompanyDeptMapper, Compa
     if (deptName.length() > 50) {
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "部门名称长度不能超过 50 个字符");
     }
-    Long groupId = dto.getGroupId() != null ? dto.getGroupId() : existing.getGroupId();
+    return deptName;
+  }
+
+  /** 校验归属集团存在，返回集团 ID */
+  private Long requireExistingGroupId(Long groupId) {
     if (companyGroupMapper.selectById(groupId) == null) {
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "归属集团不存在，请重新选择");
     }
+    return groupId;
+  }
+
+  /** 校验同集团下没有其他同名部门 */
+  private void requireNoDuplicateDeptName(Long deptId, Long groupId, String deptName) {
     Long count =
         lambdaQuery()
             .eq(CompanyDeptEntity::getGroupId, groupId)
             .eq(CompanyDeptEntity::getDeptName, deptName)
-            .ne(CompanyDeptEntity::getId, dto.getId())
+            .ne(CompanyDeptEntity::getId, deptId)
             .count();
     if (count != null && count > 0) {
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "该集团下已存在同名部门，请勿重复添加");
     }
-    existing.setGroupId(groupId);
-    existing.setDeptName(deptName);
-    existing.setUpdateTime(LocalDateTime.now());
-    updateById(existing);
-    return existing;
   }
 
   @Override

@@ -269,14 +269,22 @@ public class ApprovalAttachmentServiceImpl
   public AttachmentDeleteResultVO removeAuthorizedByIds(
       List<Long> attachmentIds, String modelName, Long expectedAndId) {
     AttachmentDeleteResultVO result = new AttachmentDeleteResultVO();
-    if (attachmentIds == null || attachmentIds.isEmpty()) {
-      return result;
+    List<Long> distinctIds =
+        attachmentIds == null
+            ? Collections.emptyList()
+            : attachmentIds.stream().filter(Objects::nonNull).distinct().toList();
+    if (!distinctIds.isEmpty()) {
+      deleteAuthorizedAttachments(result, distinctIds, modelName, expectedAndId);
     }
+    return result;
+  }
 
-    List<Long> distinctIds = attachmentIds.stream().filter(Objects::nonNull).distinct().toList();
-    if (distinctIds.isEmpty()) {
-      return result;
-    }
+  /** 逐条判定删除权限并执行删除：缺失进 notFound，越权进 denied，放行的删除文件与记录 */
+  private void deleteAuthorizedAttachments(
+      AttachmentDeleteResultVO result,
+      List<Long> distinctIds,
+      String modelName,
+      Long expectedAndId) {
     Map<Long, ApprovalAttachmentEntity> entityById =
         baseMapper.selectBatchIds(distinctIds).stream()
             .collect(Collectors.toMap(ApprovalAttachmentEntity::getId, Function.identity()));
@@ -293,14 +301,7 @@ public class ApprovalAttachmentServiceImpl
         result.getDenied().put(attachmentId, "附件不属于当前模块");
       } else if (expectedAndId != null && !Objects.equals(expectedAndId, entity.getAndId())) {
         result.getDenied().put(attachmentId, "附件不属于当前业务记录");
-      } else if (isAdmin
-          || Objects.equals(entity.getUploaderId(), currentId)
-          || isApplicantOrCreator(entity, currentId)
-          // 普通业务附件的记录级权限统一由 AttachmentAccessService 管理；
-          // 协助交付物仍由 AssistController 的生命周期校验负责。
-          || (!ModelName.ASSIST_REQUEST.equals(entity.getModelName())
-              && attachmentAccessService.canWriteAttachments(
-                  entity.getModelName(), entity.getAndId(), currentId))) {
+      } else if (canDeleteAttachment(entity, isAdmin, currentId)) {
         allowed.add(entity);
       } else {
         result.getDenied().put(attachmentId, "仅上传人本人、申请人或业务创建人可删除该附件");
@@ -312,7 +313,19 @@ public class ApprovalAttachmentServiceImpl
       baseMapper.deleteBatchIds(allowedIds);
       result.setDeletedIds(allowedIds);
     }
-    return result;
+  }
+
+  /** 删除权判定：管理员/上传人本人/申请人或业务创建人，或非协助交付物且对业务记录有写权限。 */
+  private boolean canDeleteAttachment(
+      ApprovalAttachmentEntity entity, boolean isAdmin, Long currentId) {
+    return isAdmin
+        || Objects.equals(entity.getUploaderId(), currentId)
+        || isApplicantOrCreator(entity, currentId)
+        // 普通业务附件的记录级权限统一由 AttachmentAccessService 管理；
+        // 协助交付物仍由 AssistController 的生命周期校验负责。
+        || (!ModelName.ASSIST_REQUEST.equals(entity.getModelName())
+            && attachmentAccessService.canWriteAttachments(
+                entity.getModelName(), entity.getAndId(), currentId));
   }
 
   @Override

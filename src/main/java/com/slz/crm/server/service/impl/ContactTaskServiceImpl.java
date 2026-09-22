@@ -403,48 +403,7 @@ public class ContactTaskServiceImpl extends ServiceImpl<ContactTaskMapper, Conta
   public Page<ContactTaskVO> query(
       Integer pageNum, Integer pageSize, ContactTaskDTO contactTaskDTO) {
     Page<ContactTaskEntity> page = new Page<>(pageNum, pageSize);
-    LambdaQueryWrapper<ContactTaskEntity> wrapper = new LambdaQueryWrapper<>();
-
-    if (contactTaskDTO != null) {
-      if (contactTaskDTO.getTaskTitle() != null) {
-        wrapper.like(ContactTaskEntity::getTaskTitle, contactTaskDTO.getTaskTitle());
-      }
-      if (contactTaskDTO.getCompanyId() != null) {
-        wrapper.eq(ContactTaskEntity::getCompanyId, contactTaskDTO.getCompanyId());
-      }
-      if (contactTaskDTO.getContactId() != null) {
-        wrapper.eq(ContactTaskEntity::getContactId, contactTaskDTO.getContactId());
-      }
-      if (contactTaskDTO.getOpportunityId() != null) {
-        wrapper.eq(ContactTaskEntity::getOpportunityId, contactTaskDTO.getOpportunityId());
-      }
-      if (contactTaskDTO.getTaskType() != null) {
-        wrapper.eq(ContactTaskEntity::getTaskType, contactTaskDTO.getTaskType());
-      }
-      // 处理优先级：如果传入了字符串优先级，优先转换字符串
-      if (contactTaskDTO.getPriorityStr() != null
-          && !contactTaskDTO.getPriorityStr().trim().isEmpty()) {
-        Integer priority = convertPriorityStringToInteger(contactTaskDTO.getPriorityStr());
-        if (priority != null) {
-          wrapper.eq(ContactTaskEntity::getPriority, priority);
-        }
-      } else if (contactTaskDTO.getPriority() != null) {
-        wrapper.eq(ContactTaskEntity::getPriority, contactTaskDTO.getPriority());
-      }
-      // 处理状态：如果传入了字符串状态，优先转换字符串
-      if (contactTaskDTO.getStatusStr() != null
-          && !contactTaskDTO.getStatusStr().trim().isEmpty()) {
-        Integer status = convertStatusStringToInteger(contactTaskDTO.getStatusStr());
-        if (status != null) {
-          wrapper.eq(ContactTaskEntity::getStatus, status);
-        }
-      } else if (contactTaskDTO.getStatus() != null) {
-        wrapper.eq(ContactTaskEntity::getStatus, contactTaskDTO.getStatus());
-      }
-      if (contactTaskDTO.getAssigneeId() != null) {
-        wrapper.eq(ContactTaskEntity::getAssigneeId, contactTaskDTO.getAssigneeId());
-      }
-    }
+    LambdaQueryWrapper<ContactTaskEntity> wrapper = buildTaskQueryWrapper(contactTaskDTO);
 
     wrapper.orderByDesc(ContactTaskEntity::getCreateTime);
     applyVisibilityFilter(wrapper);
@@ -459,6 +418,63 @@ public class ContactTaskServiceImpl extends ServiceImpl<ContactTaskMapper, Conta
     resultPage.setRecords(voList);
 
     return resultPage;
+  }
+
+  /** 按查询条件装配联络任务的检索包装器（标题/归属/类型/优先级/状态/执行人，DTO 为空时不加条件） */
+  private LambdaQueryWrapper<ContactTaskEntity> buildTaskQueryWrapper(
+      ContactTaskDTO contactTaskDTO) {
+    LambdaQueryWrapper<ContactTaskEntity> wrapper = new LambdaQueryWrapper<>();
+    if (contactTaskDTO == null) {
+      return wrapper;
+    }
+    if (contactTaskDTO.getTaskTitle() != null) {
+      wrapper.like(ContactTaskEntity::getTaskTitle, contactTaskDTO.getTaskTitle());
+    }
+    if (contactTaskDTO.getCompanyId() != null) {
+      wrapper.eq(ContactTaskEntity::getCompanyId, contactTaskDTO.getCompanyId());
+    }
+    if (contactTaskDTO.getContactId() != null) {
+      wrapper.eq(ContactTaskEntity::getContactId, contactTaskDTO.getContactId());
+    }
+    if (contactTaskDTO.getOpportunityId() != null) {
+      wrapper.eq(ContactTaskEntity::getOpportunityId, contactTaskDTO.getOpportunityId());
+    }
+    if (contactTaskDTO.getTaskType() != null) {
+      wrapper.eq(ContactTaskEntity::getTaskType, contactTaskDTO.getTaskType());
+    }
+    applyPriorityFilter(wrapper, contactTaskDTO);
+    applyStatusFilter(wrapper, contactTaskDTO);
+    if (contactTaskDTO.getAssigneeId() != null) {
+      wrapper.eq(ContactTaskEntity::getAssigneeId, contactTaskDTO.getAssigneeId());
+    }
+    return wrapper;
+  }
+
+  /** 优先级过滤：传入字符串优先级时优先转换，否则用数值优先级 */
+  private void applyPriorityFilter(
+      LambdaQueryWrapper<ContactTaskEntity> wrapper, ContactTaskDTO contactTaskDTO) {
+    if (contactTaskDTO.getPriorityStr() != null
+        && !contactTaskDTO.getPriorityStr().trim().isEmpty()) {
+      Integer priority = convertPriorityStringToInteger(contactTaskDTO.getPriorityStr());
+      if (priority != null) {
+        wrapper.eq(ContactTaskEntity::getPriority, priority);
+      }
+    } else if (contactTaskDTO.getPriority() != null) {
+      wrapper.eq(ContactTaskEntity::getPriority, contactTaskDTO.getPriority());
+    }
+  }
+
+  /** 状态过滤：传入字符串状态时优先转换，否则用数值状态 */
+  private void applyStatusFilter(
+      LambdaQueryWrapper<ContactTaskEntity> wrapper, ContactTaskDTO contactTaskDTO) {
+    if (contactTaskDTO.getStatusStr() != null && !contactTaskDTO.getStatusStr().trim().isEmpty()) {
+      Integer status = convertStatusStringToInteger(contactTaskDTO.getStatusStr());
+      if (status != null) {
+        wrapper.eq(ContactTaskEntity::getStatus, status);
+      }
+    } else if (contactTaskDTO.getStatus() != null) {
+      wrapper.eq(ContactTaskEntity::getStatus, contactTaskDTO.getStatus());
+    }
   }
 
   @Override
