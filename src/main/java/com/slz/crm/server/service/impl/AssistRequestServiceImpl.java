@@ -1158,8 +1158,7 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
    *
    * <p>这里不查询来源任务、活动、审批来重建快照，保证协助结束后看到的业务内容不漂移。 下载接口仍会再次验证附件记录与物理文件是否存在，因此文件之后被删除时链接自然失效。
    */
-  @SuppressWarnings("unchecked")
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 快照解析递归签发令牌多源，失败回落原快照
+  @SuppressWarnings({"unchecked", "PMD.AvoidCatchingGenericException"}) // 快照解析递归签发令牌多源，失败回落原快照
   private String hydrateHistoricalAttachmentLinks(String snapshot, Long assistId) {
     if (snapshot == null || snapshot.isBlank() || assistId == null) {
       return snapshot;
