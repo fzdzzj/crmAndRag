@@ -70,8 +70,7 @@ public class PublicAttachmentController {
 
       // 根据文件类型查询对应的表
       if ("project_file".equals(fileType)) {
-        downloadProjectFileByToken(
-            downloadToken, attachmentId, tokenUserId, currentUserId, response);
+        downloadProjectFileByToken(attachmentId, tokenUserId, currentUserId, response);
       } else {
         downloadApprovalAttachmentByToken(
             downloadToken, attachmentId, tokenUserId, currentUserId, response);
@@ -129,11 +128,7 @@ public class PublicAttachmentController {
 
   /** 项目文件下载分支：按当前权限记录级复核后落盘下载 */
   private void downloadProjectFileByToken(
-      AttachmentDownloadTokenUtil.DownloadToken downloadToken,
-      Long attachmentId,
-      Long tokenUserId,
-      Long currentUserId,
-      HttpServletResponse response)
+      Long attachmentId, Long tokenUserId, Long currentUserId, HttpServletResponse response)
       throws IOException {
     ProjectFileEntity projectFileEntity = projectFileService.getEntityById(attachmentId);
     if (projectFileEntity == null) {

@@ -19,6 +19,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -286,7 +287,7 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
     for (CompletableFuture<List<RetrievalCandidate>> variantFuture : variantFutures) {
       try {
         routes.add(variantFuture.join());
-      } catch (RuntimeException exception) {
+      } catch (CompletionException exception) {
         LOG.warn("多查询路结果获取失败，该路降级跳过: {}", exception.getMessage());
       }
     }

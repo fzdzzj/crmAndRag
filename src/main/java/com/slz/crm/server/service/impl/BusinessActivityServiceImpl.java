@@ -676,8 +676,6 @@ public class BusinessActivityServiceImpl
       businessActivityEntity.setId(businessActivityDTO.getId());
       businessActivityEntityList.add(businessActivityEntity);
 
-      List<BusinessActivityUserDTO> userIdList = businessActivityDTO.getUserIdList();
-      // 修改活动关联的用户
       applyActivityUserRelations(businessActivityDTO, businessActivityEntity, currentId);
 
       // 修改活动关联的联系人

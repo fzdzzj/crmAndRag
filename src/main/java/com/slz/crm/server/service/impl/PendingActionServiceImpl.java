@@ -205,6 +205,8 @@ public class PendingActionServiceImpl
    * @param userId 当前用户 ID
    * @return 确认结果
    */
+  /** 执行器为外部 AI 动作实现，失败形态不可枚举；须吞任意异常统一落失败标记后按业务异常上抛（tighten-pmd-residual-325 任务 6.3） */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException")
   private AiConfirmResultVO executePendingAction(
       AiPendingActionEntity entity, String pendingId, Long userId) {
     // 运行时权限校验（按 actionType 映射）

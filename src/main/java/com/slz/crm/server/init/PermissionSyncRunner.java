@@ -231,6 +231,8 @@ public class PermissionSyncRunner {
   }
 
   /** 顺序插入新权限（单条失败记日志继续），完成后打印按模块统计 */
+  /** 单条隔离插入：批量初始化容许单条失败，须吞全部数据库运行时异常防整批中断，异常形态不可枚举（tighten-pmd-residual-325 任务 6.3） */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException")
   private void insertPermissions(List<PermissionsEntity> toInsert, Map<String, int[]> insertStats) {
     if (!toInsert.isEmpty()) {
       log.info("开始插入权限...");

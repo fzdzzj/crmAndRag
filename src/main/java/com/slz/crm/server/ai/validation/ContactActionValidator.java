@@ -54,7 +54,6 @@ public class ContactActionValidator implements AiActionValidator {
 
   /** payload 解析成功后执行实体解析与声明式校验；只在完全通过且发生字段重写时返回 ok。 */
   private AiValidationResult validatePayload(AiContactDraftPayloadDTO payload) {
-    AiValidationResult result;
     Set<String> missingFields = new LinkedHashSet<>();
     List<String> questions = new ArrayList<>();
     boolean resolved = false;
