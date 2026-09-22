@@ -23,7 +23,7 @@
 ## 3. 分片 C：AvoidCatchingGenericException（134，逐例；前置 Q6 拍板）
 
 - [ ] 3.1 盘点 134 处（位置/try 内容/抛出源/是否顶层兜底），产出处置表 ｜实测：134 处分布于 70 文件（target/pmd.xml 全量）。按模块：knowledge 59（QdrantVectorStore 12 / DocumentIngestionService 9 / DerivedQuestionService 5 / MinioFileStorageService 4 / PdfVisionTranscriber 3 / KnowledgeRetrievalServiceImpl 3 / 其余 1~2）；server 46（ProjectFileServiceImpl 5 / AiChatImageUnderstandingService 4 / AiMemoryOrchestrator 4 / ai.validation/* 8 累计 / 其余 1~2）；platform 13（ModelProviderImpl 3 / 其余 1）；common 7（ForeignKeyDeleteUtil 2 / AttachmentDownloadTokenUtil 2 / IOUtils 2 / CustomerContactListener 2 / ActuatorProtectionFilter 1）；quality 1（RagQualityEvaluator）。具体处置表逐行待 Q6 拍板方案后产出
-- [ ] 3.2 **停下**：处置表 + 三候选方案上 owner 拍板（Q6），未拍板不动代码 ｜实测：
+- [x] 3.2 **停下**：处置表 + 三候选方案上 owner 拍板（Q6），未拍板不动代码 ｜实测：Q6 拍板=**混合双轨**（2026-09-22）——叶子层能确定抛出源者收窄为具体异常；真正顶层兜底（调度/外呼/文件边界）用 @SuppressWarnings("AvoidCatchingGenericException")+理由注释并登记，不动宽捕获逻辑
 - [ ] 3.3 按拍板执行：安全收窄 / @SuppressWarnings 豁免+理由注释 / 保留登记 ｜实测：
 
 ## 4. 总收尾
