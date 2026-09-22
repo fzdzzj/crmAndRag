@@ -119,9 +119,28 @@
 | `quality/RagRealRetrievalBenchmarkIT` | 1 | `@Test assumeTrue(RAG_BENCHMARK_REAL==1)` + key |
 | `knowledge/document/VisionPdfRealPilotIT` | 1 | `@Test assumeTrue(RAG_VISION_PDF_REAL==1)` + key |
 
-**历史坑（已闭合，遇到旧日志时对照用）**：`AbstractMySqlIT` 曾在 `static {}` 里直接 `MYSQL.start()` 且无 `assumeTrue`，当时 Docker 缺失会让类初始化抛 `ExceptionInInitializerError`、同类其余用例连锁 `NoClassDefFoundError`——那 20 个用例整批变 Errors 把构建直接搞红。TASK-005（2026-09-19）把容器启动移到 `@BeforeAll` 的 `assumeTrue` 之后，并用 `mysqlStarted` 保证共享容器在同 JVM 内只启一次，故这 7 类改判为 B 组。⚠ "无 Docker 记 skipped"这一分支**尚未在无 Docker 的机器上实测**（本机 Docker 在线，Testcontainers 策略链无法用环境变量模拟缺失），依据是同构先例 + 静态成因已消除（见 `work/mailbox/tasks/TASK-005/handoff.md` 未完成 1）；真无 Docker 的 runner 复验前，B 组的跳过结论按"待复验"对待。
+**历史坑（已闭合，遇到旧日志时对照用）**：`AbstractMySqlIT` 曾在 `static {}` 里直接 `MYSQL.start()` 且无 `assumeTrue`，当时 Docker 缺失会让类初始化抛 `ExceptionInInitializerError`、同类其余用例连锁 `NoClassDefFoundError`——那 20 个用例整批变 Errors 把构建直接搞红。TASK-005（2026-09-19）把容器启动移到 `@BeforeAll` 的 `assumeTrue` 之后，并用 `mysqlStarted` 保证共享容器在同 JVM 内只启一次，故这 7 类改判为 B 组。**该修复已于 2026-09-22 在真无 Docker 的本机实测验证：B 组 12 类整类中止、零 Errors，上述两个症状均未复发（见本节末「实测记录」）。**
 
-**因此：本地无 Docker 时 `mvn verify` 大概率是"绿但不证明任何东西"**——B 组 54 个用例、C 组 6 个用例全记跳过，只剩 A 组 6 个真跑。不能用本地构建结果支撑「Flyway 真库迁移已验证」「真 MySQL 写链/数据权限已验证」或「真机模型链路已验证」；这三条只在 CI（`ubuntu-latest` 自带 Docker）真跑。
+**因此：本地无 Docker 时 `mvn verify` 是“绿但不证明任何东西”（2026-09-22 已实测，不再是“大概率”）**——B 组 54 个用例整类中止（报告记 `Tests run: 0`，`Skipped` 也记 0）、C 组 6 个用例记 skipped，真跑的只剩 A 组 6 个用例；该轮 failsafe 合计 `12 / 0 / 0 / 6`，而 Docker 在线时是 `66 / 0 / 0 / 6`（差额 54 全是 B 组）。**“绿”只在 Maven 层成立**：无 Docker 时 `mvn verify` 与 `failsafe:verify` 都 exit 0，但阶段3门禁 `bash scripts/check-test-baseline.sh` 会红（`failsafe 测试 数 12 < 基线 66，疑似丢测试`）——也就是说“丢测试”这种静默失败另有门禁兜着，不能只看 Maven 的 exit code。不能用本地构建结果支撑「Flyway 真库迁移已验证」「真 MySQL 写链/数据权限已验证」或「真机模型链路已验证」；这三条只在 CI（`ubuntu-latest` 自带 Docker）真跑。
+
+**实测记录 · 无 Docker 下 failsafe 的逐类结果（2026-09-22）**
+
+- 环境：Windows 11 `10.0.26200.8875`；Maven 3.9.4 / JDK 21.0.9；Testcontainers 1.21.4；failsafe 3.5.2；仓库 HEAD `45d0957`（master）。Docker Desktop 装在本机非默认路径 `D:\develop1\DockerDesktop\`。
+- 造“无 Docker”的方式：退出 `Docker Desktop.exe` 并清掉残留 `com.docker.backend` 进程后 `docker info` exit 1（`failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine`）——**不是**用环境变量模拟缺失。
+- 命令：`DASHSCOPE_API_KEY= mvn -B -ntp failsafe:integration-test`（先在同仓库根跑 `mvn -B -ntp test-compile`；key 置空只为兜住 C 组万一被 env 打开时不外发，本轮 C 组本来就全关）。
+- 总计：`Tests run: 12, Failures: 0, Errors: 0, Skipped: 6`，BUILD SUCCESS（58.8s）；紧随的 `failsafe:verify` 亦 BUILD SUCCESS。
+
+| 组 | 类数 | 用例 | 报告观察 | 判定 |
+|---|---|---|---|---|
+| A | 3 | 6 | 逐类真跑：`FailFastIntegrationIT` 1（27.5s）/ `PermissionCoverageAuditIT` 2 / `QdrantTimeoutConfigIT` 3 | 真跑 |
+| B | 12 | 54 | 每类 `Tests run: 0, Failures: 0, Errors: 0, Skipped: 0` | 整类中止（assumeTrue） |
+| C | 4 | 6 | 记 `Skipped`：`V1BaselineMySqlIT` 1 / `ModelProviderImplDashScopeIT` 3 / `RagRealRetrievalBenchmarkIT` 1 / `VisionPdfRealPilotIT` 1 | env 门控跳过 |
+
+- **零报错**：19 份报告 `Failures=0 / Errors=0`，无 `ExceptionInInitializerError`、无 `NoClassDefFoundError` 连锁——「历史坑」那批症状没有复发。
+- **守卫确实被触达**：日志里 `org.testcontainers.DockerClientFactory -- Testcontainers version: 1.21.4` 恰好出现 **12 次**（＝B 组每类各探一次 Docker），此后无任何容器启动记录。
+- **口径更正**：B 组那 54 个用例在报告里**既不计入 `Tests run` 也不计入 `Skipped`**（`Skipped=6` 全部来自 C 组），所以「B 组 54 个用例全记跳过」只是语义近似、数字上不成立；准确写法是「整类中止」。
+- **反向对照**（同一台机器，Docker 重启后立刻重跑同一命令）：failsafe 回到 `Tests run: 66, Failures: 0, Errors: 0, Skipped: 6`（B 组 12 类逐类合计 54，与本节表格逐项一致），`bash scripts/check-test-baseline.sh` 恢复 exit 0 通过；即离线那轮的 `12` 与在线 `66` 的差额 54 全部是 B 组。
+- 原始日志留在工作区 `work/nodocker-failsafe-20260922.log` 与 `work/online-failsafe-20260922.log`（未入库）。
 
 ### 6.3 反向警告：真外发 IT 一律需显式 opt-in
 
@@ -204,7 +223,7 @@ failsafe 侧的当前口径、CI 期望值与"无 Docker 下限"的含义一律�
 - **解除后的真跑记录**（到期条件③要求的"`mvn verify` 真跑 PMD"，按 6.2 的口径把两件事分开陈述）：2026-09-21 本机（Windows，`core.autocrlf=true`；Maven 3.9.4 / JDK 21.0.9 / maven-pmd-plugin 3.26.0 / PMD 7.9.0；命令 `mvn -o -B -ntp verify`，离线；耗时 05:57；exit **0 / BUILD SUCCESS**）：
   - **PMD 真跑 = 是**：`verify` 生命周期里 `--- pmd:3.26.0:pmd (pmd) ---`（`:5210`）与 `--- pmd:3.26.0:check (pmd-check) ---`（`:5234`）两个 goal 都实际执行，结论行是 `PMD 7.9.0 has found 1329 violations.` + `The build has not failed because 1329 violations are allowed (maxAllowedViolations).`（`:6564`/`:6565`），`target/pmd.xml` 当场重新产出。单点调用同口径：`mvn -o -B -ntp pmd:check` → exit 0。日志：`work/mailbox/tasks/PMDC-P2/run-8-verify-real.log`。
   - **failsafe 新鲜度 = 是（但这一条与本轮简报相反，如实登记）**：同一轮里 surefire `Tests run: 724, Failures: 0, Errors: 0, Skipped: 0`（`:3261`）与 failsafe `Tests run: 66, Failures: 0, Errors: 0, Skipped: 6`（`:5189`）双双等于 `scripts/test-baseline.txt`，且日志里能看到 Testcontainers 真的创建了 `mysql:8.0.36` 容器 —— 说明**这台机器本轮 Docker 可用**，那 6 个跳过是上面 6.2 的 **C 组 env 门控**（`RAG_BENCHMARK_REAL` / `RAG_VISION_PDF_REAL` / `SLZ_MYSQL_VERIFY_DATABASE`），不是"缺 Docker 导致 B 组整类假设跳过"。
-  - 因此本条记录**只支撑**"PMD 在 verify 里真跑 + 本机一轮 IT 新鲜"，**不支撑**"无 Docker 时 B 组会优雅跳过"——6.2 里"该分支尚未在无 Docker 的机器上实测"那句悬置状态**未被本轮改变**，仍需一台真无 Docker 的 runner 复验。也不改变 6.2 的分层：「Flyway 真库迁移已验证」「真 MySQL 写链/数据权限已验证」这类结论必须有真库报告为凭，不能拿 `pmd:check` 的绿来顶。
+  - 因此本条记录**只支撑**"PMD 在 verify 里真跑 + 本机一轮 IT 新鲜"，**不支撑**"无 Docker 时 B 组会优雅跳过"——6.2 里"该分支尚未在无 Docker 的机器上实测"那句悬置状态**当时未被本轮改变**（该悬置已于 2026-09-22 在本机真退出 Docker 后实测闭合，结论见 §6.2 的「实测记录」）。也不改变 6.2 的分层：「Flyway 真库迁移已验证」「真 MySQL 写链/数据权限已验证」这类结论必须有真库报告为凭，不能拿 `pmd:check` 的绿来顶。
 - **对照记录**（同一次变更的另 half，不属豁免）：`spotbugs-maven-plugin` 的 `<skip>` **已于 2026-09-21 删除并启用**，阈值的唯一读者是 pom 该块的 `threshold=High` + `excludeFilterFile=src/main/resources/spotbugs-exclude.xml`（存量 High 基线 12 条，由 `mvn -B -ntp compile spotbugs:spotbugs` 的一次真实运行生成，只允许由同一条命令更新）。新出现的 High 缺陷会让 `mvn -B -ntp spotbugs:check` 与 `mvn verify` 直接变红。
   → **2026-09-21 `wire-pmd-ruleset` P2：这处不对称已闭合** —— PMD 现在与 SpotBugs 同态（pom 单一读者 + 入库台账 + 过期防呆脚本 + 能变红的自测），本节剩下的"豁免"字样全部是解除前的历史对照。
 
