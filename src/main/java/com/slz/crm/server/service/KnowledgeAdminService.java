@@ -44,31 +44,43 @@ public class KnowledgeAdminService {
   public List<KnowledgeBaseVO> listBases() {
     UserContext user = currentUser();
     List<Long> visibleIds = authorizationService.visibleKnowledgeBaseIds(user);
-    if (visibleIds.isEmpty()) {
-      return List.of();
+    List<KnowledgeBaseVO> result = List.of();
+    if (!visibleIds.isEmpty()) {
+      List<KnowledgeBaseEntity> bases =
+          knowledgeBaseMapper.selectList(
+              new QueryWrapper<KnowledgeBaseEntity>().in("id", visibleIds).eq("is_deleted", false));
+      result = bases.stream().map(this::toBaseVO).collect(Collectors.toList());
     }
-    List<KnowledgeBaseEntity> bases =
-        knowledgeBaseMapper.selectList(
-            new QueryWrapper<KnowledgeBaseEntity>().in("id", visibleIds).eq("is_deleted", false));
-    return bases.stream().map(this::toBaseVO).collect(Collectors.toList());
+    return result;
   }
 
   public List<KnowledgeFileVO> listFiles(Long kbId) {
     UserContext user = currentUser();
     QueryWrapper<UploadedFileEntity> qw = new QueryWrapper<>();
+    boolean authorized = true;
     if (kbId != null) {
       List<Long> auth =
           authorizationService.authorizedKnowledgeBaseIds(user, List.of(String.valueOf(kbId)));
-      if (auth.isEmpty()) return List.of();
-      qw.eq("knowledge_base", kbId);
+      if (auth.isEmpty()) {
+        authorized = false;
+      } else {
+        qw.eq("knowledge_base", kbId);
+      }
     } else {
       List<Long> visible = authorizationService.visibleKnowledgeBaseIds(user);
-      if (visible.isEmpty()) return List.of();
-      qw.in("knowledge_base", visible);
+      if (visible.isEmpty()) {
+        authorized = false;
+      } else {
+        qw.in("knowledge_base", visible);
+      }
     }
-    qw.eq("is_deleted", false).orderByDesc("create_time");
-    List<UploadedFileEntity> files = uploadedFileMapper.selectList(qw);
-    return files.stream().map(this::toFileVO).collect(Collectors.toList());
+    List<KnowledgeFileVO> result = List.of();
+    if (authorized) {
+      qw.eq("is_deleted", false).orderByDesc("create_time");
+      List<UploadedFileEntity> files = uploadedFileMapper.selectList(qw);
+      result = files.stream().map(this::toFileVO).collect(Collectors.toList());
+    }
+    return result;
   }
 
   public DocumentIngestionResult upload(MultipartFile file, Long kbId) {
@@ -98,18 +110,24 @@ public class KnowledgeAdminService {
     UploadedFileEntity file =
         uploadedFileMapper.selectOne(
             new QueryWrapper<UploadedFileEntity>().eq("document_id", documentId));
-    if (file == null) return null;
-    return toFileVO(file);
+    KnowledgeFileVO result = null;
+    if (file != null) {
+      result = toFileVO(file);
+    }
+    return result;
   }
 
   public boolean deleteFile(String documentId) {
     UploadedFileEntity file =
         uploadedFileMapper.selectOne(
             new QueryWrapper<UploadedFileEntity>().eq("document_id", documentId));
-    if (file == null) return false;
-    file.setIsDeleted(true);
-    uploadedFileMapper.updateById(file);
-    return true;
+    boolean result = false;
+    if (file != null) {
+      file.setIsDeleted(true);
+      uploadedFileMapper.updateById(file);
+      result = true;
+    }
+    return result;
   }
 
   public DocumentIngestionResult reingest(String documentId) {
@@ -167,17 +185,22 @@ public class KnowledgeAdminService {
    */
   private UserContext currentUser() {
     UserContext user = UserContextHolder.current();
+    UserContext result;
     if (user != null) {
-      return user;
+      result = user;
+    } else {
+      RoleAO role = BaseUnit.getCurrentRole();
+      if (role != null
+          && role.getId() != null
+          && role.getRoleId() != null
+          && role.getDeptId() != null) {
+        result =
+            new UserContext(
+                role.getId(), role.getRoleId(), role.getDeptId(), DataScopeLevel.NONE, null);
+      } else {
+        throw new BaseException(ErrorCode.TOKEN_ERROR);
+      }
     }
-    RoleAO role = BaseUnit.getCurrentRole();
-    if (role != null
-        && role.getId() != null
-        && role.getRoleId() != null
-        && role.getDeptId() != null) {
-      return new UserContext(
-          role.getId(), role.getRoleId(), role.getDeptId(), DataScopeLevel.NONE, null);
-    }
-    throw new BaseException(ErrorCode.TOKEN_ERROR);
+    return result;
   }
 }

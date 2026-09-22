@@ -30,71 +30,74 @@ public class AiChatImageServiceImpl implements AiChatImageService {
       throw new IllegalArgumentException("聊天图片保存参数不完整");
     }
     String imageHash = LocalAiChatImageStorage.sha256Hex(content);
-    AiChatImageEntity existing = findByHash(sessionId, imageHash);
-    if (existing != null) {
-      return existing;
-    }
-
-    AiChatImageEntity image = new AiChatImageEntity();
-    image.setSessionId(sessionId);
-    image.setUserId(userId);
-    image.setImageHash(imageHash);
-    image.setStorageBackend(imageStorage.backend());
-    image.setStorageKey(imageStorage.store(sessionId, imageHash, content, contentType));
-    image.setCreateTime(LocalDateTime.now());
-    image.setUpdateTime(image.getCreateTime());
-    image.setIsDeleted(false);
-    try {
-      imageMapper.insert(image);
-      return image;
-    } catch (DuplicateKeyException exception) {
-      // 并发上传同一张图时回读已有 L1 记录，避免重复 vision 调用。
-      log.info("聊天图片并发保存冲突，回读已有记录: sessionId={}, hash={}", sessionId, imageHash);
-      AiChatImageEntity winner = findByHash(sessionId, imageHash);
-      if (winner != null) {
-        return winner;
+    AiChatImageEntity result = findByHash(sessionId, imageHash);
+    if (result == null) {
+      AiChatImageEntity image = new AiChatImageEntity();
+      image.setSessionId(sessionId);
+      image.setUserId(userId);
+      image.setImageHash(imageHash);
+      image.setStorageBackend(imageStorage.backend());
+      image.setStorageKey(imageStorage.store(sessionId, imageHash, content, contentType));
+      image.setCreateTime(LocalDateTime.now());
+      image.setUpdateTime(image.getCreateTime());
+      image.setIsDeleted(false);
+      try {
+        imageMapper.insert(image);
+        result = image;
+      } catch (DuplicateKeyException exception) {
+        // 并发上传同一张图时回读已有 L1 记录，避免重复 vision 调用。
+        log.info("聊天图片并发保存冲突，回读已有记录: sessionId={}, hash={}", sessionId, imageHash);
+        AiChatImageEntity winner = findByHash(sessionId, imageHash);
+        if (winner != null) {
+          result = winner;
+        } else {
+          throw exception;
+        }
       }
-      throw exception;
     }
+    return result;
   }
 
   @Override
   public Optional<AiChatImageEntity> findByRef(Long sessionId, String imageRef) {
-    if (sessionId == null || imageRef == null || imageRef.isBlank()) {
-      return Optional.empty();
-    }
-    String normalized = imageRef.trim();
-    AiChatImageEntity image;
-    if (normalized.chars().allMatch(Character::isDigit)) {
-      image = imageMapper.selectById(Long.parseLong(normalized));
-      if (image != null && !sessionId.equals(image.getSessionId())) {
+    Optional<AiChatImageEntity> result = Optional.empty();
+    if (sessionId != null && imageRef != null && !imageRef.isBlank()) {
+      String normalized = imageRef.trim();
+      AiChatImageEntity image;
+      if (normalized.chars().allMatch(Character::isDigit)) {
+        image = imageMapper.selectById(Long.parseLong(normalized));
+        if (image != null && !sessionId.equals(image.getSessionId())) {
+          image = null;
+        }
+      } else if (LocalAiChatImageStorage.isHex64(normalized)) {
+        image = findByHash(sessionId, normalized.toLowerCase());
+      } else {
         image = null;
       }
-    } else if (LocalAiChatImageStorage.isHex64(normalized)) {
-      image = findByHash(sessionId, normalized.toLowerCase());
-    } else {
-      image = null;
+      result = Optional.ofNullable(image);
     }
-    return Optional.ofNullable(image);
+    return result;
   }
 
   @Override
   public boolean completeUnderstanding(
       Long id, String ocrText, String imageSummary, List<String> keyEntities) {
-    if (id == null) {
-      return false;
+    boolean result = false;
+    if (id != null) {
+      AiChatImageEntity image = imageMapper.selectById(id);
+      if (image != null) {
+        String summary = imageSummary == null ? "" : imageSummary.trim();
+        image.setOcrText(ocrText == null ? "" : ocrText.trim());
+        image.setImageSummary(
+            summary.length() > SUMMARY_MAX_CHARS
+                ? summary.substring(0, SUMMARY_MAX_CHARS)
+                : summary);
+        image.setKeyEntities(serializeEntities(keyEntities));
+        image.setUpdateTime(LocalDateTime.now());
+        result = imageMapper.updateById(image) > 0;
+      }
     }
-    AiChatImageEntity image = imageMapper.selectById(id);
-    if (image == null) {
-      return false;
-    }
-    String summary = imageSummary == null ? "" : imageSummary.trim();
-    image.setOcrText(ocrText == null ? "" : ocrText.trim());
-    image.setImageSummary(
-        summary.length() > SUMMARY_MAX_CHARS ? summary.substring(0, SUMMARY_MAX_CHARS) : summary);
-    image.setKeyEntities(serializeEntities(keyEntities));
-    image.setUpdateTime(LocalDateTime.now());
-    return imageMapper.updateById(image) > 0;
+    return result;
   }
 
   @Override
@@ -113,11 +116,13 @@ public class AiChatImageServiceImpl implements AiChatImageService {
   }
 
   private String serializeEntities(List<String> keyEntities) {
+    String result;
     try {
-      return OBJECT_MAPPER.writeValueAsString(keyEntities == null ? List.of() : keyEntities);
+      result = OBJECT_MAPPER.writeValueAsString(keyEntities == null ? List.of() : keyEntities);
     } catch (Exception exception) {
       log.warn("聊天图片关键实体序列化失败，按空数组保存", exception);
-      return "[]";
+      result = "[]";
     }
+    return result;
   }
 }

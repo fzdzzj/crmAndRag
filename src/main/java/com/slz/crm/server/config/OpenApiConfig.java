@@ -73,21 +73,24 @@ public class OpenApiConfig {
 
   /** 只认显式命名的注解；未命名时退回参数名（需要 -parameters 编译，取不到就跳过该参数） */
   private static String multipartParameterName(MethodParameter parameter) {
+    String named = null;
     RequestParam requestParam = parameter.getParameterAnnotation(RequestParam.class);
     if (requestParam != null) {
-      String named = requestParam.value().isBlank() ? requestParam.name() : requestParam.value();
-      if (!named.isBlank()) {
-        return named;
+      String rp = requestParam.value().isBlank() ? requestParam.name() : requestParam.value();
+      if (!rp.isBlank()) {
+        named = rp;
       }
     }
-    RequestPart requestPart = parameter.getParameterAnnotation(RequestPart.class);
-    if (requestPart != null) {
-      String named = requestPart.value().isBlank() ? requestPart.name() : requestPart.value();
-      if (!named.isBlank()) {
-        return named;
+    if (named == null) {
+      RequestPart requestPart = parameter.getParameterAnnotation(RequestPart.class);
+      if (requestPart != null) {
+        String rp = requestPart.value().isBlank() ? requestPart.name() : requestPart.value();
+        if (!rp.isBlank()) {
+          named = rp;
+        }
       }
     }
-    return parameter.getParameterName();
+    return named == null ? parameter.getParameterName() : named;
   }
 
   private static boolean hasParameterNamed(Operation operation, String name) {
@@ -128,41 +131,43 @@ public class OpenApiConfig {
   @SuppressWarnings({"rawtypes", "unchecked"})
   private static void rewriteMultipart(
       Operation operation, String path, String method, Map<String, Schema> components) {
-    if (operation == null || operation.getParameters() == null) {
-      return;
-    }
-    boolean multipart =
-        EXTRA_MULTIPART.contains(path + "|" + method)
-            || operation.getParameters().stream()
-                .filter(parameter -> "query".equals(parameter.getIn()))
-                .anyMatch(
-                    parameter ->
-                        containsBinary(parameter.getSchema(), components, new HashSet<>()));
-    if (!multipart) {
-      return;
-    }
-    // 只保留 path 参数；query 拍平参数转为 multipart 表单字段（数组 DTO 展开为叶子字段）
-    Map<String, Schema> properties = new LinkedHashMap<>();
-    List<Parameter> kept = new ArrayList<>();
-    for (Parameter parameter : operation.getParameters()) {
-      if ("path".equals(parameter.getIn())) {
-        kept.add(parameter);
-      } else if ("query".equals(parameter.getIn())) {
-        expandFlattened(
-            parameter.getName(), parameter.getSchema(), components, properties, new HashSet<>());
+    if (operation != null && operation.getParameters() != null) {
+      boolean multipart =
+          EXTRA_MULTIPART.contains(path + "|" + method)
+              || operation.getParameters().stream()
+                  .filter(parameter -> "query".equals(parameter.getIn()))
+                  .anyMatch(
+                      parameter ->
+                          containsBinary(parameter.getSchema(), components, new HashSet<>()));
+      if (multipart) {
+        // 只保留 path 参数；query 拍平参数转为 multipart 表单字段（数组 DTO 展开为叶子字段）
+        Map<String, Schema> properties = new LinkedHashMap<>();
+        List<Parameter> kept = new ArrayList<>();
+        for (Parameter parameter : operation.getParameters()) {
+          if ("path".equals(parameter.getIn())) {
+            kept.add(parameter);
+          } else if ("query".equals(parameter.getIn())) {
+            expandFlattened(
+                parameter.getName(),
+                parameter.getSchema(),
+                components,
+                properties,
+                new HashSet<>());
+          }
+        }
+        operation.setParameters(kept.isEmpty() ? null : kept);
+        ObjectSchema schema = new ObjectSchema();
+        schema.properties(properties);
+        operation.setRequestBody(
+            new RequestBody()
+                .content(
+                    new Content()
+                        .addMediaType(
+                            MediaType.MULTIPART_FORM_DATA_VALUE,
+                            new io.swagger.v3.oas.models.media.MediaType().schema(schema)))
+                .required(false));
       }
     }
-    operation.setParameters(kept.isEmpty() ? null : kept);
-    ObjectSchema schema = new ObjectSchema();
-    schema.properties(properties);
-    operation.setRequestBody(
-        new RequestBody()
-            .content(
-                new Content()
-                    .addMediaType(
-                        MediaType.MULTIPART_FORM_DATA_VALUE,
-                        new io.swagger.v3.oas.models.media.MediaType().schema(schema)))
-            .required(false));
   }
 
   /**
@@ -176,64 +181,72 @@ public class OpenApiConfig {
       Map<String, Schema> components,
       Map<String, Schema> properties,
       Set<String> visited) {
-    if (schema == null) {
-      return;
-    }
-    Schema items = schema.getItems();
-    if (items != null) {
-      Schema itemResolved = resolveRef(items, components, visited);
-      if (itemResolved != null && itemResolved.getProperties() != null) {
-        itemResolved
-            .getProperties()
-            .forEach(
-                (propName, propSchema) ->
-                    properties.put(name + "[0]." + propName, (Schema) propSchema));
-        return;
+    if (schema != null) {
+      Schema items = schema.getItems();
+      if (items != null) {
+        Schema itemResolved = resolveRef(items, components, visited);
+        if (itemResolved != null && itemResolved.getProperties() != null) {
+          itemResolved
+              .getProperties()
+              .forEach(
+                  (propName, propSchema) ->
+                      properties.put(name + "[0]." + propName, (Schema) propSchema));
+        } else {
+          properties.put(name, schema);
+        }
+      } else {
+        properties.put(name, schema);
       }
     }
-    properties.put(name, schema);
   }
 
   /** 深度检测 schema（递归解析 $ref/数组/对象属性）是否含 format=binary 字段 */
   @SuppressWarnings("rawtypes")
   private static boolean containsBinary(
       Schema schema, Map<String, Schema> components, Set<String> visited) {
+    boolean result;
     if (schema == null) {
-      return false;
-    }
-    if ("binary".equals(schema.getFormat())) {
-      return true;
-    }
-    Schema resolved = resolveRef(schema, components, visited);
-    if (resolved != schema) {
-      return containsBinary(resolved, components, visited);
-    }
-    if (schema.getItems() != null) {
-      return containsBinary(schema.getItems(), components, visited);
-    }
-    if (schema.getProperties() != null) {
-      for (Object child : schema.getProperties().values()) {
-        if (containsBinary((Schema) child, components, visited)) {
-          return true;
+      result = false;
+    } else if ("binary".equals(schema.getFormat())) {
+      result = true;
+    } else {
+      Schema resolved = resolveRef(schema, components, visited);
+      if (resolved != schema) {
+        result = containsBinary(resolved, components, visited);
+      } else if (schema.getItems() != null) {
+        result = containsBinary(schema.getItems(), components, visited);
+      } else if (schema.getProperties() != null) {
+        result = false;
+        for (Object child : schema.getProperties().values()) {
+          if (containsBinary((Schema) child, components, visited)) {
+            result = true;
+            break;
+          }
         }
+      } else {
+        result = false;
       }
     }
-    return false;
+    return result;
   }
 
   /** 解析 $ref 到 components 中的实际 schema；无法解析或循环引用时返回原 schema */
   @SuppressWarnings("rawtypes")
   private static Schema resolveRef(
       Schema schema, Map<String, Schema> components, Set<String> visited) {
+    final Schema result;
     String ref = schema.get$ref();
     if (ref == null) {
-      return schema;
+      result = schema;
+    } else {
+      String refName = ref.substring(ref.lastIndexOf('/') + 1);
+      if (!visited.add(refName)) {
+        result = schema;
+      } else {
+        Schema target = components.get(refName);
+        result = target != null ? target : schema;
+      }
     }
-    String refName = ref.substring(ref.lastIndexOf('/') + 1);
-    if (!visited.add(refName)) {
-      return schema;
-    }
-    Schema target = components.get(refName);
-    return target != null ? target : schema;
+    return result;
   }
 }

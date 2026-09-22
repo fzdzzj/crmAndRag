@@ -42,31 +42,38 @@ public class AiChatKnowledgeRetrievalService {
 
   public RetrievalOutcome retrieve(
       String query, Long userId, float[] imageVector, boolean useKnowledgeBase) {
+    RetrievalOutcome result;
     if (!useKnowledgeBase) {
-      return RetrievalOutcome.empty();
-    }
-    KnowledgeRetrievalPort port =
-        retrievalPortProvider == null ? null : retrievalPortProvider.getIfAvailable();
-    if (port == null) {
-      log.warn("KnowledgeRetrievalPort 未就绪，按零命中继续生成");
-      return RetrievalOutcome.miss();
-    }
-    try {
-      KnowledgeRetrievalPort.RetrievalResult result =
-          port.retrieve(
-              new KnowledgeRetrievalPort.RetrievalQuery(
-                  query, userId, List.of(), resolveTopK(), imageVector, null));
-      if (result == null
-          || result.hitCount() <= 0
-          || result.context() == null
-          || result.context().isBlank()) {
-        return RetrievalOutcome.miss();
+      result = RetrievalOutcome.empty();
+    } else {
+      KnowledgeRetrievalPort port =
+          retrievalPortProvider == null ? null : retrievalPortProvider.getIfAvailable();
+      if (port == null) {
+        log.warn("KnowledgeRetrievalPort 未就绪，按零命中继续生成");
+        result = RetrievalOutcome.miss();
+      } else {
+        try {
+          KnowledgeRetrievalPort.RetrievalResult retrievalResult =
+              port.retrieve(
+                  new KnowledgeRetrievalPort.RetrievalQuery(
+                      query, userId, List.of(), resolveTopK(), imageVector, null));
+          if (retrievalResult == null
+              || retrievalResult.hitCount() <= 0
+              || retrievalResult.context() == null
+              || retrievalResult.context().isBlank()) {
+            result = RetrievalOutcome.miss();
+          } else {
+            result =
+                new RetrievalOutcome(
+                    toPromptContext(retrievalResult.context()), retrievalResult.sources());
+          }
+        } catch (Exception exception) {
+          log.warn("知识库检索失败，按零命中继续生成", exception);
+          result = RetrievalOutcome.miss();
+        }
       }
-      return new RetrievalOutcome(toPromptContext(result.context()), result.sources());
-    } catch (Exception exception) {
-      log.warn("知识库检索失败，按零命中继续生成", exception);
-      return RetrievalOutcome.miss();
     }
+    return result;
   }
 
   /**

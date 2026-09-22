@@ -69,10 +69,12 @@ public class AiActionController {
   public Result<AiPendingActionVO> getStatus(@PathVariable String pendingId) {
     AiPendingActionVO vo = pendingActionService.getStatus(pendingId, BaseUnit.getCurrentId());
 
+    final Result<AiPendingActionVO> result;
     if (vo == null) {
-
-      return Result.error("操作不存在或无权查看");
+      result = Result.error("操作不存在或无权查看");
+    } else {
+      result = Result.success(vo);
     }
-    return Result.success(vo);
+    return result;
   }
 }

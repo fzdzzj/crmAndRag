@@ -73,22 +73,22 @@ public class SalesStageApprovalServiceImpl
                 .eq(SalesStageApprovalEntity::getApprovalTriggered, false)
                 .orderByDesc(SalesStageApprovalEntity::getApplyTime)
                 .last("LIMIT 1"));
-    if (entity == null) {
-      return null;
+    SalesStageApprovalVO result = null;
+    if (entity != null) {
+      SalesOpportunityEntity opportunity =
+          salesOpportunityMapper.selectById(entity.getOpportunityId());
+      SalesStageApprovalVO vo =
+          SalesStageApprovalVO.fromEntity(
+              entity,
+              opportunity == null ? null : opportunity.getOpportunityName(),
+              opportunity == null ? null : convertStageToChinese(opportunity.getStage()),
+              convertStageToChinese(entity.getTargetStage()),
+              null);
+      vo.setAssistUsers(
+          assistRequestService.listAssistsByRecord(ModelName.SALES_STAGE_APPROVAL, entity.getId()));
+      result = vo;
     }
-
-    SalesOpportunityEntity opportunity =
-        salesOpportunityMapper.selectById(entity.getOpportunityId());
-    SalesStageApprovalVO vo =
-        SalesStageApprovalVO.fromEntity(
-            entity,
-            opportunity == null ? null : opportunity.getOpportunityName(),
-            opportunity == null ? null : convertStageToChinese(opportunity.getStage()),
-            convertStageToChinese(entity.getTargetStage()),
-            null);
-    vo.setAssistUsers(
-        assistRequestService.listAssistsByRecord(ModelName.SALES_STAGE_APPROVAL, entity.getId()));
-    return vo;
+    return result;
   }
 
   @Override

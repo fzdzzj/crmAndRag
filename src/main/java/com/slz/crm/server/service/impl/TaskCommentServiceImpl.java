@@ -116,48 +116,54 @@ public class TaskCommentServiceImpl extends ServiceImpl<TaskCommentMapper, TaskC
 
   @Override
   public List<TaskCommentVO> getByTaskId(Long taskId) {
+    List<TaskCommentVO> result;
     if (taskId == null) {
-      return new ArrayList<>();
+      result = new ArrayList<>();
+    } else {
+
+      List<TaskCommentEntity> entities =
+          list(
+              new LambdaQueryWrapper<TaskCommentEntity>()
+                  .eq(TaskCommentEntity::getTaskId, taskId)
+                  .orderByAsc(TaskCommentEntity::getCreateTime));
+
+      List<TaskCommentVO> voList = new ArrayList<>();
+      for (TaskCommentEntity entity : entities) {
+        voList.add(convertToVO(entity));
+      }
+
+      result = voList;
     }
-
-    List<TaskCommentEntity> entities =
-        list(
-            new LambdaQueryWrapper<TaskCommentEntity>()
-                .eq(TaskCommentEntity::getTaskId, taskId)
-                .orderByAsc(TaskCommentEntity::getCreateTime));
-
-    List<TaskCommentVO> voList = new ArrayList<>();
-    for (TaskCommentEntity entity : entities) {
-      voList.add(convertToVO(entity));
-    }
-
-    return voList;
+    return result;
   }
 
   @Override
   public Page<TaskCommentVO> getByTaskId(Long taskId, Integer pageNum, Integer pageSize) {
+    Page<TaskCommentVO> result;
     if (taskId == null) {
-      return new Page<>();
+      result = new Page<>();
+    } else {
+
+      Page<TaskCommentEntity> page = new Page<>(pageNum, pageSize);
+      Page<TaskCommentEntity> pageResult =
+          page(
+              page,
+              new LambdaQueryWrapper<TaskCommentEntity>()
+                  .eq(TaskCommentEntity::getTaskId, taskId)
+                  .orderByAsc(TaskCommentEntity::getCreateTime));
+
+      Page<TaskCommentVO> resultPage = new Page<>();
+      BeanUtils.copyProperties(pageResult, resultPage);
+
+      List<TaskCommentVO> voList = new ArrayList<>();
+      for (TaskCommentEntity entity : pageResult.getRecords()) {
+        voList.add(convertToVO(entity));
+      }
+      resultPage.setRecords(voList);
+
+      result = resultPage;
     }
-
-    Page<TaskCommentEntity> page = new Page<>(pageNum, pageSize);
-    Page<TaskCommentEntity> pageResult =
-        page(
-            page,
-            new LambdaQueryWrapper<TaskCommentEntity>()
-                .eq(TaskCommentEntity::getTaskId, taskId)
-                .orderByAsc(TaskCommentEntity::getCreateTime));
-
-    Page<TaskCommentVO> resultPage = new Page<>();
-    BeanUtils.copyProperties(pageResult, resultPage);
-
-    List<TaskCommentVO> voList = new ArrayList<>();
-    for (TaskCommentEntity entity : pageResult.getRecords()) {
-      voList.add(convertToVO(entity));
-    }
-    resultPage.setRecords(voList);
-
-    return resultPage;
+    return result;
   }
 
   /** 将Entity转换为VO，并设置评论人姓名 */

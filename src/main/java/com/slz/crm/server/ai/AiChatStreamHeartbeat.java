@@ -34,30 +34,30 @@ public class AiChatStreamHeartbeat {
       AiStreamRegistry.ActiveStream activeStream, Runnable heartbeatAction) {
     Boolean enabled = aiProperties.getHeartbeatEnabled();
     Integer intervalSeconds = aiProperties.getHeartbeatIntervalSeconds();
-    if (!Boolean.TRUE.equals(enabled) || intervalSeconds == null || intervalSeconds <= 0) {
-      return null;
+    ScheduledFuture<?> result = null;
+    if (Boolean.TRUE.equals(enabled) && intervalSeconds != null && intervalSeconds > 0) {
+      AtomicReference<ScheduledFuture<?>> currentFuture = new AtomicReference<>();
+      long interval = intervalSeconds;
+      // 回调先校验 future 仍是当前任务，避免活跃流被替换后旧心跳继续执行
+      ScheduledFuture<?> future =
+          scheduler.scheduleAtFixedRate(
+              () -> {
+                if (activeStream.isCurrentHeartbeat(currentFuture.get())) {
+                  heartbeatAction.run();
+                }
+              },
+              interval,
+              interval,
+              TimeUnit.SECONDS);
+      currentFuture.set(future);
+      activeStream.setHeartbeatFuture(future);
+      if (activeStream.isFinished()) {
+        // start 与终态并发时，注册后立即停止刚创建的任务
+        activeStream.stopHeartbeat();
+      }
+      result = future;
     }
-
-    AtomicReference<ScheduledFuture<?>> currentFuture = new AtomicReference<>();
-    long interval = intervalSeconds;
-    // 回调先校验 future 仍是当前任务，避免活跃流被替换后旧心跳继续执行
-    ScheduledFuture<?> future =
-        scheduler.scheduleAtFixedRate(
-            () -> {
-              if (activeStream.isCurrentHeartbeat(currentFuture.get())) {
-                heartbeatAction.run();
-              }
-            },
-            interval,
-            interval,
-            TimeUnit.SECONDS);
-    currentFuture.set(future);
-    activeStream.setHeartbeatFuture(future);
-    if (activeStream.isFinished()) {
-      // start 与终态并发时，注册后立即停止刚创建的任务
-      activeStream.stopHeartbeat();
-    }
-    return future;
+    return result;
   }
 
   @PreDestroy

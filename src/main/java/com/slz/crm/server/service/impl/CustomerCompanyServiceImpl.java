@@ -102,19 +102,21 @@ public class CustomerCompanyServiceImpl
       customerCompanyEntity.setGrade(0);
     }
 
+    CustomerCompanyVO result;
     try {
       if (!save(customerCompanyEntity)) {
-        return null;
+        result = null;
+      } else {
+        CustomerCompanyVO created = new CustomerCompanyVO();
+        created.setId(customerCompanyEntity.getId());
+        created.setCompanyName(customerCompanyEntity.getCompanyName());
+        result = created;
       }
-
-      CustomerCompanyVO created = new CustomerCompanyVO();
-      created.setId(customerCompanyEntity.getId());
-      created.setCompanyName(customerCompanyEntity.getCompanyName());
-      return created;
     } catch (DuplicateKeyException e) {
       // 并发写数据库唯一约束 uk_company_name_dept 兑底（正常路径已由 Java 判重拦截）
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "公司名称与部门组合已存在，请勿重复添加");
     }
+    return result;
   }
 
   /**
@@ -186,11 +188,12 @@ public class CustomerCompanyServiceImpl
    * @return 规范化后的部门
    */
   private static String normalizeDept(String dept) {
-    if (dept == null) {
-      return null;
+    String result = null;
+    if (dept != null) {
+      String trimmed = dept.trim();
+      result = trimmed.isEmpty() ? null : trimmed;
     }
-    String trimmed = dept.trim();
-    return trimmed.isEmpty() ? null : trimmed;
+    return result;
   }
 
   @Override
@@ -215,21 +218,24 @@ public class CustomerCompanyServiceImpl
       throw new BaseException(ErrorCode.FILE_FORMAT_ERROR, "文件读取失败: " + e.getMessage());
     }
 
+    int result;
     if (dataList == null || dataList.isEmpty()) {
       // Excel 中有数据但全部已存在（或本次重复），视为成功导入 0 条，而不是报“数据为空”
       if (rowCount > 0) {
-        return 0;
+        result = 0;
+      } else {
+        throw new BaseException(ErrorCode.COMPANY_DATA_EMPTY);
       }
-      throw new BaseException(ErrorCode.COMPANY_DATA_EMPTY);
+    } else {
+      try {
+        saveBatch(dataList);
+      } catch (DuplicateKeyException e) {
+        // 并发/重复导入时数据库唯一约束兑底
+        throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "导入数据中公司名称与部门组合已存在，请勿重复导入");
+      }
+      result = dataList.size();
     }
-
-    try {
-      saveBatch(dataList);
-    } catch (DuplicateKeyException e) {
-      // 并发/重复导入时数据库唯一约束兑底
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "导入数据中公司名称与部门组合已存在，请勿重复导入");
-    }
-    return dataList.size();
+    return result;
   }
 
   private void isValid(String phone) {

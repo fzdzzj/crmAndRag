@@ -41,11 +41,13 @@ public class SalesOpportunityController {
   @DeleteMapping("/{id}")
   @RequirePermission(PermissionOperates.SALES_DELETE_SALE_OPPORTUNITY)
   public Result<Boolean> delete(@PathVariable("id") Long id) {
+    Result<Boolean> result;
     try {
-      return Result.success(salesOpportunityService.delete(id));
+      result = Result.success(salesOpportunityService.delete(id));
     } catch (RuntimeException e) {
-      return Result.error(e.getMessage());
+      result = Result.error(e.getMessage());
     }
+    return result;
   }
 
   /**
@@ -106,11 +108,13 @@ public class SalesOpportunityController {
   @RequirePermission(PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY)
   public Result<com.slz.crm.pojo.vo.OpportunityDetailVO> getOpportunityDetailById(
       @PathVariable("opportunityId") Long opportunityId) {
+    Result<com.slz.crm.pojo.vo.OpportunityDetailVO> result;
     try {
-      return Result.success(salesOpportunityService.getOpportunityDetailById(opportunityId));
+      result = Result.success(salesOpportunityService.getOpportunityDetailById(opportunityId));
     } catch (RuntimeException e) {
-      return Result.error(e.getMessage());
+      result = Result.error(e.getMessage());
     }
+    return result;
   }
 
   /**
@@ -123,10 +127,12 @@ public class SalesOpportunityController {
   @RequirePermission(PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY)
   public Result<com.slz.crm.pojo.vo.OpportunityDetailVO> getOpportunityDetailByContractId(
       @PathVariable("contractId") Long contractId) {
+    Result<com.slz.crm.pojo.vo.OpportunityDetailVO> result;
     try {
-      return Result.success(salesOpportunityService.getOpportunityDetailByContractId(contractId));
+      result = Result.success(salesOpportunityService.getOpportunityDetailByContractId(contractId));
     } catch (RuntimeException e) {
-      return Result.error(e.getMessage());
+      result = Result.error(e.getMessage());
     }
+    return result;
   }
 }

@@ -36,13 +36,16 @@ public class ReportController {
       @RequestParam(required = false) LocalDateTime reportStartTime,
       @RequestParam(required = false) LocalDateTime reportEndTime) {
     // 参数验证
+    final Result<ContractNumVO> result;
     if (reportStartTime != null
         && reportEndTime != null
         && reportStartTime.isAfter(reportEndTime)) {
-      return Result.error("开始日期不能晚于结束日期");
+      result = Result.error("开始日期不能晚于结束日期");
+    } else {
+      result =
+          Result.success(reportService.getTotalSignContractNum(reportStartTime, reportEndTime));
     }
-
-    return Result.success(reportService.getTotalSignContractNum(reportStartTime, reportEndTime));
+    return result;
   }
 
   /**
@@ -59,12 +62,14 @@ public class ReportController {
       @RequestParam(required = false) LocalDateTime reportStartTime,
       @RequestParam(required = false) LocalDateTime reportEndTime) {
     // 参数验证
+    final Result<SalesNumVO> result;
     if (reportStartTime != null
         && reportEndTime != null
         && reportStartTime.isAfter(reportEndTime)) {
-      return Result.error("开始日期不能晚于结束日期");
+      result = Result.error("开始日期不能晚于结束日期");
+    } else {
+      result = Result.success(reportService.getTotalBusinessNum(reportStartTime, reportEndTime));
     }
-
-    return Result.success(reportService.getTotalBusinessNum(reportStartTime, reportEndTime));
+    return result;
   }
 }

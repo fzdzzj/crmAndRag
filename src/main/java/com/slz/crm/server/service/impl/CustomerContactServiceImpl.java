@@ -184,28 +184,27 @@ public class CustomerContactServiceImpl
     BeanUtils.copyProperties(customerContactDTO, entity);
     entity.setCreatorId(creatorId);
     entity.setIsDeleted(false);
-    if (baseMapper.insert(entity) <= 0) {
-      return null;
-    }
+    CustomerContactVO created = null;
+    if (baseMapper.insert(entity) > 0) {
+      // 处理备注信息
+      List<CustomerContactRemarkDTO> remarks = customerContactDTO.getRemarks();
+      if (remarks != null && !remarks.isEmpty()) {
+        for (CustomerContactRemarkDTO remark : remarks) {
+          // 验证备注类型
+          validateRemarkType(remark);
 
-    // 处理备注信息
-    List<CustomerContactRemarkDTO> remarks = customerContactDTO.getRemarks();
-    if (remarks != null && !remarks.isEmpty()) {
-      for (CustomerContactRemarkDTO remark : remarks) {
-        // 验证备注类型
-        validateRemarkType(remark);
-
-        CustomerContactRemarkEntity remarkEntity = new CustomerContactRemarkEntity();
-        BeanUtils.copyProperties(remark, remarkEntity);
-        remarkEntity.setContactId(entity.getId());
-        remarkEntity.setCreatorId(creatorId);
-        customerContactRemarkMapper.insert(remarkEntity);
+          CustomerContactRemarkEntity remarkEntity = new CustomerContactRemarkEntity();
+          BeanUtils.copyProperties(remark, remarkEntity);
+          remarkEntity.setContactId(entity.getId());
+          remarkEntity.setCreatorId(creatorId);
+          customerContactRemarkMapper.insert(remarkEntity);
+        }
       }
-    }
 
-    CustomerContactVO created = new CustomerContactVO();
-    created.setId(entity.getId());
-    created.setName(entity.getName());
+      created = new CustomerContactVO();
+      created.setId(entity.getId());
+      created.setName(entity.getName());
+    }
     return created;
   }
 
@@ -351,28 +350,31 @@ public class CustomerContactServiceImpl
         .eq(CustomerContactEntity::getIsDeleted, false);
 
     List<CustomerContactEntity> customerContactEntityList = baseMapper.selectList(queryWrapper);
+    List<CustomerContactVO> customerContactVOList;
     if (customerContactEntityList.isEmpty()) {
-      return List.of();
-    }
+      customerContactVOList = List.of();
+    } else {
+      // 批量查询创建人姓名
+      Set<Long> creatorIds = new HashSet<>();
+      for (CustomerContactEntity entity : customerContactEntityList) {
+        if (entity.getCreatorId() != null) creatorIds.add(entity.getCreatorId());
+      }
+      Map<Long, String> creatorNameMap = dataConvertService.getUserNames(creatorIds);
 
-    // 批量查询创建人姓名
-    Set<Long> creatorIds = new HashSet<>();
-    for (CustomerContactEntity entity : customerContactEntityList) {
-      if (entity.getCreatorId() != null) creatorIds.add(entity.getCreatorId());
+      List<CustomerContactVO> built = new ArrayList<>();
+      customerContactEntityList.forEach(
+          entity -> {
+            List<CustomerContactRemarkEntity> entities =
+                customerContactRemarkMapper.selectByContactId(entity.getId());
+            List<CustomerContactRemarkVO> remarkVOList =
+                CustomerContactRemarkVO.fromEntity(entities);
+            String creatorName = creatorNameMap.get(entity.getCreatorId());
+            CustomerContactVO vo =
+                CustomerContactVO.fromEntity(entity, companyName, creatorName, remarkVOList);
+            built.add(vo);
+          });
+      customerContactVOList = built;
     }
-    Map<Long, String> creatorNameMap = dataConvertService.getUserNames(creatorIds);
-
-    List<CustomerContactVO> customerContactVOList = new ArrayList<>();
-    customerContactEntityList.forEach(
-        entity -> {
-          List<CustomerContactRemarkEntity> entities =
-              customerContactRemarkMapper.selectByContactId(entity.getId());
-          List<CustomerContactRemarkVO> remarkVOList = CustomerContactRemarkVO.fromEntity(entities);
-          String creatorName = creatorNameMap.get(entity.getCreatorId());
-          CustomerContactVO vo =
-              CustomerContactVO.fromEntity(entity, companyName, creatorName, remarkVOList);
-          customerContactVOList.add(vo);
-        });
 
     return customerContactVOList;
   }
@@ -595,27 +597,27 @@ public class CustomerContactServiceImpl
     // 用 selectById 而非 getOne(wrapper)：避免 QueryWrapperAspect 数据权限切面过滤掉
     // 协助人可见的关联联系人（可见性由 AssistScopeService 放行）
     CustomerContactEntity entity = customerContactMapper.selectById(id);
-    if (entity == null || Boolean.TRUE.equals(entity.getIsDeleted())) {
-      return null;
-    }
-    boolean assistRelated = businessRecordAccessService.assertCanReadContact(entity);
-    String companyName =
-        entity.getCompanyId() == null
-            ? null
-            : dataConvertService.getCompanyName(entity.getCompanyId());
-    String creatorName =
-        entity.getCreatorId() == null
-            ? null
-            : dataConvertService.getUserName(entity.getCreatorId());
-    List<CustomerContactRemarkEntity> remarkEntities =
-        customerContactRemarkMapper.selectByContactId(entity.getId());
-    CustomerContactVO vo =
-        CustomerContactVO.fromEntity(
-            entity, companyName, creatorName, CustomerContactRemarkVO.fromEntity(remarkEntities));
-    // 对象级授权已经确认当前用户与该联系人有关，详情按本人规则展示
-    Long currentId = BaseUnit.getCurrentId();
-    if (currentId != null && assistRelated) {
-      vo.setRelatedUserIds(Set.of(currentId));
+    CustomerContactVO vo = null;
+    if (entity != null && !Boolean.TRUE.equals(entity.getIsDeleted())) {
+      boolean assistRelated = businessRecordAccessService.assertCanReadContact(entity);
+      String companyName =
+          entity.getCompanyId() == null
+              ? null
+              : dataConvertService.getCompanyName(entity.getCompanyId());
+      String creatorName =
+          entity.getCreatorId() == null
+              ? null
+              : dataConvertService.getUserName(entity.getCreatorId());
+      List<CustomerContactRemarkEntity> remarkEntities =
+          customerContactRemarkMapper.selectByContactId(entity.getId());
+      vo =
+          CustomerContactVO.fromEntity(
+              entity, companyName, creatorName, CustomerContactRemarkVO.fromEntity(remarkEntities));
+      // 对象级授权已经确认当前用户与该联系人有关，详情按本人规则展示
+      Long currentId = BaseUnit.getCurrentId();
+      if (currentId != null && assistRelated) {
+        vo.setRelatedUserIds(Set.of(currentId));
+      }
     }
     return vo;
   }
@@ -899,12 +901,14 @@ public class CustomerContactServiceImpl
     boolean isLeapYearBirthday = birthday.getMonthValue() == 2 && birthday.getDayOfMonth() == 29;
     boolean isTargetYearLeapYear = Year.of(year).isLeap();
 
+    LocalDate result;
     if (isLeapYearBirthday && !isTargetYearLeapYear) {
       // 闰年出生但在非闰年，返回 2 月 28 日
-      return LocalDate.of(year, 2, 28);
+      result = LocalDate.of(year, 2, 28);
     } else {
       // 其他情况直接设置年份
-      return birthday.withYear(year);
+      result = birthday.withYear(year);
     }
+    return result;
   }
 }

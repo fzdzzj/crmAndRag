@@ -24,11 +24,16 @@ public enum ActionTypeEnum {
 
   /** 按字符串值查找枚举（不存在时返回 null） */
   public static ActionTypeEnum fromValue(String value) {
-    if (value == null) return null;
-    for (ActionTypeEnum e : values()) {
-      if (e.value.equals(value)) return e;
+    ActionTypeEnum result = null;
+    if (value != null) {
+      for (ActionTypeEnum e : values()) {
+        if (e.value.equals(value)) {
+          result = e;
+          break;
+        }
+      }
     }
-    return null;
+    return result;
   }
 
   /** 按 actionType 字符串获取所需权限（不存在时返回 null） */

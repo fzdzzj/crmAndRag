@@ -12,15 +12,16 @@ public final class DraftValidationUtils {
   /** 从 DTO 字段的 @AskQuestion 注解读取追问文案（缺失时回退到校验消息） */
   public static String resolveAskQuestion(
       Class<?> dtoClass, String fieldName, String fallbackMessage) {
+    String result = fallbackMessage;
     try {
       Field field = dtoClass.getDeclaredField(fieldName);
       AskQuestion askQuestion = field.getAnnotation(AskQuestion.class);
       if (askQuestion != null) {
-        return askQuestion.value();
+        result = askQuestion.value();
       }
     } catch (NoSuchFieldException e) {
       log.warn("草稿字段不存在: {}.{}", dtoClass.getSimpleName(), fieldName);
     }
-    return fallbackMessage;
+    return result;
   }
 }

@@ -83,73 +83,80 @@ public class AiEntityResolver {
 
   /** 解析合同：有 contractId 校验存在性；仅有 contractName 按名称模糊查询 */
   public Resolution resolveContract(Long contractId, String contractName) {
+    Resolution result;
     if (contractId != null) {
-      return contractExists(contractId) ? Resolution.resolved(contractId) : Resolution.notFound();
-    }
-    if (contractName == null || contractName.isBlank()) {
-      return Resolution.missing();
-    }
+      result = contractExists(contractId) ? Resolution.resolved(contractId) : Resolution.notFound();
+    } else if (contractName == null || contractName.isBlank()) {
+      result = Resolution.missing();
+    } else {
+      ContractDTO query = new ContractDTO();
+      query.setContractName(contractName.trim());
+      Page<ContractVO> page = contractService.contractQuery(1, pageSize(), query);
+      List<ContractVO> records = page.getRecords();
 
-    ContractDTO query = new ContractDTO();
-    query.setContractName(contractName.trim());
-    Page<ContractVO> page = contractService.contractQuery(1, pageSize(), query);
-    List<ContractVO> records = page.getRecords();
-
-    if (records == null || records.isEmpty()) {
-      // 补救：名称查询零命中时，查询全部合同作为候选供用户选择
-      return fallbackContracts();
+      if (records == null || records.isEmpty()) {
+        // 补救：名称查询零命中时，查询全部合同作为候选供用户选择
+        result = fallbackContracts();
+      } else if (records.size() == 1) {
+        result = Resolution.resolved(records.get(0).getId());
+      } else {
+        List<String> candidates =
+            records.stream().map(c -> c.getContractNo() + " " + c.getContractName()).toList();
+        result = Resolution.ambiguous(candidates);
+      }
     }
-    if (records.size() == 1) {
-      return Resolution.resolved(records.get(0).getId());
-    }
-    List<String> candidates =
-        records.stream().map(c -> c.getContractNo() + " " + c.getContractName()).toList();
-    return Resolution.ambiguous(candidates);
+    return result;
   }
 
   /** 解析商机：有 opportunityId 校验存在性；仅有 opportunityName 按名称/公司/联系人模糊查询 */
   public Resolution resolveOpportunity(
       Long opportunityId, String opportunityName, String companyName, String contactName) {
-    if (opportunityId != null) {
-      return opportunityExists(opportunityId)
-          ? Resolution.resolved(opportunityId)
-          : Resolution.notFound();
-    }
     boolean noName =
         (opportunityName == null || opportunityName.isBlank())
             && (companyName == null || companyName.isBlank())
             && (contactName == null || contactName.isBlank());
-    if (noName) {
-      return Resolution.missing();
-    }
+    Resolution result;
+    if (opportunityId != null) {
+      result =
+          opportunityExists(opportunityId)
+              ? Resolution.resolved(opportunityId)
+              : Resolution.notFound();
+    } else if (noName) {
+      result = Resolution.missing();
+    } else {
+      SalesOpportunityQueryDTO query = new SalesOpportunityQueryDTO();
+      query.setOpportunityName(trimToNull(opportunityName));
+      query.setCompanyName(trimToNull(companyName));
+      query.setContactName(trimToNull(contactName));
+      Page<SalesOpportunityVO> page =
+          salesOpportunityService.getSalesOpportunityByQuery(query, 1, pageSize());
+      List<SalesOpportunityVO> records = page.getRecords();
 
-    SalesOpportunityQueryDTO query = new SalesOpportunityQueryDTO();
-    query.setOpportunityName(trimToNull(opportunityName));
-    query.setCompanyName(trimToNull(companyName));
-    query.setContactName(trimToNull(contactName));
-    Page<SalesOpportunityVO> page =
-        salesOpportunityService.getSalesOpportunityByQuery(query, 1, pageSize());
-    List<SalesOpportunityVO> records = page.getRecords();
-
-    if (records == null || records.isEmpty()) {
-      // 补救：名称查询零命中时，查询全部商机作为候选供用户选择
-      return fallbackOpportunities();
+      if (records == null || records.isEmpty()) {
+        // 补救：名称查询零命中时，查询全部商机作为候选供用户选择
+        result = fallbackOpportunities();
+      } else if (records.size() == 1) {
+        result = Resolution.resolved(records.get(0).getId());
+      } else {
+        List<String> oppCandidates =
+            records.stream()
+                .map(o -> o.getOpportunityName() + "（" + o.getCompanyName() + "）")
+                .toList();
+        result = Resolution.ambiguous(oppCandidates);
+      }
     }
-    if (records.size() == 1) {
-      return Resolution.resolved(records.get(0).getId());
-    }
-    List<String> oppCandidates =
-        records.stream().map(o -> o.getOpportunityName() + "（" + o.getCompanyName() + "）").toList();
-    return Resolution.ambiguous(oppCandidates);
+    return result;
   }
 
   private boolean contractExists(Long contractId) {
+    boolean result;
     try {
       contractService.getContractById(contractId);
-      return true;
+      result = true;
     } catch (BaseException e) {
-      return false;
+      result = false;
     }
+    return result;
   }
 
   /** 补救：查询全部合同作为候选（供前端下拉框搜索选择） */
@@ -157,21 +164,26 @@ public class AiEntityResolver {
     Page<ContractVO> allPage =
         contractService.contractQuery(1, fallbackPageSize(), new ContractDTO());
     List<ContractVO> allRecords = allPage.getRecords();
+    Resolution result;
     if (allRecords == null || allRecords.isEmpty()) {
-      return Resolution.notFound();
+      result = Resolution.notFound();
+    } else {
+      List<String> candidates =
+          allRecords.stream().map(c -> c.getContractNo() + " " + c.getContractName()).toList();
+      result = Resolution.fallback(candidates);
     }
-    List<String> candidates =
-        allRecords.stream().map(c -> c.getContractNo() + " " + c.getContractName()).toList();
-    return Resolution.fallback(candidates);
+    return result;
   }
 
   private boolean opportunityExists(Long opportunityId) {
+    boolean result;
     try {
       salesOpportunityService.getOpportunityDetailById(opportunityId);
-      return true;
+      result = true;
     } catch (BaseException e) {
-      return false;
+      result = false;
     }
+    return result;
   }
 
   private String trimToNull(String value) {
@@ -180,47 +192,52 @@ public class AiEntityResolver {
 
   /** 解析客户公司：有 companyId 校验存在性；仅有 companyName 按名称模糊查询（与 resolveContract 同模式） */
   public Resolution resolveCustomerCompany(Long companyId, String companyName) {
+    Resolution result;
     if (companyId != null) {
-      return customerCompanyExists(companyId)
-          ? Resolution.resolved(companyId)
-          : Resolution.notFound();
-    }
-    if (companyName == null || companyName.isBlank()) {
-      return Resolution.missing();
-    }
+      result =
+          customerCompanyExists(companyId) ? Resolution.resolved(companyId) : Resolution.notFound();
+    } else if (companyName == null || companyName.isBlank()) {
+      result = Resolution.missing();
+    } else {
+      Page<CustomerCompanyVO> page =
+          customerCompanyService.findCompany(companyName.trim(), 1, pageSize());
+      List<CustomerCompanyVO> records = page.getRecords();
 
-    Page<CustomerCompanyVO> page =
-        customerCompanyService.findCompany(companyName.trim(), 1, pageSize());
-    List<CustomerCompanyVO> records = page.getRecords();
-
-    if (records == null || records.isEmpty()) {
-      // 补救：查询全部客户公司作为候选
-      return fallbackCustomerCompanies();
+      if (records == null || records.isEmpty()) {
+        // 补救：查询全部客户公司作为候选
+        result = fallbackCustomerCompanies();
+      } else if (records.size() == 1) {
+        result = Resolution.resolved(records.get(0).getId());
+      } else {
+        List<String> candidates = records.stream().map(c -> c.getCompanyName()).toList();
+        result = Resolution.ambiguous(candidates);
+      }
     }
-    if (records.size() == 1) {
-      return Resolution.resolved(records.get(0).getId());
-    }
-    List<String> candidates = records.stream().map(c -> c.getCompanyName()).toList();
-    return Resolution.ambiguous(candidates);
+    return result;
   }
 
   private boolean customerCompanyExists(Long companyId) {
+    boolean result;
     try {
-      return customerCompanyService.getCompanyByCondition(companyId) != null;
+      result = customerCompanyService.getCompanyByCondition(companyId) != null;
     } catch (BaseException e) {
-      return false;
+      result = false;
     }
+    return result;
   }
 
   /** 补救：查询全部客户公司作为候选（供前端下拉框搜索选择） */
   private Resolution fallbackCustomerCompanies() {
     Page<CustomerCompanyVO> allPage = customerCompanyService.findCompany("", 1, fallbackPageSize());
     List<CustomerCompanyVO> allRecords = allPage.getRecords();
+    Resolution result;
     if (allRecords == null || allRecords.isEmpty()) {
-      return Resolution.notFound();
+      result = Resolution.notFound();
+    } else {
+      List<String> candidates = allRecords.stream().map(CustomerCompanyVO::getCompanyName).toList();
+      result = Resolution.fallback(candidates);
     }
-    List<String> candidates = allRecords.stream().map(CustomerCompanyVO::getCompanyName).toList();
-    return Resolution.fallback(candidates);
+    return result;
   }
 
   /** 补救：查询全部商机作为候选（供前端下拉框搜索选择） */
@@ -229,14 +246,17 @@ public class AiEntityResolver {
         salesOpportunityService.getSalesOpportunityByQuery(
             new SalesOpportunityQueryDTO(), 1, fallbackPageSize());
     List<SalesOpportunityVO> allRecords = allPage.getRecords();
+    Resolution result;
     if (allRecords == null || allRecords.isEmpty()) {
-      return Resolution.notFound();
+      result = Resolution.notFound();
+    } else {
+      List<String> candidates =
+          allRecords.stream()
+              .map(o -> o.getOpportunityName() + "（" + o.getCompanyName() + "）")
+              .toList();
+      result = Resolution.fallback(candidates);
     }
-    List<String> candidates =
-        allRecords.stream()
-            .map(o -> o.getOpportunityName() + "（" + o.getCompanyName() + "）")
-            .toList();
-    return Resolution.fallback(candidates);
+    return result;
   }
 
   private int pageSize() {

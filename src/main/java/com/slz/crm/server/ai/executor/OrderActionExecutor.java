@@ -72,34 +72,32 @@ public class OrderActionExecutor implements AiActionExecutor {
   private List<AiReferenceCollector.Reference> contractReferences(AiOrderDraftPayloadDTO payload) {
     List<AiReferenceCollector.Reference> references = new ArrayList<>();
 
-    if (payload.getOrders() == null) {
+    if (payload.getOrders() != null) {
+      Set<Long> seen = new LinkedHashSet<>();
 
-      return references;
-    }
-    Set<Long> seen = new LinkedHashSet<>();
+      for (AiOrderItemDraftDTO item : payload.getOrders()) {
 
-    for (AiOrderItemDraftDTO item : payload.getOrders()) {
+        Long contractId = item.getContractId();
 
-      Long contractId = item.getContractId();
+        if (contractId == null || !seen.add(contractId)) {
 
-      if (contractId == null || !seen.add(contractId)) {
+          continue;
+        }
+        try {
+          ContractVO contract = contractService.getContractById(contractId);
 
-        continue;
-      }
-      try {
-        ContractVO contract = contractService.getContractById(contractId);
+          references.add(
+              new AiReferenceCollector.Reference(
+                  "contract",
+                  contractId,
+                  contract != null && contract.getContractName() != null
+                      ? contract.getContractName()
+                      : "合同 #" + contractId));
 
-        references.add(
-            new AiReferenceCollector.Reference(
-                "contract",
-                contractId,
-                contract != null && contract.getContractName() != null
-                    ? contract.getContractName()
-                    : "合同 #" + contractId));
+        } catch (Exception e) {
 
-      } catch (Exception e) {
-
-        log.warn("回查合同名称失败，跳过该引用, contractId={}", contractId, e);
+          log.warn("回查合同名称失败，跳过该引用, contractId={}", contractId, e);
+        }
       }
     }
     return references;

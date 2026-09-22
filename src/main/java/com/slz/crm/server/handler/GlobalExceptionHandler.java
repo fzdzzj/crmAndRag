@@ -30,15 +30,18 @@ public class GlobalExceptionHandler {
     }
 
     // 如果异常中有错误码，使用错误码返回
+    final Result<String> result;
     if (e.getCode() != null) {
       ErrorCode errorCode = ErrorCode.getByCode(e.getCode());
       if (errorCode != null) {
-        return Result.error(errorCode);
+        result = Result.error(errorCode);
+      } else {
+        result = Result.error(e.getCode(), e.getMessage());
       }
-      return Result.error(e.getCode(), e.getMessage());
+    } else {
+      result = Result.error(ErrorCode.PARAM_FORMAT_ERROR);
     }
-
-    return Result.error(ErrorCode.PARAM_FORMAT_ERROR);
+    return result;
   }
 
   @ExceptionHandler(BaseException.class)
@@ -51,19 +54,23 @@ public class GlobalExceptionHandler {
     }
 
     // 如果异常中有错误码，使用错误码返回
+    final Result<String> result;
     if (ex.getCode() != null) {
       ErrorCode errorCode = ErrorCode.getByCode(ex.getCode());
       if (errorCode != null) {
         // 如果自定义消息与错误码默认消息不同，使用自定义消息
         if (ex.getMessage() != null && !ex.getMessage().equals(errorCode.getMessage())) {
-          return Result.error(ex.getCode(), ex.getMessage());
+          result = Result.error(ex.getCode(), ex.getMessage());
+        } else {
+          result = Result.error(errorCode);
         }
-        return Result.error(errorCode);
+      } else {
+        result = Result.error(ex.getCode(), ex.getMessage());
       }
-      return Result.error(ex.getCode(), ex.getMessage());
+    } else {
+      result = Result.error(ex.getMessage());
     }
-
-    return Result.error(ex.getMessage());
+    return result;
   }
 
   @ExceptionHandler(MethodArgumentTypeMismatchException.class)

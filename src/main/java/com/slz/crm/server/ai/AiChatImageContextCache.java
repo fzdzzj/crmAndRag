@@ -28,28 +28,26 @@ public class AiChatImageContextCache {
   public record CachedImageContext(String focusedSummary, float[] imageVector) {}
 
   public Optional<CachedImageContext> get(Long sessionId, String imageHash, String question) {
-    if (sessionId == null || imageHash == null || imageHash.isBlank()) {
-      return Optional.empty();
-    }
-    LinkedHashMap<String, Entry> cache = sessions.get(sessionId);
-    if (cache == null) {
-      return Optional.empty();
-    }
-    String cacheKey = cacheKey(question);
-    synchronized (cache) {
-      Entry entry = cache.get(cacheKey);
-      if (entry == null) {
-        return Optional.empty();
+    Optional<CachedImageContext> result = Optional.empty();
+    if (sessionId != null && imageHash != null && !imageHash.isBlank()) {
+      LinkedHashMap<String, Entry> cache = sessions.get(sessionId);
+      if (cache != null) {
+        String cacheKey = cacheKey(question);
+        synchronized (cache) {
+          Entry entry = cache.get(cacheKey);
+          if (entry != null && !entry.isExpired(ttlSeconds)) {
+            entry.touch();
+            cache.remove(cacheKey);
+            cache.put(cacheKey, entry);
+            result =
+                Optional.of(new CachedImageContext(entry.focusedSummary, clone(entry.imageVector)));
+          } else if (entry != null) {
+            cache.remove(cacheKey);
+          }
+        }
       }
-      if (entry.isExpired(ttlSeconds)) {
-        cache.remove(cacheKey);
-        return Optional.empty();
-      }
-      entry.touch();
-      cache.remove(cacheKey);
-      cache.put(cacheKey, entry);
-      return Optional.of(new CachedImageContext(entry.focusedSummary, clone(entry.imageVector)));
     }
+    return result;
   }
 
   public void put(

@@ -423,20 +423,23 @@ public class ApprovalAttachmentServiceImpl
 
   @Override
   public ApprovalAttachmentEntity getEntityById(Long attachmentId) {
-    if (attachmentId == null) {
-      return null;
+    ApprovalAttachmentEntity result = null;
+    if (attachmentId != null) {
+      result = baseMapper.selectById(attachmentId);
     }
-    return baseMapper.selectById(attachmentId);
+    return result;
   }
 
   @Override
   public List<ApprovalAttachmentEntity> listEntitiesByAndIds(List<Long> andIds, String modelName) {
-    if (andIds == null || andIds.isEmpty()) {
-      return Collections.emptyList();
+    List<ApprovalAttachmentEntity> result = Collections.emptyList();
+    if (andIds != null && !andIds.isEmpty()) {
+      result =
+          baseMapper.selectList(
+              new LambdaQueryWrapper<ApprovalAttachmentEntity>()
+                  .in(ApprovalAttachmentEntity::getAndId, andIds)
+                  .eq(ApprovalAttachmentEntity::getModelName, modelName));
     }
-    return baseMapper.selectList(
-        new LambdaQueryWrapper<ApprovalAttachmentEntity>()
-            .in(ApprovalAttachmentEntity::getAndId, andIds)
-            .eq(ApprovalAttachmentEntity::getModelName, modelName));
+    return result;
   }
 }

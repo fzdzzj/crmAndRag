@@ -116,23 +116,25 @@ public class PermissionSyncRunner {
    * @return 模块名称
    */
   private String getModuleByEnumName(String enumName) {
+    final String result;
     if (enumName.startsWith("CUSTOMER_")) {
-      return "客户管理模块";
+      result = "客户管理模块";
     } else if (enumName.startsWith("SALES_")) {
-      return "销售管理模块";
+      result = "销售管理模块";
     } else if (enumName.startsWith("FINANCE_")) {
-      return "财务管理模块";
+      result = "财务管理模块";
     } else if (enumName.startsWith("TASK_")) {
-      return "联络任务模块";
+      result = "联络任务模块";
     } else if (enumName.startsWith("REPORT_")) {
-      return "统计报表模块";
+      result = "统计报表模块";
     } else if (enumName.startsWith("SYSTEM_")) {
-      return "权限管理模块";
+      result = "权限管理模块";
     } else if (enumName.startsWith("PRIVACY_")) {
-      return "隐私信息模块";
+      result = "隐私信息模块";
     } else {
-      return "其他模块";
+      result = "其他模块";
     }
+    return result;
   }
 
   /** 打印权限分组信息 */

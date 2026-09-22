@@ -27,28 +27,23 @@ public class AiReferenceCollector {
 
   /** 从工具结果 VO 提取引用（非实体类型返回 null） */
   public static Reference fromVo(Object vo) {
+    Reference reference = null;
     if (vo instanceof ContractVO v) {
-      return new Reference("contract", v.getId(), v.getContractName());
+      reference = new Reference("contract", v.getId(), v.getContractName());
+    } else if (vo instanceof CustomerCompanyVO v) {
+      reference = new Reference("customerCompany", v.getId(), v.getCompanyName());
+    } else if (vo instanceof CustomerContactVO v) {
+      reference = new Reference("contact", v.getId(), v.getName());
+    } else if (vo instanceof SalesOpportunityVO v) {
+      reference = new Reference("opportunity", v.getId(), v.getOpportunityName());
+    } else if (vo instanceof OrderVO v) {
+      reference = new Reference("order", v.getId(), v.getProductName());
+    } else if (vo instanceof PaymentRecordVO v) {
+      reference = new Reference("payment", v.getId(), v.getContractName());
+    } else if (vo instanceof InvoiceInfoVO v) {
+      reference = new Reference("invoice", v.getId(), v.getInvoiceNo());
     }
-    if (vo instanceof CustomerCompanyVO v) {
-      return new Reference("customerCompany", v.getId(), v.getCompanyName());
-    }
-    if (vo instanceof CustomerContactVO v) {
-      return new Reference("contact", v.getId(), v.getName());
-    }
-    if (vo instanceof SalesOpportunityVO v) {
-      return new Reference("opportunity", v.getId(), v.getOpportunityName());
-    }
-    if (vo instanceof OrderVO v) {
-      return new Reference("order", v.getId(), v.getProductName());
-    }
-    if (vo instanceof PaymentRecordVO v) {
-      return new Reference("payment", v.getId(), v.getContractName());
-    }
-    if (vo instanceof InvoiceInfoVO v) {
-      return new Reference("invoice", v.getId(), v.getInvoiceNo());
-    }
-    return null;
+    return reference;
   }
 
   /** 采集单个 VO（非实体类型忽略） */

@@ -82,18 +82,22 @@ final class AiSseEventBuffer {
 
   /** 只接受当前 generation 的事件 id，避免跨 generation 误续传。 */
   private long parseSequence(String eventId) {
+    long result;
     if (eventId == null || eventId.isBlank()) {
-      return 0L;
+      result = 0L;
+    } else {
+      String prefix = generationId + ":";
+      if (!eventId.startsWith(prefix)) {
+        result = 0L;
+      } else {
+        try {
+          result = Long.parseLong(eventId.substring(prefix.length()));
+        } catch (NumberFormatException ignored) {
+          result = 0L;
+        }
+      }
     }
-    String prefix = generationId + ":";
-    if (!eventId.startsWith(prefix)) {
-      return 0L;
-    }
-    try {
-      return Long.parseLong(eventId.substring(prefix.length()));
-    } catch (NumberFormatException ignored) {
-      return 0L;
-    }
+    return result;
   }
 
   /** 缓冲事件不可变快照。 */

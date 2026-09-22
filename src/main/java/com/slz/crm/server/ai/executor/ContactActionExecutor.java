@@ -63,13 +63,15 @@ public class ContactActionExecutor implements AiActionExecutor {
 
   /** 引用 ID 使用创建服务返回值；名称从库中详情读取，避免沿用输入草稿文本。 */
   private List<AiReferenceCollector.Reference> reference(CustomerContactVO created) {
+    List<AiReferenceCollector.Reference> result = List.of();
     if (created != null
         && created.getId() != null
         && created.getName() != null
         && !created.getName().isBlank()) {
-      return List.of(
-          new AiReferenceCollector.Reference("contact", created.getId(), created.getName()));
+      result =
+          List.of(
+              new AiReferenceCollector.Reference("contact", created.getId(), created.getName()));
     }
-    return List.of();
+    return result;
   }
 }

@@ -36,14 +36,24 @@ public class ContactActionValidator implements AiActionValidator {
 
   @Override
   public AiValidationResult validate(String payloadJson) {
-    AiContactDraftPayloadDTO payload;
+    AiContactDraftPayloadDTO payload = null;
+    AiValidationResult result = null;
     try {
       payload = objectMapper.readValue(payloadJson, AiContactDraftPayloadDTO.class);
     } catch (Exception e) {
       log.warn("联系人草稿 payload 解析失败", e);
-      return AiValidationResult.fail(List.of("name"), List.of("请提供联系人信息（所属客户、姓名）"));
+      result = AiValidationResult.fail(List.of("name"), List.of("请提供联系人信息（所属客户、姓名）"));
     }
 
+    if (result == null) {
+      result = validatePayload(payload);
+    }
+    return result;
+  }
+
+  /** payload 解析成功后执行实体解析与声明式校验；只在完全通过且发生字段重写时返回 ok。 */
+  private AiValidationResult validatePayload(AiContactDraftPayloadDTO payload) {
+    AiValidationResult result;
     Set<String> missingFields = new LinkedHashSet<>();
     List<String> questions = new ArrayList<>();
     boolean resolved = false;
@@ -101,13 +111,17 @@ public class ContactActionValidator implements AiActionValidator {
     if (missingFields.isEmpty()) {
       if (resolved) {
         try {
-          return AiValidationResult.ok(objectMapper.writeValueAsString(payload));
+          result = AiValidationResult.ok(objectMapper.writeValueAsString(payload));
         } catch (Exception e) {
           log.warn("序列化解析后 payload 失败，回退原 payload", e);
+          result = AiValidationResult.ok();
         }
+      } else {
+        result = AiValidationResult.ok();
       }
-      return AiValidationResult.ok();
+    } else {
+      result = AiValidationResult.fail(new ArrayList<>(missingFields), questions);
     }
-    return AiValidationResult.fail(new ArrayList<>(missingFields), questions);
+    return result;
   }
 }

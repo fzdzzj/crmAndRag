@@ -1,12 +1,9 @@
 package com.slz.crm.server.ai;
 
 import com.slz.crm.platform.contract.SourceReference;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -30,8 +27,6 @@ public final class CitationAligner {
   public static final double TIE_MARGIN = 0.08;
 
   private static final Pattern CITATION_PATTERN = Pattern.compile("\\[(\\d{1,3})]");
-  private static final Pattern ASCII_TOKEN = Pattern.compile("[A-Za-z0-9]+");
-  private static final double TOKEN_BONUS_WEIGHT = 0.25;
 
   private CitationAligner() {}
 
@@ -43,35 +38,36 @@ public final class CitationAligner {
    * @return 对齐后文本与去重后的 citations（按出现顺序）
    */
   public static Alignment align(String answer, List<SourceReference> sources) {
+    Alignment result;
     if (answer == null || answer.isBlank()) {
-      return new Alignment(answer == null ? "" : answer, List.of());
-    }
-    if (sources == null || sources.isEmpty()) {
-      return new Alignment(answer, List.of());
-    }
-
-    Matcher matcher = CITATION_PATTERN.matcher(answer);
-    if (!matcher.find()) {
-      return new Alignment(answer, List.of());
-    }
-
-    StringBuilder out = new StringBuilder(answer.length());
-    LinkedHashSet<Integer> citations = new LinkedHashSet<>();
-    int last = 0;
-    matcher.reset();
-    while (matcher.find()) {
-      out.append(answer, last, matcher.start());
-      int original = Integer.parseInt(matcher.group(1));
-      String clause = clauseAround(answer, matcher.start(), matcher.end());
-      int decided = decide(original, clause, sources);
-      if (decided > 0) {
-        out.append('[').append(decided).append(']');
-        citations.add(decided);
+      result = new Alignment(answer == null ? "" : answer, List.of());
+    } else if (sources == null || sources.isEmpty()) {
+      result = new Alignment(answer, List.of());
+    } else {
+      Matcher matcher = CITATION_PATTERN.matcher(answer);
+      if (!matcher.find()) {
+        result = new Alignment(answer, List.of());
+      } else {
+        StringBuilder out = new StringBuilder(answer.length());
+        LinkedHashSet<Integer> citations = new LinkedHashSet<>();
+        int last = 0;
+        matcher.reset();
+        while (matcher.find()) {
+          out.append(answer, last, matcher.start());
+          int original = Integer.parseInt(matcher.group(1));
+          String clause = clauseAround(answer, matcher.start(), matcher.end());
+          int decided = decide(original, clause, sources);
+          if (decided > 0) {
+            out.append('[').append(decided).append(']');
+            citations.add(decided);
+          }
+          last = matcher.end();
+        }
+        out.append(answer, last, answer.length());
+        result = new Alignment(out.toString(), List.copyOf(citations));
       }
-      last = matcher.end();
     }
-    out.append(answer, last, answer.length());
-    return new Alignment(out.toString(), List.copyOf(citations));
+    return result;
   }
 
   /**
@@ -86,7 +82,7 @@ public final class CitationAligner {
     double bestScore = -1.0d;
     for (int i = 0; i < n; i++) {
       String excerpt = sources.get(i) == null ? null : sources.get(i).excerpt();
-      scores[i] = supportScore(clause, excerpt);
+      scores[i] = CitationSupport.supportScore(clause, excerpt);
       if (scores[i] > bestScore) {
         bestScore = scores[i];
         bestIdx = i;
@@ -97,19 +93,19 @@ public final class CitationAligner {
     double scoreOriginal = inRange ? scores[original - 1] : -1.0d;
 
     // KEEP：原编号在范围内、自身够强、且不显著弱于最佳
+    int result;
     if (inRange && scoreOriginal >= KEEP_MIN && scoreOriginal + TIE_MARGIN >= bestScore) {
-      return original;
-    }
-
-    // REMAP：存在足够强的最佳片段，且原编号越界/过弱/显著落后
-    if (bestIdx >= 0
+      result = original;
+    } else if (bestIdx >= 0
         && bestScore >= REMAP_MIN
         && (!inRange || scoreOriginal < KEEP_MIN || bestScore - scoreOriginal >= TIE_MARGIN)) {
-      return bestIdx + 1;
+      // REMAP：存在足够强的最佳片段，且原编号越界/过弱/显著落后
+      result = bestIdx + 1;
+    } else {
+      // DROP：无可靠支撑
+      result = 0;
     }
-
-    // DROP：无可靠支撑
-    return 0;
+    return result;
   }
 
   /** 取引用编号所在子句（按 。！？；\n 切分；含编号前与编号后至下一分隔/下一引用）。 中置编号如「依据[2]结论」会得到「依据结论」，避免只取前缀导致二字 bigram 为空。 */
@@ -149,26 +145,31 @@ public final class CitationAligner {
 
     String left = answer.substring(start, leftEnd).trim();
     String rightPart = answer.substring(end, right).trim();
+    String result;
     if (left.isEmpty()) {
-      return rightPart;
+      result = rightPart;
+    } else if (rightPart.isEmpty()) {
+      result = left;
+    } else {
+      result = left + rightPart;
     }
-    if (rightPart.isEmpty()) {
-      return left;
-    }
-    return left + rightPart;
+    return result;
   }
 
   private static boolean looksLikeCitationOpen(String answer, int openIdx) {
+    boolean result;
     if (openIdx + 1 >= answer.length() || !Character.isDigit(answer.charAt(openIdx + 1))) {
-      return false;
+      result = false;
+    } else {
+      int i = openIdx + 1;
+      int digits = 0;
+      while (i < answer.length() && Character.isDigit(answer.charAt(i)) && digits < 3) {
+        i++;
+        digits++;
+      }
+      result = digits > 0 && i < answer.length() && answer.charAt(i) == ']';
     }
-    int i = openIdx + 1;
-    int digits = 0;
-    while (i < answer.length() && Character.isDigit(answer.charAt(i)) && digits < 3) {
-      i++;
-      digits++;
-    }
-    return digits > 0 && i < answer.length() && answer.charAt(i) == ']';
+    return result;
   }
 
   private static boolean looksLikeCitationClose(String answer, int closeIdx) {
@@ -192,81 +193,7 @@ public final class CitationAligner {
         || c == ';';
   }
 
-  /** 支撑分：CJK 二字子句覆盖率 + 共享 ASCII/数字 token 加成，夹到 [0,1]。 */
-  static double supportScore(String clause, String excerpt) {
-    if (clause == null || clause.isBlank() || excerpt == null || excerpt.isBlank()) {
-      return 0.0d;
-    }
-    // 主信号：子句 bigram 被 excerpt 覆盖的比例（避免长 excerpt 稀释 Jaccard）
-    double coverage = clauseCoverage(cjkBigrams(clause), cjkBigrams(excerpt));
-    double tokenBonus = tokenOverlapBonus(clause, excerpt);
-    return Math.min(1.0d, coverage + tokenBonus);
-  }
-
-  private static double tokenOverlapBonus(String clause, String excerpt) {
-    Set<String> a = asciiTokens(clause);
-    Set<String> b = asciiTokens(excerpt);
-    if (a.isEmpty() || b.isEmpty()) {
-      return 0.0d;
-    }
-    int shared = 0;
-    for (String t : a) {
-      if (b.contains(t)) {
-        shared++;
-      }
-    }
-    if (shared == 0) {
-      return 0.0d;
-    }
-    return TOKEN_BONUS_WEIGHT * ((double) shared / a.size());
-  }
-
-  private static double clauseCoverage(Set<String> clauseGrams, Set<String> excerptGrams) {
-    if (clauseGrams.isEmpty()) {
-      return 0.0d;
-    }
-    int hit = 0;
-    for (String g : clauseGrams) {
-      if (excerptGrams.contains(g)) {
-        hit++;
-      }
-    }
-    return (double) hit / (double) clauseGrams.size();
-  }
-
-  static Set<String> cjkBigrams(String text) {
-    Set<String> out = new HashSet<>();
-    if (text == null || text.length() < 2) {
-      return out;
-    }
-    for (int i = 0; i < text.length() - 1; i++) {
-      char a = text.charAt(i);
-      char b = text.charAt(i + 1);
-      if (isCjk(a) && isCjk(b)) {
-        out.add(new String(new char[] {a, b}));
-      }
-    }
-    return out;
-  }
-
-  static Set<String> asciiTokens(String text) {
-    Set<String> out = new HashSet<>();
-    if (text == null || text.isBlank()) {
-      return out;
-    }
-    Matcher matcher = ASCII_TOKEN.matcher(text);
-    while (matcher.find()) {
-      out.add(matcher.group().toLowerCase(Locale.ROOT));
-    }
-    return out;
-  }
-
-  private static boolean isCjk(char c) {
-    Character.UnicodeBlock block = Character.UnicodeBlock.of(c);
-    return block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
-        || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
-        || block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS;
-  }
+  /** 支撑分：CJK 二字子句覆盖率 + 共享 ASCII/数字 token 加成，夹到 [0,1]。由 {@link CitationSupport} 承担。 */
 
   /**
    * 对齐结果。

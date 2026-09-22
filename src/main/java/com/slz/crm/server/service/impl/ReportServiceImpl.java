@@ -87,13 +87,17 @@ public class ReportServiceImpl implements ReportService {
 
   /** 获取时间范围，如果都为null则返回当前年份范围 */
   private LocalDateTime[] getTimeRange(LocalDateTime startTime, LocalDateTime endTime) {
+    LocalDateTime[] result;
     if (startTime == null && endTime == null) {
       int currentYear = LocalDateTime.now().getYear();
-      return new LocalDateTime[] {
-        LocalDateTime.of(currentYear, 1, 1, 0, 0, 0),
-        LocalDateTime.of(currentYear, 12, 31, 23, 59, 59)
-      };
+      result =
+          new LocalDateTime[] {
+            LocalDateTime.of(currentYear, 1, 1, 0, 0, 0),
+            LocalDateTime.of(currentYear, 12, 31, 23, 59, 59)
+          };
+    } else {
+      result = new LocalDateTime[] {startTime, endTime};
     }
-    return new LocalDateTime[] {startTime, endTime};
+    return result;
   }
 }

@@ -27,12 +27,15 @@ public final class AiThinkTagStripper {
    * <p>未闭合的 {@code <think>} 会丢弃其后全部内容；宁可误删也不让推理内容回灌。
    */
   public static String strip(String text) {
+    String result;
     if (text == null || text.isEmpty()) {
-      return "";
+      result = "";
+    } else {
+      String stripped = COMPLETE_BLOCK.matcher(text).replaceAll("");
+      stripped = UNCLOSED_BLOCK.matcher(stripped).replaceAll("");
+      stripped = ORPHAN_CLOSE.matcher(stripped).replaceAll("");
+      result = stripped;
     }
-    String result = COMPLETE_BLOCK.matcher(text).replaceAll("");
-    result = UNCLOSED_BLOCK.matcher(result).replaceAll("");
-    result = ORPHAN_CLOSE.matcher(result).replaceAll("");
     return result;
   }
 
@@ -60,20 +63,23 @@ public final class AiThinkTagStripper {
 
     /** 处理增量；thinkingSink 接收 think 块内的片段，返回值只包含正文。 */
     public String filter(String delta, Consumer<String> thinkingSink) {
+      String result;
       if (delta == null || delta.isEmpty()) {
-        return "";
-      }
-      StringBuilder output = new StringBuilder();
-      for (int index = 0; index < delta.length(); index++) {
-        char character = delta.charAt(index);
-        if (state == State.IN_THINK) {
-          processInThink(character, thinkingSink);
-          continue;
+        result = "";
+      } else {
+        StringBuilder output = new StringBuilder();
+        for (int index = 0; index < delta.length(); index++) {
+          char character = delta.charAt(index);
+          if (state == State.IN_THINK) {
+            processInThink(character, thinkingSink);
+            continue;
+          }
+          processNormal(character, output);
         }
-        processNormal(character, output);
+        flushThinking(thinkingSink);
+        result = output.toString();
       }
-      flushThinking(thinkingSink);
-      return output.toString();
+      return result;
     }
 
     /** 流结束时冲刷缓冲；未闭合的 think 块整体丢弃。 */
@@ -81,15 +87,17 @@ public final class AiThinkTagStripper {
       String tail = openPending.toString();
       openPending.setLength(0);
       closePending.setLength(0);
+      String result;
       if (state == State.IN_THINK) {
         state = State.NORMAL;
         thinkPending.setLength(0);
-        return "";
+        result = "";
+      } else if (tail.length() >= OPEN_CANDIDATE_MIN_LENGTH && looksLikeOpenPrefix(tail)) {
+        result = "";
+      } else {
+        result = tail;
       }
-      if (tail.length() >= OPEN_CANDIDATE_MIN_LENGTH && looksLikeOpenPrefix(tail)) {
-        return "";
-      }
-      return tail;
+      return result;
     }
 
     private void processNormal(char character, StringBuilder output) {

@@ -41,18 +41,19 @@ public class AiAssistantMessageStore {
    * @return true 表示更新成功
    */
   public boolean complete(Long messageId, String content, String payload, Integer tokenCount) {
-    if (messageId == null) {
-      return false;
+    boolean result = false;
+    if (messageId != null) {
+      AiMessageEntity message = aiMessageMapper.selectById(messageId);
+      if (message != null) {
+        message.setContent(content == null ? "" : content);
+        message.setPayload(payload);
+        message.setTokenCount(tokenCount == null || tokenCount < 0 ? 0 : tokenCount);
+        result = aiMessageMapper.updateById(message) > 0;
+      } else {
+        log.warn("AI assistant placeholder missing, messageId={}", messageId);
+      }
     }
-    AiMessageEntity message = aiMessageMapper.selectById(messageId);
-    if (message == null) {
-      log.warn("AI assistant placeholder missing, messageId={}", messageId);
-      return false;
-    }
-    message.setContent(content == null ? "" : content);
-    message.setPayload(payload);
-    message.setTokenCount(tokenCount == null || tokenCount < 0 ? 0 : tokenCount);
-    return aiMessageMapper.updateById(message) > 0;
+    return result;
   }
 
   /**
@@ -61,15 +62,11 @@ public class AiAssistantMessageStore {
    * @param messageId 占位消息 ID
    */
   public void deleteIfEmpty(Long messageId) {
-    if (messageId == null) {
-      return;
-    }
-    AiMessageEntity message = aiMessageMapper.selectById(messageId);
-    if (message == null) {
-      return;
-    }
-    if (message.getContent() == null || message.getContent().isBlank()) {
-      aiMessageMapper.deleteById(messageId);
+    if (messageId != null) {
+      AiMessageEntity message = aiMessageMapper.selectById(messageId);
+      if (message != null && (message.getContent() == null || message.getContent().isBlank())) {
+        aiMessageMapper.deleteById(messageId);
+      }
     }
   }
 }

@@ -389,22 +389,20 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
    * @param userVOS 用户VO列表
    */
   private void fillDeptNames(List<UserVO> userVOS) {
-    if (userVOS == null || userVOS.isEmpty()) {
-      return;
-    }
-    Set<Long> deptIds = new HashSet<>();
-    for (UserVO vo : userVOS) {
-      if (vo.getDeptId() != null) {
-        deptIds.add(vo.getDeptId());
+    if (userVOS != null && !userVOS.isEmpty()) {
+      Set<Long> deptIds = new HashSet<>();
+      for (UserVO vo : userVOS) {
+        if (vo.getDeptId() != null) {
+          deptIds.add(vo.getDeptId());
+        }
       }
-    }
-    if (deptIds.isEmpty()) {
-      return;
-    }
-    Map<Long, String> deptNameMap = dataConvertService.getDeptNames(deptIds);
-    for (UserVO vo : userVOS) {
-      if (vo.getDeptId() != null) {
-        vo.setDeptName(deptNameMap.get(vo.getDeptId()));
+      if (!deptIds.isEmpty()) {
+        Map<Long, String> deptNameMap = dataConvertService.getDeptNames(deptIds);
+        for (UserVO vo : userVOS) {
+          if (vo.getDeptId() != null) {
+            vo.setDeptName(deptNameMap.get(vo.getDeptId()));
+          }
+        }
       }
     }
   }
@@ -416,28 +414,32 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
             new LambdaQueryWrapper<UserEntity>()
                 .eq(UserEntity::getStatus, 1)
                 .orderByAsc(UserEntity::getId));
+    List<UserOptionVO> result;
     if (users.isEmpty()) {
-      return Collections.emptyList();
+      result = Collections.emptyList();
+    } else {
+      Set<Long> deptIds =
+          users.stream()
+              .map(UserEntity::getDeptId)
+              .filter(Objects::nonNull)
+              .collect(Collectors.toSet());
+      Map<Long, String> deptNameMap =
+          deptIds.isEmpty() ? Collections.emptyMap() : dataConvertService.getDeptNames(deptIds);
+      result =
+          users.stream()
+              .map(
+                  user -> {
+                    UserOptionVO vo = new UserOptionVO();
+                    vo.setId(user.getId());
+                    vo.setRealName(user.getRealName());
+                    vo.setDeptId(user.getDeptId());
+                    if (user.getDeptId() != null) {
+                      vo.setDeptName(deptNameMap.get(user.getDeptId()));
+                    }
+                    return vo;
+                  })
+              .collect(Collectors.toList());
     }
-    Set<Long> deptIds =
-        users.stream()
-            .map(UserEntity::getDeptId)
-            .filter(Objects::nonNull)
-            .collect(Collectors.toSet());
-    Map<Long, String> deptNameMap =
-        deptIds.isEmpty() ? Collections.emptyMap() : dataConvertService.getDeptNames(deptIds);
-    return users.stream()
-        .map(
-            user -> {
-              UserOptionVO vo = new UserOptionVO();
-              vo.setId(user.getId());
-              vo.setRealName(user.getRealName());
-              vo.setDeptId(user.getDeptId());
-              if (user.getDeptId() != null) {
-                vo.setDeptName(deptNameMap.get(user.getDeptId()));
-              }
-              return vo;
-            })
-        .collect(Collectors.toList());
+    return result;
   }
 }

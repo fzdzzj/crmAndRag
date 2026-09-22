@@ -26,68 +26,72 @@ public class AiConversationMemoryServiceImpl
 
   @Override
   public AiConversationMemoryEntity findBySessionId(Long sessionId) {
-    if (sessionId == null) {
-      return null;
+    AiConversationMemoryEntity result = null;
+    if (sessionId != null) {
+      result =
+          getOne(
+              new LambdaQueryWrapper<AiConversationMemoryEntity>()
+                  .eq(AiConversationMemoryEntity::getSessionId, sessionId));
     }
-    return getOne(
-        new LambdaQueryWrapper<AiConversationMemoryEntity>()
-            .eq(AiConversationMemoryEntity::getSessionId, sessionId));
+    return result;
   }
 
   @Override
   public AiConversationMemoryEntity ensureMemory(Long sessionId, Long userId) {
     AiConversationMemoryEntity existing = findBySessionId(sessionId);
-    if (existing != null) {
-      return existing;
+    AiConversationMemoryEntity result = existing;
+    if (existing == null) {
+      AiConversationMemoryEntity memory = new AiConversationMemoryEntity();
+      memory.setSessionId(sessionId);
+      memory.setUserId(userId);
+      memory.setSummary("");
+      memory.setFacts("[]");
+      memory.setIntent("");
+      memory.setVersion(0);
+      memory.setCreatedTime(LocalDateTime.now());
+      memory.setUpdatedTime(memory.getCreatedTime());
+      try {
+        save(memory);
+        result = memory;
+      } catch (DuplicateKeyException exception) {
+        // 两个请求同时首建时，唯一键是保护线；回读获胜方，避免覆盖或报错中断主答。
+        log.info("AI 会话记忆并发首建冲突，回读已有行: sessionId={}", sessionId);
+        result = findBySessionId(sessionId);
+      }
     }
-
-    AiConversationMemoryEntity memory = new AiConversationMemoryEntity();
-    memory.setSessionId(sessionId);
-    memory.setUserId(userId);
-    memory.setSummary("");
-    memory.setFacts("[]");
-    memory.setIntent("");
-    memory.setVersion(0);
-    memory.setCreatedTime(LocalDateTime.now());
-    memory.setUpdatedTime(memory.getCreatedTime());
-    try {
-      save(memory);
-      return memory;
-    } catch (DuplicateKeyException exception) {
-      // 两个请求同时首建时，唯一键是保护线；回读获胜方，避免覆盖或报错中断主答。
-      log.info("AI 会话记忆并发首建冲突，回读已有行: sessionId={}", sessionId);
-      return findBySessionId(sessionId);
-    }
+    return result;
   }
 
   @Override
   public boolean updateMemory(AiConversationMemoryEntity memory) {
-    if (memory == null || memory.getId() == null || memory.getVersion() == null) {
-      return false;
+    boolean result = false;
+    if (memory != null && memory.getId() != null && memory.getVersion() != null) {
+      memory.setUpdatedTime(LocalDateTime.now());
+      result = updateById(memory);
     }
-    memory.setUpdatedTime(LocalDateTime.now());
-    return updateById(memory);
+    return result;
   }
 
   @Override
   public List<AiMessageEntity> restoreRecentProjection(Long sessionId, int limit) {
-    if (sessionId == null || limit <= 0) {
-      return List.of();
+    List<AiMessageEntity> recent = List.of();
+    if (sessionId != null && limit > 0) {
+      recent = new ArrayList<>(aiMessageService.listRecentContextMessages(sessionId, limit));
+      // Mapper 返回 id 倒序；这里还原为对话时间正序，供窗口/摘要/prompt 直接消费。
+      Collections.reverse(recent);
     }
-    List<AiMessageEntity> recent =
-        new ArrayList<>(aiMessageService.listRecentContextMessages(sessionId, limit));
-    // Mapper 返回 id 倒序；这里还原为对话时间正序，供窗口/摘要/prompt 直接消费。
-    Collections.reverse(recent);
     return recent;
   }
 
   @Override
   public boolean deleteExpiredBefore(LocalDateTime threshold) {
-    if (threshold == null) {
-      return false;
+    boolean result = false;
+    if (threshold != null) {
+      result =
+          remove(
+              new LambdaQueryWrapper<AiConversationMemoryEntity>()
+                  .lt(AiConversationMemoryEntity::getUpdatedTime, threshold));
     }
-    return remove(
-        new LambdaQueryWrapper<AiConversationMemoryEntity>()
-            .lt(AiConversationMemoryEntity::getUpdatedTime, threshold));
+    return result;
   }
 }

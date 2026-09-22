@@ -29,33 +29,34 @@ public class AiRateLimiter {
 
   /** 尝试获取一次请求配额：窗口内未超限则放行并记录，超限则拒绝 */
   public boolean tryAcquire(Long userId) {
-    if (userId == null) {
-      return true;
+    boolean result = true;
+    if (userId != null) {
+      int limit =
+          aiProperties.getRateLimitPerMinute() == null ? 10 : aiProperties.getRateLimitPerMinute();
+      long now = clock.getAsLong();
+      cleanupStaleWindows(now - WINDOW_MILLIS);
+      boolean[] allowed = {false};
+      windows.compute(
+          userId,
+          (key, queue) -> {
+            if (queue == null) {
+              queue = new ArrayDeque<>();
+            }
+            synchronized (queue) {
+              long windowStart = now - WINDOW_MILLIS;
+              while (!queue.isEmpty() && queue.peekFirst() <= windowStart) {
+                queue.pollFirst();
+              }
+              if (queue.size() < limit) {
+                queue.addLast(now);
+                allowed[0] = true;
+              }
+            }
+            return queue.isEmpty() ? null : queue;
+          });
+      result = allowed[0];
     }
-    int limit =
-        aiProperties.getRateLimitPerMinute() == null ? 10 : aiProperties.getRateLimitPerMinute();
-    long now = clock.getAsLong();
-    cleanupStaleWindows(now - WINDOW_MILLIS);
-    boolean[] allowed = {false};
-    windows.compute(
-        userId,
-        (key, queue) -> {
-          if (queue == null) {
-            queue = new ArrayDeque<>();
-          }
-          synchronized (queue) {
-            long windowStart = now - WINDOW_MILLIS;
-            while (!queue.isEmpty() && queue.peekFirst() <= windowStart) {
-              queue.pollFirst();
-            }
-            if (queue.size() < limit) {
-              queue.addLast(now);
-              allowed[0] = true;
-            }
-          }
-          return queue.isEmpty() ? null : queue;
-        });
-    return allowed[0];
+    return result;
   }
 
   /** 惰性清理：滑动窗口外的空闲用户条目从映射中移除 */

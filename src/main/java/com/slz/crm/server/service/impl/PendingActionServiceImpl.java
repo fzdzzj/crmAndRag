@@ -180,6 +180,7 @@ public class PendingActionServiceImpl
 
     // 终态幂等（本次未真实执行，不携带引用）
     PendingActionStatus currentStatus = PendingActionStatus.fromValue(entity.getStatus());
+    AiConfirmResultVO result;
     if (currentStatus != null
         && (currentStatus == PendingActionStatus.CONFIRMED
             || currentStatus == PendingActionStatus.CANCELLED
@@ -188,72 +189,73 @@ public class PendingActionServiceImpl
       String idempotentResult =
           entity.getResult() != null ? entity.getResult() : "{\"message\":\"操作已处理\"}";
 
-      return toConfirmResult(idempotentResult, List.of());
-    }
+      result = toConfirmResult(idempotentResult, List.of());
+    } else {
+      // 运行时权限校验（按 actionType 映射）
+      requirePermission(entity.getActionType(), userId);
 
-    // 运行时权限校验（按 actionType 映射）
-    requirePermission(entity.getActionType(), userId);
+      if (!PendingActionStatus.PENDING.getValue().equals(entity.getStatus())
+          && !PendingActionStatus.FAILED.getValue().equals(entity.getStatus())) {
 
-    if (!PendingActionStatus.PENDING.getValue().equals(entity.getStatus())
-        && !PendingActionStatus.FAILED.getValue().equals(entity.getStatus())) {
+        throw new BaseException(ErrorCode.AI_ACTION_PARAM_MISSING, "当前状态不可确认，请先补齐参数");
+      }
 
-      throw new BaseException(ErrorCode.AI_ACTION_PARAM_MISSING, "当前状态不可确认，请先补齐参数");
-    }
+      // 校验过期
+      if (entity.getExpireTime() != null && entity.getExpireTime().isBefore(LocalDateTime.now())) {
 
-    // 校验过期
-    if (entity.getExpireTime() != null && entity.getExpireTime().isBefore(LocalDateTime.now())) {
+        self.markExpired(pendingId);
 
-      self.markExpired(pendingId);
+        throw new BaseException(ErrorCode.AI_ACTION_TIMEOUT, "确认已超时，请重新发起");
+      }
 
-      throw new BaseException(ErrorCode.AI_ACTION_TIMEOUT, "确认已超时，请重新发起");
-    }
+      // 条件更新抢占执行权（防并发双击）
+      int affected =
+          baseMapper.update(
+              null,
+              new UpdateWrapper<AiPendingActionEntity>()
+                  .eq("pending_id", pendingId)
+                  .and(
+                      w ->
+                          w.eq("status", PendingActionStatus.PENDING.getValue())
+                              .or()
+                              .eq("status", PendingActionStatus.FAILED.getValue()))
+                  .set("status", PendingActionStatus.CONFIRMED.getValue())
+                  .set("confirmed_time", LocalDateTime.now())
+                  .set("updated_time", LocalDateTime.now()));
 
-    // 条件更新抢占执行权（防并发双击）
-    int affected =
-        baseMapper.update(
-            null,
+      if (affected == 0) {
+
+        throw new BaseException(ErrorCode.AI_ACTION_ALREADY_HANDLED, "操作已被处理");
+      }
+
+      // 策略分发执行（以库中 payload 为准，忽略请求体）
+      AiActionExecutor executor = executorMap.get(entity.getActionType());
+
+      if (executor == null) {
+
+        throw new BaseException(
+            ErrorCode.AI_ACTION_PARAM_MISSING, "不支持的操作类型: " + entity.getActionType());
+      }
+      try {
+        AiExecutionResult execResult = executor.execute(entity.getPayload());
+
+        update(
             new UpdateWrapper<AiPendingActionEntity>()
                 .eq("pending_id", pendingId)
-                .and(
-                    w ->
-                        w.eq("status", PendingActionStatus.PENDING.getValue())
-                            .or()
-                            .eq("status", PendingActionStatus.FAILED.getValue()))
-                .set("status", PendingActionStatus.CONFIRMED.getValue())
-                .set("confirmed_time", LocalDateTime.now())
-                .set("updated_time", LocalDateTime.now()));
+                .set("result", execResult.getResult()));
 
-    if (affected == 0) {
+        result = toConfirmResult(execResult.getResult(), execResult.getReferences());
 
-      throw new BaseException(ErrorCode.AI_ACTION_ALREADY_HANDLED, "操作已被处理");
+      } catch (Exception e) {
+
+        log.error("执行待确认操作失败, pendingId={}", pendingId, e);
+
+        markFailedAfterRollback(pendingId, buildErrorJson());
+
+        throw new BaseException(ErrorCode.AI_ACTION_EXECUTE_FAILED, "执行失败，请稍后重试");
+      }
     }
-
-    // 策略分发执行（以库中 payload 为准，忽略请求体）
-    AiActionExecutor executor = executorMap.get(entity.getActionType());
-
-    if (executor == null) {
-
-      throw new BaseException(
-          ErrorCode.AI_ACTION_PARAM_MISSING, "不支持的操作类型: " + entity.getActionType());
-    }
-    try {
-      AiExecutionResult execResult = executor.execute(entity.getPayload());
-
-      update(
-          new UpdateWrapper<AiPendingActionEntity>()
-              .eq("pending_id", pendingId)
-              .set("result", execResult.getResult()));
-
-      return toConfirmResult(execResult.getResult(), execResult.getReferences());
-
-    } catch (Exception e) {
-
-      log.error("执行待确认操作失败, pendingId={}", pendingId, e);
-
-      markFailedAfterRollback(pendingId, buildErrorJson());
-
-      throw new BaseException(ErrorCode.AI_ACTION_EXECUTE_FAILED, "执行失败，请稍后重试");
-    }
+    return result;
   }
 
   @Override
@@ -383,11 +385,15 @@ public class PendingActionServiceImpl
   public AiPendingActionVO getStatus(String pendingId, Long userId) {
     AiPendingActionEntity entity = getByPendingId(pendingId);
 
+    AiPendingActionVO result;
+
     if (entity == null || !entity.getUserId().equals(userId)) {
 
-      return null;
+      result = null;
+    } else {
+      result = toVO(entity);
     }
-    return toVO(entity);
+    return result;
   }
 
   @Override
@@ -498,6 +504,7 @@ public class PendingActionServiceImpl
 
   /** 合并 payload（增量覆盖/补入） */
   private String mergePayload(String existingPayload, String incrementJson) {
+    String result;
     try {
       Map<String, Object> existing =
           objectMapper.readValue(existingPayload, new TypeReference<Map<String, Object>>() {});
@@ -509,14 +516,15 @@ public class PendingActionServiceImpl
 
       existing.putAll(increment);
 
-      return objectMapper.writeValueAsString(existing);
+      result = objectMapper.writeValueAsString(existing);
 
     } catch (JsonProcessingException e) {
 
       log.error("合并 payload 失败", e);
 
-      return incrementJson;
+      result = incrementJson;
     }
+    return result;
   }
 
   /** 构建确认卡片预览摘要（以 payload 为准，不依赖模型总结） */
@@ -550,12 +558,14 @@ public class PendingActionServiceImpl
   }
 
   private String toJson(Object obj) {
+    String result;
     try {
-      return objectMapper.writeValueAsString(obj);
+      result = objectMapper.writeValueAsString(obj);
 
     } catch (JsonProcessingException e) {
 
-      return "[]";
+      result = "[]";
     }
+    return result;
   }
 }

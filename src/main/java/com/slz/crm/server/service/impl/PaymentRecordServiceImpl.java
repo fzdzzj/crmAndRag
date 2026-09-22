@@ -41,17 +41,20 @@ public class PaymentRecordServiceImpl extends ServiceImpl<PaymentRecordMapper, P
 
   /** 将字符串状态转换为数字 */
   private Integer convertStatusStringToInteger(String statusStr) {
+    Integer result;
     if (statusStr == null || statusStr.trim().isEmpty()) {
-      return null;
+      result = null;
+    } else {
+      String trimmed = statusStr.trim();
+      result =
+          switch (trimmed) {
+            case "已确认" -> 0;
+            case "待确认" -> 1;
+            case "已作废" -> 2;
+            default -> null; // 无效值返回 null
+          };
     }
-
-    String trimmed = statusStr.trim();
-    return switch (trimmed) {
-      case "已确认" -> 0;
-      case "待确认" -> 1;
-      case "已作废" -> 2;
-      default -> null; // 无效值返回 null
-    };
+    return result;
   }
 
   @Override
@@ -99,6 +102,7 @@ public class PaymentRecordServiceImpl extends ServiceImpl<PaymentRecordMapper, P
     }
 
     // 如果没有填写回款单号，自动生成（带重复检测和重试机制）
+    PaymentRecordVO generated;
     if (!StringUtils.hasText(entity.getPaymentNo())) {
       int maxRetries = 10; // 最大重试次数
       int retryCount = 0;
@@ -120,11 +124,12 @@ public class PaymentRecordServiceImpl extends ServiceImpl<PaymentRecordMapper, P
         }
       }
 
-      return insertSuccess ? toCreatedVO(entity, contract) : null;
+      generated = insertSuccess ? toCreatedVO(entity, contract) : null;
     } else {
       // 前端传入了回款单号，直接插入
-      return paymentRecordMapper.insert(entity) > 0 ? toCreatedVO(entity, contract) : null;
+      generated = paymentRecordMapper.insert(entity) > 0 ? toCreatedVO(entity, contract) : null;
     }
+    return generated;
   }
 
   private PaymentRecordVO toCreatedVO(PaymentRecordEntity entity, ContractEntity contract) {
@@ -263,30 +268,36 @@ public class PaymentRecordServiceImpl extends ServiceImpl<PaymentRecordMapper, P
 
   @Override
   public List<PaymentRecordVO> listByContractId(Long contractId) {
+    List<PaymentRecordVO> result;
     if (contractId == null) {
-      return new ArrayList<>();
+      result = new ArrayList<>();
+    } else {
+
+      LambdaQueryWrapper<PaymentRecordEntity> queryWrapper = new LambdaQueryWrapper<>();
+      queryWrapper.eq(PaymentRecordEntity::getContractId, contractId);
+      queryWrapper.orderByDesc(PaymentRecordEntity::getCreateTime);
+
+      List<PaymentRecordEntity> entityList = paymentRecordMapper.selectList(queryWrapper);
+      result = entityList.stream().map(this::convertToVO).collect(Collectors.toList());
     }
-
-    LambdaQueryWrapper<PaymentRecordEntity> queryWrapper = new LambdaQueryWrapper<>();
-    queryWrapper.eq(PaymentRecordEntity::getContractId, contractId);
-    queryWrapper.orderByDesc(PaymentRecordEntity::getCreateTime);
-
-    List<PaymentRecordEntity> entityList = paymentRecordMapper.selectList(queryWrapper);
-    return entityList.stream().map(this::convertToVO).collect(Collectors.toList());
+    return result;
   }
 
   @Override
   public List<PaymentRecordVO> listByOrderItemId(Long orderItemId) {
+    List<PaymentRecordVO> result;
     if (orderItemId == null) {
-      return new ArrayList<>();
+      result = new ArrayList<>();
+    } else {
+
+      LambdaQueryWrapper<PaymentRecordEntity> queryWrapper = new LambdaQueryWrapper<>();
+      queryWrapper.eq(PaymentRecordEntity::getOrderItemId, orderItemId);
+      queryWrapper.orderByDesc(PaymentRecordEntity::getCreateTime);
+
+      List<PaymentRecordEntity> entityList = paymentRecordMapper.selectList(queryWrapper);
+      result = entityList.stream().map(this::convertToVO).collect(Collectors.toList());
     }
-
-    LambdaQueryWrapper<PaymentRecordEntity> queryWrapper = new LambdaQueryWrapper<>();
-    queryWrapper.eq(PaymentRecordEntity::getOrderItemId, orderItemId);
-    queryWrapper.orderByDesc(PaymentRecordEntity::getCreateTime);
-
-    List<PaymentRecordEntity> entityList = paymentRecordMapper.selectList(queryWrapper);
-    return entityList.stream().map(this::convertToVO).collect(Collectors.toList());
+    return result;
   }
 
   @Override

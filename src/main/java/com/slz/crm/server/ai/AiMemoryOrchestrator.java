@@ -105,31 +105,33 @@ public class AiMemoryOrchestrator {
             .filter(line -> !line.isBlank())
             .limit(MAX_FACTS_PER_UPDATE)
             .toList();
-    if (extracted.isEmpty()) {
-      return;
+    AiConversationMemoryEntity memory = null;
+    if (!extracted.isEmpty()) {
+      memoryService.ensureMemory(sessionId, userId);
+      memory = memoryService.findBySessionId(sessionId);
     }
-    memoryService.ensureMemory(sessionId, userId);
-    AiConversationMemoryEntity memory = memoryService.findBySessionId(sessionId);
-    if (memory == null) {
-      return;
-    }
-    List<String> facts = parseFacts(memory.getFacts());
-    for (String fact : extracted) {
-      if (!facts.contains(fact)) {
-        facts.add(fact);
+    if (memory != null) {
+      List<String> facts = parseFacts(memory.getFacts());
+      for (String fact : extracted) {
+        if (!facts.contains(fact)) {
+          facts.add(fact);
+        }
+      }
+      // 超上限按插入序淘汰，保证旧事实不会无限累积。
+      while (facts.size() > MAX_FACTS) {
+        facts.remove(0);
+      }
+      boolean serialized = false;
+      try {
+        memory.setFacts(OBJECT_MAPPER.writeValueAsString(facts));
+        serialized = true;
+      } catch (Exception exception) {
+        log.warn("AI 会话事实序列化失败，跳过更新: sessionId={}", sessionId, exception);
+      }
+      if (serialized) {
+        memoryService.updateMemory(memory);
       }
     }
-    // 超上限按插入序淘汰，保证旧事实不会无限累积。
-    while (facts.size() > MAX_FACTS) {
-      facts.remove(0);
-    }
-    try {
-      memory.setFacts(OBJECT_MAPPER.writeValueAsString(facts));
-    } catch (Exception exception) {
-      log.warn("AI 会话事实序列化失败，跳过更新: sessionId={}", sessionId, exception);
-      return;
-    }
-    memoryService.updateMemory(memory);
   }
 
   /** 清理长期未更新的记忆加工品；ai_message 原文保留，不影响历史查看。 */
@@ -139,16 +141,20 @@ public class AiMemoryOrchestrator {
   }
 
   private List<String> parseFacts(String factsJson) {
+    List<String> result;
     if (factsJson == null || factsJson.isBlank()) {
-      return new java.util.ArrayList<>();
+      result = new java.util.ArrayList<>();
+    } else {
+      try {
+        List<String> facts =
+            OBJECT_MAPPER.readValue(factsJson, new TypeReference<List<String>>() {});
+        result = new java.util.ArrayList<>(facts == null ? List.of() : facts);
+      } catch (Exception exception) {
+        log.warn("AI 会话事实 JSON 解析失败，按空列表处理", exception);
+        result = new java.util.ArrayList<>();
+      }
     }
-    try {
-      List<String> facts = OBJECT_MAPPER.readValue(factsJson, new TypeReference<List<String>>() {});
-      return new java.util.ArrayList<>(facts == null ? List.of() : facts);
-    } catch (Exception exception) {
-      log.warn("AI 会话事实 JSON 解析失败，按空列表处理", exception);
-      return new java.util.ArrayList<>();
-    }
+    return result;
   }
 
   private void triggerSummary(Long sessionId, Long userId) {
@@ -159,16 +165,15 @@ public class AiMemoryOrchestrator {
     }
     AtomicBoolean state =
         summaryInFlight.computeIfAbsent(sessionId, ignored -> new AtomicBoolean());
-    if (!state.compareAndSet(false, true)) {
-      return;
-    }
-    List<AiMessageEntity> source =
-        memoryService.restoreRecentProjection(sessionId, SUMMARY_SOURCE_MESSAGE_COUNT);
-    BypassTaskExecutor executor = getBypassExecutor();
-    if (executor == null
-        || !executor.tryExecute(() -> compressSummary(sessionId, userId, source, state))) {
-      // 任务未入队时 finally 不会执行；这里必须立即复位，否则该会话摘要被永久跳过。
-      release(summaryInFlight, sessionId, state);
+    if (state.compareAndSet(false, true)) {
+      List<AiMessageEntity> source =
+          memoryService.restoreRecentProjection(sessionId, SUMMARY_SOURCE_MESSAGE_COUNT);
+      BypassTaskExecutor executor = getBypassExecutor();
+      if (executor == null
+          || !executor.tryExecute(() -> compressSummary(sessionId, userId, source, state))) {
+        // 任务未入队时 finally 不会执行；这里必须立即复位，否则该会话摘要被永久跳过。
+        release(summaryInFlight, sessionId, state);
+      }
     }
   }
 

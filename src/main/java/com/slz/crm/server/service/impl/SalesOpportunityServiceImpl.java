@@ -132,22 +132,23 @@ public class SalesOpportunityServiceImpl
     // 创建人id
     entity.setCreatorId(BaseUnit.getCurrentId());
 
-    if (baseMapper.insert(entity) <= 0) {
-      return null;
+    SalesOpportunityVO result = null;
+    if (baseMapper.insert(entity) > 0) {
+      String companyName = dataConvertService.getCompanyName(entity.getCompanyId());
+      String contactName =
+          entity.getContactId() != null
+              ? dataConvertService.getContactName(entity.getContactId())
+              : null;
+      result =
+          SalesOpportunityVO.fromEntity(
+              entity,
+              companyName,
+              contactName,
+              dataConvertService.getUserName(entity.getOwnerId()),
+              dataConvertService.getUserName(entity.getCreatorId()),
+              dataConvertService.getUserName(entity.getApproverId()));
     }
-
-    String companyName = dataConvertService.getCompanyName(entity.getCompanyId());
-    String contactName =
-        entity.getContactId() != null
-            ? dataConvertService.getContactName(entity.getContactId())
-            : null;
-    return SalesOpportunityVO.fromEntity(
-        entity,
-        companyName,
-        contactName,
-        dataConvertService.getUserName(entity.getOwnerId()),
-        dataConvertService.getUserName(entity.getCreatorId()),
-        dataConvertService.getUserName(entity.getApproverId()));
+    return result;
   }
 
   @Override

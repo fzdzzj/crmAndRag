@@ -69,37 +69,70 @@ public class AiChatImageUnderstandingService {
 
   public Optional<UnderstandingContext> understand(
       AiChatImageEntity image, String question, boolean generateImageVector) {
-    if (image == null || image.getSessionId() == null || image.getImageHash() == null) {
-      return Optional.empty();
+    Optional<UnderstandingContext> result = Optional.empty();
+    if (image != null && image.getSessionId() != null && image.getImageHash() != null) {
+      ModelProvider provider =
+          modelProviderProvider == null ? null : modelProviderProvider.getIfAvailable();
+      if (provider == null) {
+        log.warn("ModelProvider 未就绪，仅返回图片已持久化理解: imageId={}", image.getId());
+        result = Optional.of(toContext(image, null));
+      } else {
+        result = understandWithProvider(image, question, generateImageVector, provider);
+      }
     }
-    ModelProvider provider =
-        modelProviderProvider == null ? null : modelProviderProvider.getIfAvailable();
-    if (provider == null) {
-      log.warn("ModelProvider 未就绪，仅返回图片已持久化理解: imageId={}", image.getId());
-      return Optional.of(toContext(image, null));
-    }
+    return result;
+  }
+
+  /** provider 就绪时，先查缓存，命中且满足向量条件则用缓存理解，否则走视觉全量理解。 */
+  private Optional<UnderstandingContext> understandWithProvider(
+      AiChatImageEntity image,
+      String question,
+      boolean generateImageVector,
+      ModelProvider provider) {
     Optional<AiChatImageContextCache.CachedImageContext> cached =
         contextCache.get(image.getSessionId(), image.getImageHash(), question);
-    if (cached.isPresent()) {
-      UnderstandingContext context = toContext(image, cached.get());
-      if (!generateImageVector || context.imageVector() != null) {
-        return Optional.of(context);
-      }
+    return cached
+        .map(context -> toContext(image, context))
+        .map(context -> resolveFromCache(image, question, generateImageVector, provider, context))
+        .orElseGet(() -> understandUncached(image, question, generateImageVector, provider));
+  }
+
+  /** 缓存命中：无需再生向量或已有向量直接返回；否则补生成向量后缓存。 */
+  private Optional<UnderstandingContext> resolveFromCache(
+      AiChatImageEntity image,
+      String question,
+      boolean generateImageVector,
+      ModelProvider provider,
+      UnderstandingContext context) {
+    Optional<UnderstandingContext> result;
+    if (!generateImageVector || context.imageVector() != null) {
+      result = Optional.of(context);
+    } else {
       float[] vector = generateImageVector(image, question, context, provider);
       if (vector != null) {
         contextCache.put(
             image.getSessionId(), image.getImageHash(), question, context.focusedSummary(), vector);
-        return Optional.of(
-            new UnderstandingContext(
-                context.ocrText(),
-                context.imageSummary(),
-                context.keyEntities(),
-                context.focusedSummary(),
-                vector));
+        result =
+            Optional.of(
+                new UnderstandingContext(
+                    context.ocrText(),
+                    context.imageSummary(),
+                    context.keyEntities(),
+                    context.focusedSummary(),
+                    vector));
+      } else {
+        result = Optional.of(context);
       }
-      return Optional.of(context);
     }
+    return result;
+  }
 
+  /** 缓存未命中：调用视觉模型解析，持久化理解并按需生成图片向量。 */
+  private Optional<UnderstandingContext> understandUncached(
+      AiChatImageEntity image,
+      String question,
+      boolean generateImageVector,
+      ModelProvider provider) {
     String generated = callVision(image, question, provider);
     Understanding parsed = parse(generated);
     imageService.completeUnderstanding(
@@ -130,6 +163,7 @@ public class AiChatImageUnderstandingService {
   }
 
   private String callVision(AiChatImageEntity image, String question, ModelProvider provider) {
+    String result;
     try {
       byte[] content = imageService.readBytes(image);
       MimeType mimeType = resolveMimeType(image);
@@ -140,14 +174,15 @@ public class AiChatImageUnderstandingService {
                   .text(question == null || question.isBlank() ? "请描述图片" : question)
                   .media(List.of(new Media(mimeType, new ByteArrayResource(content))))
                   .build());
-      ModelCallResult<String> result =
+      ModelCallResult<String> callResult =
           provider.vision(new Prompt(messages), ModelCallOptions.defaults());
-      recordUsage(image, result, TokenUsageType.VISION);
-      return AiThinkTagStripper.strip(result.content());
+      recordUsage(image, callResult, TokenUsageType.VISION);
+      result = AiThinkTagStripper.strip(callResult.content());
     } catch (Exception exception) {
       log.warn("聊天图片理解失败，降级为无图片上下文: imageId={}", image.getId(), exception);
-      return "";
+      result = "";
     }
+    return result;
   }
 
   private float[] generateImageVector(
@@ -155,6 +190,7 @@ public class AiChatImageUnderstandingService {
       String question,
       UnderstandingContext context,
       ModelProvider provider) {
+    float[] floats;
     try {
       StringBuilder text = new StringBuilder("图片理解：");
       if (context.imageSummary() != null && !context.imageSummary().isBlank()) {
@@ -177,43 +213,49 @@ public class AiChatImageUnderstandingService {
               new EmbeddingRequest(
                   List.of(text.toString()), EmbeddingOptionsBuilder.builder().build()));
       recordUsage(image, result, TokenUsageType.EMBEDDING);
-      return result.vector();
+      floats = result.vector();
     } catch (Exception exception) {
       log.warn("聊天图片向量懒生成失败，降级为纯文本检索: imageId={}", image.getId(), exception);
-      return null;
+      floats = null;
     }
+    return floats;
   }
 
   private Understanding parse(String content) {
+    Understanding result;
     if (content == null || content.isBlank()) {
-      return new Understanding("", "", List.of(), "");
-    }
-    String normalized = content.trim();
-    if (normalized.startsWith("```")) {
-      normalized = normalized.replaceAll("^```[a-zA-Z]*", "").replaceAll("```$", "").trim();
-    }
-    try {
-      JsonNode root = OBJECT_MAPPER.readTree(normalized);
-      List<String> entities = new ArrayList<>();
-      JsonNode entityNode = root.get("keyEntities");
-      if (entityNode != null && entityNode.isArray()) {
-        entityNode.forEach(item -> entities.add(item.asText("")));
+      result = new Understanding("", "", List.of(), "");
+    } else {
+      String normalized = content.trim();
+      if (normalized.startsWith("```")) {
+        normalized = normalized.replaceAll("^```[a-zA-Z]*", "").replaceAll("```$", "").trim();
       }
-      entities.removeIf(String::isBlank);
-      return new Understanding(
-          root.path("ocrText").asText(""),
-          root.path("imageSummary").asText(""),
-          List.copyOf(entities),
-          root.path("focusedSummary").asText(""));
-    } catch (Exception exception) {
-      // 模型偶发非 JSON 输出时，把它作为 focused 摘要降级，不阻塞主答。
-      log.warn("图片理解输出不是 JSON，按 focusedSummary 降级", exception);
-      return new Understanding(
-          "",
-          normalized.length() > 300 ? normalized.substring(0, 300) : normalized,
-          List.of(),
-          normalized);
+      try {
+        JsonNode root = OBJECT_MAPPER.readTree(normalized);
+        List<String> entities = new ArrayList<>();
+        JsonNode entityNode = root.get("keyEntities");
+        if (entityNode != null && entityNode.isArray()) {
+          entityNode.forEach(item -> entities.add(item.asText("")));
+        }
+        entities.removeIf(String::isBlank);
+        result =
+            new Understanding(
+                root.path("ocrText").asText(""),
+                root.path("imageSummary").asText(""),
+                List.copyOf(entities),
+                root.path("focusedSummary").asText(""));
+      } catch (Exception exception) {
+        // 模型偶发非 JSON 输出时，把它作为 focused 摘要降级，不阻塞主答。
+        log.warn("图片理解输出不是 JSON，按 focusedSummary 降级", exception);
+        result =
+            new Understanding(
+                "",
+                normalized.length() > 300 ? normalized.substring(0, 300) : normalized,
+                List.of(),
+                normalized);
+      }
     }
+    return result;
   }
 
   private UnderstandingContext toContext(
@@ -228,18 +270,21 @@ public class AiChatImageUnderstandingService {
   }
 
   private List<String> parseEntities(String entitiesJson) {
+    List<String> result;
     if (entitiesJson == null || entitiesJson.isBlank()) {
-      return List.of();
+      result = List.of();
+    } else {
+      try {
+        JsonNode root = OBJECT_MAPPER.readTree(entitiesJson);
+        List<String> entities = new ArrayList<>();
+        root.forEach(item -> entities.add(item.asText("")));
+        entities.removeIf(String::isBlank);
+        result = List.copyOf(entities);
+      } catch (Exception exception) {
+        result = List.of();
+      }
     }
-    try {
-      JsonNode root = OBJECT_MAPPER.readTree(entitiesJson);
-      List<String> entities = new ArrayList<>();
-      root.forEach(item -> entities.add(item.asText("")));
-      entities.removeIf(String::isBlank);
-      return List.copyOf(entities);
-    } catch (Exception exception) {
-      return List.of();
-    }
+    return result;
   }
 
   private String defaultText(String text) {
@@ -248,16 +293,17 @@ public class AiChatImageUnderstandingService {
 
   private MimeType resolveMimeType(AiChatImageEntity image) {
     String key = image.getStorageKey() == null ? "" : image.getStorageKey().toLowerCase();
+    MimeType result;
     if (key.endsWith(".jpg") || key.endsWith(".jpeg")) {
-      return MimeType.valueOf("image/jpeg");
+      result = MimeType.valueOf("image/jpeg");
+    } else if (key.endsWith(".webp")) {
+      result = MimeType.valueOf("image/webp");
+    } else if (key.endsWith(".gif")) {
+      result = MimeType.valueOf("image/gif");
+    } else {
+      result = MimeType.valueOf("image/png");
     }
-    if (key.endsWith(".webp")) {
-      return MimeType.valueOf("image/webp");
-    }
-    if (key.endsWith(".gif")) {
-      return MimeType.valueOf("image/gif");
-    }
-    return MimeType.valueOf("image/png");
+    return result;
   }
 
   private void recordUsage(

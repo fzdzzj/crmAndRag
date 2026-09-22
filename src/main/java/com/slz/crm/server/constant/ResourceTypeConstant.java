@@ -54,10 +54,13 @@ public class ResourceTypeConstant {
    * @return true-需要权限管理, false-不需要
    */
   public static boolean isManagedTable(String tableName) {
+    final boolean result;
     if (tableName == null) {
-      return false;
+      result = false;
+    } else {
+      result = MANAGED_TABLES.contains(tableName.toLowerCase());
     }
-    return MANAGED_TABLES.contains(tableName.toLowerCase());
+    return result;
   }
 
   /**
@@ -67,9 +70,12 @@ public class ResourceTypeConstant {
    * @return 用户字段列表,如果未找到默认返回 creator_id
    */
   public static List<String> getUserFieldsByTableName(String tableName) {
+    final List<String> result;
     if (tableName == null) {
-      return List.of("creator_id");
+      result = List.of("creator_id");
+    } else {
+      result = TABLE_USER_FIELDS.getOrDefault(tableName.toLowerCase(), List.of("creator_id"));
     }
-    return TABLE_USER_FIELDS.getOrDefault(tableName.toLowerCase(), List.of("creator_id"));
+    return result;
   }
 }

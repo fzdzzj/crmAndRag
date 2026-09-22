@@ -38,30 +38,38 @@ public class AssistScopeServiceImpl implements AssistScopeService {
 
   @Override
   public List<AssistRequestEntity> visibleAssistsForOpportunity(Long userId, Long opportunityId) {
+    List<AssistRequestEntity> result;
     if (opportunityId == null) {
-      return Collections.emptyList();
+      result = Collections.emptyList();
+    } else {
+      result =
+          relatedRecordIds(userId).stream()
+              .filter(
+                  assist ->
+                      opportunityId.equals(
+                          assistRelatedRecordResolver.resolve(assist).getOpportunityId()))
+              .toList();
     }
-    return relatedRecordIds(userId).stream()
-        .filter(
-            assist ->
-                opportunityId.equals(
-                    assistRelatedRecordResolver.resolve(assist).getOpportunityId()))
-        .toList();
+    return result;
   }
 
   /** 查询当前用户相关的协助记录（作为申请人或协助人） */
   private List<AssistRequestEntity> relatedRecordIds(Long userId) {
+    List<AssistRequestEntity> result;
     if (userId == null) {
-      return Collections.emptyList();
+      result = Collections.emptyList();
+    } else {
+      result =
+          assistRequestMapper.selectList(
+              new LambdaQueryWrapper<AssistRequestEntity>()
+                  .eq(AssistRequestEntity::getAssistStatus, 0)
+                  .and(
+                      w ->
+                          w.eq(AssistRequestEntity::getApplicantId, userId)
+                              .or()
+                              .eq(AssistRequestEntity::getAssistUserId, userId)));
     }
-    return assistRequestMapper.selectList(
-        new LambdaQueryWrapper<AssistRequestEntity>()
-            .eq(AssistRequestEntity::getAssistStatus, 0)
-            .and(
-                w ->
-                    w.eq(AssistRequestEntity::getApplicantId, userId)
-                        .or()
-                        .eq(AssistRequestEntity::getAssistUserId, userId)));
+    return result;
   }
 
   private Set<Long> resolveCompanyIds(List<AssistRequestEntity> assists) {

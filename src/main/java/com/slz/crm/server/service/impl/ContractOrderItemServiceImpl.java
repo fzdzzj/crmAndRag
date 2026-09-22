@@ -31,28 +31,36 @@ public class ContractOrderItemServiceImpl
   @Override
   @Transactional(rollbackFor = Exception.class)
   public List<OrderVO> createBatch(List<OrderDTO> orders) {
+    List<OrderVO> result;
     if (orders == null || orders.isEmpty()) {
-      return null;
+      result = null;
+    } else {
+
+      List<ContractOrderItemEntity> list = new ArrayList<>();
+
+      orders.forEach(
+          order -> {
+            ContractOrderItemEntity contractOrderItemEntity = new ContractOrderItemEntity();
+
+            // 转为Entity
+            BeanUtils.copyProperties(order, contractOrderItemEntity);
+            // 计算金额
+            contractOrderItemEntity.setAmount(order.getQuantity().multiply(order.getUnitPrice()));
+            list.add(contractOrderItemEntity);
+          });
+
+      if (baseMapper.insertBatch(list) <= 0) {
+        result = List.of();
+      } else {
+        result =
+            list.stream()
+                .filter(entity -> entity.getId() != null)
+                .map(OrderVO::fromEntity)
+                .toList();
+      }
     }
 
-    List<ContractOrderItemEntity> list = new ArrayList<>();
-
-    orders.forEach(
-        order -> {
-          ContractOrderItemEntity contractOrderItemEntity = new ContractOrderItemEntity();
-
-          // 转为Entity
-          BeanUtils.copyProperties(order, contractOrderItemEntity);
-          // 计算金额
-          contractOrderItemEntity.setAmount(order.getQuantity().multiply(order.getUnitPrice()));
-          list.add(contractOrderItemEntity);
-        });
-
-    if (baseMapper.insertBatch(list) <= 0) {
-      return List.of();
-    }
-
-    return list.stream().filter(entity -> entity.getId() != null).map(OrderVO::fromEntity).toList();
+    return result;
   }
 
   @Override

@@ -155,11 +155,14 @@ public class UserHandoverServiceImpl extends ServiceImpl<UserHandoverMapper, Use
 
   /** 根据用户ID获取用户姓名 */
   private String getUserName(Long userId) {
+    String result;
     if (userId == null) {
-      return null;
+      result = null;
+    } else {
+      UserEntity user = userMapper.selectById(userId);
+      result = user != null ? user.getRealName() : null;
     }
-    UserEntity user = userMapper.selectById(userId);
-    return user != null ? user.getRealName() : null;
+    return result;
   }
 
   @Override

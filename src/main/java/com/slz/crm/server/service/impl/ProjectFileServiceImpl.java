@@ -295,16 +295,17 @@ public class ProjectFileServiceImpl extends ServiceImpl<ProjectFileMapper, Proje
   @Override
   @Transactional(rollbackFor = Exception.class)
   public void deleteByIds(List<Long> ids) {
-    if (ids == null || ids.isEmpty()) {
-      return;
+    if (ids != null && !ids.isEmpty()) {
+      // 1. 先查询文件信息（用于后续删除磁盘文件）
+      List<ProjectFileEntity> entities = baseMapper.selectBatchIds(ids);
+      if (entities != null && !entities.isEmpty()) {
+        doDelete(ids, entities);
+      }
     }
+  }
 
-    // 1. 先查询文件信息（用于后续删除磁盘文件）
-    List<ProjectFileEntity> entities = baseMapper.selectBatchIds(ids);
-    if (entities == null || entities.isEmpty()) {
-      return;
-    }
-
+  /** 删除主流程：主动删除分级校验 → 删库 → 删磁盘 → 失败告警（行为等价于原内联实现）。 */
+  private void doDelete(List<Long> ids, List<ProjectFileEntity> entities) {
     // 主动删除分级：上传人本人可删自己的；超管可删全部；其他拒绝
     Long currentId = BaseUnit.getCurrentId();
     UserEntity currentUser = userMapper.selectById(currentId);
@@ -344,10 +345,13 @@ public class ProjectFileServiceImpl extends ServiceImpl<ProjectFileMapper, Proje
 
   @Override
   public ProjectFileEntity getEntityById(Long id) {
+    ProjectFileEntity result;
     if (id == null) {
-      return null;
+      result = null;
+    } else {
+      result = baseMapper.selectById(id);
     }
-    return baseMapper.selectById(id);
+    return result;
   }
 
   /** 记录级数据范围过滤：仅保留当前用户可读的项目文件（统一走附件授权入口）。 */
@@ -463,44 +467,49 @@ public class ProjectFileServiceImpl extends ServiceImpl<ProjectFileMapper, Proje
   private LambdaQueryWrapper<ProjectFileEntity> buildQueryWrapper(ProjectFileQueryDTO queryDTO) {
     LambdaQueryWrapper<ProjectFileEntity> wrapper = new LambdaQueryWrapper<>();
 
+    LambdaQueryWrapper<ProjectFileEntity> result;
     if (queryDTO == null) {
-      return wrapper;
+      result = wrapper;
+    } else {
+
+      wrapper
+          .eq(
+              queryDTO.getCategory() != null,
+              ProjectFileEntity::getCategory,
+              queryDTO.getCategory())
+          .like(queryDTO.getTheme() != null, ProjectFileEntity::getTheme, queryDTO.getTheme())
+          .like(
+              queryDTO.getDescription() != null,
+              ProjectFileEntity::getDescription,
+              queryDTO.getDescription())
+          .eq(
+              queryDTO.getUploaderId() != null,
+              ProjectFileEntity::getUploaderId,
+              queryDTO.getUploaderId())
+          .eq(
+              queryDTO.getActivityId() != null,
+              ProjectFileEntity::getActivityId,
+              queryDTO.getActivityId())
+          .eq(
+              queryDTO.getOpportunityId() != null,
+              ProjectFileEntity::getOpportunityId,
+              queryDTO.getOpportunityId())
+          .eq(
+              queryDTO.getContractId() != null,
+              ProjectFileEntity::getContractId,
+              queryDTO.getContractId())
+          .eq(queryDTO.getOrderId() != null, ProjectFileEntity::getOrderId, queryDTO.getOrderId())
+          .ge(
+              queryDTO.getMinUploadTime() != null,
+              ProjectFileEntity::getUploadTime,
+              queryDTO.getMinUploadTime())
+          .le(
+              queryDTO.getMaxUploadTime() != null,
+              ProjectFileEntity::getUploadTime,
+              queryDTO.getMaxUploadTime());
+      result = wrapper;
     }
-
-    wrapper
-        .eq(queryDTO.getCategory() != null, ProjectFileEntity::getCategory, queryDTO.getCategory())
-        .like(queryDTO.getTheme() != null, ProjectFileEntity::getTheme, queryDTO.getTheme())
-        .like(
-            queryDTO.getDescription() != null,
-            ProjectFileEntity::getDescription,
-            queryDTO.getDescription())
-        .eq(
-            queryDTO.getUploaderId() != null,
-            ProjectFileEntity::getUploaderId,
-            queryDTO.getUploaderId())
-        .eq(
-            queryDTO.getActivityId() != null,
-            ProjectFileEntity::getActivityId,
-            queryDTO.getActivityId())
-        .eq(
-            queryDTO.getOpportunityId() != null,
-            ProjectFileEntity::getOpportunityId,
-            queryDTO.getOpportunityId())
-        .eq(
-            queryDTO.getContractId() != null,
-            ProjectFileEntity::getContractId,
-            queryDTO.getContractId())
-        .eq(queryDTO.getOrderId() != null, ProjectFileEntity::getOrderId, queryDTO.getOrderId())
-        .ge(
-            queryDTO.getMinUploadTime() != null,
-            ProjectFileEntity::getUploadTime,
-            queryDTO.getMinUploadTime())
-        .le(
-            queryDTO.getMaxUploadTime() != null,
-            ProjectFileEntity::getUploadTime,
-            queryDTO.getMaxUploadTime());
-
-    return wrapper;
+    return result;
   }
 
   /** Entity转VO */

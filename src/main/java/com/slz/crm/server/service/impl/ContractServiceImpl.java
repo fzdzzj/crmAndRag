@@ -85,15 +85,17 @@ public class ContractServiceImpl extends ServiceImpl<ContractMapper, ContractEnt
     // 统一从商机中获取公司ID
     entity.setCompanyId(salesOpportunityEntity.getCompanyId());
 
+    ContractVO result;
     if (!save(entity)) {
-      return null;
+      result = null;
+    } else {
+      String companyName = dataConvertService.getCompanyName(entity.getCompanyId());
+      String opportunityName = dataConvertService.getOpportunityName(entity.getOpportunityId());
+      String ownerName = dataConvertService.getUserName(entity.getOwnerId());
+      String creatorName = dataConvertService.getUserName(entity.getCreatorId());
+      result = ContractVO.fromEntity(entity, companyName, opportunityName, ownerName, creatorName);
     }
-
-    String companyName = dataConvertService.getCompanyName(entity.getCompanyId());
-    String opportunityName = dataConvertService.getOpportunityName(entity.getOpportunityId());
-    String ownerName = dataConvertService.getUserName(entity.getOwnerId());
-    String creatorName = dataConvertService.getUserName(entity.getCreatorId());
-    return ContractVO.fromEntity(entity, companyName, opportunityName, ownerName, creatorName);
+    return result;
   }
 
   @Override

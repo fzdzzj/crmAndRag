@@ -78,14 +78,16 @@ public class PaymentActionExecutor implements AiActionExecutor {
 
   /** 引用 ID 使用创建服务返回值；名称从库中详情读取，避免沿用输入草稿文本。 */
   private List<AiReferenceCollector.Reference> reference(PaymentRecordVO created) {
+    List<AiReferenceCollector.Reference> result = List.of();
     if (created != null
         && created.getId() != null
         && created.getContractName() != null
         && !created.getContractName().isBlank()) {
-      return List.of(
-          new AiReferenceCollector.Reference(
-              "payment", created.getId(), created.getContractName()));
+      result =
+          List.of(
+              new AiReferenceCollector.Reference(
+                  "payment", created.getId(), created.getContractName()));
     }
-    return List.of();
+    return result;
   }
 }

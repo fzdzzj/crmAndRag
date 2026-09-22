@@ -138,16 +138,17 @@ public class PrivacyAspect {
 
     Method[] methods = aClass.getDeclaredMethods();
 
+    boolean self = false;
     for (Method method : methods) {
+      if (self) {
+        break;
+      }
       if (PrivacyGetId.USER_ID_RELATED_FIELDS.contains(method.getName())) {
         try {
           // 调用方法获取用户ID
           Long userId = (Long) method.invoke(privacy);
-          if (userId == null) {
-            continue;
-          }
-          if (userId.equals(creatorId)) {
-            return true;
+          if (userId != null && userId.equals(creatorId)) {
+            self = true;
           }
         } catch (Exception e) {
           log.error("隐私屏蔽错误", e);
@@ -156,11 +157,13 @@ public class PrivacyAspect {
     }
 
     // 额外关联用户（协助人/参与人等）：当前用户命中即视为本人，不脱敏
-    Set<Long> relatedUserIds = privacy.relatedUserIds();
-    if (relatedUserIds != null && relatedUserIds.contains(creatorId)) {
-      return true;
+    if (!self) {
+      Set<Long> relatedUserIds = privacy.relatedUserIds();
+      if (relatedUserIds != null && relatedUserIds.contains(creatorId)) {
+        self = true;
+      }
     }
 
-    return false;
+    return self;
   }
 }

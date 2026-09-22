@@ -53,62 +53,68 @@ public class ContactTaskServiceImpl extends ServiceImpl<ContactTaskMapper, Conta
 
   /** 将字符串优先级转换为数字 */
   private Integer convertPriorityStringToInteger(String priorityStr) {
-    if (priorityStr == null || priorityStr.trim().isEmpty()) {
-      return null;
+    Integer result = null;
+    if (priorityStr != null && !priorityStr.trim().isEmpty()) {
+      String trimmed = priorityStr.trim();
+      result =
+          switch (trimmed) {
+            case "低" -> 1; // 0-2 对应低，取中间值 1
+            case "中" -> 4; // 3-5 对应中，取中间值 4
+            case "高" -> 7; // 6-8 对应高，取中间值 7
+            case "紧急" -> 9; // 9 对应紧急
+            default -> null; // 无效值返回 null
+          };
     }
-
-    String trimmed = priorityStr.trim();
-    return switch (trimmed) {
-      case "低" -> 1; // 0-2 对应低，取中间值 1
-      case "中" -> 4; // 3-5 对应中，取中间值 4
-      case "高" -> 7; // 6-8 对应高，取中间值 7
-      case "紧急" -> 9; // 9 对应紧急
-      default -> null; // 无效值返回 null
-    };
+    return result;
   }
 
   /** 将数字优先级转换为字符串 */
   private String convertPriorityToString(Integer priority) {
-    if (priority == null) {
-      return "未设置";
+    String result = "未设置";
+    if (priority != null) {
+      result =
+          switch (priority) {
+            case 0, 1, 2 -> "低";
+            case 3, 4, 5 -> "中";
+            case 6, 7, 8 -> "高";
+            case 9 -> "紧急";
+            default -> "未设置";
+          };
     }
-    return switch (priority) {
-      case 0, 1, 2 -> "低";
-      case 3, 4, 5 -> "中";
-      case 6, 7, 8 -> "高";
-      case 9 -> "紧急";
-      default -> "未设置";
-    };
+    return result;
   }
 
   /** 将字符串状态转换为数字 */
   private Integer convertStatusStringToInteger(String statusStr) {
-    if (statusStr == null || statusStr.trim().isEmpty()) {
-      return null;
+    Integer result = null;
+    if (statusStr != null && !statusStr.trim().isEmpty()) {
+      String trimmed = statusStr.trim();
+      result =
+          switch (trimmed) {
+            case "未开始" -> 0;
+            case "进行中" -> 1;
+            case "已完成" -> 2;
+            case "已取消" -> 3;
+            default -> null; // 无效值返回 null
+          };
     }
-
-    String trimmed = statusStr.trim();
-    return switch (trimmed) {
-      case "未开始" -> 0;
-      case "进行中" -> 1;
-      case "已完成" -> 2;
-      case "已取消" -> 3;
-      default -> null; // 无效值返回 null
-    };
+    return result;
   }
 
   /** 将数字状态转换为字符串 */
   private String convertStatusToString(Integer status) {
-    if (status == null) {
-      return "未知状态";
+    String result = "未知状态";
+    if (status != null) {
+      result =
+          switch (status) {
+            case 0 -> "未开始";
+            case 1 -> "进行中";
+            case 2 -> "已完成";
+            case 3 -> "已取消";
+            default -> "未知状态";
+          };
     }
-    return switch (status) {
-      case 0 -> "未开始";
-      case 1 -> "进行中";
-      case 2 -> "已完成";
-      case 3 -> "已取消";
-      default -> "未知状态";
-    };
+    return result;
   }
 
   @Override
@@ -457,77 +463,73 @@ public class ContactTaskServiceImpl extends ServiceImpl<ContactTaskMapper, Conta
 
   @Override
   public List<ContactTaskVO> getByAssigneeId(Long assigneeId) {
-    if (assigneeId == null) {
-      return new ArrayList<>();
+    List<ContactTaskVO> voList = new ArrayList<>();
+    if (assigneeId != null) {
+      LambdaQueryWrapper<ContactTaskEntity> wrapper =
+          new LambdaQueryWrapper<ContactTaskEntity>()
+              .eq(ContactTaskEntity::getAssigneeId, assigneeId)
+              .orderByDesc(ContactTaskEntity::getCreateTime);
+      applyVisibilityFilter(wrapper);
+      List<ContactTaskEntity> entities = list(wrapper);
+
+      // 使用批量查询优化性能
+      voList = convertToVOListWithBatchQuery(entities);
+      fillAssistUsers(voList, BaseUnit.getCurrentId());
     }
-
-    LambdaQueryWrapper<ContactTaskEntity> wrapper =
-        new LambdaQueryWrapper<ContactTaskEntity>()
-            .eq(ContactTaskEntity::getAssigneeId, assigneeId)
-            .orderByDesc(ContactTaskEntity::getCreateTime);
-    applyVisibilityFilter(wrapper);
-    List<ContactTaskEntity> entities = list(wrapper);
-
-    // 使用批量查询优化性能
-    List<ContactTaskVO> voList = convertToVOListWithBatchQuery(entities);
-    fillAssistUsers(voList, BaseUnit.getCurrentId());
     return voList;
   }
 
   @Override
   public List<ContactTaskVO> getByCompanyId(Long companyId) {
-    if (companyId == null) {
-      return new ArrayList<>();
+    List<ContactTaskVO> voList = new ArrayList<>();
+    if (companyId != null) {
+      LambdaQueryWrapper<ContactTaskEntity> wrapper =
+          new LambdaQueryWrapper<ContactTaskEntity>()
+              .eq(ContactTaskEntity::getCompanyId, companyId)
+              .orderByDesc(ContactTaskEntity::getCreateTime);
+      applyVisibilityFilter(wrapper);
+      List<ContactTaskEntity> entities = list(wrapper);
+
+      // 使用批量查询优化性能
+      voList = convertToVOListWithBatchQuery(entities);
+      fillAssistUsers(voList, BaseUnit.getCurrentId());
     }
-
-    LambdaQueryWrapper<ContactTaskEntity> wrapper =
-        new LambdaQueryWrapper<ContactTaskEntity>()
-            .eq(ContactTaskEntity::getCompanyId, companyId)
-            .orderByDesc(ContactTaskEntity::getCreateTime);
-    applyVisibilityFilter(wrapper);
-    List<ContactTaskEntity> entities = list(wrapper);
-
-    // 使用批量查询优化性能
-    List<ContactTaskVO> voList = convertToVOListWithBatchQuery(entities);
-    fillAssistUsers(voList, BaseUnit.getCurrentId());
     return voList;
   }
 
   @Override
   public List<ContactTaskVO> getByContactId(Long contactId) {
-    if (contactId == null) {
-      return new ArrayList<>();
+    List<ContactTaskVO> voList = new ArrayList<>();
+    if (contactId != null) {
+      LambdaQueryWrapper<ContactTaskEntity> wrapper =
+          new LambdaQueryWrapper<ContactTaskEntity>()
+              .eq(ContactTaskEntity::getContactId, contactId)
+              .orderByDesc(ContactTaskEntity::getCreateTime);
+      applyVisibilityFilter(wrapper);
+      List<ContactTaskEntity> entities = list(wrapper);
+
+      // 使用批量查询优化性能
+      voList = convertToVOListWithBatchQuery(entities);
+      fillAssistUsers(voList, BaseUnit.getCurrentId());
     }
-
-    LambdaQueryWrapper<ContactTaskEntity> wrapper =
-        new LambdaQueryWrapper<ContactTaskEntity>()
-            .eq(ContactTaskEntity::getContactId, contactId)
-            .orderByDesc(ContactTaskEntity::getCreateTime);
-    applyVisibilityFilter(wrapper);
-    List<ContactTaskEntity> entities = list(wrapper);
-
-    // 使用批量查询优化性能
-    List<ContactTaskVO> voList = convertToVOListWithBatchQuery(entities);
-    fillAssistUsers(voList, BaseUnit.getCurrentId());
     return voList;
   }
 
   @Override
   public List<ContactTaskVO> getByOpportunityId(Long opportunityId) {
-    if (opportunityId == null) {
-      return new ArrayList<>();
+    List<ContactTaskVO> voList = new ArrayList<>();
+    if (opportunityId != null) {
+      LambdaQueryWrapper<ContactTaskEntity> wrapper =
+          new LambdaQueryWrapper<ContactTaskEntity>()
+              .eq(ContactTaskEntity::getOpportunityId, opportunityId)
+              .orderByDesc(ContactTaskEntity::getCreateTime);
+      applyVisibilityFilter(wrapper);
+      List<ContactTaskEntity> entities = list(wrapper);
+
+      // 使用批量查询优化性能
+      voList = convertToVOListWithBatchQuery(entities);
+      fillAssistUsers(voList, BaseUnit.getCurrentId());
     }
-
-    LambdaQueryWrapper<ContactTaskEntity> wrapper =
-        new LambdaQueryWrapper<ContactTaskEntity>()
-            .eq(ContactTaskEntity::getOpportunityId, opportunityId)
-            .orderByDesc(ContactTaskEntity::getCreateTime);
-    applyVisibilityFilter(wrapper);
-    List<ContactTaskEntity> entities = list(wrapper);
-
-    // 使用批量查询优化性能
-    List<ContactTaskVO> voList = convertToVOListWithBatchQuery(entities);
-    fillAssistUsers(voList, BaseUnit.getCurrentId());
     return voList;
   }
 

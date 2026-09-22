@@ -299,16 +299,18 @@ public class QueryWrapperAspect {
       }
     }
 
+    final String result;
     if (mapperClassName == null) {
       logger.warn("无法从 JoinPoint 提取 Mapper 类名");
-      return "";
+      result = "";
+    } else {
+      // 去掉 "Mapper" 后缀
+      String entityName = mapperClassName.replace("Mapper", "");
+
+      // 转换为下划线命名(驼峰转下划线)
+      result = camelToUnderscore(entityName);
     }
-
-    // 去掉 "Mapper" 后缀
-    String entityName = mapperClassName.replace("Mapper", "");
-
-    // 转换为下划线命名(驼峰转下划线)
-    return camelToUnderscore(entityName);
+    return result;
   }
 
   /**

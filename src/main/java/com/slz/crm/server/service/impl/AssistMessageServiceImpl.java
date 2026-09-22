@@ -46,20 +46,24 @@ public class AssistMessageServiceImpl implements AssistMessageService {
                 .eq(AssistMessageEntity::getAssistId, assistId)
                 .orderByAsc(AssistMessageEntity::getCreateTime)
                 .orderByAsc(AssistMessageEntity::getId));
+    List<AssistMessageVO> result;
     if (entities.isEmpty()) {
-      return Collections.emptyList();
+      result = Collections.emptyList();
+    } else {
+      Set<Long> senderIds =
+          entities.stream()
+              .map(AssistMessageEntity::getSenderId)
+              .filter(Objects::nonNull)
+              .collect(Collectors.toSet());
+      Map<Long, UserEntity> users =
+          senderIds.isEmpty()
+              ? Collections.emptyMap()
+              : userMapper.selectBatchIds(senderIds).stream()
+                  .collect(Collectors.toMap(UserEntity::getId, Function.identity()));
+      result =
+          entities.stream().map(entity -> toVO(entity, users.get(entity.getSenderId()))).toList();
     }
-    Set<Long> senderIds =
-        entities.stream()
-            .map(AssistMessageEntity::getSenderId)
-            .filter(Objects::nonNull)
-            .collect(Collectors.toSet());
-    Map<Long, UserEntity> users =
-        senderIds.isEmpty()
-            ? Collections.emptyMap()
-            : userMapper.selectBatchIds(senderIds).stream()
-                .collect(Collectors.toMap(UserEntity::getId, Function.identity()));
-    return entities.stream().map(entity -> toVO(entity, users.get(entity.getSenderId()))).toList();
+    return result;
   }
 
   @Override
@@ -108,14 +112,18 @@ public class AssistMessageServiceImpl implements AssistMessageService {
 
   /** 联络任务创建人、指派人和执行人可以参与该任务协助的过程沟通。 */
   private boolean isContactTaskParticipant(AssistRequestEntity assist, Long userId) {
+    boolean result;
     if (!ModelName.CONTACT_TASK.equals(assist.getModelName()) || assist.getRecordId() == null) {
-      return false;
+      result = false;
+    } else {
+      ContactTaskEntity task = contactTaskMapper.selectById(assist.getRecordId());
+      result =
+          task != null
+              && (Objects.equals(task.getCreatorId(), userId)
+                  || Objects.equals(task.getAssignerId(), userId)
+                  || Objects.equals(task.getAssigneeId(), userId));
     }
-    ContactTaskEntity task = contactTaskMapper.selectById(assist.getRecordId());
-    return task != null
-        && (Objects.equals(task.getCreatorId(), userId)
-            || Objects.equals(task.getAssignerId(), userId)
-            || Objects.equals(task.getAssigneeId(), userId));
+    return result;
   }
 
   private void insert(Long assistId, Long senderId, String content, String type) {
@@ -146,10 +154,11 @@ public class AssistMessageServiceImpl implements AssistMessageService {
   }
 
   private String trimToNull(String value) {
-    if (value == null) {
-      return null;
+    String result = null;
+    if (value != null) {
+      String trimmed = value.trim();
+      result = trimmed.isEmpty() ? null : trimmed;
     }
-    String trimmed = value.trim();
-    return trimmed.isEmpty() ? null : trimmed;
+    return result;
   }
 }

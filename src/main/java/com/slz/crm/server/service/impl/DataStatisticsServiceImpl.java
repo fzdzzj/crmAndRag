@@ -196,6 +196,7 @@ public class DataStatisticsServiceImpl implements DataStatisticsService {
             ? ChronoUnit.MONTHS.between(timeRange[0], timeRange[1]) + 1
             : ChronoUnit.DAYS.between(timeRange[0], timeRange[1]) + 1;
 
+    Map<String, Number> out = result;
     // 判断是否需要补全日期数据
     if (chartData.size() != between) {
       // 设置日期格式
@@ -217,10 +218,10 @@ public class DataStatisticsServiceImpl implements DataStatisticsService {
                 ? currentTime.plusMonths(1)
                 : currentTime.plusDays(1);
       }
-      return resultMap;
+      out = resultMap;
     }
 
-    return result;
+    return out;
   }
 
   /** 填充时间序列数据(回款数据) */
@@ -244,6 +245,7 @@ public class DataStatisticsServiceImpl implements DataStatisticsService {
             ? ChronoUnit.MONTHS.between(timeRange[0], timeRange[1]) + 1
             : ChronoUnit.DAYS.between(timeRange[0], timeRange[1]) + 1;
 
+    Map<String, Number> out = result;
     // 判断是否需要补全日期数据
     if (chartData.size() != between) {
       // 设置日期格式
@@ -265,10 +267,10 @@ public class DataStatisticsServiceImpl implements DataStatisticsService {
                 ? currentTime.plusMonths(1)
                 : currentTime.plusDays(1);
       }
-      return resultMap;
+      out = resultMap;
     }
 
-    return result;
+    return out;
   }
 
   @Override
@@ -408,9 +410,12 @@ public class DataStatisticsServiceImpl implements DataStatisticsService {
    * @return 百分比
    */
   private Double calculatePercentage(Long count, Long total) {
+    Double result;
     if (total == 0) {
-      return 0.0;
+      result = 0.0;
+    } else {
+      result = Math.round(count * 10000.0 / total) / 100.0;
     }
-    return Math.round(count * 10000.0 / total) / 100.0;
+    return result;
   }
 }

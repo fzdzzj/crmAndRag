@@ -74,14 +74,16 @@ public class OpportunityActionExecutor implements AiActionExecutor {
 
   /** 引用 ID 使用创建服务返回值；名称从库中详情读取，避免沿用输入草稿文本。 */
   private List<AiReferenceCollector.Reference> reference(SalesOpportunityVO created) {
+    List<AiReferenceCollector.Reference> result = List.of();
     if (created != null
         && created.getId() != null
         && created.getOpportunityName() != null
         && !created.getOpportunityName().isBlank()) {
-      return List.of(
-          new AiReferenceCollector.Reference(
-              "opportunity", created.getId(), created.getOpportunityName()));
+      result =
+          List.of(
+              new AiReferenceCollector.Reference(
+                  "opportunity", created.getId(), created.getOpportunityName()));
     }
-    return List.of();
+    return result;
   }
 }

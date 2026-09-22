@@ -98,27 +98,32 @@ public class AiChatController {
   @RequirePermission(PermissionOperates.AI_CHAT_SESSION)
   public Result<AiChatImageUploadVO> uploadImage(
       @PathVariable Long sessionId, @RequestParam("file") MultipartFile file) {
+    Result<AiChatImageUploadVO> result;
     AiSessionEntity session = aiSessionService.getOwnedSession(sessionId, BaseUnit.getCurrentId());
     if (session == null) {
-      return Result.error(ErrorCode.PERMISSION_DENIED, "无权访问该AI会话");
+      result = Result.error(ErrorCode.PERMISSION_DENIED, "无权访问该AI会话");
+    } else if (file == null || file.isEmpty()) {
+      result = Result.error(ErrorCode.PARAM_REQUIRED, "请上传图片");
+    } else {
+      String contentType = file.getContentType();
+      if (contentType == null || !contentType.toLowerCase().startsWith("image/")) {
+        result = Result.error(ErrorCode.FILE_FORMAT_ERROR, "仅支持图片文件");
+      } else {
+        try {
+          AiChatImageEntity image =
+              aiChatImageService.save(
+                  sessionId, BaseUnit.getCurrentId(), contentType, file.getBytes());
+          result =
+              Result.success(
+                  new AiChatImageUploadVO(
+                      image.getId(), image.getImageHash(), String.valueOf(image.getId())));
+        } catch (IOException exception) {
+          log.warn("AI聊天图片上传读取失败，sessionId={}", sessionId, exception);
+          result = Result.error(ErrorCode.FILE_READ_FAILED, "读取图片失败");
+        }
+      }
     }
-    if (file == null || file.isEmpty()) {
-      return Result.error(ErrorCode.PARAM_REQUIRED, "请上传图片");
-    }
-    String contentType = file.getContentType();
-    if (contentType == null || !contentType.toLowerCase().startsWith("image/")) {
-      return Result.error(ErrorCode.FILE_FORMAT_ERROR, "仅支持图片文件");
-    }
-    try {
-      AiChatImageEntity image =
-          aiChatImageService.save(sessionId, BaseUnit.getCurrentId(), contentType, file.getBytes());
-      return Result.success(
-          new AiChatImageUploadVO(
-              image.getId(), image.getImageHash(), String.valueOf(image.getId())));
-    } catch (IOException exception) {
-      log.warn("AI聊天图片上传读取失败，sessionId={}", sessionId, exception);
-      return Result.error(ErrorCode.FILE_READ_FAILED, "读取图片失败");
-    }
+    return result;
   }
 
   @PostMapping("/sessions")
@@ -149,11 +154,16 @@ public class AiChatController {
           LocalDateTime cursorTime,
       @RequestParam(required = false) Long cursorId,
       @RequestParam(defaultValue = "10") @Min(1) @Max(100) Integer limit) {
+    final Result<List<AiSessionVO>> result;
     if (isInvalidLimit(limit)) {
-      return Result.error(ErrorCode.PARAM_OUT_OF_RANGE, "limit 必须在 1 到 100 之间");
+      result = Result.error(ErrorCode.PARAM_OUT_OF_RANGE, "limit 必须在 1 到 100 之间");
+    } else {
+      result =
+          Result.success(
+              aiSessionService.scrollSessions(
+                  BaseUnit.getCurrentId(), cursorTime, cursorId, limit));
     }
-    return Result.success(
-        aiSessionService.scrollSessions(BaseUnit.getCurrentId(), cursorTime, cursorId, limit));
+    return result;
   }
 
   /**
@@ -170,14 +180,15 @@ public class AiChatController {
       @PathVariable Long id,
       @RequestParam(required = false) Long afterId,
       @RequestParam(defaultValue = "20") @Min(1) @Max(100) Integer limit) {
+    final Result<List<AiMessageVO>> result;
     if (isInvalidLimit(limit)) {
-      return Result.error(ErrorCode.PARAM_OUT_OF_RANGE, "limit 必须在 1 到 100 之间");
+      result = Result.error(ErrorCode.PARAM_OUT_OF_RANGE, "limit 必须在 1 到 100 之间");
+    } else if (aiSessionService.getOwnedSession(id, BaseUnit.getCurrentId()) == null) {
+      result = Result.error("会话不存在或无权访问");
+    } else {
+      result = Result.success(aiMessageService.scrollMessages(id, afterId, limit));
     }
-    if (aiSessionService.getOwnedSession(id, BaseUnit.getCurrentId()) == null) {
-
-      return Result.error("会话不存在或无权访问");
-    }
-    return Result.success(aiMessageService.scrollMessages(id, afterId, limit));
+    return result;
   }
 
   /** 归档会话（软删 status=0），并级联取消其 PENDING 待确认操作 */

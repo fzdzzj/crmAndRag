@@ -58,20 +58,28 @@ public class AiDraftToolExecutors {
     Long sessionId = extractSessionId(toolContext);
     String pendingId = args.get("pendingId") != null ? String.valueOf(args.get("pendingId")) : null;
     String payloadJson = objectMapper.writeValueAsString(args);
+    Object result;
     if (pendingId != null && !pendingId.isBlank()) {
-      return pendingActionService.mergeDraft(pendingId, userId, payloadJson);
+      result = pendingActionService.mergeDraft(pendingId, userId, payloadJson);
+    } else {
+      result =
+          pendingActionService.submitDraft(sessionId, userId, actionType.getValue(), payloadJson);
     }
-    return pendingActionService.submitDraft(sessionId, userId, actionType.getValue(), payloadJson);
+    return result;
   }
 
   private Long extractSessionId(ToolContext toolContext) {
+    Long result;
     if (toolContext == null || toolContext.getContext() == null) {
-      return null;
+      result = null;
+    } else {
+      Object sessionId = toolContext.getContext().get("sessionId");
+      if (sessionId instanceof Number number) {
+        result = number.longValue();
+      } else {
+        result = sessionId != null ? Long.valueOf(String.valueOf(sessionId)) : null;
+      }
     }
-    Object sessionId = toolContext.getContext().get("sessionId");
-    if (sessionId instanceof Number number) {
-      return number.longValue();
-    }
-    return sessionId != null ? Long.valueOf(String.valueOf(sessionId)) : null;
+    return result;
   }
 }

@@ -118,14 +118,17 @@ public class AiSessionServiceImpl extends ServiceImpl<AiSessionMapper, AiSession
 
   @Override
   public AiSessionEntity getOwnedSession(Long sessionId, Long userId) {
+    AiSessionEntity result;
     if (sessionId == null || userId == null) {
-
-      return null;
+      result = null;
+    } else {
+      result =
+          getOne(
+              new LambdaQueryWrapper<AiSessionEntity>()
+                  .eq(AiSessionEntity::getId, sessionId)
+                  .eq(AiSessionEntity::getUserId, userId),
+              false);
     }
-    return getOne(
-        new LambdaQueryWrapper<AiSessionEntity>()
-            .eq(AiSessionEntity::getId, sessionId)
-            .eq(AiSessionEntity::getUserId, userId),
-        false);
+    return result;
   }
 }

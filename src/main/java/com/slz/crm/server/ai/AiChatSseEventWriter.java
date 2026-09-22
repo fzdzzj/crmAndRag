@@ -63,19 +63,23 @@ public class AiChatSseEventWriter {
   public boolean resume(
       AiStreamRegistry.ActiveStream activeStream, SseEmitter emitter, String lastEventId) {
     synchronized (activeStream) {
+      boolean result = true;
       for (AiSseEventBuffer.BufferedEvent event :
           activeStream.getEventBuffer().eventsAfter(lastEventId)) {
         if (!sendEvent(emitter, event.eventName(), event.data(), event.eventId())) {
-          return false;
+          result = false;
+          break;
         }
       }
-      if (activeStream.isFinished()) {
-        completeQuietly(emitter);
-      } else {
-        SseEmitter previous = activeStream.attachResumeEmitter(emitter);
-        completeQuietly(previous);
+      if (result) {
+        if (activeStream.isFinished()) {
+          completeQuietly(emitter);
+        } else {
+          SseEmitter previous = activeStream.attachResumeEmitter(emitter);
+          completeQuietly(previous);
+        }
       }
-      return true;
+      return result;
     }
   }
 
@@ -91,17 +95,19 @@ public class AiChatSseEventWriter {
   }
 
   private boolean sendEvent(SseEmitter emitter, String event, String data, String eventId) {
+    boolean result;
     try {
       SseEmitter.SseEventBuilder builder = SseEmitter.event().name(event).data(data);
       if (eventId != null) {
         builder.id(eventId);
       }
       emitter.send(builder);
-      return true;
+      result = true;
     } catch (IOException | IllegalStateException e) {
       log.warn("SSE send failed, event={}, eventId={}", event, eventId, e);
-      return false;
+      result = false;
     }
+    return result;
   }
 
   public boolean sendError(SseEmitter emitter, String code, String message) {
@@ -121,13 +127,15 @@ public class AiChatSseEventWriter {
 
   /** 发送 SSE comment 心跳；失败返回 false，由调用方清理活跃流 */
   public boolean sendHeartbeat(SseEmitter emitter) {
+    boolean result;
     try {
       emitter.send(SseEmitter.event().comment("ping"));
-      return true;
+      result = true;
     } catch (IOException | IllegalStateException e) {
       log.warn("SSE heartbeat send failed", e);
-      return false;
+      result = false;
     }
+    return result;
   }
 
   public String toStartJson(String sessionId, Long assistantMessageId, String generationId) {
@@ -290,11 +298,13 @@ public class AiChatSseEventWriter {
   }
 
   private String writeJson(Object value) {
+    String result;
     try {
-      return objectMapper.writeValueAsString(value);
+      result = objectMapper.writeValueAsString(value);
     } catch (JsonProcessingException e) {
       log.error("JSON serialization failed", e);
-      return "{}";
+      result = "{}";
     }
+    return result;
   }
 }

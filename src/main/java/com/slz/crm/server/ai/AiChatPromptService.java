@@ -80,20 +80,19 @@ public class AiChatPromptService {
 
   /** 将持久记忆注入系统提示词；加工品缺失时不改变原 system prompt。 */
   private String buildSystemPrompt(AiConversationMemoryEntity memory, boolean clarifyRequired) {
-    if (memory == null) {
-      return clarifyRequired ? systemPrompt + shortQuestionRewriter.clarifyPrompt() : systemPrompt;
-    }
     StringBuilder memoryBlock = new StringBuilder(systemPrompt);
-    if (memory.getIntent() != null && !memory.getIntent().isBlank()) {
-      memoryBlock.append("\n\n【当前意图】").append(memory.getIntent().trim());
-    }
-    if (memory.getFacts() != null
-        && !memory.getFacts().isBlank()
-        && !"[]".equals(memory.getFacts().trim())) {
-      memoryBlock.append("\n\n【已确认事实】").append(memory.getFacts().trim());
-    }
-    if (memory.getSummary() != null && !memory.getSummary().isBlank()) {
-      memoryBlock.append("\n\n【历史摘要】").append(memory.getSummary().trim());
+    if (memory != null) {
+      if (memory.getIntent() != null && !memory.getIntent().isBlank()) {
+        memoryBlock.append("\n\n【当前意图】").append(memory.getIntent().trim());
+      }
+      if (memory.getFacts() != null
+          && !memory.getFacts().isBlank()
+          && !"[]".equals(memory.getFacts().trim())) {
+        memoryBlock.append("\n\n【已确认事实】").append(memory.getFacts().trim());
+      }
+      if (memory.getSummary() != null && !memory.getSummary().isBlank()) {
+        memoryBlock.append("\n\n【历史摘要】").append(memory.getSummary().trim());
+      }
     }
     if (clarifyRequired) {
       memoryBlock.append(shortQuestionRewriter.clarifyPrompt());
@@ -110,14 +109,16 @@ public class AiChatPromptService {
   }
 
   public String generateTitle(ChatClient.Builder chatClientBuilder, String userMessage) {
+    String result;
     try {
       String title =
           chatClientBuilder.build().prompt().system(titlePrompt).user(userMessage).call().content();
-      return title == null ? null : AiThinkTagStripper.strip(title).trim();
+      result = title == null ? null : AiThinkTagStripper.strip(title).trim();
     } catch (Exception e) {
       log.warn("生成会话标题失败", e);
-      return null;
+      result = null;
     }
+    return result;
   }
 
   public String getPromptVersion() {
@@ -180,6 +181,7 @@ public class AiChatPromptService {
   }
 
   private String sha256Prefix(String content) {
+    String result;
     try {
       MessageDigest digest = MessageDigest.getInstance("SHA-256");
       byte[] hash =
@@ -188,10 +190,11 @@ public class AiChatPromptService {
       for (int i = 0; i < 8 && i < hash.length; i++) {
         version.append(String.format("%02x", hash[i]));
       }
-      return version.toString();
+      result = version.toString();
     } catch (Exception e) {
       log.warn("计算 prompt 版本哈希失败", e);
-      return "unknown";
+      result = "unknown";
     }
+    return result;
   }
 }

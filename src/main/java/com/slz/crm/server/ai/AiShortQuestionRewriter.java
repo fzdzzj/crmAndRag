@@ -35,18 +35,20 @@ public class AiShortQuestionRewriter {
   public RewrittenQuestion rewrite(
       String userMessage, AiConversationMemoryEntity memory, AiMessageEntity lastUserQuestion) {
     String normalized = normalize(userMessage);
+    RewrittenQuestion result;
     if (normalized == null) {
-      return new RewrittenQuestion(normalizeOrDefault(userMessage), false);
+      result = new RewrittenQuestion(normalizeOrDefault(userMessage), false);
+    } else if (isShortQuestion(normalized, parseFacts(memory))) {
+      String anchor = selectAnchor(memory, lastUserQuestion);
+      if (anchor == null) {
+        result = new RewrittenQuestion(normalized, true);
+      } else {
+        result = new RewrittenQuestion(anchor + "：" + normalized, false);
+      }
+    } else {
+      result = new RewrittenQuestion(normalized, false);
     }
-    if (!isShortQuestion(normalized, parseFacts(memory))) {
-      return new RewrittenQuestion(normalized, false);
-    }
-
-    String anchor = selectAnchor(memory, lastUserQuestion);
-    if (anchor == null) {
-      return new RewrittenQuestion(normalized, true);
-    }
-    return new RewrittenQuestion(anchor + "：" + normalized, false);
+    return result;
   }
 
   public String clarifyPrompt() {
@@ -65,34 +67,40 @@ public class AiShortQuestionRewriter {
   /** 锚点严格按蓝图降级：意图 &gt; 事实 &gt; 最近用户问 &gt; 摘要。 */
   private String selectAnchor(AiConversationMemoryEntity memory, AiMessageEntity lastUserQuestion) {
     String intent = anchorText(memory == null ? null : memory.getIntent());
-    if (intent != null) {
-      return intent;
-    }
     List<String> facts = parseFacts(memory);
-    if (!facts.isEmpty()) {
-      return anchorText(facts.getFirst());
-    }
     String recent = anchorText(lastUserQuestion == null ? null : lastUserQuestion.getContent());
-    if (recent != null) {
-      return recent;
+    String result;
+    if (intent != null) {
+      result = intent;
+    } else if (!facts.isEmpty()) {
+      result = anchorText(facts.getFirst());
+    } else if (recent != null) {
+      result = recent;
+    } else {
+      result = anchorText(memory == null ? null : memory.getSummary());
     }
-    return anchorText(memory == null ? null : memory.getSummary());
+    return result;
   }
 
   private List<String> parseFacts(AiConversationMemoryEntity memory) {
     String factsJson = memory == null ? null : memory.getFacts();
+    List<String> result;
     if (factsJson == null || factsJson.isBlank() || "[]".equals(factsJson.trim())) {
-      return List.of();
+      result = List.of();
+    } else {
+      try {
+        List<String> facts =
+            OBJECT_MAPPER.readValue(factsJson, new TypeReference<List<String>>() {});
+        result =
+            facts == null
+                ? List.of()
+                : facts.stream().map(this::normalize).filter(item -> item != null).toList();
+      } catch (Exception exception) {
+        // 记忆是可降级加工品；坏 JSON 只影响改写，不应影响主答。
+        result = List.of();
+      }
     }
-    try {
-      List<String> facts = OBJECT_MAPPER.readValue(factsJson, new TypeReference<List<String>>() {});
-      return facts == null
-          ? List.of()
-          : facts.stream().map(this::normalize).filter(item -> item != null).toList();
-    } catch (Exception exception) {
-      // 记忆是可降级加工品；坏 JSON 只影响改写，不应影响主答。
-      return List.of();
-    }
+    return result;
   }
 
   private boolean overlapsFact(String question, List<String> facts) {
@@ -115,20 +123,27 @@ public class AiShortQuestionRewriter {
 
   private String anchorText(String text) {
     String normalized = normalize(text);
+    String result;
     if (normalized == null) {
-      return null;
+      result = null;
+    } else {
+      result =
+          normalized.length() > ANCHOR_MAX_CHARS
+              ? normalized.substring(0, ANCHOR_MAX_CHARS)
+              : normalized;
     }
-    return normalized.length() > ANCHOR_MAX_CHARS
-        ? normalized.substring(0, ANCHOR_MAX_CHARS)
-        : normalized;
+    return result;
   }
 
   private String normalize(String text) {
+    String result;
     if (text == null) {
-      return null;
+      result = null;
+    } else {
+      String stripped = AiThinkTagStripper.strip(text).replaceAll("\\s+", " ").trim();
+      result = stripped.isEmpty() ? null : stripped;
     }
-    String stripped = AiThinkTagStripper.strip(text).replaceAll("\\s+", " ").trim();
-    return stripped.isEmpty() ? null : stripped;
+    return result;
   }
 
   private String normalizeOrDefault(String text) {

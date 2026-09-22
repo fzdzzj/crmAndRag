@@ -30,10 +30,15 @@ public enum PendingActionStatus {
 
   /** 按字符串值查找枚举（不存在时返回 null） */
   public static PendingActionStatus fromValue(String value) {
-    if (value == null) return null;
-    for (PendingActionStatus s : values()) {
-      if (s.value.equals(value)) return s;
+    PendingActionStatus result = null;
+    if (value != null) {
+      for (PendingActionStatus s : values()) {
+        if (s.value.equals(value)) {
+          result = s;
+          break;
+        }
+      }
     }
-    return null;
+    return result;
   }
 }

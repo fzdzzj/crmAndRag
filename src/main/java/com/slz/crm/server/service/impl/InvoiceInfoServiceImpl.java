@@ -86,6 +86,7 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
     }
 
     // 如果没有填写发票编号，自动生成（带重复检测和重试机制）
+    InvoiceInfoVO generated;
     if (!StringUtils.hasText(entity.getInvoiceNo())) {
       int maxRetries = 10; // 最大重试次数
       int retryCount = 0;
@@ -107,11 +108,12 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
         }
       }
 
-      return insertSuccess ? toCreatedVO(entity) : null;
+      generated = insertSuccess ? toCreatedVO(entity) : null;
     } else {
       // 前端传入了发票编号，直接插入
-      return invoiceInfoMapper.insert(entity) > 0 ? toCreatedVO(entity) : null;
+      generated = invoiceInfoMapper.insert(entity) > 0 ? toCreatedVO(entity) : null;
     }
+    return generated;
   }
 
   private InvoiceInfoVO toCreatedVO(InvoiceInfoEntity entity) {
@@ -261,30 +263,36 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
 
   @Override
   public List<InvoiceInfoVO> listByContractId(Long contractId) {
+    List<InvoiceInfoVO> result;
     if (contractId == null) {
-      return new ArrayList<>();
+      result = new ArrayList<>();
+    } else {
+
+      LambdaQueryWrapper<InvoiceInfoEntity> queryWrapper = new LambdaQueryWrapper<>();
+      queryWrapper.eq(InvoiceInfoEntity::getContractId, contractId);
+      queryWrapper.orderByDesc(InvoiceInfoEntity::getCreateTime);
+
+      List<InvoiceInfoEntity> entityList = invoiceInfoMapper.selectList(queryWrapper);
+      result = entityList.stream().map(this::convertToVO).collect(Collectors.toList());
     }
-
-    LambdaQueryWrapper<InvoiceInfoEntity> queryWrapper = new LambdaQueryWrapper<>();
-    queryWrapper.eq(InvoiceInfoEntity::getContractId, contractId);
-    queryWrapper.orderByDesc(InvoiceInfoEntity::getCreateTime);
-
-    List<InvoiceInfoEntity> entityList = invoiceInfoMapper.selectList(queryWrapper);
-    return entityList.stream().map(this::convertToVO).collect(Collectors.toList());
+    return result;
   }
 
   @Override
   public List<InvoiceInfoVO> listByPaymentId(Long paymentId) {
+    List<InvoiceInfoVO> result;
     if (paymentId == null) {
-      return new ArrayList<>();
+      result = new ArrayList<>();
+    } else {
+
+      LambdaQueryWrapper<InvoiceInfoEntity> queryWrapper = new LambdaQueryWrapper<>();
+      queryWrapper.eq(InvoiceInfoEntity::getPaymentId, paymentId);
+      queryWrapper.orderByDesc(InvoiceInfoEntity::getCreateTime);
+
+      List<InvoiceInfoEntity> entityList = invoiceInfoMapper.selectList(queryWrapper);
+      result = entityList.stream().map(this::convertToVO).collect(Collectors.toList());
     }
-
-    LambdaQueryWrapper<InvoiceInfoEntity> queryWrapper = new LambdaQueryWrapper<>();
-    queryWrapper.eq(InvoiceInfoEntity::getPaymentId, paymentId);
-    queryWrapper.orderByDesc(InvoiceInfoEntity::getCreateTime);
-
-    List<InvoiceInfoEntity> entityList = invoiceInfoMapper.selectList(queryWrapper);
-    return entityList.stream().map(this::convertToVO).collect(Collectors.toList());
+    return result;
   }
 
   @Override

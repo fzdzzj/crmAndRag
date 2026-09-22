@@ -212,37 +212,11 @@ public class PermissionServiceImpl extends ServiceImpl<PermissionsMapper, Permis
 
     // 遍历所有权限并按模块分组
     for (PermissionsEntity permission : allPermissions) {
-      String moduleName = getModuleNameByPermissionName(permission.getPermissionsName());
+      String moduleName = PermissionModuleResolver.resolve(permission.getPermissionsName());
       permissionMap.get(moduleName).add(new PermissionVO(permission));
     }
 
     return permissionMap;
-  }
-
-  /**
-   * 根据权限名称获取所属模块
-   *
-   * @param permissionName 权限名称
-   * @return 模块名称
-   */
-  private String getModuleNameByPermissionName(String permissionName) {
-    if (permissionName.startsWith("customer:")) {
-      return "客户管理模块权限";
-    } else if (permissionName.startsWith("sales:")) {
-      return "销售管理模块权限";
-    } else if (permissionName.startsWith("finance:")) {
-      return "财务管理模块权限";
-    } else if (permissionName.startsWith("task:")) {
-      return "联络任务模块权限";
-    } else if (permissionName.startsWith("report:")) {
-      return "统计报表模块权限";
-    } else if (permissionName.startsWith("system:")) {
-      return "权限管理模块权限";
-    } else if (permissionName.startsWith("project:")) {
-      return "隐私信息查看权限";
-    } else {
-      return "其他模块权限";
-    }
   }
 
   @Override
@@ -281,7 +255,7 @@ public class PermissionServiceImpl extends ServiceImpl<PermissionsMapper, Permis
     }
 
     for (PermissionsEntity permission : allPermissions) {
-      String moduleName = getModuleNameByPermissionName(permission.getPermissionsName());
+      String moduleName = PermissionModuleResolver.resolve(permission.getPermissionsName());
       List<PermissionsEntity> permissions = moduleMap.get(moduleName);
       if (permissions != null) {
         permissions.add(permission);

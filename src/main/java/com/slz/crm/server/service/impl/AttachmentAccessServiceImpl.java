@@ -68,82 +68,84 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
 
   @Override
   public boolean canReadAttachments(String modelName, Long recordId, Long userId) {
-    if (modelName == null || recordId == null || userId == null) {
-      return false;
-    }
-    UserEntity user = userMapper.selectById(userId);
-    if (user == null || !Objects.equals(user.getStatus(), 1)) {
-      return false;
-    }
-    if (Objects.equals(user.getRoleId(), 1L)) {
-      return true;
-    }
-    return switch (modelName) {
-      case ModelName.BUSINESS_ACTIVITY ->
-          canReadBusinessActivityAttachments(recordId, userId, modelName);
-      case ModelName.CONTACT_TASK -> {
-        if (!permissionService.hasPermission(userId, PermissionOperates.TASK_VIEW_TASK)) {
-          yield false;
+    boolean result = false;
+    if (modelName != null && recordId != null && userId != null) {
+      UserEntity user = userMapper.selectById(userId);
+      if (user != null && Objects.equals(user.getStatus(), 1)) {
+        if (Objects.equals(user.getRoleId(), 1L)) {
+          result = true;
+        } else {
+          result =
+              switch (modelName) {
+                case ModelName.BUSINESS_ACTIVITY ->
+                    canReadBusinessActivityAttachments(recordId, userId, modelName);
+                case ModelName.CONTACT_TASK -> {
+                  if (!permissionService.hasPermission(userId, PermissionOperates.TASK_VIEW_TASK)) {
+                    yield false;
+                  }
+                  ContactTaskEntity task = contactTaskMapper.selectById(recordId);
+                  yield (task != null
+                          && (Objects.equals(task.getCreatorId(), userId)
+                              || Objects.equals(task.getAssignerId(), userId)
+                              || Objects.equals(task.getAssigneeId(), userId)))
+                      || departmentManagerReadReserved(modelName, recordId, userId);
+                }
+                case ModelName.SALES_STAGE_APPROVAL, ModelName.APPROVAL_ATTACHMENT -> {
+                  if (!permissionService.hasPermission(
+                      userId, PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY_STAGE)) {
+                    yield false;
+                  }
+                  SalesStageApprovalEntity approval = salesStageApprovalMapper.selectById(recordId);
+                  yield (approval != null
+                          && (Objects.equals(approval.getApplicantId(), userId)
+                              || Objects.equals(approval.getApproverId(), userId)))
+                      || departmentManagerReadReserved(modelName, recordId, userId);
+                }
+                case ModelName.ASSIST_REQUEST -> hasAssistParticipantById(recordId, userId);
+                default -> false;
+              };
         }
-        ContactTaskEntity task = contactTaskMapper.selectById(recordId);
-        yield (task != null
-                && (Objects.equals(task.getCreatorId(), userId)
-                    || Objects.equals(task.getAssignerId(), userId)
-                    || Objects.equals(task.getAssigneeId(), userId)))
-            || departmentManagerReadReserved(modelName, recordId, userId);
       }
-      case ModelName.SALES_STAGE_APPROVAL, ModelName.APPROVAL_ATTACHMENT -> {
-        if (!permissionService.hasPermission(
-            userId, PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY_STAGE)) {
-          yield false;
-        }
-        SalesStageApprovalEntity approval = salesStageApprovalMapper.selectById(recordId);
-        yield (approval != null
-                && (Objects.equals(approval.getApplicantId(), userId)
-                    || Objects.equals(approval.getApproverId(), userId)))
-            || departmentManagerReadReserved(modelName, recordId, userId);
-      }
-      case ModelName.ASSIST_REQUEST -> hasAssistParticipantById(recordId, userId);
-      default -> false;
-    };
+    }
+    return result;
   }
 
   @Override
   public boolean canWriteAttachments(String modelName, Long recordId, Long userId) {
-    if (modelName == null || recordId == null || userId == null) {
-      return false;
+    boolean result = false;
+    if (modelName != null && recordId != null && userId != null) {
+      UserEntity user = userMapper.selectById(userId);
+      if (user != null && Objects.equals(user.getStatus(), 1)) {
+        if (Objects.equals(user.getRoleId(), 1L)) {
+          result = true;
+        } else {
+          boolean owned =
+              switch (modelName) {
+                case ModelName.BUSINESS_ACTIVITY -> {
+                  BusinessActivityEntity activity = businessActivityMapper.selectById(recordId);
+                  yield activity != null && Objects.equals(activity.getCreatorId(), userId);
+                }
+                case ModelName.CONTACT_TASK -> {
+                  ContactTaskEntity task = contactTaskMapper.selectById(recordId);
+                  yield task != null
+                      && (Objects.equals(task.getCreatorId(), userId)
+                          || Objects.equals(task.getAssignerId(), userId)
+                          || Objects.equals(task.getAssigneeId(), userId));
+                }
+                case ModelName.SALES_STAGE_APPROVAL, ModelName.APPROVAL_ATTACHMENT -> {
+                  SalesStageApprovalEntity approval = salesStageApprovalMapper.selectById(recordId);
+                  yield approval != null
+                      && (Objects.equals(approval.getApplicantId(), userId)
+                          || Objects.equals(approval.getApproverId(), userId));
+                }
+                // 协助交付物的写权限还需要生命周期判断，不能从普通接口放行。
+                default -> false;
+              };
+          result = owned || departmentManagerWriteReserved(modelName, recordId, userId);
+        }
+      }
     }
-    UserEntity user = userMapper.selectById(userId);
-    if (user == null || !Objects.equals(user.getStatus(), 1)) {
-      return false;
-    }
-    if (Objects.equals(user.getRoleId(), 1L)) {
-      return true;
-    }
-    boolean related =
-        switch (modelName) {
-          case ModelName.BUSINESS_ACTIVITY -> {
-            BusinessActivityEntity activity = businessActivityMapper.selectById(recordId);
-            yield activity != null && Objects.equals(activity.getCreatorId(), userId);
-          }
-          case ModelName.CONTACT_TASK -> {
-            ContactTaskEntity task = contactTaskMapper.selectById(recordId);
-            yield task != null
-                && (Objects.equals(task.getCreatorId(), userId)
-                    || Objects.equals(task.getAssignerId(), userId)
-                    || Objects.equals(task.getAssigneeId(), userId));
-          }
-          case ModelName.SALES_STAGE_APPROVAL, ModelName.APPROVAL_ATTACHMENT -> {
-            SalesStageApprovalEntity approval = salesStageApprovalMapper.selectById(recordId);
-            yield approval != null
-                && (Objects.equals(approval.getApplicantId(), userId)
-                    || Objects.equals(approval.getApproverId(), userId));
-          }
-          // 协助交付物的写权限还需要生命周期判断，不能从普通接口放行。
-          case ModelName.ASSIST_REQUEST -> false;
-          default -> false;
-        };
-    return related || departmentManagerWriteReserved(modelName, recordId, userId);
+    return result;
   }
 
   @Override
@@ -176,16 +178,18 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
   }
 
   private boolean isContactTaskAssistParticipant(AssistRequestEntity assist, Long userId) {
-    if (assist == null
-        || !ModelName.CONTACT_TASK.equals(assist.getModelName())
-        || assist.getRecordId() == null) {
-      return false;
+    boolean result = false;
+    if (assist != null
+        && ModelName.CONTACT_TASK.equals(assist.getModelName())
+        && assist.getRecordId() != null) {
+      ContactTaskEntity task = contactTaskMapper.selectById(assist.getRecordId());
+      result =
+          task != null
+              && (Objects.equals(task.getCreatorId(), userId)
+                  || Objects.equals(task.getAssignerId(), userId)
+                  || Objects.equals(task.getAssigneeId(), userId));
     }
-    ContactTaskEntity task = contactTaskMapper.selectById(assist.getRecordId());
-    return task != null
-        && (Objects.equals(task.getCreatorId(), userId)
-            || Objects.equals(task.getAssignerId(), userId)
-            || Objects.equals(task.getAssigneeId(), userId));
+    return result;
   }
 
   @Override
@@ -223,14 +227,15 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
 
   /** 将快照 JSON 解析后检查附件归属。解析失败或没有快照时按无权限处理，避免异常放宽授权。 */
   private boolean snapshotContainsAttachment(String snapshot, ApprovalAttachmentEntity attachment) {
-    if (snapshot == null || snapshot.isBlank()) {
-      return false;
+    boolean result = false;
+    if (snapshot != null && !snapshot.isBlank()) {
+      try {
+        result = containsAttachment(objectMapper.readTree(snapshot), attachment);
+      } catch (Exception exception) {
+        result = false;
+      }
     }
-    try {
-      return containsAttachment(objectMapper.readTree(snapshot), attachment);
-    } catch (Exception exception) {
-      return false;
-    }
+    return result;
   }
 
   /** 递归遍历快照全部层级，匹配附件 ID；新快照再匹配 modelName 和 recordId。 旧快照可能缺少后两项，因此缺失时保持兼容，但只要字段存在就必须与数据库真实记录一致。 */

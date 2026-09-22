@@ -55,9 +55,14 @@ public class DataConvertServiceImpl implements DataConvertService {
       key = "#userId != null ? #userId : 'null'",
       unless = "#result == null")
   public String getUserName(Long userId) {
-    if (userId == null) return null;
-    UserEntity user = userMapper.selectById(userId);
-    return user != null ? user.getRealName() : null;
+    String name = null;
+    if (userId != null) {
+      UserEntity user = userMapper.selectById(userId);
+      if (user != null) {
+        name = user.getRealName();
+      }
+    }
+    return name;
   }
 
   @Override
@@ -66,9 +71,14 @@ public class DataConvertServiceImpl implements DataConvertService {
       key = "#deptId != null ? #deptId : 'null'",
       unless = "#result == null")
   public String getDeptName(Long deptId) {
-    if (deptId == null) return null;
-    SysDeptEntity dept = sysDeptMapper.selectById(deptId);
-    return dept != null ? dept.getDeptName() : null;
+    String name = null;
+    if (deptId != null) {
+      SysDeptEntity dept = sysDeptMapper.selectById(deptId);
+      if (dept != null) {
+        name = dept.getDeptName();
+      }
+    }
+    return name;
   }
 
   @Override
@@ -77,9 +87,14 @@ public class DataConvertServiceImpl implements DataConvertService {
       key = "#companyId != null ? #companyId : 'null'",
       unless = "#result == null")
   public String getCompanyName(Long companyId) {
-    if (companyId == null) return null;
-    CustomerCompanyEntity company = customerCompanyMapper.selectById(companyId);
-    return company != null ? company.getCompanyName() : null;
+    String name = null;
+    if (companyId != null) {
+      CustomerCompanyEntity company = customerCompanyMapper.selectById(companyId);
+      if (company != null) {
+        name = company.getCompanyName();
+      }
+    }
+    return name;
   }
 
   @Override
@@ -88,9 +103,14 @@ public class DataConvertServiceImpl implements DataConvertService {
       key = "#contactId != null ? #contactId : 'null'",
       unless = "#result == null")
   public String getContactName(Long contactId) {
-    if (contactId == null) return null;
-    CustomerContactEntity contact = customerContactMapper.selectById(contactId);
-    return contact != null ? contact.getName() : null;
+    String name = null;
+    if (contactId != null) {
+      CustomerContactEntity contact = customerContactMapper.selectById(contactId);
+      if (contact != null) {
+        name = contact.getName();
+      }
+    }
+    return name;
   }
 
   @Override
@@ -99,9 +119,14 @@ public class DataConvertServiceImpl implements DataConvertService {
       key = "#opportunityId != null ? #opportunityId : 'null'",
       unless = "#result == null")
   public String getOpportunityName(Long opportunityId) {
-    if (opportunityId == null) return null;
-    SalesOpportunityEntity opportunity = salesOpportunityMapper.selectById(opportunityId);
-    return opportunity != null ? opportunity.getOpportunityName() : null;
+    String name = null;
+    if (opportunityId != null) {
+      SalesOpportunityEntity opportunity = salesOpportunityMapper.selectById(opportunityId);
+      if (opportunity != null) {
+        name = opportunity.getOpportunityName();
+      }
+    }
+    return name;
   }
 
   @Override
@@ -110,9 +135,14 @@ public class DataConvertServiceImpl implements DataConvertService {
       key = "#contractId != null ? #contractId : 'null'",
       unless = "#result == null")
   public String getContractName(Long contractId) {
-    if (contractId == null) return null;
-    ContractEntity contract = contractMapper.selectById(contractId);
-    return contract != null ? contract.getContractName() : null;
+    String name = null;
+    if (contractId != null) {
+      ContractEntity contract = contractMapper.selectById(contractId);
+      if (contract != null) {
+        name = contract.getContractName();
+      }
+    }
+    return name;
   }
 
   // ===== 批量转换（IN 查询） =====
@@ -123,11 +153,16 @@ public class DataConvertServiceImpl implements DataConvertService {
       key = "#userIds.hashCode()",
       unless = "#result == null || #result.isEmpty()")
   public Map<Long, String> getUserNames(Collection<Long> userIds) {
-    if (userIds == null || userIds.isEmpty()) return Collections.emptyMap();
-    List<Long> distinctIds = userIds.stream().filter(Objects::nonNull).distinct().toList();
-    if (distinctIds.isEmpty()) return Collections.emptyMap();
-    return userMapper.selectBatchIds(distinctIds).stream()
-        .collect(Collectors.toMap(UserEntity::getId, UserEntity::getRealName, (a, b) -> a));
+    Map<Long, String> result = Collections.emptyMap();
+    if (userIds != null && !userIds.isEmpty()) {
+      List<Long> distinctIds = userIds.stream().filter(Objects::nonNull).distinct().toList();
+      if (!distinctIds.isEmpty()) {
+        result =
+            userMapper.selectBatchIds(distinctIds).stream()
+                .collect(Collectors.toMap(UserEntity::getId, UserEntity::getRealName, (a, b) -> a));
+      }
+    }
+    return result;
   }
 
   @Override
@@ -136,11 +171,18 @@ public class DataConvertServiceImpl implements DataConvertService {
       key = "#deptIds.hashCode()",
       unless = "#result == null || #result.isEmpty()")
   public Map<Long, String> getDeptNames(Collection<Long> deptIds) {
-    if (deptIds == null || deptIds.isEmpty()) return Collections.emptyMap();
-    List<Long> distinctIds = deptIds.stream().filter(Objects::nonNull).distinct().toList();
-    if (distinctIds.isEmpty()) return Collections.emptyMap();
-    return sysDeptMapper.selectBatchIds(distinctIds).stream()
-        .collect(Collectors.toMap(SysDeptEntity::getId, SysDeptEntity::getDeptName, (a, b) -> a));
+    Map<Long, String> result = Collections.emptyMap();
+    if (deptIds != null && !deptIds.isEmpty()) {
+      List<Long> distinctIds = deptIds.stream().filter(Objects::nonNull).distinct().toList();
+      if (!distinctIds.isEmpty()) {
+        result =
+            sysDeptMapper.selectBatchIds(distinctIds).stream()
+                .collect(
+                    Collectors.toMap(
+                        SysDeptEntity::getId, SysDeptEntity::getDeptName, (a, b) -> a));
+      }
+    }
+    return result;
   }
 
   @Override
@@ -149,13 +191,20 @@ public class DataConvertServiceImpl implements DataConvertService {
       key = "#companyIds.hashCode()",
       unless = "#result == null || #result.isEmpty()")
   public Map<Long, String> getCompanyNames(Collection<Long> companyIds) {
-    if (companyIds == null || companyIds.isEmpty()) return Collections.emptyMap();
-    List<Long> distinctIds = companyIds.stream().filter(Objects::nonNull).distinct().toList();
-    if (distinctIds.isEmpty()) return Collections.emptyMap();
-    return customerCompanyMapper.selectBatchIds(distinctIds).stream()
-        .collect(
-            Collectors.toMap(
-                CustomerCompanyEntity::getId, CustomerCompanyEntity::getCompanyName, (a, b) -> a));
+    Map<Long, String> result = Collections.emptyMap();
+    if (companyIds != null && !companyIds.isEmpty()) {
+      List<Long> distinctIds = companyIds.stream().filter(Objects::nonNull).distinct().toList();
+      if (!distinctIds.isEmpty()) {
+        result =
+            customerCompanyMapper.selectBatchIds(distinctIds).stream()
+                .collect(
+                    Collectors.toMap(
+                        CustomerCompanyEntity::getId,
+                        CustomerCompanyEntity::getCompanyName,
+                        (a, b) -> a));
+      }
+    }
+    return result;
   }
 
   @Override
@@ -164,13 +213,18 @@ public class DataConvertServiceImpl implements DataConvertService {
       key = "#contactIds.hashCode()",
       unless = "#result == null || #result.isEmpty()")
   public Map<Long, String> getContactNames(Collection<Long> contactIds) {
-    if (contactIds == null || contactIds.isEmpty()) return Collections.emptyMap();
-    List<Long> distinctIds = contactIds.stream().filter(Objects::nonNull).distinct().toList();
-    if (distinctIds.isEmpty()) return Collections.emptyMap();
-    return customerContactMapper.selectBatchIds(distinctIds).stream()
-        .collect(
-            Collectors.toMap(
-                CustomerContactEntity::getId, CustomerContactEntity::getName, (a, b) -> a));
+    Map<Long, String> result = Collections.emptyMap();
+    if (contactIds != null && !contactIds.isEmpty()) {
+      List<Long> distinctIds = contactIds.stream().filter(Objects::nonNull).distinct().toList();
+      if (!distinctIds.isEmpty()) {
+        result =
+            customerContactMapper.selectBatchIds(distinctIds).stream()
+                .collect(
+                    Collectors.toMap(
+                        CustomerContactEntity::getId, CustomerContactEntity::getName, (a, b) -> a));
+      }
+    }
+    return result;
   }
 
   @Override
@@ -179,15 +233,20 @@ public class DataConvertServiceImpl implements DataConvertService {
       key = "#opportunityIds.hashCode()",
       unless = "#result == null || #result.isEmpty()")
   public Map<Long, String> getOpportunityNames(Collection<Long> opportunityIds) {
-    if (opportunityIds == null || opportunityIds.isEmpty()) return Collections.emptyMap();
-    List<Long> distinctIds = opportunityIds.stream().filter(Objects::nonNull).distinct().toList();
-    if (distinctIds.isEmpty()) return Collections.emptyMap();
-    return salesOpportunityMapper.selectBatchIds(distinctIds).stream()
-        .collect(
-            Collectors.toMap(
-                SalesOpportunityEntity::getId,
-                SalesOpportunityEntity::getOpportunityName,
-                (a, b) -> a));
+    Map<Long, String> result = Collections.emptyMap();
+    if (opportunityIds != null && !opportunityIds.isEmpty()) {
+      List<Long> distinctIds = opportunityIds.stream().filter(Objects::nonNull).distinct().toList();
+      if (!distinctIds.isEmpty()) {
+        result =
+            salesOpportunityMapper.selectBatchIds(distinctIds).stream()
+                .collect(
+                    Collectors.toMap(
+                        SalesOpportunityEntity::getId,
+                        SalesOpportunityEntity::getOpportunityName,
+                        (a, b) -> a));
+      }
+    }
+    return result;
   }
 
   @Override
@@ -196,19 +255,28 @@ public class DataConvertServiceImpl implements DataConvertService {
       key = "#contractIds.hashCode()",
       unless = "#result == null || #result.isEmpty()")
   public Map<Long, String> getContractNames(Collection<Long> contractIds) {
-    if (contractIds == null || contractIds.isEmpty()) return Collections.emptyMap();
-    List<Long> distinctIds = contractIds.stream().filter(Objects::nonNull).distinct().toList();
-    if (distinctIds.isEmpty()) return Collections.emptyMap();
-    return contractMapper.selectBatchIds(distinctIds).stream()
-        .collect(
-            Collectors.toMap(ContractEntity::getId, ContractEntity::getContractName, (a, b) -> a));
+    Map<Long, String> result = Collections.emptyMap();
+    if (contractIds != null && !contractIds.isEmpty()) {
+      List<Long> distinctIds = contractIds.stream().filter(Objects::nonNull).distinct().toList();
+      if (!distinctIds.isEmpty()) {
+        result =
+            contractMapper.selectBatchIds(distinctIds).stream()
+                .collect(
+                    Collectors.toMap(
+                        ContractEntity::getId, ContractEntity::getContractName, (a, b) -> a));
+      }
+    }
+    return result;
   }
 
   // ===== 通用辅助 =====
 
   @Override
   public <T> List<Long> collectIds(List<T> entities, Function<T, Long> idExtractor) {
-    if (entities == null || entities.isEmpty()) return Collections.emptyList();
-    return entities.stream().map(idExtractor).filter(Objects::nonNull).distinct().toList();
+    List<Long> result = Collections.emptyList();
+    if (entities != null && !entities.isEmpty()) {
+      result = entities.stream().map(idExtractor).filter(Objects::nonNull).distinct().toList();
+    }
+    return result;
   }
 }

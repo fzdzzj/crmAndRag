@@ -85,12 +85,14 @@ public class ContractController {
   @DeleteMapping
   @RequirePermission(PermissionOperates.SALES_UPDATE_CONTRACT)
   public Result<Integer> delete(@RequestBody List<Long> ids) {
+    Result<Integer> result;
     try {
       int count = contractService.batchDelete(ids);
-      return Result.success(count);
+      result = Result.success(count);
     } catch (RuntimeException e) {
-      return Result.error(e.getMessage());
+      result = Result.error(e.getMessage());
     }
+    return result;
   }
 
   /**

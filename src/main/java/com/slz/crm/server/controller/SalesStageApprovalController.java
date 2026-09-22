@@ -199,16 +199,21 @@ public class SalesStageApprovalController {
   @RequirePermission(PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY_STAGE)
   public Result<List<ApprovalAttachmentVO>> getApprovalAttachment(
       @RequestParam List<Long> approvalIds) {
+    final Result<List<ApprovalAttachmentVO>> result;
     if (approvalIds == null || approvalIds.isEmpty()) {
-      return Result.success(null);
+      result = Result.success(null);
+    } else {
+      // 模块权限不等于某条审批记录的读取权；先逐条校验真实附件，避免批量接口泄漏他人审批附件。
+      List<ApprovalAttachmentEntity> attachments =
+          approvalAttachmentService.listEntitiesByAndIds(
+              approvalIds, ModelName.APPROVAL_ATTACHMENT);
+      for (ApprovalAttachmentEntity attachment : attachments) {
+        attachmentAccessService.assertCanRead(attachment, BaseUnit.getCurrentId());
+      }
+      result =
+          Result.success(
+              approvalAttachmentService.getByAndIds(approvalIds, ModelName.APPROVAL_ATTACHMENT));
     }
-    // 模块权限不等于某条审批记录的读取权；先逐条校验真实附件，避免批量接口泄漏他人审批附件。
-    List<ApprovalAttachmentEntity> attachments =
-        approvalAttachmentService.listEntitiesByAndIds(approvalIds, ModelName.APPROVAL_ATTACHMENT);
-    for (ApprovalAttachmentEntity attachment : attachments) {
-      attachmentAccessService.assertCanRead(attachment, BaseUnit.getCurrentId());
-    }
-    return Result.success(
-        approvalAttachmentService.getByAndIds(approvalIds, ModelName.APPROVAL_ATTACHMENT));
+    return result;
   }
 }

@@ -293,16 +293,17 @@ public class AiChatServiceImpl implements AiChatService {
   }
 
   private Long parseSessionId(String sessionId, SseEmitter emitter) {
-    if (sessionId == null || sessionId.isBlank()) {
-      return null;
+    Long result = null;
+    if (sessionId != null && !sessionId.isBlank()) {
+      try {
+        result = Long.valueOf(sessionId);
+      } catch (NumberFormatException ignored) {
+        eventWriter.sendError(emitter, "PARAM_INVALID", "sessionId 必须是数字");
+        emitter.complete();
+        result = null;
+      }
     }
-    try {
-      return Long.valueOf(sessionId);
-    } catch (NumberFormatException ignored) {
-      eventWriter.sendError(emitter, "PARAM_INVALID", "sessionId 必须是数字");
-      emitter.complete();
-      return null;
-    }
+    return result;
   }
 
   /** 图片资料块恒定注入；KB 开关不影响图片理解。 */
@@ -357,11 +358,14 @@ public class AiChatServiceImpl implements AiChatService {
   private String resolveProvider() {
     ModelProvider modelProvider =
         modelProviderProvider == null ? null : modelProviderProvider.getIfAvailable();
+    String result;
     if (modelProvider != null) {
-      return modelProvider.provider();
+      result = modelProvider.provider();
+    } else {
+      // ModelProvider 缺失时沿用当前 CRM 基线，避免阻塞 base 实现落地。
+      result = environment.getProperty("spring.ai.chat.provider", "dashscope");
     }
-    // ModelProvider 缺失时沿用当前 CRM 基线，避免阻塞 base 实现落地。
-    return environment.getProperty("spring.ai.chat.provider", "dashscope");
+    return result;
   }
 
   private String resolveModelName() {
@@ -374,9 +378,10 @@ public class AiChatServiceImpl implements AiChatService {
       throw new IllegalStateException("会话不存在或无权访问");
     }
     AiStreamRegistry.ActiveStream activeStream = aiStreamRegistry.get(sessionId);
-    if (activeStream == null || activeStream.isFinished()) {
-      return false;
+    boolean result = false;
+    if (activeStream != null && !activeStream.isFinished()) {
+      result = streamLifecycle.cancel(activeStream, sessionId);
     }
-    return streamLifecycle.cancel(activeStream, sessionId);
+    return result;
   }
 }

@@ -239,11 +239,14 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
   }
 
   private String trimToNull(String value) {
-    if (value == null) {
-      return null;
+    String result = null;
+    if (value != null) {
+      String trimmed = value.trim();
+      if (!trimmed.isEmpty()) {
+        result = trimmed;
+      }
     }
-    String trimmed = value.trim();
-    return trimmed.isEmpty() ? null : trimmed;
+    return result;
   }
 
   @Override
@@ -708,18 +711,20 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
   }
 
   private String stageName(Integer stage) {
-    if (stage == null) {
-      return null;
+    String result = null;
+    if (stage != null) {
+      result =
+          switch (stage) {
+            case 0 -> "种子";
+            case 1 -> "潜在商机";
+            case 2 -> "确认商机";
+            case 3 -> "储备项目";
+            case 4 -> "立项签约";
+            case 5 -> "关闭";
+            default -> "未知阶段";
+          };
     }
-    return switch (stage) {
-      case 0 -> "种子";
-      case 1 -> "潜在商机";
-      case 2 -> "确认商机";
-      case 3 -> "储备项目";
-      case 4 -> "立项签约";
-      case 5 -> "关闭";
-      default -> "未知阶段";
-    };
+    return result;
   }
 
   @Override

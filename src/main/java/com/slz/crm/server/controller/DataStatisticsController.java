@@ -33,25 +33,27 @@ public class DataStatisticsController {
   // apply-permission-matrix 任务 2.1：报表生成权限（缓存已下沉至 DataStatisticsServiceImpl.getChartData）
   @RequirePermission(PermissionOperates.REPORT_GENERATE_REPORT)
   public Result<ChartDataVO> getChartData(@RequestBody DataStatisticsDTO dataStatisticsDTO) {
+    Result<ChartDataVO> result;
     try {
       // 参数校验
       if (dataStatisticsDTO.getDataType() == null) {
-        return Result.error("数据类型不能为空");
+        result = Result.error("数据类型不能为空");
+      } else {
+        // 分类选择图表类型
+        ChartOperate chartType =
+            (dataStatisticsDTO.getDataType() == ChartDataType.CUSTOMER_SOURCE)
+                ? ChartOperate.PIE_CHART
+                : ChartOperate.LINE_CHART;
+        dataStatisticsDTO.setChartType(chartType);
+
+        ChartDataVO chartData = dataStatisticsService.getChartData(dataStatisticsDTO);
+        result = Result.success(chartData);
       }
-
-      // 分类选择图表类型
-      ChartOperate chartType =
-          (dataStatisticsDTO.getDataType() == ChartDataType.CUSTOMER_SOURCE)
-              ? ChartOperate.PIE_CHART
-              : ChartOperate.LINE_CHART;
-      dataStatisticsDTO.setChartType(chartType);
-
-      ChartDataVO chartData = dataStatisticsService.getChartData(dataStatisticsDTO);
-      return Result.success(chartData);
     } catch (IOException e) {
       log.error("获取图表数据错误", e);
       throw new ServiceException("获取图表数据错误", e);
     }
+    return result;
   }
 
   /** 生成图表图片（已废弃，请使用 /chartData 接口） */
@@ -98,16 +100,16 @@ public class DataStatisticsController {
     LocalDateTime startTime = request.getStartTime();
     LocalDateTime endTime = request.getEndTime();
 
+    final Result<StatisticsSummaryVO> result;
     if (startTime == null || endTime == null) {
-      return Result.error("开始时间和结束时间不能为空");
+      result = Result.error("开始时间和结束时间不能为空");
+    } else if (endTime.isBefore(startTime)) {
+      result = Result.error("结束时间不能早于开始时间");
+    } else {
+      StatisticsSummaryVO summary = dataStatisticsService.getStatisticsSummary(startTime, endTime);
+      result = Result.success(summary);
     }
-
-    if (endTime.isBefore(startTime)) {
-      return Result.error("结束时间不能早于开始时间");
-    }
-
-    StatisticsSummaryVO summary = dataStatisticsService.getStatisticsSummary(startTime, endTime);
-    return Result.success(summary);
+    return result;
   }
 
   /**

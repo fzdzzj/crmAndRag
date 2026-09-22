@@ -271,11 +271,11 @@ public class AiStreamRegistry {
 
     /** 抢占完成标记（仅第一个调用者成功） */
     public boolean tryMarkFinished() {
-      if (finished.compareAndSet(false, true)) {
+      boolean claimed = finished.compareAndSet(false, true);
+      if (claimed) {
         stopHeartbeat();
-        return true;
       }
-      return false;
+      return claimed;
     }
 
     public boolean isFinished() {

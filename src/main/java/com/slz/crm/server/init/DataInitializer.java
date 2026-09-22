@@ -144,17 +144,19 @@ public class DataInitializer {
                 .eq(RoleEntity::getRoleName, "Admin")
                 .eq(RoleEntity::getIsDeleted, false));
 
+    final Long result;
     if (adminRole != null) {
       log.info("管理员角色已存在，ID: {}, 角色名: {}", adminRole.getId(), adminRole.getRoleName());
-      return adminRole.getId();
+      result = adminRole.getId();
+    } else {
+      adminRole = new RoleEntity();
+      adminRole.setRoleName("Admin");
+      adminRole.setRoleDesc("系统管理员（超管），拥有所有权限");
+      roleMapper.insert(adminRole);
+      log.info("创建管理员角色成功，ID: {}", adminRole.getId());
+      result = adminRole.getId();
     }
-
-    adminRole = new RoleEntity();
-    adminRole.setRoleName("Admin");
-    adminRole.setRoleDesc("系统管理员（超管），拥有所有权限");
-    roleMapper.insert(adminRole);
-    log.info("创建管理员角色成功，ID: {}", adminRole.getId());
-    return adminRole.getId();
+    return result;
   }
 
   /**
@@ -169,6 +171,7 @@ public class DataInitializer {
         userMapper.selectOne(
             new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getEmail, adminEmail));
 
+    final Long result;
     if (adminUser != null) {
       log.info("管理员用户已存在，ID: {}, 邮箱: {}", adminUser.getId(), adminUser.getEmail());
 
@@ -190,25 +193,26 @@ public class DataInitializer {
         userMapper.updateById(updateUser);
       }
 
-      return adminUser.getId();
+      result = adminUser.getId();
+    } else {
+      adminUser = new UserEntity();
+      adminUser.setEmail(adminEmail);
+      adminUser.setRealName("系统管理员");
+      adminUser.setPassword(DigestUtils.md5DigestAsHex(adminPassword.getBytes()));
+      adminUser.setRoleId(roleId);
+      adminUser.setStatus(1); // 正常状态
+      adminUser.setPhone("13800000000");
+      // creator_id 先留空，插入后再设置为自引用
+      userMapper.insert(adminUser);
+
+      // 设置创建者为自身（自引用）
+      adminUser.setCreatorId(adminUser.getId());
+      userMapper.updateById(adminUser);
+
+      log.info("创建管理员用户成功，ID: {}, 邮箱: {}", adminUser.getId(), adminEmail);
+      result = adminUser.getId();
     }
-
-    adminUser = new UserEntity();
-    adminUser.setEmail(adminEmail);
-    adminUser.setRealName("系统管理员");
-    adminUser.setPassword(DigestUtils.md5DigestAsHex(adminPassword.getBytes()));
-    adminUser.setRoleId(roleId);
-    adminUser.setStatus(1); // 正常状态
-    adminUser.setPhone("13800000000");
-    // creator_id 先留空，插入后再设置为自引用
-    userMapper.insert(adminUser);
-
-    // 设置创建者为自身（自引用）
-    adminUser.setCreatorId(adminUser.getId());
-    userMapper.updateById(adminUser);
-
-    log.info("创建管理员用户成功，ID: {}, 邮箱: {}", adminUser.getId(), adminEmail);
-    return adminUser.getId();
+    return result;
   }
 
   /**
@@ -226,28 +230,26 @@ public class DataInitializer {
 
     // 查询数据库中所有权限
     List<PermissionsEntity> allPermissions = permissionsMapper.selectList(null);
-    if (allPermissions.isEmpty()) {
+    if (!allPermissions.isEmpty()) {
+      // 筛出未分配的权限
+      List<Integer> missingPermIds =
+          allPermissions.stream()
+              .map(p -> p.getId().intValue())
+              .filter(id -> !existingPermIds.contains(id))
+              .collect(Collectors.toList());
+
+      if (!missingPermIds.isEmpty()) {
+        permissionsMapper.batchAddPermissionToRole(roleId.intValue(), missingPermIds, creatorId);
+        log.info(
+            "为管理员角色新增 {} 个权限（总共 {} 个权限，原有 {} 个）",
+            missingPermIds.size(),
+            allPermissions.size(),
+            existingPermIds.size());
+      } else {
+        log.info("管理员角色已拥有所有权限（{} 个），无需分配", existingPermIds.size());
+      }
+    } else {
       log.warn("数据库中没有任何权限数据，请确保权限同步已执行");
-      return;
     }
-
-    // 筛出未分配的权限
-    List<Integer> missingPermIds =
-        allPermissions.stream()
-            .map(p -> p.getId().intValue())
-            .filter(id -> !existingPermIds.contains(id))
-            .collect(Collectors.toList());
-
-    if (missingPermIds.isEmpty()) {
-      log.info("管理员角色已拥有所有权限（{} 个），无需分配", existingPermIds.size());
-      return;
-    }
-
-    permissionsMapper.batchAddPermissionToRole(roleId.intValue(), missingPermIds, creatorId);
-    log.info(
-        "为管理员角色新增 {} 个权限（总共 {} 个权限，原有 {} 个）",
-        missingPermIds.size(),
-        allPermissions.size(),
-        existingPermIds.size());
   }
 }

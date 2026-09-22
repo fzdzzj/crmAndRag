@@ -190,10 +190,11 @@ public class AiQueryToolExecutors {
   }
 
   private <T> List<T> trimPageResult(List<T> records) {
-    if (records == null || records.size() <= 10) {
-      return records;
+    List<T> result = records;
+    if (records != null && records.size() > 10) {
+      result = records.subList(0, 10);
     }
-    return records.subList(0, 10);
+    return result;
   }
 
   private Integer toInt(Object value, int defaultValue) {
