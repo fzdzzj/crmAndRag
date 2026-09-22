@@ -68,12 +68,27 @@ public record ConfigKeyDefinition(
 
   /** 构造时自检（注册表在启动期调用）：键必须以命名空间开头、范围/枚举与类型匹配， 把“schema 写错”这类程序缺陷在启动期暴露，而不是运行期炸在超管面前。 */
   public void selfCheck() {
+    checkKeyPrefix();
+    checkStringListAllowedValues();
+    checkRangeDeclaration();
+  }
+
+  /** 键必须以命名空间开头 */
+  private void checkKeyPrefix() {
     if (key == null || !key.startsWith(namespace + ".")) {
       throw new IllegalArgumentException("配置键必须以命名空间开头：" + key);
     }
+  }
+
+  /** STRING 枚举白名单不允许空字符串 */
+  private void checkStringListAllowedValues() {
     if (type == ConfigValueType.STRING && !allowedValues.isEmpty() && allowedValues.contains("")) {
       throw new IllegalArgumentException("枚举白名单不允许空字符串：" + key);
     }
+  }
+
+  /** 范围只能声明在数值类型上，且上下界必须成对给出 */
+  private void checkRangeDeclaration() {
     if (type != ConfigValueType.INTEGER
         && type != ConfigValueType.LONG
         && type != ConfigValueType.DOUBLE

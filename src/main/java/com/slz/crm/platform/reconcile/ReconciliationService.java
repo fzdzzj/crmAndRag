@@ -122,14 +122,7 @@ public class ReconciliationService {
   }
 
   private List<PlatformReconcileItemEntity> compareSources(PlatformReconcileReportEntity report) {
-    Map<String, Map<String, ReconciliationResource>> byStorage = new LinkedHashMap<>();
-    for (ReconciliationSource source : sources) {
-      Map<String, ReconciliationResource> resources = new LinkedHashMap<>();
-      for (ReconciliationResource resource : source.listResources()) {
-        resources.put(resource.resourceId(), resource);
-      }
-      byStorage.put(source.storageType(), resources);
-    }
+    Map<String, Map<String, ReconciliationResource>> byStorage = indexResources();
 
     ReconciliationSource authoritative =
         sources.stream().filter(ReconciliationSource::authoritative).findFirst().orElse(null);
@@ -142,31 +135,55 @@ public class ReconciliationService {
           authoritative == null ? null : byStorage.get(authoritative.storageType()).get(resourceId);
       for (ReconciliationSource source : sources) {
         ReconciliationResource current = byStorage.get(source.storageType()).get(resourceId);
-        if (current == null) {
-          if (authoritative != null
-              && authoritativeResource != null
-              && !source.storageType().equals(authoritative.storageType())) {
-            items.add(
-                item(report, source.storageType(), resourceId, MISSING, "主数据存在但当前存储缺失", "REPAIR"));
-          }
-          continue;
-        }
-        if (authoritative != null
-            && authoritativeResource == null
-            && !source.storageType().equals(authoritative.storageType())) {
-          items.add(
-              item(report, source.storageType(), resourceId, ORPHAN, "主数据缺失但当前存储存在", "CLEANUP"));
-          continue;
-        }
-        if (authoritativeResource != null
-            && !source.storageType().equals(authoritative.storageType())
-            && !Objects.equals(current.fingerprint(), authoritativeResource.fingerprint())) {
-          items.add(
-              item(report, source.storageType(), resourceId, STALE, "资源指纹与主数据不一致", "REFRESH"));
-        }
+        diffResourceAgainstAuthoritative(
+            report, resourceId, authoritative, authoritativeResource, source, current, items);
       }
     }
     return items;
+  }
+
+  /** 按存储类型归集各对账源的资源索引（resourceId → 资源） */
+  private Map<String, Map<String, ReconciliationResource>> indexResources() {
+    Map<String, Map<String, ReconciliationResource>> byStorage = new LinkedHashMap<>();
+    for (ReconciliationSource source : sources) {
+      Map<String, ReconciliationResource> resources = new LinkedHashMap<>();
+      for (ReconciliationResource resource : source.listResources()) {
+        resources.put(resource.resourceId(), resource);
+      }
+      byStorage.put(source.storageType(), resources);
+    }
+    return byStorage;
+  }
+
+  /** 单资源×单存储与主数据的差异判定：缺失报 REPAIR、多余报 CLEANUP、指纹不一致报 REFRESH */
+  private void diffResourceAgainstAuthoritative(
+      PlatformReconcileReportEntity report,
+      String resourceId,
+      ReconciliationSource authoritative,
+      ReconciliationResource authoritativeResource,
+      ReconciliationSource source,
+      ReconciliationResource current,
+      List<PlatformReconcileItemEntity> items) {
+    if (current == null) {
+      if (authoritative != null
+          && authoritativeResource != null
+          && !source.storageType().equals(authoritative.storageType())) {
+        items.add(
+            item(report, source.storageType(), resourceId, MISSING, "主数据存在但当前存储缺失", "REPAIR"));
+      }
+      return;
+    }
+    if (authoritative != null
+        && authoritativeResource == null
+        && !source.storageType().equals(authoritative.storageType())) {
+      items.add(item(report, source.storageType(), resourceId, ORPHAN, "主数据缺失但当前存储存在", "CLEANUP"));
+      return;
+    }
+    if (authoritativeResource != null
+        && !source.storageType().equals(authoritative.storageType())
+        && !Objects.equals(current.fingerprint(), authoritativeResource.fingerprint())) {
+      items.add(item(report, source.storageType(), resourceId, STALE, "资源指纹与主数据不一致", "REFRESH"));
+    }
   }
 
   private PlatformReconcileItemEntity item(

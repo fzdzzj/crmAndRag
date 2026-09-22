@@ -175,6 +175,24 @@ public class PermissionSyncRunner {
             });
 
     // 1. 按模块处理权限
+    collectPermissionChanges(
+        permissionsByModule, existingPermissionMap, toInsert, toUpdate, insertStats, updateStats);
+
+    // 2. 顺序插入权限
+    insertPermissions(toInsert, insertStats);
+
+    // 3. 批量更新权限
+    updatePermissions(toUpdate, updateStats);
+  }
+
+  /** 按模块比对声明权限与库内存量：新权限进新增列表，描述/名称有变的进更新列表，并累计模块统计 */
+  private void collectPermissionChanges(
+      Map<String, List<PermissionsEntity>> permissionsByModule,
+      Map<Long, PermissionsEntity> existingPermissionMap,
+      List<PermissionsEntity> toInsert,
+      List<PermissionsEntity> toUpdate,
+      Map<String, int[]> insertStats,
+      Map<String, int[]> updateStats) {
     for (Map.Entry<String, List<PermissionsEntity>> entry : permissionsByModule.entrySet()) {
       String module = entry.getKey();
       List<PermissionsEntity> modulePermissions = entry.getValue();
@@ -210,8 +228,10 @@ public class PermissionSyncRunner {
         }
       }
     }
+  }
 
-    // 2. 顺序插入权限
+  /** 顺序插入新权限（单条失败记日志继续），完成后打印按模块统计 */
+  private void insertPermissions(List<PermissionsEntity> toInsert, Map<String, int[]> insertStats) {
     if (!toInsert.isEmpty()) {
       log.info("开始插入权限...");
       int successCount = 0;
@@ -239,8 +259,10 @@ public class PermissionSyncRunner {
           });
       log.info("总共成功插入 {} 个权限", successCount);
     }
+  }
 
-    // 3. 批量更新权限
+  /** 批量更新有变化的权限，完成后打印按模块统计 */
+  private void updatePermissions(List<PermissionsEntity> toUpdate, Map<String, int[]> updateStats) {
     if (!toUpdate.isEmpty()) {
       log.info("开始批量更新权限...");
       toUpdate.forEach(permissionsMapper::updateById);

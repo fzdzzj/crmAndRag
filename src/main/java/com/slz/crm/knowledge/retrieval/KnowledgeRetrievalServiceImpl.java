@@ -208,82 +208,111 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
     if (knowledgeBaseIds.isEmpty()) {
       result = KnowledgeRetrievalPort.RetrievalResult.empty();
     } else {
-      String retrievalQuery = queryRewriteService.rewrite(query.query());
-      // D17 收尾（complete-hybrid-retrieval-and-rerank 任务 2.1）：意图类目两路同语义过滤，空 = 不过滤
-      String category = normalizeCategory(query.intentCategory());
-      int topK = resolveTopK(query.topK());
-      double minScore = resolveMinScore();
-      int candidateLimit = topK * resolveCandidateMultiplier();
-      boolean hasImageVector = query.imageVector() != null && query.imageVector().length > 0;
-
-      // fix-multicondition-recall：改写后确定性拆「A后B/A且B」为原查询+左右路，每路 embed+文本召回；
-      // 切不出时仍仅 1 次 embed。V1 六参（this.rrfFusion==null）也必须能融多路 → 本地 new RrfFusion。
-      // 提案5 多查询/HyDE 仍仅在 RRF 且 this.rrfFusion 非空时叠加（默认关，行为不变）。
-      List<List<RetrievalCandidate>> routes = new ArrayList<>();
-      List<String> constraintQueries = ConstraintQuerySplitter.split(retrievalQuery);
-      for (String routeQuery : constraintQueries) {
-        routes.add(
-            recallTextRoute(
-                routeQuery,
-                embeddingService.embed(routeQuery),
-                knowledgeBaseIds,
-                category,
-                candidateLimit,
-                minScore));
-      }
-      boolean multiRouteEnabled = useRrfFusion() && rrfFusion != null;
-      List<CompletableFuture<List<RetrievalCandidate>>> variantFutures =
-          multiRouteEnabled
-              ? submitVariantRoutes(
-                  retrievalQuery, knowledgeBaseIds, category, candidateLimit, minScore)
-              : List.of();
-      if (multiRouteEnabled) {
-        addHydeRoute(retrievalQuery, routes, knowledgeBaseIds, category, candidateLimit, minScore);
-      }
-      for (CompletableFuture<List<RetrievalCandidate>> variantFuture : variantFutures) {
-        try {
-          // exceptionally 已把单路失败兜底为空路，join 再兜一层保证"已完成路照常融合"
-          routes.add(variantFuture.join());
-        } catch (RuntimeException exception) {
-          LOG.warn("多查询路结果获取失败，该路降级跳过: {}", exception.getMessage());
-        }
-      }
-      List<RetrievalCandidate> fusedTextCandidates;
-      if (routes.size() <= 1) {
-        fusedTextCandidates = routes.isEmpty() ? List.of() : routes.getFirst();
-      } else {
-        // 多路融合：优先用装配的 rrfFusion；V1 回退态（null）本地 new，保证拆路结果可融
-        RrfFusion fusion = rrfFusion != null ? rrfFusion : new RrfFusion();
-        fusedTextCandidates = fusion.fuseAll(routes, resolveRrfK());
-      }
-
-      Reranker reranker = activeReranker();
-      List<RetrievalCandidate> textCandidates =
-          reranker.rerank(retrievalQuery, fusedTextCandidates);
-      List<RetrievalCandidate> imageCandidates =
-          hasImageVector
-              ? reranker.rerank(
-                  retrievalQuery,
-                  recall(query.imageVector(), knowledgeBaseIds, category, candidateLimit, minScore))
-              : List.of();
-      List<RetrievalCandidate> candidates =
-          fuseRoutes(textCandidates, imageCandidates).stream()
-              .sorted(Comparator.comparingDouble(RetrievalCandidate::rerankScore).reversed())
-              .limit(topK)
-              .toList();
-      if (candidates.isEmpty()) {
-        result = KnowledgeRetrievalPort.RetrievalResult.empty();
-      } else {
-        List<SourceReference> sources =
-            candidates.stream()
-                .map(candidate -> toSourceReference(candidate.hit(), candidate.rerankScore()))
-                .toList();
-        result =
-            new KnowledgeRetrievalPort.RetrievalResult(
-                buildContext(candidates), sources, candidates.size());
-      }
+      result = retrieveFromKnowledgeBases(query, knowledgeBaseIds);
     }
     return result;
+  }
+
+  /** 授权 KB 非空时的主检索链路：改写 → 多路文本召回融合 → 重排 → 文图融合 → 构建结果 */
+  private KnowledgeRetrievalPort.RetrievalResult retrieveFromKnowledgeBases(
+      KnowledgeRetrievalPort.RetrievalQuery query, List<Long> knowledgeBaseIds) {
+    String retrievalQuery = queryRewriteService.rewrite(query.query());
+    // D17 收尾（complete-hybrid-retrieval-and-rerank 任务 2.1）：意图类目两路同语义过滤，空 = 不过滤
+    String category = normalizeCategory(query.intentCategory());
+    int topK = resolveTopK(query.topK());
+    double minScore = resolveMinScore();
+    int candidateLimit = topK * resolveCandidateMultiplier();
+    boolean hasImageVector = query.imageVector() != null && query.imageVector().length > 0;
+
+    List<RetrievalCandidate> fusedTextCandidates =
+        recallAllTextRoutes(retrievalQuery, knowledgeBaseIds, category, candidateLimit, minScore);
+
+    Reranker reranker = activeReranker();
+    List<RetrievalCandidate> textCandidates = reranker.rerank(retrievalQuery, fusedTextCandidates);
+    List<RetrievalCandidate> imageCandidates =
+        hasImageVector
+            ? reranker.rerank(
+                retrievalQuery,
+                recall(query.imageVector(), knowledgeBaseIds, category, candidateLimit, minScore))
+            : List.of();
+    List<RetrievalCandidate> candidates =
+        fuseRoutes(textCandidates, imageCandidates).stream()
+            .sorted(Comparator.comparingDouble(RetrievalCandidate::rerankScore).reversed())
+            .limit(topK)
+            .toList();
+    return toRetrievalResult(candidates);
+  }
+
+  /**
+   * 文本多路召回并融合：改写后确定性拆「A后B/A且B」为原查询+左右路，每路 embed+文本召回； 切不出时仍仅 1 次 embed。V1
+   * 六参（this.rrfFusion==null）也必须能融多路 → 本地 new RrfFusion。 提案5 多查询/HyDE 仍仅在 RRF 且 this.rrfFusion
+   * 非空时叠加（默认关，行为不变）。
+   */
+  private List<RetrievalCandidate> recallAllTextRoutes(
+      String retrievalQuery,
+      List<Long> knowledgeBaseIds,
+      String category,
+      int candidateLimit,
+      double minScore) {
+    List<List<RetrievalCandidate>> routes = new ArrayList<>();
+    List<String> constraintQueries = ConstraintQuerySplitter.split(retrievalQuery);
+    for (String routeQuery : constraintQueries) {
+      routes.add(
+          recallTextRoute(
+              routeQuery,
+              embeddingService.embed(routeQuery),
+              knowledgeBaseIds,
+              category,
+              candidateLimit,
+              minScore));
+    }
+    boolean multiRouteEnabled = useRrfFusion() && rrfFusion != null;
+    List<CompletableFuture<List<RetrievalCandidate>>> variantFutures =
+        multiRouteEnabled
+            ? submitVariantRoutes(
+                retrievalQuery, knowledgeBaseIds, category, candidateLimit, minScore)
+            : List.of();
+    if (multiRouteEnabled) {
+      addHydeRoute(retrievalQuery, routes, knowledgeBaseIds, category, candidateLimit, minScore);
+    }
+    collectVariantRoutes(routes, variantFutures);
+    return fuseTextRoutes(routes);
+  }
+
+  /** 收集多变体异步路结果：exceptionally 已把单路失败兜底为空路，join 再兜一层保证"已完成路照常融合" */
+  private void collectVariantRoutes(
+      List<List<RetrievalCandidate>> routes,
+      List<CompletableFuture<List<RetrievalCandidate>>> variantFutures) {
+    for (CompletableFuture<List<RetrievalCandidate>> variantFuture : variantFutures) {
+      try {
+        routes.add(variantFuture.join());
+      } catch (RuntimeException exception) {
+        LOG.warn("多查询路结果获取失败，该路降级跳过: {}", exception.getMessage());
+      }
+    }
+  }
+
+  /** 多路文本候选融合：单路直接返回，多路优先用装配的 rrfFusion，V1 回退态（null）本地 new */
+  private List<RetrievalCandidate> fuseTextRoutes(List<List<RetrievalCandidate>> routes) {
+    if (routes.size() <= 1) {
+      return routes.isEmpty() ? List.of() : routes.getFirst();
+    }
+    RrfFusion fusion = rrfFusion != null ? rrfFusion : new RrfFusion();
+    return fusion.fuseAll(routes, resolveRrfK());
+  }
+
+  /** 由最终候选集构建检索结果：空候选返回空结果，否则映射来源引用并携带上下文 */
+  private KnowledgeRetrievalPort.RetrievalResult toRetrievalResult(
+      List<RetrievalCandidate> candidates) {
+    if (candidates.isEmpty()) {
+      return KnowledgeRetrievalPort.RetrievalResult.empty();
+    }
+    List<SourceReference> sources =
+        candidates.stream()
+            .map(candidate -> toSourceReference(candidate.hit(), candidate.rerankScore()))
+            .toList();
+    return new KnowledgeRetrievalPort.RetrievalResult(
+        buildContext(candidates), sources, candidates.size());
   }
 
   /**

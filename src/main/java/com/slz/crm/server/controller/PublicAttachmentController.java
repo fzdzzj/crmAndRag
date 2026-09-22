@@ -63,73 +63,18 @@ public class PublicAttachmentController {
       String fileType = downloadToken.getFileType();
 
       // 从HTTP请求头中获取JWT Token，解析出当前登录用户ID
-      String jwtToken = httpRequest.getHeader(jwtProperties.getTokenName());
-      if (jwtToken == null || jwtToken.isEmpty()) {
-        throw new BaseException(ErrorCode.TOKEN_ERROR, "请先登录");
-      }
+      Long currentUserId = requireCurrentUserId();
 
-      Claims claims = JwtUntil.parseJWT(jwtProperties.getSecretKey(), jwtToken);
-      Long currentUserId = claims.get("userID", Long.class);
-
-      if (currentUserId == null) {
-        throw new BaseException(ErrorCode.TOKEN_ERROR, "用户信息无效");
-      }
-
-      // 校验当前登录用户与令牌用户一致
-      if (!currentUserId.equals(tokenUserId)) {
-        throw new BaseException(ErrorCode.TOKEN_INVALID, "下载令牌与当前用户不匹配");
-      }
-
-      if (downloadToken.getHistoricalAssistId() != null
-          && !"approval_attachment".equals(fileType)) {
-        throw new BaseException(ErrorCode.TOKEN_INVALID, "历史附件令牌文件类型无效");
-      }
-      if (downloadToken.getActiveAssistId() != null && !"approval_attachment".equals(fileType)) {
-        throw new BaseException(ErrorCode.TOKEN_INVALID, "协助来源附件令牌文件类型无效");
-      }
-      if (downloadToken.getHistoricalAssistId() != null
-          && downloadToken.getActiveAssistId() != null) {
-        throw new BaseException(ErrorCode.TOKEN_INVALID, "下载令牌上下文冲突");
-      }
+      // 校验当前登录用户与令牌用户一致，以及协助类令牌的文件类型约束
+      verifyTokenContext(downloadToken, tokenUserId, currentUserId, fileType);
 
       // 根据文件类型查询对应的表
       if ("project_file".equals(fileType)) {
-        // 项目文件
-        ProjectFileEntity projectFileEntity = projectFileService.getEntityById(attachmentId);
-        if (projectFileEntity == null) {
-          throw new BaseException(ErrorCode.DATA_NULL, "文件不存在");
-        }
-        // 记录级复核：令牌仅证明签发时的授权，实际下载必须按当前权限重新校验
-        // （用户被移出业务/文件被重归属后，已签发但未过期的令牌同样会被拒绝）
-        if (!attachmentAccessService.canReadProjectFile(projectFileEntity, currentUserId)) {
-          throw new BaseException(ErrorCode.PERMISSION_DENIED, "无权下载该项目文件");
-        }
-        downloadProjectFile(projectFileEntity, attachmentId, tokenUserId, response);
+        downloadProjectFileByToken(
+            downloadToken, attachmentId, tokenUserId, currentUserId, response);
       } else {
-        if (!"approval_attachment".equals(fileType)) {
-          throw new BaseException(ErrorCode.TOKEN_INVALID, "下载令牌文件类型无效");
-        }
-        // 审批附件（默认）
-        ApprovalAttachmentEntity approvalEntity =
-            approvalAttachmentService.getEntityById(attachmentId);
-        if (approvalEntity == null) {
-          throw new BaseException(ErrorCode.DATA_NULL, "附件不存在");
-        }
-        if (downloadToken.getModelName() != null
-            && !downloadToken.getModelName().equals(approvalEntity.getModelName())) {
-          throw new BaseException(ErrorCode.TOKEN_INVALID, "下载令牌与附件类型不匹配");
-        }
-        // 实时令牌重新校验当前业务记录权限；历史令牌只允许读取冻结快照中的附件。
-        if (downloadToken.getHistoricalAssistId() != null) {
-          attachmentAccessService.assertCanReadHistorical(
-              approvalEntity, downloadToken.getHistoricalAssistId(), currentUserId);
-        } else if (downloadToken.getActiveAssistId() != null) {
-          attachmentAccessService.assertCanReadAssistSource(
-              approvalEntity, downloadToken.getActiveAssistId(), currentUserId);
-        } else {
-          attachmentAccessService.assertCanRead(approvalEntity, currentUserId);
-        }
-        downloadApprovalAttachment(approvalEntity, attachmentId, tokenUserId, response);
+        downloadApprovalAttachmentByToken(
+            downloadToken, attachmentId, tokenUserId, currentUserId, response);
       }
 
     } catch (BaseException e) {
@@ -142,6 +87,97 @@ public class PublicAttachmentController {
       log.error("附件下载异常", e);
       handleError(response, "下载失败，请稍后重试", 500);
     }
+  }
+
+  /** 从HTTP请求头解析 JWT 并取当前登录用户ID，令牌缺失或用户信息无效即抛错 */
+  private Long requireCurrentUserId() {
+    String jwtToken = httpRequest.getHeader(jwtProperties.getTokenName());
+    if (jwtToken == null || jwtToken.isEmpty()) {
+      throw new BaseException(ErrorCode.TOKEN_ERROR, "请先登录");
+    }
+
+    Claims claims = JwtUntil.parseJWT(jwtProperties.getSecretKey(), jwtToken);
+    Long currentUserId = claims.get("userID", Long.class);
+
+    if (currentUserId == null) {
+      throw new BaseException(ErrorCode.TOKEN_ERROR, "用户信息无效");
+    }
+    return currentUserId;
+  }
+
+  /** 校验当前登录用户与令牌用户一致，以及历史/协助来源令牌的文件类型与互斥约束 */
+  private void verifyTokenContext(
+      AttachmentDownloadTokenUtil.DownloadToken downloadToken,
+      Long tokenUserId,
+      Long currentUserId,
+      String fileType) {
+    if (!currentUserId.equals(tokenUserId)) {
+      throw new BaseException(ErrorCode.TOKEN_INVALID, "下载令牌与当前用户不匹配");
+    }
+
+    if (downloadToken.getHistoricalAssistId() != null && !"approval_attachment".equals(fileType)) {
+      throw new BaseException(ErrorCode.TOKEN_INVALID, "历史附件令牌文件类型无效");
+    }
+    if (downloadToken.getActiveAssistId() != null && !"approval_attachment".equals(fileType)) {
+      throw new BaseException(ErrorCode.TOKEN_INVALID, "协助来源附件令牌文件类型无效");
+    }
+    if (downloadToken.getHistoricalAssistId() != null
+        && downloadToken.getActiveAssistId() != null) {
+      throw new BaseException(ErrorCode.TOKEN_INVALID, "下载令牌上下文冲突");
+    }
+  }
+
+  /** 项目文件下载分支：按当前权限记录级复核后落盘下载 */
+  private void downloadProjectFileByToken(
+      AttachmentDownloadTokenUtil.DownloadToken downloadToken,
+      Long attachmentId,
+      Long tokenUserId,
+      Long currentUserId,
+      HttpServletResponse response)
+      throws IOException {
+    ProjectFileEntity projectFileEntity = projectFileService.getEntityById(attachmentId);
+    if (projectFileEntity == null) {
+      throw new BaseException(ErrorCode.DATA_NULL, "文件不存在");
+    }
+    // 记录级复核：令牌仅证明签发时的授权，实际下载必须按当前权限重新校验
+    // （用户被移出业务/文件被重归属后，已签发但未过期的令牌同样会被拒绝）
+    if (!attachmentAccessService.canReadProjectFile(projectFileEntity, currentUserId)) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "无权下载该项目文件");
+    }
+    downloadProjectFile(projectFileEntity, attachmentId, tokenUserId, response);
+  }
+
+  /** 审批附件下载分支：令牌 modelName 匹配 + 三种上下文（历史/协助来源/普通）的实时权限复核后落盘下载 */
+  private void downloadApprovalAttachmentByToken(
+      AttachmentDownloadTokenUtil.DownloadToken downloadToken,
+      Long attachmentId,
+      Long tokenUserId,
+      Long currentUserId,
+      HttpServletResponse response)
+      throws IOException {
+    if (!"approval_attachment".equals(downloadToken.getFileType())) {
+      throw new BaseException(ErrorCode.TOKEN_INVALID, "下载令牌文件类型无效");
+    }
+    // 审批附件（默认）
+    ApprovalAttachmentEntity approvalEntity = approvalAttachmentService.getEntityById(attachmentId);
+    if (approvalEntity == null) {
+      throw new BaseException(ErrorCode.DATA_NULL, "附件不存在");
+    }
+    if (downloadToken.getModelName() != null
+        && !downloadToken.getModelName().equals(approvalEntity.getModelName())) {
+      throw new BaseException(ErrorCode.TOKEN_INVALID, "下载令牌与附件类型不匹配");
+    }
+    // 实时令牌重新校验当前业务记录权限；历史令牌只允许读取冻结快照中的附件。
+    if (downloadToken.getHistoricalAssistId() != null) {
+      attachmentAccessService.assertCanReadHistorical(
+          approvalEntity, downloadToken.getHistoricalAssistId(), currentUserId);
+    } else if (downloadToken.getActiveAssistId() != null) {
+      attachmentAccessService.assertCanReadAssistSource(
+          approvalEntity, downloadToken.getActiveAssistId(), currentUserId);
+    } else {
+      attachmentAccessService.assertCanRead(approvalEntity, currentUserId);
+    }
+    downloadApprovalAttachment(approvalEntity, attachmentId, tokenUserId, response);
   }
 
   /** 下载审批附件 */
