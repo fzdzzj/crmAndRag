@@ -186,41 +186,7 @@ public class ContractServiceImpl extends ServiceImpl<ContractMapper, ContractEnt
     queryWrapper.orderByDesc(ContractEntity::getCreateTime);
 
     Page<ContractEntity> entityPage = baseMapper.selectPage(page, queryWrapper);
-
-    // 批量收集ID
-    List<ContractEntity> entityList = entityPage.getRecords();
-    Set<Long> allUserIds = new HashSet<>();
-    Set<Long> companyIds = new HashSet<>();
-    Set<Long> opportunityIds = new HashSet<>();
-    for (ContractEntity entity : entityList) {
-      if (entity.getCreatorId() != null) allUserIds.add(entity.getCreatorId());
-      if (entity.getOwnerId() != null) allUserIds.add(entity.getOwnerId());
-      if (entity.getCompanyId() != null) companyIds.add(entity.getCompanyId());
-      if (entity.getOpportunityId() != null) opportunityIds.add(entity.getOpportunityId());
-    }
-    Map<Long, String> userNameMap = dataConvertService.getUserNames(allUserIds);
-    Map<Long, String> companyNameMap = dataConvertService.getCompanyNames(companyIds);
-    Map<Long, String> opportunityNameMap = dataConvertService.getOpportunityNames(opportunityIds);
-
-    // 转换为VO
-    Page<ContractVO> voPage = new Page<>();
-    BeanUtils.copyProperties(entityPage, voPage);
-
-    List<ContractVO> voList =
-        entityList.stream()
-            .map(
-                entity -> {
-                  String companyName = companyNameMap.get(entity.getCompanyId());
-                  String opportunityName = opportunityNameMap.get(entity.getOpportunityId());
-                  String ownerName = userNameMap.get(entity.getOwnerId());
-                  String creatorName = userNameMap.get(entity.getCreatorId());
-                  return ContractVO.fromEntity(
-                      entity, companyName, opportunityName, ownerName, creatorName);
-                })
-            .toList();
-
-    voPage.setRecords(voList);
-    return voPage;
+    return ContractVoAssembler.toVoPage(entityPage, dataConvertService);
   }
 
   @Override
@@ -281,38 +247,6 @@ public class ContractServiceImpl extends ServiceImpl<ContractMapper, ContractEnt
         baseMapper.selectPage(
             page,
             new LambdaQueryWrapper<ContractEntity>().orderByDesc(ContractEntity::getCreateTime));
-
-    // 批量收集ID
-    List<ContractEntity> entityList = pageResult.getRecords();
-    Set<Long> allUserIds = new HashSet<>();
-    Set<Long> companyIds = new HashSet<>();
-    Set<Long> opportunityIds = new HashSet<>();
-    for (ContractEntity entity : entityList) {
-      if (entity.getCreatorId() != null) allUserIds.add(entity.getCreatorId());
-      if (entity.getOwnerId() != null) allUserIds.add(entity.getOwnerId());
-      if (entity.getCompanyId() != null) companyIds.add(entity.getCompanyId());
-      if (entity.getOpportunityId() != null) opportunityIds.add(entity.getOpportunityId());
-    }
-    Map<Long, String> userNameMap = dataConvertService.getUserNames(allUserIds);
-    Map<Long, String> companyNameMap = dataConvertService.getCompanyNames(companyIds);
-    Map<Long, String> opportunityNameMap = dataConvertService.getOpportunityNames(opportunityIds);
-
-    List<ContractVO> contractVOs =
-        entityList.stream()
-            .map(
-                entity -> {
-                  String companyName = companyNameMap.get(entity.getCompanyId());
-                  String opportunityName = opportunityNameMap.get(entity.getOpportunityId());
-                  String ownerName = userNameMap.get(entity.getOwnerId());
-                  String creatorName = userNameMap.get(entity.getCreatorId());
-                  return ContractVO.fromEntity(
-                      entity, companyName, opportunityName, ownerName, creatorName);
-                })
-            .toList();
-
-    Page<ContractVO> pageVO = new Page<>(pageNum, pageSize, pageResult.getTotal());
-    BeanUtils.copyProperties(pageResult, pageVO);
-    pageVO.setRecords(contractVOs);
-    return pageVO;
+    return ContractVoAssembler.toVoPage(pageResult, dataConvertService);
   }
 }

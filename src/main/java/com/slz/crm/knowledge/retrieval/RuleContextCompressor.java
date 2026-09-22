@@ -27,9 +27,6 @@ public class RuleContextCompressor implements Compressor {
   private static final Logger LOG = LoggerFactory.getLogger(RuleContextCompressor.class);
 
   private static final Pattern SECTION_HEADER = Pattern.compile("^\\[(\\d{1,4})\\]\\s?");
-  private static final Pattern NUMBERED_ITEM =
-      Pattern.compile("^\\s*[（(]?[0-9一二三四五六七八九十]{1,4}[）)、，.．]");
-  private static final Pattern CLAUSE_REF = Pattern.compile("第[0-9一二三四五六七八九十百]+[条款章项步期季度]{1,2}");
 
   /** 编号段：header 为行首 {@code [n]} 头（含紧随空白），sentences 为段内句子列表（含定界符）。 */
   private record Section(String header, List<String> sentences) {}
@@ -199,7 +196,7 @@ public class RuleContextCompressor implements Compressor {
       for (int index = 1; index < size - 1; index++) {
         String sentence = sentences.get(index);
         long cost = TokenEstimator.estimate(sentence);
-        if (cost <= middleBudget || isLoadBearing(sentence)) {
+        if (cost <= middleBudget || LoadBearingSentences.isLoadBearing(sentence)) {
           kept.add(sentence);
           middleBudget -= cost;
         }
@@ -239,23 +236,6 @@ public class RuleContextCompressor implements Compressor {
   }
 
   // ---------------------------------------------------------------- 承重句判定
-
-  /** 承重句：含数字（金额/期限/数量）、定义或键值冒号、序号条目、条款引用—— 对应 rag-kb 方案10"保留锚点句"的确定性口径。 */
-  private boolean isLoadBearing(String sentence) {
-    return containsDigit(sentence)
-        || sentence.contains("：")
-        || sentence.contains(": ")
-        || NUMBERED_ITEM.matcher(sentence).find()
-        || CLAUSE_REF.matcher(sentence).find();
-  }
-
-  private boolean containsDigit(String sentence) {
-    boolean found = false;
-    for (int index = 0; index < sentence.length() && !found; index++) {
-      found = Character.isDigit(sentence.charAt(index));
-    }
-    return found;
-  }
 
   private long tokensOf(List<String> sentences) {
     long total = 0;
