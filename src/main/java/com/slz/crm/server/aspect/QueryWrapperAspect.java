@@ -91,7 +91,11 @@ public class QueryWrapperAspect {
    * @throws Throwable 异常
    */
   @Around("mapperMethodsWithoutWrapper()")
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射invoke+proceed多源，失败回退原方法防中断
+  @SuppressWarnings({
+    "PMD.AvoidCatchingGenericException", // 反射invoke+proceed多源，失败回退原方法防中断
+    "PMD.OnlyOneReturn", // 4 处回退分支（未登录/不受控表/无重载/反射失败）语义各异，单出口化损害切面可读性（tighten-pmd-residual-325 任务
+    // 6.3）
+  })
   public Object aroundQueryWithoutWrapper(ProceedingJoinPoint joinPoint) throws Throwable {
     String methodName = joinPoint.getSignature().getName();
 
@@ -147,39 +151,33 @@ public class QueryWrapperAspect {
    * @param joinPoint 连接点
    * @return 带 QueryWrapper 参数的方法,如果找不到返回 null
    */
-  @SuppressWarnings("PMD.EmptyCatchBlock") // 有意吞：NoSuchMethodException 是「接口无该重载」的正常答案，非异常
   private Method findMethodWithWrapper(ProceedingJoinPoint joinPoint) {
     MethodSignature signature = (MethodSignature) joinPoint.getSignature();
     String methodName = signature.getName();
     Class<?> targetClass = joinPoint.getTarget().getClass();
 
-    // 获取所有接口(包括父接口)
-    Class<?>[] interfaces = targetClass.getInterfaces();
-
-    for (Class<?> iface : interfaces) {
-      try {
-        // 查找带 QueryWrapper 参数的方法
-        Method method = iface.getMethod(methodName, QueryWrapper.class);
-        if (method != null) {
-          return method;
-        }
-      } catch (NoSuchMethodException e) {
-        // 继续查找下一个接口
+    // 获取所有接口(包括父接口)，按 QueryWrapper → Wrapper 父类顺序逐接口探测
+    Method found = null;
+    for (Class<?> iface : targetClass.getInterfaces()) {
+      if (found == null) {
+        found = lookupMethod(iface, methodName, QueryWrapper.class);
       }
-
-      // 也尝试查找带 Wrapper 父类参数的方法
-      try {
-        Method method =
-            iface.getMethod(methodName, com.baomidou.mybatisplus.core.conditions.Wrapper.class);
-        if (method != null) {
-          return method;
-        }
-      } catch (NoSuchMethodException e) {
-        // 继续查找
+      if (found == null) {
+        found =
+            lookupMethod(iface, methodName, com.baomidou.mybatisplus.core.conditions.Wrapper.class);
       }
     }
+    return found;
+  }
 
-    return null;
+  /** 探测接口上的重载方法；NoSuchMethodException 是「接口无该重载」的正常答案，非异常 */
+  @SuppressWarnings("PMD.EmptyCatchBlock")
+  private Method lookupMethod(Class<?> iface, String methodName, Class<?> parameterType) {
+    try {
+      return iface.getMethod(methodName, parameterType);
+    } catch (NoSuchMethodException e) {
+      return null;
+    }
   }
 
   /**
@@ -208,27 +206,24 @@ public class QueryWrapperAspect {
       RoleAO currentUser = com.slz.crm.common.untils.BaseUnit.getCurrentRole();
       if (currentUser == null) {
         LOGGER.warn("当前用户未登录,不添加数据权限条件");
-        return;
+      } else {
+        // 2. 从方法签名中提取表名
+        String tableName = extractTableName(joinPoint);
+
+        // 3. 判断表是否需要权限管理
+        if (!ResourceTypeConstant.isManagedTable(tableName)) {
+          LOGGER.debug("表 {} 不需要数据权限控制", tableName);
+        } else {
+          LOGGER.debug(
+              "数据权限过滤 - 用户ID: {}, 角色ID: {}, 表名: {}",
+              currentUser.getId(),
+              currentUser.getRoleId(),
+              tableName);
+
+          // 4. 调用数据权限服务添加条件
+          dataScopeService.addDataScopeCondition(wrapper, currentUser, tableName);
+        }
       }
-
-      // 2. 从方法签名中提取表名
-      String tableName = extractTableName(joinPoint);
-
-      // 3. 判断表是否需要权限管理
-      if (!ResourceTypeConstant.isManagedTable(tableName)) {
-        LOGGER.debug("表 {} 不需要数据权限控制", tableName);
-        return;
-      }
-
-      LOGGER.debug(
-          "数据权限过滤 - 用户ID: {}, 角色ID: {}, 表名: {}",
-          currentUser.getId(),
-          currentUser.getRoleId(),
-          tableName);
-
-      // 4. 调用数据权限服务添加条件
-      dataScopeService.addDataScopeCondition(wrapper, currentUser, tableName);
-
     } catch (Exception e) {
       LOGGER.error("添加数据权限条件失败", e);
     }
@@ -247,27 +242,24 @@ public class QueryWrapperAspect {
       RoleAO currentUser = com.slz.crm.common.untils.BaseUnit.getCurrentRole();
       if (currentUser == null) {
         LOGGER.warn("当前用户未登录,不添加数据权限条件");
-        return;
+      } else {
+        // 2. 从方法签名中提取表名
+        String tableName = extractTableName(joinPoint);
+
+        // 3. 判断表是否需要权限管理
+        if (!ResourceTypeConstant.isManagedTable(tableName)) {
+          LOGGER.debug("表 {} 不需要数据权限控制", tableName);
+        } else {
+          LOGGER.debug(
+              "数据权限过滤(Lambda) - 用户ID: {}, 角色ID: {}, 表名: {}",
+              currentUser.getId(),
+              currentUser.getRoleId(),
+              tableName);
+
+          // 4. 调用数据权限服务添加条件（使用 Wrapper 基类方法）
+          dataScopeService.addDataScopeCondition(wrapper, currentUser, tableName);
+        }
       }
-
-      // 2. 从方法签名中提取表名
-      String tableName = extractTableName(joinPoint);
-
-      // 3. 判断表是否需要权限管理
-      if (!ResourceTypeConstant.isManagedTable(tableName)) {
-        LOGGER.debug("表 {} 不需要数据权限控制", tableName);
-        return;
-      }
-
-      LOGGER.debug(
-          "数据权限过滤(Lambda) - 用户ID: {}, 角色ID: {}, 表名: {}",
-          currentUser.getId(),
-          currentUser.getRoleId(),
-          tableName);
-
-      // 4. 调用数据权限服务添加条件（使用 Wrapper 基类方法）
-      dataScopeService.addDataScopeCondition(wrapper, currentUser, tableName);
-
     } catch (Exception e) {
       LOGGER.error("添加数据权限条件失败(Lambda)", e);
     }

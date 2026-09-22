@@ -38,7 +38,10 @@ public class ResourceInsertAspect {
 
   /** 后置通知：在insert方法成功执行后自动绑定标签 */
   @AfterReturning(pointcut = "mapperInsertMethod()", returning = "result")
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 标签绑定兜底：ORM/反射多源，失败不抛出影响正常业务
+  @SuppressWarnings({
+    "PMD.AvoidCatchingGenericException", // 标签绑定兜底：ORM/反射多源，失败不抛出影响正常业务
+    "PMD.OnlyOneReturn", // 7 处前置守卫各带独立日志语义，单出口化需深嵌套，损害可读性（tighten-pmd-residual-325 任务 6.3）
+  })
   public void afterInsert(JoinPoint joinPoint, Object result) {
     // 如果插入失败，直接返回
     if (result == null || (result instanceof Integer && (Integer) result <= 0)) {
@@ -121,6 +124,7 @@ public class ResourceInsertAspect {
    * @return 实体ID，如果获取失败返回null
    */
   private Long getResourceId(Object entity) {
+    Long resourceId = null;
     try {
       // 尝试获取id字段
       Field idField = entity.getClass().getDeclaredField("id");
@@ -128,9 +132,9 @@ public class ResourceInsertAspect {
       Object idValue = idField.get(entity);
 
       if (idValue instanceof Long) {
-        return (Long) idValue;
+        resourceId = (Long) idValue;
       } else if (idValue instanceof Integer) {
-        return ((Integer) idValue).longValue();
+        resourceId = ((Integer) idValue).longValue();
       }
 
     } catch (NoSuchFieldException e) {
@@ -138,6 +142,6 @@ public class ResourceInsertAspect {
     } catch (IllegalAccessException e) {
       log.warn("无法访问实体类 {} 的id字段", entity.getClass().getSimpleName());
     }
-    return null;
+    return resourceId;
   }
 }
