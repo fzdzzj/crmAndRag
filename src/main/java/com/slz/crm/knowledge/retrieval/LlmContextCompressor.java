@@ -39,7 +39,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class LlmContextCompressor implements Compressor {
-  private static final Logger log = LoggerFactory.getLogger(LlmContextCompressor.class);
+  private static final Logger LOG = LoggerFactory.getLogger(LlmContextCompressor.class);
 
   private static final String SYSTEM_PROMPT =
       """
@@ -83,18 +83,18 @@ public class LlmContextCompressor implements Compressor {
         recordUsage(callResult, true);
         String output = callResult == null ? null : callResult.content();
         if (!isValid(output, context, tokenBudget)) {
-          log.info("LLM 压缩输出不可用（空/编号不完整/仍超预算），回退规则压缩链");
+          LOG.info("LLM 压缩输出不可用（空/编号不完整/仍超预算），回退规则压缩链");
           result = fallbackCompressor.compress(context, tokenBudget);
         } else {
           result = output.strip();
         }
       } catch (InterruptedException exception) {
         Thread.currentThread().interrupt();
-        log.warn("LLM 压缩被中断，回退规则压缩链: {}", exception.getMessage());
+        LOG.warn("LLM 压缩被中断，回退规则压缩链: {}", exception.getMessage());
         recordUsage(null, false);
         result = fallbackCompressor.compress(context, tokenBudget);
       } catch (Exception exception) {
-        log.warn("LLM 压缩失败，回退规则压缩链: {}", exception.getMessage());
+        LOG.warn("LLM 压缩失败，回退规则压缩链: {}", exception.getMessage());
         recordUsage(null, false);
         result = fallbackCompressor.compress(context, tokenBudget);
       }

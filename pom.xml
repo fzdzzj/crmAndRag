@@ -466,7 +466,7 @@
                          只许下调不许上调（口径同 scripts/test-baseline.txt）。
                          failurePriority 管"哪条违规计入条数"，本项管"计入多少条算失败"，
                          两者不可互相换算。 -->
-                    <maxAllowedViolations>306</maxAllowedViolations>
+                    <maxAllowedViolations>267</maxAllowedViolations>
                     <linkXRef>false</linkXRef>
                     <excludeRoots>
                         <excludeRoot>target/generated-sources</excludeRoot>

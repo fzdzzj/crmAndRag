@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class TokenUsageRecorderImpl implements TokenUsageRecorder {
 
-  private static final Logger log = LoggerFactory.getLogger(TokenUsageRecorderImpl.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TokenUsageRecorderImpl.class);
 
   private final ObjectProvider<PlatformTokenUsageMapper> mapperProvider;
   private final MeterRegistry meterRegistry;
@@ -57,7 +57,7 @@ public class TokenUsageRecorderImpl implements TokenUsageRecorder {
               "type",
               record.type() == null ? "unknown" : record.type().wireName())
           .increment();
-      log.warn("Token计量落库失败: model={}, type={}", record.model(), record.type(), exception);
+      LOG.warn("Token计量落库失败: model={}, type={}", record.model(), record.type(), exception);
     }
   }
 

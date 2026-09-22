@@ -28,7 +28,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class QueryWrapperAspect {
 
-  private static final Logger logger = LoggerFactory.getLogger(QueryWrapperAspect.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(QueryWrapperAspect.class);
 
   @Autowired private DataScopeService dataScopeService;
 
@@ -66,18 +66,18 @@ public class QueryWrapperAspect {
     // 遍历方法参数,查找QueryWrapper、LambdaQueryWrapper、UpdateWrapper或LambdaUpdateWrapper类型的参数
     for (Object arg : args) {
       if (arg instanceof QueryWrapper<?> wrapper) {
-        logger.debug("拦截到带QueryWrapper参数的方法");
+        LOGGER.debug("拦截到带QueryWrapper参数的方法");
         addDataScopeCondition(joinPoint, wrapper);
         modifyQueryWrapper(arg);
       } else if (arg instanceof LambdaQueryWrapper<?> lambdaWrapper) {
-        logger.debug("拦截到带LambdaQueryWrapper参数的方法");
+        LOGGER.debug("拦截到带LambdaQueryWrapper参数的方法");
         addDataScopeCondition(joinPoint, lambdaWrapper);
         modifyQueryWrapper(arg);
       } else if (arg instanceof UpdateWrapper<?>) {
-        logger.debug("拦截到带UpdateWrapper参数的方法");
+        LOGGER.debug("拦截到带UpdateWrapper参数的方法");
         modifyQueryWrapper(arg);
       } else if (arg instanceof LambdaUpdateWrapper<?> lambdaUpdateWrapper) {
-        logger.debug("拦截到带LambdaUpdateWrapper参数的方法");
+        LOGGER.debug("拦截到带LambdaUpdateWrapper参数的方法");
         modifyQueryWrapper(arg);
       }
     }
@@ -95,12 +95,12 @@ public class QueryWrapperAspect {
   public Object aroundQueryWithoutWrapper(ProceedingJoinPoint joinPoint) throws Throwable {
     String methodName = joinPoint.getSignature().getName();
 
-    logger.debug("拦截到不带QueryWrapper的方法 - 方法名: {}", methodName);
+    LOGGER.debug("拦截到不带QueryWrapper的方法 - 方法名: {}", methodName);
 
     // 1. 获取当前用户
     RoleAO currentUser = com.slz.crm.common.untils.BaseUnit.getCurrentRole();
     if (currentUser == null) {
-      logger.warn("当前用户未登录,直接执行原方法");
+      LOGGER.warn("当前用户未登录,直接执行原方法");
       return joinPoint.proceed();
     }
 
@@ -109,14 +109,14 @@ public class QueryWrapperAspect {
 
     // 3. 判断表是否需要权限管理
     if (!ResourceTypeConstant.isManagedTable(tableName)) {
-      logger.debug("表 {} 不需要数据权限控制,直接执行原方法", tableName);
+      LOGGER.debug("表 {} 不需要数据权限控制,直接执行原方法", tableName);
       return joinPoint.proceed();
     }
 
     // 4. 查找带 QueryWrapper 参数的重载方法
     Method methodWithWrapper = findMethodWithWrapper(joinPoint);
     if (methodWithWrapper == null) {
-      logger.warn("未找到带QueryWrapper参数的重载方法: {}, 直接执行原方法", methodName);
+      LOGGER.warn("未找到带QueryWrapper参数的重载方法: {}, 直接执行原方法", methodName);
       return joinPoint.proceed();
     }
 
@@ -124,7 +124,7 @@ public class QueryWrapperAspect {
     QueryWrapper<?> wrapper = new QueryWrapper<>();
     dataScopeService.addDataScopeCondition(wrapper, currentUser, tableName);
 
-    logger.info(
+    LOGGER.info(
         "数据权限过滤(自动转发) - 用户ID: {}, 角色ID: {}, 表名: {}, 方法: {}",
         currentUser.getId(),
         currentUser.getRoleId(),
@@ -136,7 +136,7 @@ public class QueryWrapperAspect {
       Object mapper = joinPoint.getTarget();
       return methodWithWrapper.invoke(mapper, wrapper);
     } catch (Exception e) {
-      logger.error("调用带QueryWrapper的方法失败,回退到原方法", e);
+      LOGGER.error("调用带QueryWrapper的方法失败,回退到原方法", e);
       return joinPoint.proceed();
     }
   }
@@ -189,9 +189,9 @@ public class QueryWrapperAspect {
    */
   private void modifyQueryWrapper(Object wrapper) {
     if (wrapper instanceof QueryWrapper<?> queryWrapper) {
-      logger.debug("QueryWrapper当前条件: {}", queryWrapper);
+      LOGGER.debug("QueryWrapper当前条件: {}", queryWrapper);
     } else if (wrapper instanceof UpdateWrapper<?> updateWrapper) {
-      logger.debug("UpdateWrapper当前条件: {}", updateWrapper);
+      LOGGER.debug("UpdateWrapper当前条件: {}", updateWrapper);
     }
   }
 
@@ -207,7 +207,7 @@ public class QueryWrapperAspect {
       // 1. 获取当前用户
       RoleAO currentUser = com.slz.crm.common.untils.BaseUnit.getCurrentRole();
       if (currentUser == null) {
-        logger.warn("当前用户未登录,不添加数据权限条件");
+        LOGGER.warn("当前用户未登录,不添加数据权限条件");
         return;
       }
 
@@ -216,11 +216,11 @@ public class QueryWrapperAspect {
 
       // 3. 判断表是否需要权限管理
       if (!ResourceTypeConstant.isManagedTable(tableName)) {
-        logger.debug("表 {} 不需要数据权限控制", tableName);
+        LOGGER.debug("表 {} 不需要数据权限控制", tableName);
         return;
       }
 
-      logger.debug(
+      LOGGER.debug(
           "数据权限过滤 - 用户ID: {}, 角色ID: {}, 表名: {}",
           currentUser.getId(),
           currentUser.getRoleId(),
@@ -230,7 +230,7 @@ public class QueryWrapperAspect {
       dataScopeService.addDataScopeCondition(wrapper, currentUser, tableName);
 
     } catch (Exception e) {
-      logger.error("添加数据权限条件失败", e);
+      LOGGER.error("添加数据权限条件失败", e);
     }
   }
 
@@ -246,7 +246,7 @@ public class QueryWrapperAspect {
       // 1. 获取当前用户
       RoleAO currentUser = com.slz.crm.common.untils.BaseUnit.getCurrentRole();
       if (currentUser == null) {
-        logger.warn("当前用户未登录,不添加数据权限条件");
+        LOGGER.warn("当前用户未登录,不添加数据权限条件");
         return;
       }
 
@@ -255,11 +255,11 @@ public class QueryWrapperAspect {
 
       // 3. 判断表是否需要权限管理
       if (!ResourceTypeConstant.isManagedTable(tableName)) {
-        logger.debug("表 {} 不需要数据权限控制", tableName);
+        LOGGER.debug("表 {} 不需要数据权限控制", tableName);
         return;
       }
 
-      logger.debug(
+      LOGGER.debug(
           "数据权限过滤(Lambda) - 用户ID: {}, 角色ID: {}, 表名: {}",
           currentUser.getId(),
           currentUser.getRoleId(),
@@ -269,7 +269,7 @@ public class QueryWrapperAspect {
       dataScopeService.addDataScopeCondition(wrapper, currentUser, tableName);
 
     } catch (Exception e) {
-      logger.error("添加数据权限条件失败(Lambda)", e);
+      LOGGER.error("添加数据权限条件失败(Lambda)", e);
     }
   }
 
@@ -305,7 +305,7 @@ public class QueryWrapperAspect {
 
     final String result;
     if (mapperClassName == null) {
-      logger.warn("无法从 JoinPoint 提取 Mapper 类名");
+      LOGGER.warn("无法从 JoinPoint 提取 Mapper 类名");
       result = "";
     } else {
       // 去掉 "Mapper" 后缀

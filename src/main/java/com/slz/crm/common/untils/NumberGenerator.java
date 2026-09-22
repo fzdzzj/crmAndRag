@@ -17,10 +17,10 @@ public class NumberGenerator {
   private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
 
   /** 回款单号序号（线程安全） */
-  private static final AtomicInteger paymentSequence = new AtomicInteger(1);
+  private static final AtomicInteger PAYMENT_SEQUENCE = new AtomicInteger(1);
 
   /** 发票编号序号（线程安全） */
-  private static final AtomicInteger invoiceSequence = new AtomicInteger(1);
+  private static final AtomicInteger INVOICE_SEQUENCE = new AtomicInteger(1);
 
   /** 回款单号缓存日期 */
   private static String paymentCachedDate = "";
@@ -39,11 +39,11 @@ public class NumberGenerator {
     // 如果日期变化，重置序号
     if (!currentDate.equals(paymentCachedDate)) {
       paymentCachedDate = currentDate;
-      paymentSequence.set(1);
+      PAYMENT_SEQUENCE.set(1);
     }
 
     // 获取当前序号
-    int sequence = paymentSequence.getAndIncrement();
+    int sequence = PAYMENT_SEQUENCE.getAndIncrement();
 
     // 格式化为4位序号
     String sequenceStr = String.format("%04d", sequence);
@@ -65,11 +65,11 @@ public class NumberGenerator {
     // 如果日期变化，重置序号
     if (!currentDate.equals(invoiceCachedDate)) {
       invoiceCachedDate = currentDate;
-      invoiceSequence.set(1);
+      INVOICE_SEQUENCE.set(1);
     }
 
     // 获取当前序号
-    int sequence = invoiceSequence.getAndIncrement();
+    int sequence = INVOICE_SEQUENCE.getAndIncrement();
 
     // 格式化为4位序号
     String sequenceStr = String.format("%04d", sequence);
@@ -94,13 +94,13 @@ public class NumberGenerator {
 
   /** 重置回款单号序号（用于测试或手动重置） */
   public static synchronized void resetPaymentSequence() {
-    paymentSequence.set(1);
+    PAYMENT_SEQUENCE.set(1);
     paymentCachedDate = "";
   }
 
   /** 重置发票编号序号（用于测试或手动重置） */
   public static synchronized void resetInvoiceSequence() {
-    invoiceSequence.set(1);
+    INVOICE_SEQUENCE.set(1);
     invoiceCachedDate = "";
   }
 }

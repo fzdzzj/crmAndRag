@@ -57,7 +57,7 @@ import reactor.core.publisher.Flux;
 @Component
 public class ModelProviderImpl implements ModelProvider {
 
-  private static final Logger log = LoggerFactory.getLogger(ModelProviderImpl.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ModelProviderImpl.class);
   private static final String COMPATIBLE_COMPLETIONS_PATH = "/chat/completions";
   private static final String THINKING_HEADER = "X-Enable-Thinking";
 
@@ -90,8 +90,8 @@ public class ModelProviderImpl implements ModelProvider {
   public ModelCallResult<String> chat(Prompt prompt) {
     ChatModel nativeModel = dashScopeChatModel.getIfAvailable();
     ChatModel model = nativeModel != null ? nativeModel : compatibleChatModel;
-    if (log.isDebugEnabled()) {
-      log.debug("chat() 使用 {} 协议", nativeModel != null ? "dashscope" : "compatible-mode");
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("chat() 使用 {} 协议", nativeModel != null ? "dashscope" : "compatible-mode");
     }
     return toTextResult(model.call(prompt), properties.getChatModel());
   }
@@ -243,7 +243,7 @@ public class ModelProviderImpl implements ModelProvider {
         result = objectMapper.writeValueAsBytes(obj);
       }
     } catch (Exception e) {
-      log.warn("enable_thinking body 注入失败", e);
+      LOG.warn("enable_thinking body 注入失败", e);
     }
     return result;
   }
@@ -316,7 +316,7 @@ public class ModelProviderImpl implements ModelProvider {
       }
       result = new ChatResponse(generations);
     } catch (Exception e) {
-      log.warn("SSE chunk 解析失败: {}", json, e);
+      LOG.warn("SSE chunk 解析失败: {}", json, e);
       result = new ChatResponse(List.of());
     }
     return result;
@@ -393,7 +393,7 @@ public class ModelProviderImpl implements ModelProvider {
     if (!StringUtils.hasText(result)) {
       result = environment.getProperty("spring.ai.dashscope.api-key", "");
       if (!StringUtils.hasText(result)) {
-        log.warn("compatible-mode api-key 未配置：调用将在运行期失败");
+        LOG.warn("compatible-mode api-key 未配置：调用将在运行期失败");
         result = "missing-api-key";
       }
     }

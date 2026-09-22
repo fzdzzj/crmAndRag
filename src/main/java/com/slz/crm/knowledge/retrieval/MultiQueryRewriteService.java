@@ -29,7 +29,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class MultiQueryRewriteService {
-  private static final Logger log = LoggerFactory.getLogger(MultiQueryRewriteService.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MultiQueryRewriteService.class);
 
   private static final String ENABLED_KEY = "rag.query.multi-query.enabled";
   private static final String VARIANTS_KEY = "rag.query.multi-query.variants";
@@ -78,7 +78,7 @@ public class MultiQueryRewriteService {
           routes.addAll(parsed);
           result = List.copyOf(routes);
         } catch (Exception exception) {
-          log.warn("多查询变体生成失败，回退单查询: {}", exception.getMessage());
+          LOG.warn("多查询变体生成失败，回退单查询: {}", exception.getMessage());
           result = List.of(normalized);
         }
       }

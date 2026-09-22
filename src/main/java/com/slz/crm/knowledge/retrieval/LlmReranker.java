@@ -36,7 +36,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class LlmReranker implements Reranker {
-  private static final Logger log = LoggerFactory.getLogger(LlmReranker.class);
+  private static final Logger LOG = LoggerFactory.getLogger(LlmReranker.class);
 
   private static final String SYSTEM_PROMPT =
       """
@@ -88,10 +88,10 @@ public class LlmReranker implements Reranker {
         }
       } catch (InterruptedException exception) {
         Thread.currentThread().interrupt();
-        log.warn("LLM 重排被中断，回退默认重排链: {}", exception.getMessage());
+        LOG.warn("LLM 重排被中断，回退默认重排链: {}", exception.getMessage());
         result = fallbackReranker.rerank(query, candidates);
       } catch (Exception exception) {
-        log.warn("LLM 重排失败，回退默认重排链: {}", exception.getMessage());
+        LOG.warn("LLM 重排失败，回退默认重排链: {}", exception.getMessage());
         result = fallbackReranker.rerank(query, candidates);
       }
     }

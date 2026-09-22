@@ -51,7 +51,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class DerivedQuestionService {
-  private static final Logger log = LoggerFactory.getLogger(DerivedQuestionService.class);
+  private static final Logger LOG = LoggerFactory.getLogger(DerivedQuestionService.class);
 
   public static final String VECTOR_KIND_DERIVED = "derived_question";
   public static final String ENABLED_KEY = "rag.query.derived-questions.enabled";
@@ -99,9 +99,9 @@ public class DerivedQuestionService {
     try {
       bypassExecutor.execute(() -> generateForDocument(file, children));
     } catch (RejectedExecutionException exception) {
-      log.warn("衍生问题旁路提交被拒绝（队列饱和），本文档退化为无衍生向量 documentId={}", file.getDocumentId());
+      LOG.warn("衍生问题旁路提交被拒绝（队列饱和），本文档退化为无衍生向量 documentId={}", file.getDocumentId());
     } catch (RuntimeException exception) {
-      log.warn("衍生问题旁路提交失败（不阻塞入库主链）documentId={}", file.getDocumentId(), exception);
+      LOG.warn("衍生问题旁路提交失败（不阻塞入库主链）documentId={}", file.getDocumentId(), exception);
     }
   }
 
@@ -115,7 +115,7 @@ public class DerivedQuestionService {
         try {
           records.addAll(questionsForChunk(file, child));
         } catch (Exception exception) {
-          log.warn(
+          LOG.warn(
               "衍生问题生成失败，该块退化为普通块 documentId={} chunkId={}",
               file.getDocumentId(),
               child.getId(),
@@ -131,7 +131,7 @@ public class DerivedQuestionService {
         vectorStore.upsertAll(records);
       }
     } catch (Exception exception) {
-      log.warn("衍生问题旁路失败（不阻塞入库主链）documentId={}", file.getDocumentId(), exception);
+      LOG.warn("衍生问题旁路失败（不阻塞入库主链）documentId={}", file.getDocumentId(), exception);
     }
   }
 

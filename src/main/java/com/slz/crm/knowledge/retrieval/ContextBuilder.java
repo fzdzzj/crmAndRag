@@ -34,7 +34,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class ContextBuilder {
-  private static final Logger log = LoggerFactory.getLogger(ContextBuilder.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ContextBuilder.class);
 
   static final String NEIGHBORS_KEY = "rag.context.neighbors";
   static final int DEFAULT_NEIGHBORS = 1;
@@ -153,7 +153,7 @@ public class ContextBuilder {
           }
         }
       } catch (Exception exception) {
-        log.warn("父块展开查询失败，按邻居模式降级: {}", exception.getMessage());
+        LOG.warn("父块展开查询失败，按邻居模式降级: {}", exception.getMessage());
       }
     }
     return result;
@@ -210,7 +210,7 @@ public class ContextBuilder {
                     .eq("chunk_role", CHUNK_ROLE_CHILD)
                     .in("chunk_index", targets));
       } catch (Exception exception) {
-        log.warn("邻居切片查询失败，按无邻居降级: {}", exception.getMessage());
+        LOG.warn("邻居切片查询失败，按无邻居降级: {}", exception.getMessage());
       }
     }
     return result;

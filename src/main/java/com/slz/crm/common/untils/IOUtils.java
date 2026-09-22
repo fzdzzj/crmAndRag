@@ -27,7 +27,7 @@ import org.springframework.web.multipart.MultipartFile;
 @Component
 public class IOUtils {
 
-  private static final Logger log = LoggerFactory.getLogger(IOUtils.class);
+  private static final Logger LOG = LoggerFactory.getLogger(IOUtils.class);
 
   // 存储位置
   private static String filePath;
@@ -36,7 +36,7 @@ public class IOUtils {
   public void setFilePath(String filePath) {
     // 如果配置为空，使用默认值
     if (filePath == null || filePath.trim().isEmpty()) {
-      log.warn("文件路径配置为空，使用默认值 ./file");
+      LOG.warn("文件路径配置为空，使用默认值 ./file");
       filePath = "./file";
     }
 
@@ -69,7 +69,7 @@ public class IOUtils {
   }
 
   // 文件/符号
-  private static final String fileSeparator = File.separator;
+  private static final String FILE_SEPARATOR = File.separator;
 
   private static File getFileByDTO(ApprovalAttachmentDTO dto) {
 
@@ -82,11 +82,11 @@ public class IOUtils {
 
     return new File(
         filePath
-            + fileSeparator
+            + FILE_SEPARATOR
             + modelName
-            + fileSeparator
+            + FILE_SEPARATOR
             + dto.getAndId()
-            + fileSeparator
+            + FILE_SEPARATOR
             + dto.getFileName());
   }
 
@@ -99,7 +99,7 @@ public class IOUtils {
     String modelName = dto.getModelName() != null ? dto.getModelName() : "default";
 
     return new File(
-        filePath + fileSeparator + modelName + fileSeparator + dto.getAndId() + fileSeparator);
+        filePath + FILE_SEPARATOR + modelName + FILE_SEPARATOR + dto.getAndId() + FILE_SEPARATOR);
   }
 
   private static File getFileByEntity(ApprovalAttachmentEntity entity) {
@@ -112,11 +112,11 @@ public class IOUtils {
 
     return new File(
         filePath
-            + fileSeparator
+            + FILE_SEPARATOR
             + modelName
-            + fileSeparator
+            + FILE_SEPARATOR
             + entity.getAndId()
-            + fileSeparator
+            + FILE_SEPARATOR
             + entity.getFileName());
   }
 
@@ -168,7 +168,7 @@ public class IOUtils {
 
       // 检查父目录路径是否被一个文件占用了
       if (parentDir.exists() && parentDir.isFile()) {
-        log.warn("父目录路径被一个文件占用了，将删除该文件: {}", parentDir.getAbsolutePath());
+        LOG.warn("父目录路径被一个文件占用了，将删除该文件: {}", parentDir.getAbsolutePath());
         boolean deleteSuccess = parentDir.delete();
         if (!deleteSuccess) {
           throw new IOException("无法删除占用父目录路径的文件: " + parentDir.getAbsolutePath());
@@ -209,7 +209,12 @@ public class IOUtils {
       if (fileData != null) {
         String modelName = dto.getModelName() != null ? dto.getModelName() : "default";
         attachment.setFilePath(
-            filePath + fileSeparator + modelName + fileSeparator + dto.getAndId() + fileSeparator);
+            filePath
+                + FILE_SEPARATOR
+                + modelName
+                + FILE_SEPARATOR
+                + dto.getAndId()
+                + FILE_SEPARATOR);
       }
       // 设置文件大小
       if (fileData != null) {
@@ -249,7 +254,7 @@ public class IOUtils {
           deleteFile(entity);
         } catch (Exception e) {
           failedFiles.add(entity != null ? String.valueOf(entity.getFileName()) : "null");
-          log.warn("删除文件失败: {}", failedFiles.get(failedFiles.size() - 1), e);
+          LOG.warn("删除文件失败: {}", failedFiles.get(failedFiles.size() - 1), e);
         }
       }
       if (!failedFiles.isEmpty()) {
@@ -305,7 +310,7 @@ public class IOUtils {
    * @return 分片存储目录
    */
   private static File getChunkDir(String fileIdentifier) {
-    return new File(filePath + fileSeparator + "chunks" + fileSeparator + fileIdentifier);
+    return new File(filePath + FILE_SEPARATOR + "chunks" + FILE_SEPARATOR + fileIdentifier);
   }
 
   /**
@@ -460,7 +465,7 @@ public class IOUtils {
 
       String modelName = dto.getModelName() != null ? dto.getModelName() : "default";
       entity.setFilePath(
-          filePath + fileSeparator + modelName + fileSeparator + dto.getAndId() + fileSeparator);
+          filePath + FILE_SEPARATOR + modelName + FILE_SEPARATOR + dto.getAndId() + FILE_SEPARATOR);
 
       return entity;
     } catch (IOException e) {
@@ -493,7 +498,7 @@ public class IOUtils {
           // 全部删除成功后才尝试删除目录
           dirDeleted = chunkDir.delete();
         } else {
-          log.warn("分片删除失败，保留目录: {} -> {}", chunkDir.getAbsolutePath(), failedFiles);
+          LOG.warn("分片删除失败，保留目录: {} -> {}", chunkDir.getAbsolutePath(), failedFiles);
         }
         if (!failedFiles.isEmpty() || !dirDeleted) {
           StringBuilder msg = new StringBuilder();

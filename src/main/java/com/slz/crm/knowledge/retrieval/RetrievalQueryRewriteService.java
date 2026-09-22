@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 /** 知识库检索查询改写；模型失败时回退原查询。 */
 @Service
 public class RetrievalQueryRewriteService {
-  private static final Logger log = LoggerFactory.getLogger(RetrievalQueryRewriteService.class);
+  private static final Logger LOG = LoggerFactory.getLogger(RetrievalQueryRewriteService.class);
   private static final String SYSTEM_PROMPT =
       """
             你是 CRM 知识库检索查询改写器。只改写查询，不回答业务问题。
@@ -48,7 +48,7 @@ public class RetrievalQueryRewriteService {
           String rewritten = sanitize(modelProvider.chat(new Prompt(messages), options).content());
           result = rewritten.isBlank() ? query.strip() : rewritten;
         } catch (Exception exception) {
-          log.warn("查询改写失败，使用原查询继续检索: {}", exception.getMessage());
+          LOG.warn("查询改写失败，使用原查询继续检索: {}", exception.getMessage());
           result = query.strip();
         }
       } else {

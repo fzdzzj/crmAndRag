@@ -23,7 +23,7 @@ import org.slf4j.LoggerFactory;
 
 /** Qdrant 向量库实现；生产默认。 */
 public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
-  private static final Logger log = LoggerFactory.getLogger(QdrantVectorStore.class);
+  private static final Logger LOG = LoggerFactory.getLogger(QdrantVectorStore.class);
   private static final int MAX_RETRIES = 3;
   private static final Duration INITIAL_RETRY_DELAY = Duration.ofSeconds(1);
   private static final Duration MAX_RETRY_DELAY = Duration.ofSeconds(10);
@@ -79,7 +79,7 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
     try {
       ensureCollection();
     } catch (Exception exception) {
-      log.warn("Qdrant 集合初始化失败，将在读写时重试: {}", exception.getMessage());
+      LOG.warn("Qdrant 集合初始化失败，将在读写时重试: {}", exception.getMessage());
     }
   }
 
@@ -458,7 +458,7 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
         return action.execute();
       } catch (Exception exception) {
         lastException = exception;
-        log.warn(
+        LOG.warn(
             "{} 失败 (尝试 {}/{})，等待 {} 秒后重试：{}",
             operation,
             attempt,

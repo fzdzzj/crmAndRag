@@ -40,7 +40,7 @@ import org.springframework.util.StringUtils;
  */
 public class ActuatorProtectionFilter implements Filter {
 
-  private static final Logger log = LoggerFactory.getLogger(ActuatorProtectionFilter.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ActuatorProtectionFilter.class);
 
   /** 标记“已通过鉴权”的请求属性名。预留给后续治理（Lane D）或测试断言使用。 */
   public static final String ATTR_AUTHORIZED = "platform.actuator.authorized";
@@ -97,7 +97,7 @@ public class ActuatorProtectionFilter implements Filter {
         } else {
           boolean superAdmin = roleId == 1L;
           if (requiresSuperAdmin(path) && !superAdmin) {
-            log.warn("非超管访问敏感 Actuator 端点被拒绝: path={}, roleId={}", path, roleId);
+            LOG.warn("非超管访问敏感 Actuator 端点被拒绝: path={}, roleId={}", path, roleId);
             writeJson(resp, HttpStatus.FORBIDDEN, 12002, "仅超级管理员可访问该端点");
           } else {
             req.setAttribute(ATTR_AUTHORIZED, Boolean.TRUE);
@@ -168,7 +168,7 @@ public class ActuatorProtectionFilter implements Filter {
         result = Objects.isNull(userId) ? null : userId;
       } catch (Exception e) {
         // 不把异常细节透给客户端，只记服务端日志便于排查
-        log.debug("Actuator 访问 JWT 校验失败: {}", e.getMessage());
+        LOG.debug("Actuator 访问 JWT 校验失败: {}", e.getMessage());
       }
     }
     return result;

@@ -48,7 +48,7 @@ public class FailFastValidator {
 
   static final String VECTOR_STORE_COMPONENT = "vectorStore";
   static final String MINIO_COMPONENT = "minio";
-  private static final Logger log = LoggerFactory.getLogger(FailFastValidator.class);
+  private static final Logger LOG = LoggerFactory.getLogger(FailFastValidator.class);
   private static final String QDRANT_PROVIDER = "qdrant";
   private static final String MINIO_PROVIDER = "minio";
 
@@ -87,7 +87,7 @@ public class FailFastValidator {
   public void validateDependencies() {
     HealthContributorRegistry registry = registryProvider.getIfAvailable();
     if (registry == null) {
-      log.warn("fail-fast skipped elapsedMs=0 reason=HealthContributorRegistry-absent");
+      LOG.warn("fail-fast skipped elapsedMs=0 reason=HealthContributorRegistry-absent");
       return;
     }
     List<Dependency> dependencies = dependencies();
@@ -97,14 +97,14 @@ public class FailFastValidator {
         validate(registry, dependency);
       }
     } catch (RuntimeException exception) {
-      log.error(
+      LOG.error(
           "fail-fast validation failed elapsedMs={} budgetMs={} reason={}",
           elapsedMs(start),
           dependencyTimeoutMs,
           exception.getMessage());
       throw exception;
     }
-    log.info(
+    LOG.info(
         "fail-fast validation passed elapsedMs={} budgetMs={} validated={}",
         elapsedMs(start),
         dependencyTimeoutMs,
@@ -114,7 +114,7 @@ public class FailFastValidator {
   private void validate(HealthContributorRegistry registry, Dependency dependency) {
     boolean up = false;
     if (!dependency.required()) {
-      log.info("fail-fast skipped component={} reason=provider-disabled", dependency.component());
+      LOG.info("fail-fast skipped component={} reason=provider-disabled", dependency.component());
     } else {
       HealthIndicator indicator = asIndicator(registry.getContributor(dependency.component()));
       if (indicator == null) {

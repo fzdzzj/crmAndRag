@@ -7,7 +7,7 @@ public class RandomStringGenerator {
   private static final String CHARACTERS =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   private static final int LENGTH = 8;
-  private static final SecureRandom random = new SecureRandom();
+  private static final SecureRandom RANDOM = new SecureRandom();
 
   /**
    * 生成8位随机字符
@@ -19,7 +19,7 @@ public class RandomStringGenerator {
 
     for (int i = 0; i < LENGTH; i++) {
       // 随机从字符集中选择一个字符
-      int index = random.nextInt(CHARACTERS.length());
+      int index = RANDOM.nextInt(CHARACTERS.length());
       sb.append(CHARACTERS.charAt(index));
     }
 

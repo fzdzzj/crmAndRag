@@ -35,7 +35,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class KnowledgeReingestRunner implements ApplicationRunner {
-  private static final Logger log = LoggerFactory.getLogger(KnowledgeReingestRunner.class);
+  private static final Logger LOG = LoggerFactory.getLogger(KnowledgeReingestRunner.class);
 
   public static final String TRIGGER_KEY = "rag.reingest.trigger";
   public static final String OPERATOR_ID_KEY = "rag.reingest.operator-id";
@@ -73,10 +73,10 @@ public class KnowledgeReingestRunner implements ApplicationRunner {
         } catch (Exception exception) {
           // 单文档失败不中断跑批：授权拒绝/嵌入失败均记审计，修复后幂等重跑
           failed++;
-          log.error("重建入库失败 documentId={}", documentId, exception);
+          LOG.error("重建入库失败 documentId={}", documentId, exception);
         }
       }
-      log.info("重建入库跑批完成 total={} success={} failed={}", documentIds.size(), success, failed);
+      LOG.info("重建入库跑批完成 total={} success={} failed={}", documentIds.size(), success, failed);
     }
   }
 
@@ -85,13 +85,13 @@ public class KnowledgeReingestRunner implements ApplicationRunner {
     UserContext result = null;
     Long operatorId = environment.getProperty(OPERATOR_ID_KEY, Long.class);
     if (operatorId == null) {
-      log.error("触发重建入库但未配置操作人 {}，本次不执行", OPERATOR_ID_KEY);
+      LOG.error("触发重建入库但未配置操作人 {}，本次不执行", OPERATOR_ID_KEY);
     } else {
       UserEntity operatorUser = userMapper.selectById(operatorId);
       if (operatorUser == null
           || operatorUser.getRoleId() == null
           || operatorUser.getDeptId() == null) {
-        log.error("重建入库操作人不存在或身份不完整 operatorId={}", operatorId);
+        LOG.error("重建入库操作人不存在或身份不完整 operatorId={}", operatorId);
         result = null;
       } else {
         result =

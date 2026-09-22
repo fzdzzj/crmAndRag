@@ -40,7 +40,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class DocumentIngestionService {
-  private static final Logger log = LoggerFactory.getLogger(DocumentIngestionService.class);
+  private static final Logger LOG = LoggerFactory.getLogger(DocumentIngestionService.class);
 
   /** 切片角色（V23 chunk_role）：CHILD=检索单元，PARENT=生成单元父块行。 */
   static final String CHUNK_ROLE_CHILD = "CHILD";
@@ -253,7 +253,7 @@ public class DocumentIngestionService {
         result = row.getCategory();
       }
     } catch (Exception exception) {
-      log.warn("读取旧切片类目失败，重建按无类目继续 documentId={}", documentId, exception);
+      LOG.warn("读取旧切片类目失败，重建按无类目继续 documentId={}", documentId, exception);
       result = null;
     }
     return result;
@@ -410,12 +410,12 @@ public class DocumentIngestionService {
     try {
       vectorStore.deleteByDocumentId(documentId);
     } catch (Exception cleanupException) {
-      log.warn("入库失败后清理向量失败 documentId={}", documentId, cleanupException);
+      LOG.warn("入库失败后清理向量失败 documentId={}", documentId, cleanupException);
     }
     try {
       chunkMapper.deletePhysicallyByDocumentId(documentId);
     } catch (Exception cleanupException) {
-      log.warn("入库失败后清理切片失败 documentId={}", documentId, cleanupException);
+      LOG.warn("入库失败后清理切片失败 documentId={}", documentId, cleanupException);
     }
     file.setStatus("FAILED");
     file.setErrorMessage(shortMessage(exception));

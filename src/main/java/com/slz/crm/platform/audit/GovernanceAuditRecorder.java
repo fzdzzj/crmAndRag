@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class GovernanceAuditRecorder {
 
-  private static final Logger log = LoggerFactory.getLogger(GovernanceAuditRecorder.class);
+  private static final Logger LOG = LoggerFactory.getLogger(GovernanceAuditRecorder.class);
 
   private final ObjectProvider<PlatformGovernanceAuditMapper> mapperProvider;
   private final MeterRegistry meterRegistry;
@@ -61,7 +61,7 @@ public class GovernanceAuditRecorder {
           .increment();
     } catch (Exception exception) {
       meterRegistry.counter("platform.governance.audit.failure").increment();
-      log.warn(
+      LOG.warn(
           "治理审计落库失败: eventType={}, target={}/{}",
           event.eventType(),
           event.targetType(),

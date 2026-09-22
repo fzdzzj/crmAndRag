@@ -30,7 +30,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class HydeQueryExpander {
-  private static final Logger log = LoggerFactory.getLogger(HydeQueryExpander.class);
+  private static final Logger LOG = LoggerFactory.getLogger(HydeQueryExpander.class);
 
   private static final String ENABLED_KEY = "rag.query.hyde.enabled";
   private static final String TIMEOUT_KEY = "rag.query.hyde.timeout-ms";
@@ -70,9 +70,9 @@ public class HydeQueryExpander {
         result = sanitize(future.get(resolveTimeoutMs(), TimeUnit.MILLISECONDS));
       } catch (InterruptedException exception) {
         Thread.currentThread().interrupt();
-        log.warn("HyDE 假设答案生成被中断，跳过 HyDE 路");
+        LOG.warn("HyDE 假设答案生成被中断，跳过 HyDE 路");
       } catch (Exception exception) {
-        log.warn("HyDE 假设答案生成失败，跳过 HyDE 路: {}", exception.getMessage());
+        LOG.warn("HyDE 假设答案生成失败，跳过 HyDE 路: {}", exception.getMessage());
       }
     }
     return result;

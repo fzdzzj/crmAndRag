@@ -23,7 +23,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 @Configuration
 public class PlatformAsyncConfig {
 
-  private static final Logger log = LoggerFactory.getLogger(PlatformAsyncConfig.class);
+  private static final Logger LOG = LoggerFactory.getLogger(PlatformAsyncConfig.class);
 
   /**
    * 批量上传线程池；队列满时记录丢弃，等待恢复流程重新接管，避免请求线程长时间阻塞。
@@ -283,7 +283,7 @@ public class PlatformAsyncConfig {
 
     @Override
     public void rejectedExecution(Runnable task, ThreadPoolExecutor executor) {
-      log.warn("异步任务被丢弃，等待恢复流程接管: executor={}", executorName);
+      LOG.warn("异步任务被丢弃，等待恢复流程接管: executor={}", executorName);
     }
   }
 }

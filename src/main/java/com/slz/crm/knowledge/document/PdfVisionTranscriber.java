@@ -42,7 +42,7 @@ import org.springframework.util.MimeType;
 @Service
 public class PdfVisionTranscriber {
 
-  private static final Logger log = LoggerFactory.getLogger(PdfVisionTranscriber.class);
+  private static final Logger LOG = LoggerFactory.getLogger(PdfVisionTranscriber.class);
 
   /** 总开关键（默认 false，由 DocumentService 读取）。 */
   public static final String ENABLED_KEY = "rag.retrieval.vision-pdf.enabled";
@@ -126,7 +126,7 @@ public class PdfVisionTranscriber {
       try {
         png = renderPagePng(document, pageIndex0Based);
       } catch (Exception renderEx) {
-        log.warn("PDF 页渲染失败，回退文本层: pageIndex={}", pageIndex0Based, renderEx);
+        LOG.warn("PDF 页渲染失败，回退文本层: pageIndex={}", pageIndex0Based, renderEx);
       }
       if (png != null && png.length > 0) {
         try {
@@ -141,10 +141,10 @@ public class PdfVisionTranscriber {
             success = true;
             outcome = Optional.of(content.strip());
           } else {
-            log.info("视觉转写未过质量闸门，回退文本层: pageIndex={}", pageIndex0Based);
+            LOG.info("视觉转写未过质量闸门，回退文本层: pageIndex={}", pageIndex0Based);
           }
         } catch (Exception visionEx) {
-          log.warn("视觉转写调用失败，回退文本层: pageIndex={}", pageIndex0Based, visionEx);
+          LOG.warn("视觉转写调用失败，回退文本层: pageIndex={}", pageIndex0Based, visionEx);
         } finally {
           recordUsage(result, success);
         }
@@ -232,7 +232,7 @@ public class PdfVisionTranscriber {
               success));
     } catch (Exception ignore) {
       // 计量失败不挡摄取
-      log.debug("VISION token 计量上报失败（忽略）", ignore);
+      LOG.debug("VISION token 计量上报失败（忽略）", ignore);
     }
   }
 

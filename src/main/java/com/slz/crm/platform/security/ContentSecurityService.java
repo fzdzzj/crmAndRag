@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class ContentSecurityService {
 
-  private static final Logger log = LoggerFactory.getLogger(ContentSecurityService.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ContentSecurityService.class);
   private static final String POLICY_VERSION = "v1";
   private static final List<String> PROMPT_INJECTION_PATTERNS =
       List.of(
@@ -161,7 +161,7 @@ public class ContentSecurityService {
       entity.setUpdateTime(now);
       mapper.insert(entity);
     } catch (Exception exception) {
-      log.warn("内容安全事件落库失败: sourceType={}, sourceId={}", sourceType, sourceId, exception);
+      LOG.warn("内容安全事件落库失败: sourceType={}, sourceId={}", sourceType, sourceId, exception);
     }
   }
 }

@@ -6,31 +6,31 @@ import java.util.List;
 public class PrivacyGetId {
 
   /** 创建者ID */
-  public static final String creatorId = "getCreatorId";
+  public static final String CREATOR_ID = "getCreatorId";
 
   /** 负责人ID */
-  public static final String ownerId = "getOwnerId";
+  public static final String OWNER_ID = "getOwnerId";
 
   /** 操作人ID */
-  public static final String operatorId = "getOperatorId";
+  public static final String OPERATOR_ID = "getOperatorId";
 
   /** 分享人ID */
-  public static final String shareFrom = "getShareFrom";
+  public static final String SHARE_FROM = "getShareFrom";
 
   /** 审批人ID */
-  public static final String approverId = "getApproverId";
+  public static final String APPROVER_ID = "getApproverId";
 
   /** 用户ID */
-  public static final String userId = "getUserId";
+  public static final String USER_ID = "getUserId";
 
   /** 分配人ID */
-  public static final String assignerId = "getAssignerId";
+  public static final String ASSIGNER_ID = "getAssignerId";
 
   /** 执行人ID */
-  public static final String assigneeId = "getAssigneeId";
+  public static final String ASSIGNEE_ID = "getAssigneeId";
 
   /** 申请人ID */
-  public static final String applicantId = "getApplicantId";
+  public static final String APPLICANT_ID = "getApplicantId";
 
   public static final List<String> USER_ID_RELATED_FIELDS =
       Arrays.asList(

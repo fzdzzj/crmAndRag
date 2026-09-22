@@ -22,7 +22,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class SparseRecallService {
-  private static final Logger log = LoggerFactory.getLogger(SparseRecallService.class);
+  private static final Logger LOG = LoggerFactory.getLogger(SparseRecallService.class);
 
   private final DocumentVectorChunkMapper chunkMapper;
 
@@ -54,7 +54,7 @@ public class SparseRecallService {
                 .map(SparseRecallService::toCandidate)
                 .toList();
       } catch (Exception exception) {
-        log.warn("稀疏召回落空，按空结果降级: {}", exception.getMessage());
+        LOG.warn("稀疏召回落空，按空结果降级: {}", exception.getMessage());
       }
     }
     return result;

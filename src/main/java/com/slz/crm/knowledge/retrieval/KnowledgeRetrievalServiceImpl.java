@@ -39,7 +39,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
-  private static final Logger log = LoggerFactory.getLogger(KnowledgeRetrievalServiceImpl.class);
+  private static final Logger LOG = LoggerFactory.getLogger(KnowledgeRetrievalServiceImpl.class);
 
   /**
    * 缺省 topK/minScore 引用单一真相源 {@link RetrievalDefaults}（TASK-18，漂移由 RetrievalParamTruthSourceTest
@@ -245,7 +245,7 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
           // exceptionally 已把单路失败兜底为空路，join 再兜一层保证"已完成路照常融合"
           routes.add(variantFuture.join());
         } catch (RuntimeException exception) {
-          log.warn("多查询路结果获取失败，该路降级跳过: {}", exception.getMessage());
+          LOG.warn("多查询路结果获取失败，该路降级跳过: {}", exception.getMessage());
         }
       }
       List<RetrievalCandidate> fusedTextCandidates;
@@ -346,13 +346,13 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
                                   routeExecutor)
                               .exceptionally(
                                   exception -> {
-                                    log.warn("多查询路召回失败，降级为已完成路融合: {}", exception.getMessage());
+                                    LOG.warn("多查询路召回失败，降级为已完成路融合: {}", exception.getMessage());
                                     return List.of();
                                   }))
                   .toList();
         }
       } catch (RuntimeException exception) {
-        log.warn("多查询扩展异常，回退单查询: {}", exception.getMessage());
+        LOG.warn("多查询扩展异常，回退单查询: {}", exception.getMessage());
       }
     }
     return result;
@@ -378,7 +378,7 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
           routes.add(
               recall(hypothesisVector, knowledgeBaseIds, category, candidateLimit, minScore));
         } catch (RuntimeException exception) {
-          log.warn("HyDE 路召回失败，该路跳过: {}", exception.getMessage());
+          LOG.warn("HyDE 路召回失败，该路跳过: {}", exception.getMessage());
         }
       }
     }

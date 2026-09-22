@@ -24,7 +24,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class RuleContextCompressor implements Compressor {
-  private static final Logger log = LoggerFactory.getLogger(RuleContextCompressor.class);
+  private static final Logger LOG = LoggerFactory.getLogger(RuleContextCompressor.class);
 
   private static final Pattern SECTION_HEADER = Pattern.compile("^\\[(\\d{1,4})\\]\\s?");
   private static final Pattern NUMBERED_ITEM =
@@ -229,7 +229,7 @@ public class RuleContextCompressor implements Compressor {
         }
       }
       if (victim < 0) {
-        log.warn("上下文压缩达编号保底下限仍超预算 budget={}，完整性优先保留全部编号段", tokenBudget);
+        LOG.warn("上下文压缩达编号保底下限仍超预算 budget={}，完整性优先保留全部编号段", tokenBudget);
         return;
       }
       List<String> sentences = new ArrayList<>(sections.get(victim).sentences());
