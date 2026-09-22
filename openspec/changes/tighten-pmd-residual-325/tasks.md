@@ -31,7 +31,7 @@
 - 提交信息 `refactor(pmd): 分片D收紧死参与小异味，基线325→N`（type 沿用 refactor/docs）。
 - **不 push**（无 remote，推送需用户显式授权）。
 - 环境：Shell 是 PowerShell；跑 .sh 脚本用 `D:\git\Git\bin\bash.exe -c "..."`（裸 `bash` 指向已损坏的 WSL，禁用）；Maven 本地库离线优先，缺 artifact 停下报告不联网。
-- **本轮各分片提交实况**：分片 D = `9eb7bfa`（独立提交，信息含 325→306）；分片 E 的改动**内容已全在 master**（`git diff 99ccc7e -- src/main/java pom.xml scripts/tests/pmd-violation-baseline.txt openspec/changes/tighten-pmd-residual-325/tasks.md` 为空），但被**另一并发会话**的无 pathspec `git commit` 顺带带入 `99ccc7e`（其提交信息为 `docs(permission): apply-permission-matrix 对账回填…`），故分片 E 没有独立提交信息。**未做 reset / amend 等历史改写**（属需用户显式授权的动作），如需拆开请 owner 定夺。
+- **本轮各分片提交实况**：分片 D = `9eb7bfa`（信息含 325→306）；分片 E = `8656919`（信息含 306→267）；盘点留痕 = `a82f8bb`。**插曲**：分片 E 的暂存内容一度被**并发会话**的无 pathspec `git commit` 卷入 `99ccc7e`（该会话随后自行 `reset --soft` 重做为自己的 `06d04a8`，只含其 4 份文档），分片 E 遂由本 lane 以 `8656919` 独立提交——**本 lane 全程未对被卷入的提交做 reset / amend**（历史改写属需用户显式授权的动作）。
 - **本机 git 两个坑（本轮实测，会影响后续执行者）**：
   1. 环境变量 `MSYS_NO_PATHCONV=1` + `MSYS2_ARG_CONV_EXCL=*` 会关掉 POSIX→Windows 路径转换，导致 `.git/hooks/pre-commit` 转发器里的 `git -C "$frontend_dir"` 直接 `fatal: cannot change to '<posix path>'`，**提交被误判为前端钩子失败**；提交前用 `env -u MSYS_NO_PATHCONV -u MSYS2_ARG_CONV_EXCL git commit ...` 即可让钩子正常工作（同因也让裸 `mvn` shell 脚本失效——须走 `mvn.cmd` 包装器 + `JAVA_HOME=<JDK21>`）。
   2. 并发会话可能把他人已 `git add` 的内容一起提交，**提交一律带显式 pathspec**（`git commit -F msg -- <paths>`）以自保。
