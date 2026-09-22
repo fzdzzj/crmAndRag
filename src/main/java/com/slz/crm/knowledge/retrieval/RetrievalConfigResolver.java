@@ -98,4 +98,41 @@ final class RetrievalConfigResolver {
   double resolveImageRouteWeight() {
     return resolveRatio("rag.retrieval.image-vector-route-weight", DEFAULT_IMAGE_ROUTE_WEIGHT);
   }
+
+  /** 图文路由融合：文本 0.7 + 图片 0.3，同切片两路命中则累加（拆自 KnowledgeRetrievalServiceImpl.fuseRoutes，行为等价）。 */
+  java.util.List<RetrievalCandidate> fuseRoutes(
+      java.util.List<RetrievalCandidate> textCandidates,
+      java.util.List<RetrievalCandidate> imageCandidates) {
+    java.util.List<RetrievalCandidate> result;
+    if (imageCandidates.isEmpty()) {
+      result = textCandidates;
+    } else {
+      java.util.LinkedHashMap<String, RetrievalCandidate> merged = new java.util.LinkedHashMap<>();
+      double textWeight = resolveTextRouteWeight();
+      double imageWeight = resolveImageRouteWeight();
+      mergeRoute(merged, textCandidates, textWeight);
+      mergeRoute(merged, imageCandidates, imageWeight);
+      result = java.util.List.copyOf(merged.values());
+    }
+    return result;
+  }
+
+  private void mergeRoute(
+      java.util.Map<String, RetrievalCandidate> merged,
+      java.util.List<RetrievalCandidate> candidates,
+      double routeWeight) {
+    for (RetrievalCandidate candidate : candidates) {
+      RetrievalCandidate existing = merged.get(candidate.fusionKey());
+      if (existing == null) {
+        merged.put(
+            candidate.fusionKey(),
+            new RetrievalCandidate(candidate.hit(), candidate.rerankScore() * routeWeight));
+      } else {
+        merged.put(
+            candidate.fusionKey(),
+            new RetrievalCandidate(
+                existing.hit(), existing.rerankScore() + candidate.rerankScore() * routeWeight));
+      }
+    }
+  }
 }

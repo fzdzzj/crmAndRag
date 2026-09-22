@@ -244,7 +244,7 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
                 recall(query.imageVector(), knowledgeBaseIds, category, candidateLimit, minScore))
             : List.of();
     List<RetrievalCandidate> candidates =
-        fuseRoutes(textCandidates, imageCandidates).stream()
+        configResolver.fuseRoutes(textCandidates, imageCandidates).stream()
             .sorted(Comparator.comparingDouble(RetrievalCandidate::rerankScore).reversed())
             .limit(topK)
             .toList();
@@ -385,42 +385,6 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
       result = llmReranker;
     }
     return result;
-  }
-
-  /** 图文路由融合：文本 0.7 + 图片 0.3，同切片两路命中则累加。 */
-  private List<RetrievalCandidate> fuseRoutes(
-      List<RetrievalCandidate> textCandidates, List<RetrievalCandidate> imageCandidates) {
-    List<RetrievalCandidate> result;
-    if (imageCandidates.isEmpty()) {
-      result = textCandidates;
-    } else {
-      Map<String, RetrievalCandidate> merged = new LinkedHashMap<>();
-      double textWeight = configResolver.resolveTextRouteWeight();
-      double imageWeight = configResolver.resolveImageRouteWeight();
-      mergeRoute(merged, textCandidates, textWeight);
-      mergeRoute(merged, imageCandidates, imageWeight);
-      result = List.copyOf(merged.values());
-    }
-    return result;
-  }
-
-  private void mergeRoute(
-      Map<String, RetrievalCandidate> merged,
-      List<RetrievalCandidate> candidates,
-      double routeWeight) {
-    for (RetrievalCandidate candidate : candidates) {
-      RetrievalCandidate existing = merged.get(candidate.fusionKey());
-      if (existing == null) {
-        merged.put(
-            candidate.fusionKey(),
-            new RetrievalCandidate(candidate.hit(), candidate.rerankScore() * routeWeight));
-      } else {
-        merged.put(
-            candidate.fusionKey(),
-            new RetrievalCandidate(
-                existing.hit(), existing.rerankScore() + candidate.rerankScore() * routeWeight));
-      }
-    }
   }
 
   private SourceReference toSourceReference(VectorSearchHit hit, double relevanceScore) {

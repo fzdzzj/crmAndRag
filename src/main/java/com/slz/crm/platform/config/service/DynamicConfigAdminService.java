@@ -83,7 +83,7 @@ public class DynamicConfigAdminService {
    * @param namespace 命名空间；null 或空 = 全部
    */
   public List<ConfigItemView> listItems(String namespace) {
-    requireSuperAdmin();
+    DynamicConfigAccessGuards.requireSuperAdmin(userResolver);
     Map<String, DynamicConfigItemEntity> rowsByKey =
         itemMapper.selectList(null).stream()
             .collect(Collectors.toMap(DynamicConfigItemEntity::getConfigKey, Function.identity()));
@@ -98,9 +98,10 @@ public class DynamicConfigAdminService {
    * @param key 配置键
    */
   public ConfigItemView getItem(String key) {
-    requireSuperAdmin();
-    ConfigKeyDefinition def = requireDefinition(key);
-    return DynamicConfigViewSupport.toView(findByKeyAny(key), def);
+    DynamicConfigAccessGuards.requireSuperAdmin(userResolver);
+    ConfigKeyDefinition def = DynamicConfigAccessGuards.requireDefinition(registry, key);
+    return DynamicConfigViewSupport.toView(
+        DynamicConfigAccessGuards.findByKeyAny(itemMapper, key), def);
   }
 
   /**
@@ -109,14 +110,9 @@ public class DynamicConfigAdminService {
    * @param key 配置键
    */
   public List<ConfigHistoryView> history(String key) {
-    requireSuperAdmin();
-    ConfigKeyDefinition def = requireDefinition(key);
-    List<DynamicConfigHistoryEntity> rows =
-        historyMapper.selectList(
-            new LambdaQueryWrapper<DynamicConfigHistoryEntity>()
-                .eq(DynamicConfigHistoryEntity::getConfigKey, key)
-                .orderByDesc(DynamicConfigHistoryEntity::getVersion));
-    return rows.stream().map(h -> DynamicConfigViewSupport.toHistoryView(h, def)).toList();
+    DynamicConfigAccessGuards.requireSuperAdmin(userResolver);
+    ConfigKeyDefinition def = DynamicConfigAccessGuards.requireDefinition(registry, key);
+    return DynamicConfigViewSupport.listHistory(key, def, historyMapper);
   }
 
   // ==================== 写操作（仅超管） ====================
@@ -133,8 +129,8 @@ public class DynamicConfigAdminService {
    */
   @Transactional(rollbackFor = Exception.class)
   public ConfigItemView updateValue(String key, String rawValue, String remark) {
-    ConfigOperator op = requireSuperAdmin();
-    ConfigKeyDefinition def = requireDefinition(key);
+    ConfigOperator op = DynamicConfigAccessGuards.requireSuperAdmin(userResolver);
+    ConfigKeyDefinition def = DynamicConfigAccessGuards.requireDefinition(registry, key);
     ConfigValueType.Parsed parsed = registry.validate(key, rawValue);
     if (!parsed.valid()) {
       // 非法值拒绝：抛校验错误，保持原配置不变（此处尚未触碰数据库）
@@ -143,7 +139,7 @@ public class DynamicConfigAdminService {
     String canonical = parsed.canonical();
     LocalDateTime now = LocalDateTime.now();
 
-    DynamicConfigItemEntity row = findByKeyAny(key);
+    DynamicConfigItemEntity row = DynamicConfigAccessGuards.findByKeyAny(itemMapper, key);
     ConfigItemView result;
     if (row == null) {
       result = createItem(def, canonical, op, remark, now);
@@ -164,9 +160,9 @@ public class DynamicConfigAdminService {
    */
   @Transactional(rollbackFor = Exception.class)
   public ConfigItemView rollback(String key, int targetVersion, String remark) {
-    ConfigOperator op = requireSuperAdmin();
-    ConfigKeyDefinition def = requireDefinition(key);
-    DynamicConfigItemEntity row = findByKeyAny(key);
+    ConfigOperator op = DynamicConfigAccessGuards.requireSuperAdmin(userResolver);
+    ConfigKeyDefinition def = DynamicConfigAccessGuards.requireDefinition(registry, key);
+    DynamicConfigItemEntity row = DynamicConfigAccessGuards.findByKeyAny(itemMapper, key);
     if (row == null || Boolean.TRUE.equals(row.getIsDeleted())) {
       throw new ServiceException(PlatformErrorCode.VALIDATION.getCode(), "配置不存在或已删除，无法回滚：" + key);
     }
@@ -201,14 +197,14 @@ public class DynamicConfigAdminService {
                 .set(DynamicConfigItemEntity::getConfigValue, parsed.canonical())
                 .set(DynamicConfigItemEntity::getVersion, newVersion)
                 .set(DynamicConfigItemEntity::getUpdatedBy, op.ref())
-                .set(DynamicConfigItemEntity::getUpdateTime, now()));
+                .set(DynamicConfigItemEntity::getUpdateTime, LocalDateTime.now()));
     if (rows == 0) {
       throw new ServiceException(PlatformErrorCode.INTERNAL.getCode(), "配置已被其他会话修改，请刷新后重试");
     }
     row.setConfigValue(parsed.canonical());
     row.setVersion(newVersion);
     row.setUpdatedBy(op.ref());
-    row.setUpdateTime(now());
+    row.setUpdateTime(LocalDateTime.now());
     String rollbackRemark =
         (remark == null || remark.isBlank()) ? "回滚到版本 " + targetVersion : remark;
     trail()
@@ -236,9 +232,9 @@ public class DynamicConfigAdminService {
    */
   @Transactional(rollbackFor = Exception.class)
   public ConfigItemView deleteOverride(String key, String remark) {
-    ConfigOperator op = requireSuperAdmin();
-    ConfigKeyDefinition def = requireDefinition(key);
-    DynamicConfigItemEntity row = findByKeyAny(key);
+    ConfigOperator op = DynamicConfigAccessGuards.requireSuperAdmin(userResolver);
+    ConfigKeyDefinition def = DynamicConfigAccessGuards.requireDefinition(registry, key);
+    DynamicConfigItemEntity row = DynamicConfigAccessGuards.findByKeyAny(itemMapper, key);
     if (row == null || Boolean.TRUE.equals(row.getIsDeleted())) {
       throw new ServiceException(
           PlatformErrorCode.VALIDATION.getCode(), "配置不存在或已删除（已处于默认态）：" + key);
@@ -254,14 +250,14 @@ public class DynamicConfigAdminService {
                 .set(DynamicConfigItemEntity::getIsDeleted, true)
                 .set(DynamicConfigItemEntity::getVersion, newVersion)
                 .set(DynamicConfigItemEntity::getUpdatedBy, op.ref())
-                .set(DynamicConfigItemEntity::getUpdateTime, now()));
+                .set(DynamicConfigItemEntity::getUpdateTime, LocalDateTime.now()));
     if (rows == 0) {
       throw new ServiceException(PlatformErrorCode.INTERNAL.getCode(), "配置已被其他会话修改，请刷新后重试");
     }
     row.setIsDeleted(true);
     row.setVersion(newVersion);
     row.setUpdatedBy(op.ref());
-    row.setUpdateTime(now());
+    row.setUpdateTime(LocalDateTime.now());
     trail()
         .appendHistory(
             row.getId(), def, newVersion, ConfigOperationType.DELETE, oldValue, null, op, remark);
@@ -276,7 +272,7 @@ public class DynamicConfigAdminService {
    * @return 刷新后缓存条目数
    */
   public int refreshCache() {
-    requireSuperAdmin();
+    DynamicConfigAccessGuards.requireSuperAdmin(userResolver);
     return cache.refreshAll();
   }
 
@@ -408,37 +404,5 @@ public class DynamicConfigAdminService {
     trail().recordAudit(def, ConfigOperationType.REVIVE, oldValue, canonical, op, remark);
     cache.invalidate(def.key());
     return DynamicConfigViewSupport.toView(row, def);
-  }
-
-  /** 仅超管（roleId=1）可进入管理路径；未登录抛 UNAUTHORIZED，非超管抛 FORBIDDEN */
-  private ConfigOperator requireSuperAdmin() {
-    ConfigOperator op = userResolver.resolve();
-    if (op == null) {
-      throw new ServiceException(
-          PlatformErrorCode.UNAUTHORIZED.getCode(), PlatformErrorCode.UNAUTHORIZED.getMessage());
-    }
-    if (!op.isSuperAdmin()) {
-      throw new ServiceException(
-          PlatformErrorCode.FORBIDDEN.getCode(), PlatformErrorCode.FORBIDDEN.getMessage());
-    }
-    return op;
-  }
-
-  private ConfigKeyDefinition requireDefinition(String key) {
-    return registry
-        .definitionOf(key)
-        .orElseThrow(
-            () -> new ServiceException(PlatformErrorCode.VALIDATION.getCode(), "未知配置键：" + key));
-  }
-
-  /** 按键查任意行（含软删行；唯一键保证至多一行） */
-  private DynamicConfigItemEntity findByKeyAny(String key) {
-    return itemMapper.selectOne(
-        new LambdaQueryWrapper<DynamicConfigItemEntity>()
-            .eq(DynamicConfigItemEntity::getConfigKey, key));
-  }
-
-  private LocalDateTime now() {
-    return LocalDateTime.now();
   }
 }

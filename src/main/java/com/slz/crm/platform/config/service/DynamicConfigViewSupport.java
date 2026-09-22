@@ -5,6 +5,7 @@ import com.slz.crm.platform.config.ConfigItemView;
 import com.slz.crm.platform.config.ConfigKeyDefinition;
 import com.slz.crm.platform.config.entity.DynamicConfigHistoryEntity;
 import com.slz.crm.platform.config.entity.DynamicConfigItemEntity;
+import com.slz.crm.platform.config.mapper.DynamicConfigHistoryMapper;
 
 /**
  * 动态配置管理端视图与敏感值掩码支持类（tighten-pmd-residual-325 任务 6.3 拆自 DynamicConfigAdminService，行为等价）。纯静态、无状态。
@@ -57,5 +58,22 @@ final class DynamicConfigViewSupport {
         h.getOperatorRef(),
         h.getRemark(),
         h.getCreateTime());
+  }
+
+  /**
+   * 查询某配置键的版本历史（按版本倒序，敏感值掩码；拆自 DynamicConfigAdminService.history，行为等价）。
+   *
+   * @param key 配置键
+   * @param historyMapper 历史 mapper
+   */
+  static java.util.List<ConfigHistoryView> listHistory(
+      String key, ConfigKeyDefinition def, DynamicConfigHistoryMapper historyMapper) {
+    java.util.List<DynamicConfigHistoryEntity> rows =
+        historyMapper.selectList(
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<
+                    DynamicConfigHistoryEntity>()
+                .eq(DynamicConfigHistoryEntity::getConfigKey, key)
+                .orderByDesc(DynamicConfigHistoryEntity::getVersion));
+    return rows.stream().map(h -> toHistoryView(h, def)).toList();
   }
 }

@@ -13,7 +13,6 @@ import com.slz.crm.pojo.entity.BusinessActivityEntity;
 import com.slz.crm.pojo.entity.ContractOrderItemEntity;
 import com.slz.crm.pojo.entity.ProjectFileEntity;
 import com.slz.crm.pojo.entity.SalesOpportunityEntity;
-import com.slz.crm.pojo.entity.UserEntity;
 import com.slz.crm.pojo.vo.ProjectFileVO;
 import com.slz.crm.server.mapper.BusinessActivityMapper;
 import com.slz.crm.server.mapper.ContractOrderItemMapper;
@@ -299,49 +298,9 @@ public class ProjectFileServiceImpl extends ServiceImpl<ProjectFileMapper, Proje
       // 1. 先查询文件信息（用于后续删除磁盘文件）
       List<ProjectFileEntity> entities = baseMapper.selectBatchIds(ids);
       if (entities != null && !entities.isEmpty()) {
-        doDelete(ids, entities);
+        ProjectFileStorageSupport.doDelete(ids, entities, baseMapper, userMapper);
       }
     }
-  }
-
-  /** 删除主流程：主动删除分级校验 → 删库 → 删磁盘 → 失败告警（行为等价于原内联实现）。 */
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 批量删除磁盘文件边界：逐文件降级，失败仅列警告
-  private void doDelete(List<Long> ids, List<ProjectFileEntity> entities) {
-    // 主动删除分级：上传人本人可删自己的；超管可删全部；其他拒绝
-    Long currentId = BaseUnit.getCurrentId();
-    UserEntity currentUser = userMapper.selectById(currentId);
-    boolean isAdmin = currentUser != null && java.util.Objects.equals(currentUser.getRoleId(), 1L);
-    for (ProjectFileEntity entity : entities) {
-      if (isAdmin || java.util.Objects.equals(entity.getUploaderId(), currentId)) {
-        continue;
-      }
-      throw new BaseException(ErrorCode.PERMISSION_DENIED, "仅上传人本人或超管可删除该项目文件");
-    }
-
-    // 2. 先删除数据库记录
-    int deletedCount = baseMapper.deleteBatchIds(ids);
-    if (deletedCount != ids.size()) {
-      throw new BaseException(
-          ErrorCode.FILE_READ_FAILED, "删除失败: 期望删除" + ids.size() + "个，实际删除" + deletedCount + "个");
-    }
-
-    // 3. 再删除磁盘文件
-    List<String> failedFiles = new ArrayList<>();
-    for (ProjectFileEntity entity : entities) {
-      try {
-        ProjectFileStorageSupport.deleteFileFromDisk(entity);
-      } catch (Exception e) {
-        log.error("删除磁盘文件失败: id={}, path={}", entity.getId(), entity.getFilePath(), e);
-        failedFiles.add(entity.getFilePath() + entity.getFileName());
-      }
-    }
-
-    // 4. 如果有删除失败的文件，记录警告日志
-    if (!failedFiles.isEmpty()) {
-      log.warn("以下文件磁盘删除失败，需要手动清理或等待定时任务处理: {}", failedFiles);
-    }
-
-    log.info("成功删除 {} 个文件", ids.size());
   }
 
   @Override
@@ -374,26 +333,16 @@ public class ProjectFileServiceImpl extends ServiceImpl<ProjectFileMapper, Proje
     }
 
     // 生成下载URL：无权读取该文件的行不签发令牌（downloadUrl 置空）
-    if (!attachmentAccessService.canReadProjectFile(entity, BaseUnit.getCurrentId())) {
+    if (attachmentAccessService.canReadProjectFile(entity, BaseUnit.getCurrentId())) {
+      String baseUrl = ProjectFileStorageSupport.getBaseUrl(request);
+      Long currentUserId = BaseUnit.getCurrentId();
+      String token =
+          downloadTokenUtil.generateDownloadToken(entity.getId(), currentUserId, "project_file");
+      vo.setDownloadUrl(baseUrl + "/public/attachment/download?token=" + token);
+    } else {
       log.warn("拦截越权项目文件下载链接签发：fileId={}, requester={}", entity.getId(), BaseUnit.getCurrentId());
-      return vo;
     }
-    String baseUrl = getBaseUrl();
-    Long currentUserId = BaseUnit.getCurrentId();
-    String token =
-        downloadTokenUtil.generateDownloadToken(entity.getId(), currentUserId, "project_file");
-    vo.setDownloadUrl(baseUrl + "/public/attachment/download?token=" + token);
 
     return vo;
-  }
-
-  /** 获取基础URL */
-  private String getBaseUrl() {
-    String contextPath = request.getContextPath();
-    StringBuilder baseUrl = new StringBuilder();
-    if (contextPath != null && !contextPath.isEmpty()) {
-      baseUrl.append(contextPath);
-    }
-    return baseUrl.toString();
   }
 }

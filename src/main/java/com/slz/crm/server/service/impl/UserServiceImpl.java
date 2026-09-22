@@ -11,7 +11,6 @@ import com.slz.crm.common.untils.*;
 import com.slz.crm.pojo.dto.GetUserDTO;
 import com.slz.crm.pojo.dto.UserDTO;
 import com.slz.crm.pojo.entity.RoleEntity;
-import com.slz.crm.pojo.entity.SysDeptEntity;
 import com.slz.crm.pojo.entity.UserEntity;
 import com.slz.crm.pojo.vo.UserOptionVO;
 import com.slz.crm.pojo.vo.UserVO;
@@ -83,7 +82,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     if (userDTO.getRoleId() == null) {
       throw new BaseException(ErrorCode.ROLE_NOT_EXISTS.getMessage());
     }
-    validateDeptId(userDTO.getDeptId());
+    UserDeptSupport.validateDeptId(userDTO.getDeptId(), sysDeptMapper);
     // TODO 管理员不能添加管理员
     //        if(userDTO.getRoleId() == 1){
     //            throw new BaseException(MessageConstant.MASTER_IS_ONE);
@@ -158,7 +157,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
               userVOS.add(userVO);
             });
     ans.setRecords(userVOS);
-    fillDeptNames(userVOS);
+    UserDeptSupport.fillDeptNames(userVOS, dataConvertService);
 
     return ans;
   }
@@ -228,7 +227,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
       wrapper.set(UserEntity::getEmail, userDTO.getEmail());
     }
     if (userDTO.getDeptId() != null) {
-      validateDeptId(userDTO.getDeptId());
+      UserDeptSupport.validateDeptId(userDTO.getDeptId(), sysDeptMapper);
       wrapper.set(UserEntity::getDeptId, userDTO.getDeptId());
     }
     if (userDTO.getRoleId() != null) {
@@ -298,51 +297,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
             });
 
     ans.setRecords(userVOS);
-    fillDeptNames(userVOS);
+    UserDeptSupport.fillDeptNames(userVOS, dataConvertService);
 
     return ans;
-  }
-
-  /**
-   * 校验部门存在且启用
-   *
-   * @param deptId 部门ID（可空）
-   */
-  private void validateDeptId(Long deptId) {
-    if (deptId == null) {
-      return;
-    }
-    SysDeptEntity dept = sysDeptMapper.selectById(deptId);
-    if (dept == null) {
-      throw new BaseException(ErrorCode.ID_NOT_EXISTS.getMessage().formatted("部门"));
-    }
-    if (!Objects.equals(dept.getStatus(), 1)) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "部门已停用，请选择启用中的部门");
-    }
-  }
-
-  /**
-   * 批量填充用户VO的部门名称
-   *
-   * @param userVOS 用户VO列表
-   */
-  private void fillDeptNames(List<UserVO> userVOS) {
-    if (userVOS != null && !userVOS.isEmpty()) {
-      Set<Long> deptIds = new HashSet<>();
-      for (UserVO vo : userVOS) {
-        if (vo.getDeptId() != null) {
-          deptIds.add(vo.getDeptId());
-        }
-      }
-      if (!deptIds.isEmpty()) {
-        Map<Long, String> deptNameMap = dataConvertService.getDeptNames(deptIds);
-        for (UserVO vo : userVOS) {
-          if (vo.getDeptId() != null) {
-            vo.setDeptName(deptNameMap.get(vo.getDeptId()));
-          }
-        }
-      }
-    }
   }
 
   @Override

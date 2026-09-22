@@ -4,13 +4,11 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.slz.crm.common.enumeration.ErrorCode;
-import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.pojo.dto.ai.AiDraftResult;
 import com.slz.crm.pojo.entity.AiPendingActionEntity;
 import com.slz.crm.pojo.vo.AiConfirmResultVO;
 import com.slz.crm.pojo.vo.AiPendingActionVO;
-import com.slz.crm.server.ai.enums.ActionTypeEnum;
 import com.slz.crm.server.ai.enums.PendingActionStatus;
 import com.slz.crm.server.ai.executor.AiActionExecutor;
 import com.slz.crm.server.ai.executor.AiExecutionResult;
@@ -25,7 +23,6 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
@@ -72,7 +69,7 @@ public class PendingActionServiceImpl
   @Transactional(rollbackFor = Exception.class)
   public AiDraftResult submitDraft(
       Long sessionId, Long userId, String actionType, String payloadJson) {
-    AiActionValidator validator = requireValidator(actionType);
+    AiActionValidator validator = PendingActionGuards.requireValidator(actionType, validatorMap);
 
     AiValidationResult vr = validator.validate(payloadJson);
 
@@ -119,7 +116,8 @@ public class PendingActionServiceImpl
   @Override
   @Transactional(rollbackFor = Exception.class)
   public AiDraftResult mergeDraft(String pendingId, Long userId, String incrementJson) {
-    AiPendingActionEntity entity = getOwnedEntity(pendingId, userId);
+    AiPendingActionEntity entity =
+        PendingActionGuards.getOwnedEntity(pendingId, userId, this::getByPendingId);
 
     if (!PendingActionStatus.DRAFTING.getValue().equals(entity.getStatus())) {
 
@@ -135,7 +133,9 @@ public class PendingActionServiceImpl
     entity.setUpdatedTime(LocalDateTime.now());
 
     // 全量重校验（实体解析后的修正 payload 优先）
-    AiValidationResult vr = requireValidator(entity.getActionType()).validate(mergedPayload);
+    AiValidationResult vr =
+        PendingActionGuards.requireValidator(entity.getActionType(), validatorMap)
+            .validate(mergedPayload);
 
     String effectivePayload =
         vr.getResolvedPayload() != null ? vr.getResolvedPayload() : mergedPayload;
@@ -166,7 +166,8 @@ public class PendingActionServiceImpl
   @Transactional(rollbackFor = Exception.class)
   @SuppressWarnings("PMD.AvoidCatchingGenericException") // 执行器外呼+ORM确认多源，失败标记FAILED后按业务异常上抛
   public AiConfirmResultVO confirm(String pendingId, Long userId) {
-    AiPendingActionEntity entity = getOwnedEntity(pendingId, userId);
+    AiPendingActionEntity entity =
+        PendingActionGuards.getOwnedEntity(pendingId, userId, this::getByPendingId);
 
     // 终态幂等（本次未真实执行，不携带引用）
     PendingActionStatus currentStatus = PendingActionStatus.fromValue(entity.getStatus());
@@ -199,7 +200,7 @@ public class PendingActionServiceImpl
   private AiConfirmResultVO executePendingAction(
       AiPendingActionEntity entity, String pendingId, Long userId) {
     // 运行时权限校验（按 actionType 映射）
-    requirePermission(entity.getActionType(), userId);
+    PendingActionGuards.requirePermission(entity.getActionType(), userId, permissionService);
 
     if (!PendingActionStatus.PENDING.getValue().equals(entity.getStatus())
         && !PendingActionStatus.FAILED.getValue().equals(entity.getStatus())) {
@@ -321,7 +322,8 @@ public class PendingActionServiceImpl
 
   @Override
   public void cancel(String pendingId, Long userId) {
-    AiPendingActionEntity entity = getOwnedEntity(pendingId, userId);
+    AiPendingActionEntity entity =
+        PendingActionGuards.getOwnedEntity(pendingId, userId, this::getByPendingId);
 
     PendingActionStatus currentStatus = PendingActionStatus.fromValue(entity.getStatus());
     if (currentStatus != null && currentStatus.isCancellable()) {
@@ -342,10 +344,11 @@ public class PendingActionServiceImpl
   @Override
   @Transactional(rollbackFor = Exception.class)
   public AiPendingActionVO edit(String pendingId, Long userId, String payloadJson) {
-    AiPendingActionEntity entity = getOwnedEntity(pendingId, userId);
+    AiPendingActionEntity entity =
+        PendingActionGuards.getOwnedEntity(pendingId, userId, this::getByPendingId);
 
     // 运行时权限校验（与 confirm 一致）
-    requirePermission(entity.getActionType(), userId);
+    PendingActionGuards.requirePermission(entity.getActionType(), userId, permissionService);
 
     PendingActionStatus currentStatus = PendingActionStatus.fromValue(entity.getStatus());
     if (currentStatus != null && currentStatus.isTerminal()) {
@@ -360,7 +363,9 @@ public class PendingActionServiceImpl
     entity.setUpdatedTime(LocalDateTime.now());
 
     // 重新校验（实体解析后的修正 payload 优先）
-    AiValidationResult vr = requireValidator(entity.getActionType()).validate(payloadJson);
+    AiValidationResult vr =
+        PendingActionGuards.requireValidator(entity.getActionType(), validatorMap)
+            .validate(payloadJson);
 
     String effectivePayload =
         vr.getResolvedPayload() != null ? vr.getResolvedPayload() : payloadJson;
@@ -437,36 +442,4 @@ public class PendingActionServiceImpl
   }
 
   // ==================== 私有方法 ====================
-
-  /** 按 actionType 校验当前用户是否有对应写权限 */
-  private void requirePermission(String actionType, Long userId) {
-    PermissionOperates required = ActionTypeEnum.getRequiredPermission(actionType);
-    if (required == null) {
-      throw new BaseException(ErrorCode.PARAM_REQUIRED, "不支持的操作类型: " + actionType);
-    }
-    if (!permissionService.hasPermission(userId, required)) {
-      throw new BaseException(ErrorCode.PERMISSION_DENIED, "无权限执行此操作: " + actionType);
-    }
-  }
-
-  private AiActionValidator requireValidator(String actionType) {
-    AiActionValidator validator = validatorMap.get(actionType);
-
-    if (validator == null) {
-
-      throw new BaseException(ErrorCode.PARAM_REQUIRED, "不支持的操作类型: " + actionType);
-    }
-    return validator;
-  }
-
-  /** 获取实体（不存在则抛异常） */
-  private AiPendingActionEntity getOwnedEntity(String pendingId, Long userId) {
-    AiPendingActionEntity entity = getByPendingId(pendingId);
-
-    if (entity == null || !Objects.equals(entity.getUserId(), userId)) {
-
-      throw new BaseException(ErrorCode.PARAM_REQUIRED, "操作不存在");
-    }
-    return entity;
-  }
 }
