@@ -35,6 +35,43 @@ public class AssistRelatedRecordResolverImpl implements AssistRelatedRecordResol
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "协助关联记录不完整");
     }
 
+    RelatedIds ids = resolveIdsByModel(assist);
+    Long opportunityId = ids.opportunityId();
+    Long companyId = ids.companyId();
+    Long contactId = ids.contactId();
+
+    SalesOpportunityEntity opportunity =
+        opportunityId == null ? null : salesOpportunityMapper.selectById(opportunityId);
+    if (opportunity != null) {
+      if (companyId == null) {
+        companyId = opportunity.getCompanyId();
+      }
+      if (contactId == null) {
+        contactId = opportunity.getContactId();
+      }
+    }
+
+    AssistRelatedRecordVO result = new AssistRelatedRecordVO();
+    result.setAssistId(assist.getId());
+    result.setModelName(assist.getModelName());
+    result.setRecordId(assist.getRecordId());
+    result.setOpportunityId(opportunityId);
+    result.setOpportunityName(opportunity == null ? null : opportunity.getOpportunityName());
+    result.setCompanyId(companyId);
+    result.setContactId(contactId);
+    return result;
+  }
+
+  /** 按协助来源解析出的关联 ID 集合。 */
+  private record RelatedIds(Long opportunityId, Long companyId, Long contactId) {}
+
+  /**
+   * 按协助来源模型解析关联 ID（拆自 resolve，行为等价）。
+   *
+   * @param assist 协助申请实体（已校验非空）
+   * @return 关联 ID 集合
+   */
+  private RelatedIds resolveIdsByModel(AssistRequestEntity assist) {
     Long opportunityId = null;
     Long companyId = null;
     Long contactId = null;
@@ -63,26 +100,6 @@ public class AssistRelatedRecordResolverImpl implements AssistRelatedRecordResol
       }
       default -> throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "暂不支持该协助来源的关联详情");
     }
-
-    SalesOpportunityEntity opportunity =
-        opportunityId == null ? null : salesOpportunityMapper.selectById(opportunityId);
-    if (opportunity != null) {
-      if (companyId == null) {
-        companyId = opportunity.getCompanyId();
-      }
-      if (contactId == null) {
-        contactId = opportunity.getContactId();
-      }
-    }
-
-    AssistRelatedRecordVO result = new AssistRelatedRecordVO();
-    result.setAssistId(assist.getId());
-    result.setModelName(assist.getModelName());
-    result.setRecordId(assist.getRecordId());
-    result.setOpportunityId(opportunityId);
-    result.setOpportunityName(opportunity == null ? null : opportunity.getOpportunityName());
-    result.setCompanyId(companyId);
-    result.setContactId(contactId);
-    return result;
+    return new RelatedIds(opportunityId, companyId, contactId);
   }
 }

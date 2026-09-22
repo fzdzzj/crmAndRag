@@ -3,6 +3,7 @@ package com.slz.crm.server.service.impl;
 import com.alibaba.excel.EasyExcel;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.slz.crm.common.enumeration.ErrorCode;
@@ -255,32 +256,46 @@ public class CustomerContactServiceImpl
   /** 按备注类型校验禁止填写的字段，防止同一备注混入不属于该类型的字段 */
   private void validateForbiddenFieldsByRemarkType(
       CustomerContactRemarkDTO remark, RemarkType remarkType, int remarkTypeCode) {
-    // 验证不能填写的字段
     // 喜好、住址、自定义类型只能填备注内容，不能填姓名和出生日期
     if (RemarkType.onlyNeedContent(remarkTypeCode)) {
-      if (remark.getRemarkName() != null && !remark.getRemarkName().trim().isEmpty()) {
-        throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, remarkType.getDesc() + "类型不能填写姓名");
-      }
-      if (remark.getRemarkDate() != null) {
-        throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, remarkType.getDesc() + "类型不能填写出生日期");
-      }
+      forbidNameAndBirthday(remark, remarkType);
     }
 
     // 本人出生日期类型只填写出生日期，不能填备注内容和姓名
     if (RemarkType.isSelfBirthday(remarkTypeCode)) {
-      if (remark.getRemarkContent() != null && !remark.getRemarkContent().trim().isEmpty()) {
-        throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, remarkType.getDesc() + "类型不能填写备注内容");
-      }
-      if (remark.getRemarkName() != null && !remark.getRemarkName().trim().isEmpty()) {
-        throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, remarkType.getDesc() + "类型不能填写姓名");
-      }
+      forbidContentAndName(remark, remarkType);
     }
 
     // 亲属出生日期类型需要填写姓名和出生日期，不能填备注内容
     if (RemarkType.isRelativeBirthday(remarkTypeCode)) {
-      if (remark.getRemarkContent() != null && !remark.getRemarkContent().trim().isEmpty()) {
-        throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, remarkType.getDesc() + "类型不能填写备注内容");
-      }
+      forbidContent(remark, remarkType);
+    }
+  }
+
+  /** 禁止填写姓名和出生日期（拆自 validateForbiddenFieldsByRemarkType，行为等价） */
+  private void forbidNameAndBirthday(CustomerContactRemarkDTO remark, RemarkType remarkType) {
+    if (remark.getRemarkName() != null && !remark.getRemarkName().trim().isEmpty()) {
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, remarkType.getDesc() + "类型不能填写姓名");
+    }
+    if (remark.getRemarkDate() != null) {
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, remarkType.getDesc() + "类型不能填写出生日期");
+    }
+  }
+
+  /** 禁止填写备注内容和姓名（拆自 validateForbiddenFieldsByRemarkType，行为等价） */
+  private void forbidContentAndName(CustomerContactRemarkDTO remark, RemarkType remarkType) {
+    if (remark.getRemarkContent() != null && !remark.getRemarkContent().trim().isEmpty()) {
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, remarkType.getDesc() + "类型不能填写备注内容");
+    }
+    if (remark.getRemarkName() != null && !remark.getRemarkName().trim().isEmpty()) {
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, remarkType.getDesc() + "类型不能填写姓名");
+    }
+  }
+
+  /** 禁止填写备注内容（拆自 validateForbiddenFieldsByRemarkType，行为等价） */
+  private void forbidContent(CustomerContactRemarkDTO remark, RemarkType remarkType) {
+    if (remark.getRemarkContent() != null && !remark.getRemarkContent().trim().isEmpty()) {
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, remarkType.getDesc() + "类型不能填写备注内容");
     }
   }
 
@@ -544,24 +559,14 @@ public class CustomerContactServiceImpl
   private void applyContactSearchFilters(
       LambdaQueryWrapper<CustomerContactEntity> queryWrapper,
       CustomerContactDTO customerContactDTO) {
-    if (customerContactDTO.getName() != null && !customerContactDTO.getName().isEmpty()) {
-      queryWrapper.like(CustomerContactEntity::getName, customerContactDTO.getName());
-    }
-    if (customerContactDTO.getPosition() != null && !customerContactDTO.getPosition().isEmpty()) {
-      queryWrapper.like(CustomerContactEntity::getPosition, customerContactDTO.getPosition());
-    }
-    if (customerContactDTO.getDept() != null && !customerContactDTO.getDept().isEmpty()) {
-      queryWrapper.like(CustomerContactEntity::getDept, customerContactDTO.getDept());
-    }
-    if (customerContactDTO.getPhone() != null && !customerContactDTO.getPhone().isEmpty()) {
-      queryWrapper.like(CustomerContactEntity::getPhone, customerContactDTO.getPhone());
-    }
-    if (customerContactDTO.getMobile() != null && !customerContactDTO.getMobile().isEmpty()) {
-      queryWrapper.like(CustomerContactEntity::getMobile, customerContactDTO.getMobile());
-    }
-    if (customerContactDTO.getEmail() != null && !customerContactDTO.getEmail().isEmpty()) {
-      queryWrapper.like(CustomerContactEntity::getEmail, customerContactDTO.getEmail());
-    }
+    likeIfNotBlank(queryWrapper, CustomerContactEntity::getName, customerContactDTO.getName());
+    likeIfNotBlank(
+        queryWrapper, CustomerContactEntity::getPosition, customerContactDTO.getPosition());
+    likeIfNotBlank(queryWrapper, CustomerContactEntity::getDept, customerContactDTO.getDept());
+    likeIfNotBlank(queryWrapper, CustomerContactEntity::getPhone, customerContactDTO.getPhone());
+    likeIfNotBlank(queryWrapper, CustomerContactEntity::getMobile, customerContactDTO.getMobile());
+    likeIfNotBlank(queryWrapper, CustomerContactEntity::getEmail, customerContactDTO.getEmail());
+    // 性别/关系等级 0 视为未选
     if (customerContactDTO.getGender() != null && customerContactDTO.getGender() != 0) {
       queryWrapper.eq(CustomerContactEntity::getGender, customerContactDTO.getGender());
     }
@@ -574,6 +579,16 @@ public class CustomerContactServiceImpl
       queryWrapper.eq(CustomerContactEntity::getIsDeleted, customerContactDTO.getIsDeleted());
     } else {
       queryWrapper.eq(CustomerContactEntity::getIsDeleted, false);
+    }
+  }
+
+  /** 非空白时按列模糊过滤（拆自 applyContactSearchFilters，行为等价） */
+  private void likeIfNotBlank(
+      LambdaQueryWrapper<CustomerContactEntity> queryWrapper,
+      SFunction<CustomerContactEntity, ?> column,
+      String value) {
+    if (value != null && !value.isEmpty()) {
+      queryWrapper.like(column, value);
     }
   }
 

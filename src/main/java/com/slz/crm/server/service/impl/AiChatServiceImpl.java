@@ -130,10 +130,7 @@ public class AiChatServiceImpl implements AiChatService {
           && !request.sessionId().isBlank()) {
         return;
       }
-      if (resume != null
-          && resume.generationId() != null
-          && !resume.generationId().isBlank()
-          && tryResume(currentUser, requestedSessionId, emitter, resume)) {
+      if (resumeRequestedAndCompleted(currentUser, request, emitter, resume, requestedSessionId)) {
         return;
       }
 
@@ -198,6 +195,30 @@ public class AiChatServiceImpl implements AiChatService {
       emitter.complete();
     }
     return archived;
+  }
+
+  /**
+   * 恢复中断流检查：携带有效 generationId 且接管成功时完成流式续传并返回 true（拆自 doStreamChat，行为等价）。
+   *
+   * @param currentUser 当前用户
+   * @param request 聊天请求
+   * @param emitter SSE 发射器
+   * @param resume 恢复上下文
+   * @param requestedSessionId 解析出的会话 ID
+   * @return true 表示恢复分支已完成流式输出，调用方应直接终止
+   */
+  private boolean resumeRequestedAndCompleted(
+      RoleAO currentUser,
+      AssistantChatRequest request,
+      SseEmitter emitter,
+      AiChatResume resume,
+      Long requestedSessionId) {
+    boolean resumeCompleted =
+        resume != null
+            && resume.generationId() != null
+            && !resume.generationId().isBlank()
+            && tryResume(currentUser, requestedSessionId, emitter, resume);
+    return resumeCompleted;
   }
 
   /** 图片上下文准备结果；null 表示图片分支已发错误并终止会话 */

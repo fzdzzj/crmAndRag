@@ -512,7 +512,6 @@ public class AiChatStreamLifecycle {
           processChunkOutput(
               activeStream,
               chatResponse.getResult().getOutput(),
-              usageHolder,
               thinking,
               thinkStripper,
               thinkingFinished);
@@ -529,48 +528,69 @@ public class AiChatStreamLifecycle {
   private boolean processChunkOutput(
       AiStreamRegistry.ActiveStream activeStream,
       org.springframework.ai.chat.messages.AssistantMessage output,
-      Usage[] usageHolder,
       boolean thinking,
       AiThinkTagStripper.StreamingStripper thinkStripper,
       AtomicBoolean thinkingFinished) {
     boolean interrupted = false;
     if (thinking) {
-      String reasoningContent = extractThinking(output.getMetadata());
-      if (reasoningContent != null
-          && !reasoningContent.isBlank()
-          && !sendBufferedEvent(
-              activeStream, "thinking", eventWriter.toThinkingJson(reasoningContent, false))) {
-        interrupted = true;
-      }
+      interrupted = processThinkingChunk(activeStream, output);
     }
     if (!interrupted) {
-      String rawText = output.getText();
-      String visibleText =
-          rawText == null
-              ? ""
-              : thinkStripper.filter(
-                  rawText,
-                  thinking
-                      ? piece ->
-                          sendBufferedEvent(
-                              activeStream, "thinking", eventWriter.toThinkingJson(piece, false))
-                      : null);
-      if (!visibleText.isEmpty()
-          && thinking
-          && thinkingFinished.compareAndSet(false, true)
-          && !sendBufferedEvent(activeStream, "thinking", eventWriter.toThinkingJson("", true))) {
-        interrupted = true;
+      interrupted =
+          processVisibleChunk(activeStream, output, thinking, thinkStripper, thinkingFinished);
+    }
+    return interrupted;
+  }
+
+  /** 思考增量处理：提取并发送思考缓冲事件，发送失败返回 true 表示中断（拆自 processChunkOutput，行为等价）。 */
+  private boolean processThinkingChunk(
+      AiStreamRegistry.ActiveStream activeStream,
+      org.springframework.ai.chat.messages.AssistantMessage output) {
+    boolean interrupted = false;
+    String reasoningContent = extractThinking(output.getMetadata());
+    if (reasoningContent != null
+        && !reasoningContent.isBlank()
+        && !sendBufferedEvent(
+            activeStream, "thinking", eventWriter.toThinkingJson(reasoningContent, false))) {
+      interrupted = true;
+    }
+    return interrupted;
+  }
+
+  /** 可见文本处理：思考结束事件、首 token 统计、追加 partialAnswer 并推送 delta（拆自 processChunkOutput，行为等价）。 */
+  private boolean processVisibleChunk(
+      AiStreamRegistry.ActiveStream activeStream,
+      org.springframework.ai.chat.messages.AssistantMessage output,
+      boolean thinking,
+      AiThinkTagStripper.StreamingStripper thinkStripper,
+      AtomicBoolean thinkingFinished) {
+    boolean interrupted = false;
+    String rawText = output.getText();
+    String visibleText =
+        rawText == null
+            ? ""
+            : thinkStripper.filter(
+                rawText,
+                thinking
+                    ? piece ->
+                        sendBufferedEvent(
+                            activeStream, "thinking", eventWriter.toThinkingJson(piece, false))
+                    : null);
+    if (!visibleText.isEmpty()
+        && thinking
+        && thinkingFinished.compareAndSet(false, true)
+        && !sendBufferedEvent(activeStream, "thinking", eventWriter.toThinkingJson("", true))) {
+      interrupted = true;
+    }
+    if (!interrupted && !visibleText.isEmpty()) {
+      if (activeStream.markFirstToken()) {
+        AiChatStreamContext streamContext = activeStream.getContext();
+        metrics.recordFirstToken(
+            activeStream, streamContext.effectiveModel(modelName), streamContext.fallback());
       }
-      if (!interrupted && !visibleText.isEmpty()) {
-        if (activeStream.markFirstToken()) {
-          AiChatStreamContext streamContext = activeStream.getContext();
-          metrics.recordFirstToken(
-              activeStream, streamContext.effectiveModel(modelName), streamContext.fallback());
-        }
-        activeStream.getPartialAnswer().append(visibleText);
-        if (!sendBufferedEvent(activeStream, "delta", eventWriter.toDeltaJson(visibleText))) {
-          interrupted = true;
-        }
+      activeStream.getPartialAnswer().append(visibleText);
+      if (!sendBufferedEvent(activeStream, "delta", eventWriter.toDeltaJson(visibleText))) {
+        interrupted = true;
       }
     }
     return interrupted;

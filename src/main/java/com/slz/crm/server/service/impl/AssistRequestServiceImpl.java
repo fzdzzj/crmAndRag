@@ -447,6 +447,12 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
 
   /** 协助处理入参校验：记录必填、终态合法、按终态要求内容/理由必填 */
   private void validateAssistHandle(AssistHandleDTO dto) {
+    requireHandleBase(dto);
+    requireHandleStatusPayload(dto);
+  }
+
+  /** 校验协助处理基础入参：记录 ID 必填且协助状态合法（拆自 validateAssistHandle，行为等价） */
+  private void requireHandleBase(AssistHandleDTO dto) {
     if (dto == null || dto.getId() == null) {
       throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
@@ -456,6 +462,10 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
             && !dto.getAssistStatus().equals(3))) {
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "协助状态只能为：1已协助/2已驳回/3已拒绝");
     }
+  }
+
+  /** 按终态校验内容/理由必填（拆自 validateAssistHandle，行为等价） */
+  private void requireHandleStatusPayload(AssistHandleDTO dto) {
     if (dto.getAssistStatus().equals(1)
         && (dto.getAssistContent() == null || dto.getAssistContent().trim().isEmpty())) {
       throw new BaseException(ErrorCode.PARAM_REQUIRED, "协助内容不能为空");
