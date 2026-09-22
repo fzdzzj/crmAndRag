@@ -32,6 +32,7 @@ public class CustomerActionExecutor implements AiActionExecutor {
   }
 
   @Override
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 执行器混调service+objectMapper多源，失败包装业务异常上抛
   public AiExecutionResult execute(String payloadJson) {
     try {
       AiCustomerDraftPayloadDTO payload =

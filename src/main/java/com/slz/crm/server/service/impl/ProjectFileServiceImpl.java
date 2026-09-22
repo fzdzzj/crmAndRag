@@ -68,6 +68,7 @@ public class ProjectFileServiceImpl extends ServiceImpl<ProjectFileMapper, Proje
 
   @Override
   @Transactional(rollbackFor = Exception.class)
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 文件写盘+DB落库多源，失败回滚已传文件后上抛
   public void uploadByActivity(Long activityId, List<ProjectFileDTO> dtoList) {
 
     if (dtoList == null || dtoList.isEmpty()) {
@@ -122,6 +123,7 @@ public class ProjectFileServiceImpl extends ServiceImpl<ProjectFileMapper, Proje
 
   @Override
   @Transactional(rollbackFor = Exception.class)
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 文件写盘+DB落库多源，失败回滚已传文件后上抛
   public void uploadByOrder(Long orderId, List<ProjectFileDTO> dtoList) {
 
     if (dtoList == null || dtoList.isEmpty()) {
@@ -176,6 +178,7 @@ public class ProjectFileServiceImpl extends ServiceImpl<ProjectFileMapper, Proje
 
   @Override
   @Transactional(rollbackFor = Exception.class)
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 文件写盘+DB落库多源，失败回滚已传文件后上抛
   public void uploadStandalone(List<ProjectFileDTO> dtoList) {
     if (dtoList == null || dtoList.isEmpty()) {
       throw new BaseException(ErrorCode.PARAM_EMPTY, "上传文件列表不能为空");
@@ -305,6 +308,7 @@ public class ProjectFileServiceImpl extends ServiceImpl<ProjectFileMapper, Proje
   }
 
   /** 删除主流程：主动删除分级校验 → 删库 → 删磁盘 → 失败告警（行为等价于原内联实现）。 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 批量删除磁盘文件边界：逐文件降级，失败仅列警告
   private void doDelete(List<Long> ids, List<ProjectFileEntity> entities) {
     // 主动删除分级：上传人本人可删自己的；超管可删全部；其他拒绝
     Long currentId = BaseUnit.getCurrentId();
@@ -439,6 +443,7 @@ public class ProjectFileServiceImpl extends ServiceImpl<ProjectFileMapper, Proje
    *
    * @param files 已上传的文件列表
    */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 文件删除回滚边界：失败仅记日志不中断
   private void rollbackUploadedFiles(List<File> files) {
     for (File file : files) {
       try {

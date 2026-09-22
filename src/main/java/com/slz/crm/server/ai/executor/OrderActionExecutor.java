@@ -39,6 +39,7 @@ public class OrderActionExecutor implements AiActionExecutor {
   }
 
   @Override
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 执行器混调service+objectMapper多源，失败包装业务异常上抛
   public AiExecutionResult execute(String payloadJson) {
     try {
       AiOrderDraftPayloadDTO payload =
@@ -69,6 +70,7 @@ public class OrderActionExecutor implements AiActionExecutor {
   }
 
   /** 订单无独立详情页，引用目标为其挂靠合同（按 contractId 去重；回查失败不影响确认结果） */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 合同回查外呼多源，失败该引用降级不影响确认结果
   private List<AiReferenceCollector.Reference> contractReferences(AiOrderDraftPayloadDTO payload) {
     List<AiReferenceCollector.Reference> references = new ArrayList<>();
 

@@ -111,6 +111,7 @@ public class AiChatServiceImpl implements AiChatService {
     streamChat(request, emitter, null);
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // LLM流式+异步编排多源，失败统一送错误事件并收尾
   private void doStreamChat(
       RoleAO currentUser, AssistantChatRequest request, SseEmitter emitter, AiChatResume resume) {
     BaseUnit.setCurrentRole(currentUser);

@@ -84,6 +84,7 @@ public class ContractController {
    */
   @DeleteMapping
   @RequirePermission(PermissionOperates.SALES_UPDATE_CONTRACT)
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 批量删除service外呼，失败转错误结果
   public Result<Integer> delete(@RequestBody List<Long> ids) {
     Result<Integer> result;
     try {

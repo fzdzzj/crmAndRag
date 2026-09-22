@@ -132,6 +132,8 @@ public class PrivacyAspect {
    * @param privacy
    * @return
    */
+  @SuppressWarnings(
+      "PMD.AvoidCatchingGenericException") // 反射invoke多源(IllegalAccess/InvocationTarget)，失败按非本人脱敏处理
   private boolean isSelf(Long creatorId, Privacy privacy) {
 
     Class<? extends Privacy> aClass = privacy.getClass();

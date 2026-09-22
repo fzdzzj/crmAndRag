@@ -175,6 +175,7 @@ public class PendingActionServiceImpl
 
   @Override
   @Transactional(rollbackFor = Exception.class)
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 执行器外呼+ORM确认多源，失败标记FAILED后按业务异常上抛
   public AiConfirmResultVO confirm(String pendingId, Long userId) {
     AiPendingActionEntity entity = getOwnedEntity(pendingId, userId);
 
@@ -285,6 +286,7 @@ public class PendingActionServiceImpl
             .set("updated_time", LocalDateTime.now()));
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 回滚后写失败状态旁路，失败仅记日志
   private void markFailedAfterRollback(String pendingId, String resultJson) {
     if (!TransactionSynchronizationManager.isSynchronizationActive()) {
       self.markFailed(pendingId, resultJson);

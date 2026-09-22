@@ -1,5 +1,6 @@
 package com.slz.crm.server.ai.validation;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.slz.crm.pojo.dto.ai.AiContactDraftPayloadDTO;
 import com.slz.crm.server.ai.AiEntityResolver;
@@ -40,7 +41,7 @@ public class ContactActionValidator implements AiActionValidator {
     AiValidationResult result = null;
     try {
       payload = objectMapper.readValue(payloadJson, AiContactDraftPayloadDTO.class);
-    } catch (Exception e) {
+    } catch (JsonProcessingException e) {
       log.warn("联系人草稿 payload 解析失败", e);
       result = AiValidationResult.fail(List.of("name"), List.of("请提供联系人信息（所属客户、姓名）"));
     }
@@ -112,7 +113,7 @@ public class ContactActionValidator implements AiActionValidator {
       if (resolved) {
         try {
           result = AiValidationResult.ok(objectMapper.writeValueAsString(payload));
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
           log.warn("序列化解析后 payload 失败，回退原 payload", e);
           result = AiValidationResult.ok();
         }

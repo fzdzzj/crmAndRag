@@ -573,6 +573,8 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
    *
    * <p>附件只保存 ID、来源模型、名称等元数据，不把下载 URL 写入数据库。协助交付物 属于 assist_request 本身，始终通过实时交付物接口查询，因此不会进入该快照。
    */
+  @SuppressWarnings(
+      "PMD.AvoidCatchingGenericException") // 快照构建混调 resolver+objectMapper 多源，非业务异常统一包装上抛
   private String buildRecordSnapshot(AssistRequestEntity assist) {
     try {
       AssistRelatedRecordVO related = resolveRelatedRecord(assist);
@@ -1157,6 +1159,7 @@ public class AssistRequestServiceImpl extends ServiceImpl<AssistRequestMapper, A
    * <p>这里不查询来源任务、活动、审批来重建快照，保证协助结束后看到的业务内容不漂移。 下载接口仍会再次验证附件记录与物理文件是否存在，因此文件之后被删除时链接自然失效。
    */
   @SuppressWarnings("unchecked")
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 快照解析递归签发令牌多源，失败回落原快照
   private String hydrateHistoricalAttachmentLinks(String snapshot, Long assistId) {
     if (snapshot == null || snapshot.isBlank() || assistId == null) {
       return snapshot;

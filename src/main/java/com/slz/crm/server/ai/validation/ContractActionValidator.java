@@ -1,5 +1,6 @@
 package com.slz.crm.server.ai.validation;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.slz.crm.pojo.dto.ai.AiContractDraftPayloadDTO;
 import com.slz.crm.pojo.dto.ai.AiOrderItemDraftDTO;
@@ -42,7 +43,7 @@ public class ContractActionValidator implements AiActionValidator {
     AiValidationResult result = null;
     try {
       payload = objectMapper.readValue(payloadJson, AiContractDraftPayloadDTO.class);
-    } catch (Exception e) {
+    } catch (JsonProcessingException e) {
       log.warn("合同草稿 payload 解析失败", e);
       result = AiValidationResult.fail(List.of("contractName"), List.of("请提供合同信息（合同名称、关联商机、合同金额）"));
     }
@@ -144,7 +145,7 @@ public class ContractActionValidator implements AiActionValidator {
         if (resolved) {
           try {
             result = AiValidationResult.ok(objectMapper.writeValueAsString(payload));
-          } catch (Exception e) {
+          } catch (JsonProcessingException e) {
             log.warn("序列化解析后 payload 失败，回退原 payload", e);
             result = AiValidationResult.ok();
           }

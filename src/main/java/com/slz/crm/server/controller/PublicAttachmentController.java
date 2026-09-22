@@ -51,6 +51,7 @@ public class PublicAttachmentController {
    * @param response HTTP响应
    */
   @GetMapping("/download")
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 文件下载HTTP边界：读写/校验多源，兜底转500
   public void downloadAttachment(
       @RequestParam("token") String token, HttpServletResponse response) {
     try {

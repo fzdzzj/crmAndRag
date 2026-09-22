@@ -83,6 +83,7 @@ public class AiChatSseEventWriter {
     }
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // SSE连接关闭边界：旧连接断开按已断处理不抛
   private void completeQuietly(SseEmitter emitter) {
     if (emitter == null) {
       return;

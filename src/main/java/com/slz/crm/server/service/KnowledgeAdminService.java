@@ -83,6 +83,7 @@ public class KnowledgeAdminService {
     return result;
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 文件读入+摄取service多源，失败包装为业务异常
   public DocumentIngestionResult upload(MultipartFile file, Long kbId) {
     UserContext user = currentUser();
     KnowledgeBaseEntity kb = knowledgeBaseMapper.selectById(kbId);
@@ -172,7 +173,7 @@ public class KnowledgeAdminService {
       if (e.getKnowledgeBase() != null) {
         vo.setKnowledgeBaseId(Long.valueOf(e.getKnowledgeBase()));
       }
-    } catch (Exception ignored) {
+    } catch (NumberFormatException ignored) {
     }
     vo.setCreateTime(e.getCreateTime());
     vo.setErrorMessage(e.getErrorMessage());

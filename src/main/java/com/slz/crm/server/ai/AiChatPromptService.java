@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -108,6 +109,7 @@ public class AiChatPromptService {
         .orElse(null);
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // LLM外呼多源，失败标题归null
   public String generateTitle(ChatClient.Builder chatClientBuilder, String userMessage) {
     String result;
     try {
@@ -191,7 +193,7 @@ public class AiChatPromptService {
         version.append(String.format("%02x", hash[i]));
       }
       result = version.toString();
-    } catch (Exception e) {
+    } catch (NoSuchAlgorithmException e) {
       log.warn("计算 prompt 版本哈希失败", e);
       result = "unknown";
     }

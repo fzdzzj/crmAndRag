@@ -1,5 +1,6 @@
 package com.slz.crm.server.ai.validation;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.slz.crm.pojo.dto.ai.AiCustomerDraftPayloadDTO;
 import com.slz.crm.server.ai.enums.ActionTypeEnum;
@@ -35,7 +36,7 @@ public class CustomerActionValidator implements AiActionValidator {
     AiValidationResult result = null;
     try {
       payload = objectMapper.readValue(payloadJson, AiCustomerDraftPayloadDTO.class);
-    } catch (Exception e) {
+    } catch (JsonProcessingException e) {
       log.warn("客户草稿 payload 解析失败", e);
       result = AiValidationResult.fail(List.of("companyName"), List.of("请提供客户公司名称"));
     }

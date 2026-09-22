@@ -1,5 +1,6 @@
 package com.slz.crm.server.ai;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.slz.crm.pojo.entity.AiConversationMemoryEntity;
@@ -95,7 +96,7 @@ public class AiShortQuestionRewriter {
             facts == null
                 ? List.of()
                 : facts.stream().map(this::normalize).filter(item -> item != null).toList();
-      } catch (Exception exception) {
+      } catch (JsonProcessingException exception) {
         // 记忆是可降级加工品；坏 JSON 只影响改写，不应影响主答。
         result = List.of();
       }

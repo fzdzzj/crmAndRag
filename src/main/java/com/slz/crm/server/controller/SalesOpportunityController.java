@@ -40,6 +40,7 @@ public class SalesOpportunityController {
    */
   @DeleteMapping("/{id}")
   @RequirePermission(PermissionOperates.SALES_DELETE_SALE_OPPORTUNITY)
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 删除service外呼，失败转错误结果
   public Result<Boolean> delete(@PathVariable("id") Long id) {
     Result<Boolean> result;
     try {
@@ -106,6 +107,7 @@ public class SalesOpportunityController {
    */
   @GetMapping("/detail/{opportunityId}")
   @RequirePermission(PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY)
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 详情查询service外呼，失败转错误结果
   public Result<com.slz.crm.pojo.vo.OpportunityDetailVO> getOpportunityDetailById(
       @PathVariable("opportunityId") Long opportunityId) {
     Result<com.slz.crm.pojo.vo.OpportunityDetailVO> result;
@@ -125,6 +127,7 @@ public class SalesOpportunityController {
    */
   @GetMapping("/detail/by-contract/{contractId}")
   @RequirePermission(PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY)
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 详情查询service外呼，失败转错误结果
   public Result<com.slz.crm.pojo.vo.OpportunityDetailVO> getOpportunityDetailByContractId(
       @PathVariable("contractId") Long contractId) {
     Result<com.slz.crm.pojo.vo.OpportunityDetailVO> result;

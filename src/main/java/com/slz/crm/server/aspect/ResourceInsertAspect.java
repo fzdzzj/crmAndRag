@@ -38,6 +38,7 @@ public class ResourceInsertAspect {
 
   /** 后置通知：在insert方法成功执行后自动绑定标签 */
   @AfterReturning(pointcut = "mapperInsertMethod()", returning = "result")
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 标签绑定兜底：ORM/反射多源，失败不抛出影响正常业务
   public void afterInsert(JoinPoint joinPoint, Object result) {
     // 如果插入失败，直接返回
     if (result == null || (result instanceof Integer && (Integer) result <= 0)) {

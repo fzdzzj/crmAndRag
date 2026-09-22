@@ -40,6 +40,7 @@ public class AiChatKnowledgeRetrievalService {
     this.dynamicConfigProvider = dynamicConfigProvider;
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 检索端口外呼多源，失败按零命中降级继续生成
   public RetrievalOutcome retrieve(
       String query, Long userId, float[] imageVector, boolean useKnowledgeBase) {
     RetrievalOutcome result;

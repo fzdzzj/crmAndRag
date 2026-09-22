@@ -25,6 +25,7 @@ public class JWTInterceptor implements HandlerInterceptor {
   @Autowired private UserMapper userMapper;
 
   @Override
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 鉴权边界：JWT解析+ORM查用户多源，失败统一按TOKEN无效拦截
   public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
       throws Exception {
     RoleAO roleAO = new RoleAO();

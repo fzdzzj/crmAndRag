@@ -91,6 +91,7 @@ public class QueryWrapperAspect {
    * @throws Throwable 异常
    */
   @Around("mapperMethodsWithoutWrapper()")
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射invoke+proceed多源，失败回退原方法防中断
   public Object aroundQueryWithoutWrapper(ProceedingJoinPoint joinPoint) throws Throwable {
     String methodName = joinPoint.getSignature().getName();
 
@@ -199,6 +200,7 @@ public class QueryWrapperAspect {
    * @param joinPoint 连接点
    * @param wrapper QueryWrapper 对象
    */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 数据权限外呼服务多源，失败仅告警不阻断查询
   private void addDataScopeCondition(JoinPoint joinPoint, QueryWrapper<?> wrapper) {
     try {
       // 1. 获取当前用户
@@ -237,6 +239,7 @@ public class QueryWrapperAspect {
    * @param joinPoint 连接点
    * @param wrapper LambdaQueryWrapper 对象
    */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 数据权限外呼服务多源，失败仅告警不阻断查询
   private void addDataScopeCondition(JoinPoint joinPoint, LambdaQueryWrapper<?> wrapper) {
     try {
       // 1. 获取当前用户

@@ -155,6 +155,7 @@ public class PermissionSyncRunner {
   }
 
   /** 批量处理权限：新增、更新、删除 按模块分组处理，便于问题排查 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 批量插入ORM多源，失败按模块统计继续，不中断整体同步
   private void processPermissions(
       Map<String, List<PermissionsEntity>> permissionsByModule,
       Map<Long, PermissionsEntity> existingPermissionMap) {

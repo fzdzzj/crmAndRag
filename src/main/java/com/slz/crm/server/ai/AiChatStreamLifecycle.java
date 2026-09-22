@@ -644,6 +644,7 @@ public class AiChatStreamLifecycle {
     aiStreamRegistry.remove(activeStream.getSessionId(), activeStream);
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // SSE关闭边界：旧连接断开按已断处理不抛
   private void completeEmitter(AiStreamRegistry.ActiveStream activeStream) {
     try {
       activeStream.getEmitter().complete();

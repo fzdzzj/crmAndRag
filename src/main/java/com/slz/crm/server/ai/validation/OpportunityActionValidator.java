@@ -1,5 +1,6 @@
 package com.slz.crm.server.ai.validation;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.slz.crm.pojo.dto.ai.AiOpportunityDraftPayloadDTO;
 import com.slz.crm.server.ai.AiEntityResolver;
@@ -41,7 +42,7 @@ public class OpportunityActionValidator implements AiActionValidator {
     AiValidationResult result = null;
     try {
       payload = objectMapper.readValue(payloadJson, AiOpportunityDraftPayloadDTO.class);
-    } catch (Exception e) {
+    } catch (JsonProcessingException e) {
       log.warn("商机草稿 payload 解析失败", e);
       result = AiValidationResult.fail(List.of("opportunityName"), List.of("请提供商机信息（所属客户、商机名称）"));
     }
@@ -113,7 +114,7 @@ public class OpportunityActionValidator implements AiActionValidator {
       if (resolved) {
         try {
           result = AiValidationResult.ok(objectMapper.writeValueAsString(payload));
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
           log.warn("序列化解析后 payload 失败，回退原 payload", e);
           result = AiValidationResult.ok();
         }

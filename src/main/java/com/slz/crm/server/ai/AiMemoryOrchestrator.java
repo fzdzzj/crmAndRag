@@ -1,5 +1,6 @@
 package com.slz.crm.server.ai;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.slz.crm.platform.contract.BypassTaskExecutor;
@@ -125,7 +126,7 @@ public class AiMemoryOrchestrator {
       try {
         memory.setFacts(OBJECT_MAPPER.writeValueAsString(facts));
         serialized = true;
-      } catch (Exception exception) {
+      } catch (JsonProcessingException exception) {
         log.warn("AI 会话事实序列化失败，跳过更新: sessionId={}", sessionId, exception);
       }
       if (serialized) {
@@ -149,7 +150,7 @@ public class AiMemoryOrchestrator {
         List<String> facts =
             OBJECT_MAPPER.readValue(factsJson, new TypeReference<List<String>>() {});
         result = new java.util.ArrayList<>(facts == null ? List.of() : facts);
-      } catch (Exception exception) {
+      } catch (JsonProcessingException exception) {
         log.warn("AI 会话事实 JSON 解析失败，按空列表处理", exception);
         result = new java.util.ArrayList<>();
       }
@@ -193,6 +194,7 @@ public class AiMemoryOrchestrator {
     return bypassExecutorProvider == null ? null : bypassExecutorProvider.getIfAvailable();
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // LLM摘要外呼+持久化多源，失败跳过本轮
   private void compressSummary(
       Long sessionId, Long userId, List<AiMessageEntity> messages, AtomicBoolean state) {
     try {
@@ -220,6 +222,7 @@ public class AiMemoryOrchestrator {
     }
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // LLM意图外呼+持久化多源，失败跳过本轮
   private void extractIntent(Long sessionId, Long userId, String userMessage, AtomicBoolean state) {
     try {
       String prompt =

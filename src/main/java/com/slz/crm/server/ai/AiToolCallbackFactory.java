@@ -38,6 +38,7 @@ public class AiToolCallbackFactory {
 
   private final ObjectMapper objectMapper = new ObjectMapper();
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 工具执行器外呼多源，失败转错误处理路径
   public ToolCallback build(
       String name,
       String description,
@@ -144,6 +145,7 @@ public class AiToolCallbackFactory {
     return result;
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 日志落库旁路：序列化+ORM多源，失败仅告警不阻塞
   private void logToolCall(
       String toolName, Map<String, Object> args, Object result, boolean success, long costMs) {
     RoleAO currentUser = BaseUnit.getCurrentRole();

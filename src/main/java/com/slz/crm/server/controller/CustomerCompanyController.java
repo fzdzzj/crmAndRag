@@ -175,6 +175,7 @@ public class CustomerCompanyController {
    */
   @GetMapping("/{id}")
   @RequirePermission(PermissionOperates.CUSTOMER_VIEW_COMPANY)
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 详情页子查询service/ORM外呼多源，单项失败置null不拖垮详情
   private Result<Map<String, Object>> getCompanyDetail(
       @PathVariable Long id, @RequestParam Integer pageNum, @RequestParam Integer pageSize) {
     if (pageNum == null || pageSize == null || pageNum <= 0 || pageSize <= 0) {

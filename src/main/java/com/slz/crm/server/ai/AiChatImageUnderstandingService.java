@@ -1,5 +1,6 @@
 package com.slz.crm.server.ai;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.slz.crm.platform.contract.ModelCallOptions;
@@ -162,6 +163,7 @@ public class AiChatImageUnderstandingService {
             imageVector));
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 视觉外呼多源，失败降级为无图片上下文
   private String callVision(AiChatImageEntity image, String question, ModelProvider provider) {
     String result;
     try {
@@ -185,6 +187,7 @@ public class AiChatImageUnderstandingService {
     return result;
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 嵌入外呼多源，失败降级为纯文本检索
   private float[] generateImageVector(
       AiChatImageEntity image,
       String question,
@@ -244,7 +247,7 @@ public class AiChatImageUnderstandingService {
                 root.path("imageSummary").asText(""),
                 List.copyOf(entities),
                 root.path("focusedSummary").asText(""));
-      } catch (Exception exception) {
+      } catch (JsonProcessingException exception) {
         // 模型偶发非 JSON 输出时，把它作为 focused 摘要降级，不阻塞主答。
         log.warn("图片理解输出不是 JSON，按 focusedSummary 降级", exception);
         result =
@@ -280,7 +283,7 @@ public class AiChatImageUnderstandingService {
         root.forEach(item -> entities.add(item.asText("")));
         entities.removeIf(String::isBlank);
         result = List.copyOf(entities);
-      } catch (Exception exception) {
+      } catch (JsonProcessingException exception) {
         result = List.of();
       }
     }

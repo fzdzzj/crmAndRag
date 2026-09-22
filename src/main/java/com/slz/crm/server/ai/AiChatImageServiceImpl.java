@@ -1,6 +1,7 @@
 package com.slz.crm.server.ai;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.slz.crm.pojo.entity.AiChatImageEntity;
 import com.slz.crm.server.mapper.AiChatImageMapper;
@@ -119,7 +120,7 @@ public class AiChatImageServiceImpl implements AiChatImageService {
     String result;
     try {
       result = OBJECT_MAPPER.writeValueAsString(keyEntities == null ? List.of() : keyEntities);
-    } catch (Exception exception) {
+    } catch (JsonProcessingException exception) {
       log.warn("聊天图片关键实体序列化失败，按空数组保存", exception);
       result = "[]";
     }

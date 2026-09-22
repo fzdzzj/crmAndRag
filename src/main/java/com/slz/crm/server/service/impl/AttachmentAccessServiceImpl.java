@@ -226,6 +226,7 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
   }
 
   /** 将快照 JSON 解析后检查附件归属。解析失败或没有快照时按无权限处理，避免异常放宽授权。 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 快照解析+递归匹配多源，解析失败按无权限处理防例外放权
   private boolean snapshotContainsAttachment(String snapshot, ApprovalAttachmentEntity attachment) {
     boolean result = false;
     if (snapshot != null && !snapshot.isBlank()) {
