@@ -61,6 +61,23 @@ public class PaymentRecordServiceImpl extends ServiceImpl<PaymentRecordMapper, P
   @Transactional(rollbackFor = Exception.class)
   public PaymentRecordVO create(PaymentRecordDTO dto) {
     // 参数校验
+    ContractEntity contract = validatePaymentCreate(dto);
+
+    PaymentRecordEntity entity = buildPaymentEntity(dto);
+
+    // 如果没有填写回款单号，自动生成（带重复检测和重试机制）
+    PaymentRecordVO generated;
+    if (!StringUtils.hasText(entity.getPaymentNo())) {
+      generated = insertWithGeneratedPaymentNo(entity, contract);
+    } else {
+      // 前端传入了回款单号，直接插入
+      generated = paymentRecordMapper.insert(entity) > 0 ? toCreatedVO(entity, contract) : null;
+    }
+    return generated;
+  }
+
+  /** 创建回款的关联校验：合同必须存在；指定订单明细时明细必须存在且属于该合同。返回已加载的合同。 */
+  private ContractEntity validatePaymentCreate(PaymentRecordDTO dto) {
     if (dto.getContractId() == null) {
       throw new BaseException(ErrorCode.PARAM_EMPTY.getMessage());
     }
@@ -82,7 +99,11 @@ public class PaymentRecordServiceImpl extends ServiceImpl<PaymentRecordMapper, P
         throw new BaseException("订单明细不属于该合同");
       }
     }
+    return contract;
+  }
 
+  /** 由 DTO 手动装配回款实体（状态缺省为已确认 0） */
+  private PaymentRecordEntity buildPaymentEntity(PaymentRecordDTO dto) {
     PaymentRecordEntity entity = new PaymentRecordEntity();
     // 手动设置属性，避免 BeanUtils 类型转换问题
     entity.setId(dto.getId());
@@ -100,36 +121,35 @@ public class PaymentRecordServiceImpl extends ServiceImpl<PaymentRecordMapper, P
     } else {
       entity.setPaymentStatus(0); // 默认已确认
     }
+    return entity;
+  }
 
-    // 如果没有填写回款单号，自动生成（带重复检测和重试机制）
-    PaymentRecordVO generated;
-    if (!StringUtils.hasText(entity.getPaymentNo())) {
-      int maxRetries = 10; // 最大重试次数
-      int retryCount = 0;
-      boolean insertSuccess = false;
+  /** 自动生成回款单号并插入，单号冲突时重试生成，超过最大重试次数报错 */
+  private PaymentRecordVO insertWithGeneratedPaymentNo(
+      PaymentRecordEntity entity, ContractEntity contract) {
+    PaymentRecordVO result;
+    int maxRetries = 10; // 最大重试次数
+    int retryCount = 0;
+    boolean insertSuccess = false;
 
-      while (!insertSuccess && retryCount < maxRetries) {
-        entity.setPaymentNo(NumberGenerator.generatePaymentNo());
+    while (!insertSuccess && retryCount < maxRetries) {
+      entity.setPaymentNo(NumberGenerator.generatePaymentNo());
 
-        try {
-          int result = paymentRecordMapper.insert(entity);
-          insertSuccess = result > 0;
-        } catch (org.springframework.dao.DuplicateKeyException e) {
-          // 回款单号重复，重试生成新的单号
-          retryCount++;
-          if (retryCount >= maxRetries) {
-            throw new BaseException("生成回款单号失败：已达到最大重试次数（" + maxRetries + "次），请稍后重试");
-          }
-          // 继续下一次循环，重新生成单号
+      try {
+        int insertResult = paymentRecordMapper.insert(entity);
+        insertSuccess = insertResult > 0;
+      } catch (org.springframework.dao.DuplicateKeyException e) {
+        // 回款单号重复，重试生成新的单号
+        retryCount++;
+        if (retryCount >= maxRetries) {
+          throw new BaseException("生成回款单号失败：已达到最大重试次数（" + maxRetries + "次），请稍后重试");
         }
+        // 继续下一次循环，重新生成单号
       }
-
-      generated = insertSuccess ? toCreatedVO(entity, contract) : null;
-    } else {
-      // 前端传入了回款单号，直接插入
-      generated = paymentRecordMapper.insert(entity) > 0 ? toCreatedVO(entity, contract) : null;
     }
-    return generated;
+
+    result = insertSuccess ? toCreatedVO(entity, contract) : null;
+    return result;
   }
 
   private PaymentRecordVO toCreatedVO(PaymentRecordEntity entity, ContractEntity contract) {
@@ -208,46 +228,7 @@ public class PaymentRecordServiceImpl extends ServiceImpl<PaymentRecordMapper, P
 
     // ���询条件
     if (dto != null) {
-      // 按合同ID查询
-      if (dto.getContractId() != null) {
-        queryWrapper.eq(PaymentRecordEntity::getContractId, dto.getContractId());
-      }
-      // 按订单明细ID查询
-      if (dto.getOrderItemId() != null) {
-        queryWrapper.eq(PaymentRecordEntity::getOrderItemId, dto.getOrderItemId());
-      }
-      // 按回款方式查询
-      if (dto.getPaymentMethod() != null && !dto.getPaymentMethod().trim().isEmpty()) {
-        queryWrapper.eq(PaymentRecordEntity::getPaymentMethod, dto.getPaymentMethod().trim());
-      }
-      // 处理状态：如果传入了字符串状态，优先转换字符串
-      if (dto.getPaymentStatusStr() != null && !dto.getPaymentStatusStr().trim().isEmpty()) {
-        Integer status = convertStatusStringToInteger(dto.getPaymentStatusStr());
-        if (status != null) {
-          queryWrapper.eq(PaymentRecordEntity::getPaymentStatus, status);
-        }
-      } else if (dto.getPaymentStatus() != null) {
-        queryWrapper.eq(PaymentRecordEntity::getPaymentStatus, dto.getPaymentStatus());
-      }
-      // 按回款单号模糊查询
-      if (dto.getPaymentNo() != null && !dto.getPaymentNo().trim().isEmpty()) {
-        queryWrapper.like(PaymentRecordEntity::getPaymentNo, dto.getPaymentNo().trim());
-      }
-      // 按回款日期范围查询
-      if (dto.getPaymentDateStart() != null) {
-        queryWrapper.ge(PaymentRecordEntity::getPaymentDate, dto.getPaymentDateStart());
-      }
-      if (dto.getPaymentDateEnd() != null) {
-        queryWrapper.le(PaymentRecordEntity::getPaymentDate, dto.getPaymentDateEnd());
-      }
-      // 按创建人查询
-      if (dto.getCreatorId() != null) {
-        queryWrapper.eq(PaymentRecordEntity::getCreatorId, dto.getCreatorId());
-      }
-      // 按备注模糊查询
-      if (dto.getRemark() != null && !dto.getRemark().trim().isEmpty()) {
-        queryWrapper.like(PaymentRecordEntity::getRemark, dto.getRemark().trim());
-      }
+      applyPaymentFilters(queryWrapper, dto);
     }
 
     // 按创建时间倒序
@@ -264,6 +245,67 @@ public class PaymentRecordServiceImpl extends ServiceImpl<PaymentRecordMapper, P
     voPage.setRecords(voList);
 
     return voPage;
+  }
+
+  /**
+   * 组装回款分页各字段查询条件（拆自 queryPage，行为等价）。
+   *
+   * @param queryWrapper 查询构造器
+   * @param dto 查询条件
+   */
+  private void applyPaymentFilters(
+      LambdaQueryWrapper<PaymentRecordEntity> queryWrapper, PaymentRecordDTO dto) {
+    // 按合同ID查询
+    if (dto.getContractId() != null) {
+      queryWrapper.eq(PaymentRecordEntity::getContractId, dto.getContractId());
+    }
+    // 按订单明细ID查询
+    if (dto.getOrderItemId() != null) {
+      queryWrapper.eq(PaymentRecordEntity::getOrderItemId, dto.getOrderItemId());
+    }
+    // 按回款方式查询
+    if (dto.getPaymentMethod() != null && !dto.getPaymentMethod().trim().isEmpty()) {
+      queryWrapper.eq(PaymentRecordEntity::getPaymentMethod, dto.getPaymentMethod().trim());
+    }
+    // 处理状态：如果传入了字符串状态，优先转换字符串
+    applyPaymentStatusFilter(queryWrapper, dto);
+    // 按回款单号模糊查询
+    if (dto.getPaymentNo() != null && !dto.getPaymentNo().trim().isEmpty()) {
+      queryWrapper.like(PaymentRecordEntity::getPaymentNo, dto.getPaymentNo().trim());
+    }
+    // 按回款日期范围查询
+    if (dto.getPaymentDateStart() != null) {
+      queryWrapper.ge(PaymentRecordEntity::getPaymentDate, dto.getPaymentDateStart());
+    }
+    if (dto.getPaymentDateEnd() != null) {
+      queryWrapper.le(PaymentRecordEntity::getPaymentDate, dto.getPaymentDateEnd());
+    }
+    // 按创建人查询
+    if (dto.getCreatorId() != null) {
+      queryWrapper.eq(PaymentRecordEntity::getCreatorId, dto.getCreatorId());
+    }
+    // 按备注模糊查询
+    if (dto.getRemark() != null && !dto.getRemark().trim().isEmpty()) {
+      queryWrapper.like(PaymentRecordEntity::getRemark, dto.getRemark().trim());
+    }
+  }
+
+  /**
+   * 状态过滤：字符串状态优先转换，否则按数值状态过滤（拆自 queryPage，行为等价）。
+   *
+   * @param queryWrapper 查询构造器
+   * @param dto 查询条件
+   */
+  private void applyPaymentStatusFilter(
+      LambdaQueryWrapper<PaymentRecordEntity> queryWrapper, PaymentRecordDTO dto) {
+    if (dto.getPaymentStatusStr() != null && !dto.getPaymentStatusStr().trim().isEmpty()) {
+      Integer status = convertStatusStringToInteger(dto.getPaymentStatusStr());
+      if (status != null) {
+        queryWrapper.eq(PaymentRecordEntity::getPaymentStatus, status);
+      }
+    } else if (dto.getPaymentStatus() != null) {
+      queryWrapper.eq(PaymentRecordEntity::getPaymentStatus, dto.getPaymentStatus());
+    }
   }
 
   @Override

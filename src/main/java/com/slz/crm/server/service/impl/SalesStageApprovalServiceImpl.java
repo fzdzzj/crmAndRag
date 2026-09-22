@@ -99,27 +99,8 @@ public class SalesStageApprovalServiceImpl
       throw new BaseException(ErrorCode.SALES_STAGE_APPROVAL_NOT_EXISTS);
     }
     Long currentId = BaseUnit.getCurrentId();
-    if (!Objects.equals(entity.getApplicantId(), currentId)) {
-      throw new BaseException(ErrorCode.PERMISSION_DENIED);
-    }
-    if (!Boolean.FALSE.equals(entity.getApprovalTriggered())) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "只有未提交审批的草稿可以修改");
-    }
-    if (!Objects.equals(entity.getOpportunityId(), dto.getOpportunityId())) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "草稿关联的销售机会不能修改");
-    }
-    if (dto.getMessage() == null || dto.getMessage().trim().isEmpty()) {
-      throw new BaseException(ErrorCode.PARAM_REQUIRED, "审批备注不能为空");
-    }
-
-    SalesOpportunityEntity opportunity =
-        salesOpportunityMapper.selectByIdForUpdate(entity.getOpportunityId());
-    if (opportunity == null) {
-      throw new BaseException(ErrorCode.OPPORTUNITY_NOT_EXISTS);
-    }
-    if (!isValidStageTransition(opportunity.getStage(), dto.getTargetStage())) {
-      throw new BaseException(ErrorCode.OPPORTUNITY_MUST_BE_CLOSED, "当前销售阶段已变化，无法保存草稿");
-    }
+    requireUpdatableDraft(entity, dto, currentId);
+    SalesOpportunityEntity opportunity = requireDraftStageValid(entity, dto);
 
     entity.setCurrentStage(opportunity.getStage());
     entity.setTargetStage(dto.getTargetStage());
@@ -143,6 +124,49 @@ public class SalesStageApprovalServiceImpl
     vo.setAssistUsers(
         assistRequestService.listAssistsByRecord(ModelName.SALES_STAGE_APPROVAL, entity.getId()));
     return vo;
+  }
+
+  /**
+   * 校验草稿可修改：申请人本人、未提交审批、关联商机未变、备注非空（拆自 updateDraft，行为等价；存在性校验留在主方法）。
+   *
+   * @param entity 审批实体
+   * @param dto 草稿更新请求
+   * @param currentId 当前用户 ID
+   */
+  private void requireUpdatableDraft(
+      SalesStageApprovalEntity entity, AddSalesStageApprovalDTO dto, Long currentId) {
+    if (!Objects.equals(entity.getApplicantId(), currentId)) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED);
+    }
+    if (!Boolean.FALSE.equals(entity.getApprovalTriggered())) {
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "只有未提交审批的草稿可以修改");
+    }
+    if (!Objects.equals(entity.getOpportunityId(), dto.getOpportunityId())) {
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "草稿关联的销售机会不能修改");
+    }
+    if (dto.getMessage() == null || dto.getMessage().trim().isEmpty()) {
+      throw new BaseException(ErrorCode.PARAM_REQUIRED, "审批备注不能为空");
+    }
+  }
+
+  /**
+   * 校验草稿关联商机与阶段流转仍有效（拆自 updateDraft，行为等价）。
+   *
+   * @param entity 审批实体
+   * @param dto 草稿更新请求
+   * @return 锁定查询到的商机实体
+   */
+  private SalesOpportunityEntity requireDraftStageValid(
+      SalesStageApprovalEntity entity, AddSalesStageApprovalDTO dto) {
+    SalesOpportunityEntity opportunity =
+        salesOpportunityMapper.selectByIdForUpdate(entity.getOpportunityId());
+    if (opportunity == null) {
+      throw new BaseException(ErrorCode.OPPORTUNITY_NOT_EXISTS);
+    }
+    if (!isValidStageTransition(opportunity.getStage(), dto.getTargetStage())) {
+      throw new BaseException(ErrorCode.OPPORTUNITY_MUST_BE_CLOSED, "当前销售阶段已变化，无法保存草稿");
+    }
+    return opportunity;
   }
 
   private SalesStageApprovalVO createStage(
@@ -244,12 +268,7 @@ public class SalesStageApprovalServiceImpl
       throw new BaseException(ErrorCode.SALES_STAGE_APPROVAL_NOT_EXISTS);
     }
     Long currentId = BaseUnit.getCurrentId();
-    if (!Objects.equals(entity.getApplicantId(), currentId)) {
-      throw new BaseException(ErrorCode.PERMISSION_DENIED);
-    }
-    if (Boolean.TRUE.equals(entity.getApprovalTriggered())) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "该申请已提交审批");
-    }
+    requireSubmittableDraft(entity, currentId);
 
     SalesOpportunityEntity opportunity =
         salesOpportunityMapper.selectByIdForUpdate(entity.getOpportunityId());
@@ -259,20 +278,7 @@ public class SalesStageApprovalServiceImpl
     if (!isValidStageTransition(opportunity.getStage(), entity.getTargetStage())) {
       throw new BaseException(ErrorCode.OPPORTUNITY_MUST_BE_CLOSED, "当前销售阶段已变化，无法提交该草稿");
     }
-    Long pendingCount =
-        count(
-            new LambdaQueryWrapper<SalesStageApprovalEntity>()
-                .eq(SalesStageApprovalEntity::getOpportunityId, entity.getOpportunityId())
-                .eq(SalesStageApprovalEntity::getApprovalStatus, 0)
-                .ne(SalesStageApprovalEntity::getId, entity.getId())
-                .and(
-                    t ->
-                        t.ne(SalesStageApprovalEntity::getApprovalTriggered, false)
-                            .or()
-                            .isNull(SalesStageApprovalEntity::getApprovalTriggered)));
-    if (pendingCount != null && pendingCount > 0) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "该订单已有待审批的阶段推进申请，请等待审批完成后再操作");
-    }
+    requireNoPendingConflicts(entity.getOpportunityId(), entity.getId());
 
     entity.setCurrentStage(opportunity.getStage());
     entity.setApprovalStatus(0);
@@ -282,6 +288,44 @@ public class SalesStageApprovalServiceImpl
       throw new BaseException(ErrorCode.UPDATE_FAILED, "提交审批失败");
     }
     return true;
+  }
+
+  /**
+   * 校验草稿可提交：申请人本人且未提交审批（拆自 submitDraft，行为等价）。
+   *
+   * @param entity 审批实体
+   * @param currentId 当前用户 ID
+   */
+  private void requireSubmittableDraft(SalesStageApprovalEntity entity, Long currentId) {
+    if (!Objects.equals(entity.getApplicantId(), currentId)) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED);
+    }
+    if (Boolean.TRUE.equals(entity.getApprovalTriggered())) {
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "该申请已提交审批");
+    }
+  }
+
+  /**
+   * 校验同一商机没有其他待审批的阶段推进申请（拆自 submitDraft，行为等价）。
+   *
+   * @param opportunityId 商机 ID
+   * @param excludeId 当前草稿 ID（排除自身）
+   */
+  private void requireNoPendingConflicts(Long opportunityId, Long excludeId) {
+    Long pendingCount =
+        count(
+            new LambdaQueryWrapper<SalesStageApprovalEntity>()
+                .eq(SalesStageApprovalEntity::getOpportunityId, opportunityId)
+                .eq(SalesStageApprovalEntity::getApprovalStatus, 0)
+                .ne(SalesStageApprovalEntity::getId, excludeId)
+                .and(
+                    t ->
+                        t.ne(SalesStageApprovalEntity::getApprovalTriggered, false)
+                            .or()
+                            .isNull(SalesStageApprovalEntity::getApprovalTriggered)));
+    if (pendingCount != null && pendingCount > 0) {
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "该订单已有待审批的阶段推进申请，请等待审批完成后再操作");
+    }
   }
 
   /** 组装协助申请明细：优先明细列表，兼容旧 assistUserIds（无目的/要求） */
@@ -324,22 +368,7 @@ public class SalesStageApprovalServiceImpl
     entity.setApproverId(BaseUnit.getCurrentId());
 
     entity.setApprovalStatus(dto.getApprovalStatus().getFirst());
-    if (entity.getApprovalStatus() == 1) {
-      SalesStageApprovalEntity salesStageApprovalEntity = baseMapper.selectById(entity.getId());
-      if (salesStageApprovalEntity == null) {
-        throw new BaseException(ErrorCode.SALES_STAGE_APPROVAL_NOT_EXISTS);
-      }
-      // 如果是同意，更新销售机会的阶段
-      SalesOpportunityEntity opportunityEntity =
-          salesOpportunityMapper.selectById(salesStageApprovalEntity.getOpportunityId());
-
-      if (opportunityEntity == null) {
-        throw new BaseException(ErrorCode.OPPORTUNITY_NOT_EXISTS);
-      }
-
-      opportunityEntity.setStage(salesStageApprovalEntity.getTargetStage());
-      salesOpportunityMapper.updateById(opportunityEntity);
-    }
+    applyApprovedStageChange(entity);
 
     if (baseMapper.updateById(entity) <= 0) {
       throw new BaseException(ErrorCode.UPDATE_FAILED, "审批状态更新失败");
@@ -348,6 +377,31 @@ public class SalesStageApprovalServiceImpl
     assistRequestService.cancelPendingByRecord(
         ModelName.SALES_STAGE_APPROVAL, oldEntity.getId(), "所属销售阶段审批已结束，待协助申请自动取消");
     return true;
+  }
+
+  /**
+   * 审批同意时推进销售机会阶段（拆自 updateById，行为等价）。
+   *
+   * @param entity 审批更新实体
+   */
+  private void applyApprovedStageChange(SalesStageApprovalEntity entity) {
+    if (entity.getApprovalStatus() != 1) {
+      return;
+    }
+    SalesStageApprovalEntity salesStageApprovalEntity = baseMapper.selectById(entity.getId());
+    if (salesStageApprovalEntity == null) {
+      throw new BaseException(ErrorCode.SALES_STAGE_APPROVAL_NOT_EXISTS);
+    }
+    // 如果是同意，更新销售机会的阶段
+    SalesOpportunityEntity opportunityEntity =
+        salesOpportunityMapper.selectById(salesStageApprovalEntity.getOpportunityId());
+
+    if (opportunityEntity == null) {
+      throw new BaseException(ErrorCode.OPPORTUNITY_NOT_EXISTS);
+    }
+
+    opportunityEntity.setStage(salesStageApprovalEntity.getTargetStage());
+    salesOpportunityMapper.updateById(opportunityEntity);
   }
 
   @Override
@@ -367,47 +421,95 @@ public class SalesStageApprovalServiceImpl
 
     // 通过审批人、关联销售机会名称获得相应ids
     if (dto != null) {
-      // 通过关联销售机会名称获得相应ids
-      if (dto.getOpportunityName() != null && !dto.getOpportunityName().isEmpty()) {
-        List<Long> opportunityIds =
-            salesOpportunityMapper.selectObjs(
-                Wrappers.lambdaQuery(SalesOpportunityEntity.class)
-                    .like(SalesOpportunityEntity::getOpportunityName, dto.getOpportunityName()));
-
-        if (!opportunityIds.isEmpty()) {
-          queryWrapper.in(SalesStageApprovalEntity::getOpportunityId, opportunityIds);
-        }
-      }
-      // 通过审批人姓名获得相应ids
-      if (dto.getApproverName() != null && !dto.getApproverName().isEmpty()) {
-        List<Long> approverIds =
-            userMapper.selectObjs(
-                Wrappers.lambdaQuery(UserEntity.class)
-                    .like(UserEntity::getRealName, dto.getApproverName()));
-
-        if (!approverIds.isEmpty()) {
-          queryWrapper.in(SalesStageApprovalEntity::getApproverId, approverIds);
-        }
-      }
-
-      if (dto.getApproverId() != null) {
-        queryWrapper.eq(SalesStageApprovalEntity::getApproverId, dto.getApproverId());
-      }
-      if (dto.getTargetStage() != null) {
-        queryWrapper.like(SalesStageApprovalEntity::getTargetStage, dto.getTargetStage());
-      }
-      if (dto.getApprovalOpinion() != null) {
-        queryWrapper.like(SalesStageApprovalEntity::getApprovalOpinion, dto.getApprovalOpinion());
-      }
-
-      if (dto.getApplyTime() != null) {
-        queryWrapper.like(SalesStageApprovalEntity::getApplyTime, dto.getApplyTime());
-      }
-      if (dto.getApprovalStatus() != null && !dto.getApprovalStatus().isEmpty()) {
-        queryWrapper.in(SalesStageApprovalEntity::getApprovalStatus, dto.getApprovalStatus());
-      }
+      applyApprovalFilters(queryWrapper, dto);
     }
 
+    // 普通审批列表只对申请人/审批人开放；协助人统一从“待我协助”页面进入
+    applyApprovalVisibilityScope(queryWrapper, currentId);
+
+    Page<SalesStageApprovalEntity> pageResult = baseMapper.selectPage(page, queryWrapper);
+
+    List<SalesStageApprovalVO> voList =
+        pageResult.getRecords().stream().map(this::toApprovalVO).collect(Collectors.toList());
+
+    // 批量组装协助人（按可见性过滤）
+    fillAssistUsers(voList, currentId);
+
+    Page<SalesStageApprovalVO> resultPage = new Page<>();
+    BeanUtils.copyProperties(pageResult, resultPage);
+    resultPage.setRecords(voList);
+
+    return resultPage;
+  }
+
+  /**
+   * 组装审批分页查询条件（拆自 getPage，行为等价）。
+   *
+   * @param queryWrapper 查询构造器
+   * @param dto 查询条件
+   */
+  private void applyApprovalFilters(
+      LambdaQueryWrapper<SalesStageApprovalEntity> queryWrapper, SalesStageApprovalDTO dto) {
+    // 通过关联销售机会名称/审批人姓名获得相应ids
+    applyApprovalNameIdFilters(queryWrapper, dto);
+
+    if (dto.getApproverId() != null) {
+      queryWrapper.eq(SalesStageApprovalEntity::getApproverId, dto.getApproverId());
+    }
+    if (dto.getTargetStage() != null) {
+      queryWrapper.like(SalesStageApprovalEntity::getTargetStage, dto.getTargetStage());
+    }
+    if (dto.getApprovalOpinion() != null) {
+      queryWrapper.like(SalesStageApprovalEntity::getApprovalOpinion, dto.getApprovalOpinion());
+    }
+    if (dto.getApplyTime() != null) {
+      queryWrapper.like(SalesStageApprovalEntity::getApplyTime, dto.getApplyTime());
+    }
+    if (dto.getApprovalStatus() != null && !dto.getApprovalStatus().isEmpty()) {
+      queryWrapper.in(SalesStageApprovalEntity::getApprovalStatus, dto.getApprovalStatus());
+    }
+  }
+
+  /**
+   * 按关联销售机会名称/审批人姓名解析 ID 并加入过滤（拆自 getPage，行为等价）。
+   *
+   * @param queryWrapper 查询构造器
+   * @param dto 查询条件
+   */
+  private void applyApprovalNameIdFilters(
+      LambdaQueryWrapper<SalesStageApprovalEntity> queryWrapper, SalesStageApprovalDTO dto) {
+    // 通过关联销售机会名称获得相应ids
+    if (dto.getOpportunityName() != null && !dto.getOpportunityName().isEmpty()) {
+      List<Long> opportunityIds =
+          salesOpportunityMapper.selectObjs(
+              Wrappers.lambdaQuery(SalesOpportunityEntity.class)
+                  .like(SalesOpportunityEntity::getOpportunityName, dto.getOpportunityName()));
+
+      if (!opportunityIds.isEmpty()) {
+        queryWrapper.in(SalesStageApprovalEntity::getOpportunityId, opportunityIds);
+      }
+    }
+    // 通过审批人姓名获得相应ids
+    if (dto.getApproverName() != null && !dto.getApproverName().isEmpty()) {
+      List<Long> approverIds =
+          userMapper.selectObjs(
+              Wrappers.lambdaQuery(UserEntity.class)
+                  .like(UserEntity::getRealName, dto.getApproverName()));
+
+      if (!approverIds.isEmpty()) {
+        queryWrapper.in(SalesStageApprovalEntity::getApproverId, approverIds);
+      }
+    }
+  }
+
+  /**
+   * 审批列表可见范围：管理员看全部已触发审批，其他人限申请人/审批人（拆自 getPage，行为等价）。
+   *
+   * @param queryWrapper 查询构造器
+   * @param currentId 当前用户 ID
+   */
+  private void applyApprovalVisibilityScope(
+      LambdaQueryWrapper<SalesStageApprovalEntity> queryWrapper, Long currentId) {
     // 普通审批列表只对申请人/审批人开放；协助人统一从“待我协助”页面进入
     UserEntity currentUser = userMapper.selectById(currentId);
     boolean isAdmin = currentUser != null && Objects.equals(currentUser.getRoleId(), 1L);
@@ -431,55 +533,44 @@ public class SalesStageApprovalServiceImpl
                                           .isNull(
                                               SalesStageApprovalEntity::getApprovalTriggered))));
     }
+  }
 
-    Page<SalesStageApprovalEntity> pageResult = baseMapper.selectPage(page, queryWrapper);
+  /**
+   * 审批实体转 VO：补齐商机名称/阶段中文/审批人姓名（拆自 getPage，行为等价）。
+   *
+   * @param entity 审批实体
+   * @return 审批 VO
+   */
+  private SalesStageApprovalVO toApprovalVO(SalesStageApprovalEntity entity) {
+    String opportunityName = null;
+    String currentStage = null;
+    String targetStage = null;
+    String approverName = null;
 
-    List<SalesStageApprovalVO> voList =
-        pageResult.getRecords().stream()
-            .map(
-                entity -> {
-                  String opportunityName = null;
-                  String currentStage = null;
-                  String targetStage = null;
-                  String approverName = null;
+    // 获取销售机会名称
+    if (entity.getOpportunityId() != null) {
+      SalesOpportunityEntity opportunity =
+          salesOpportunityMapper.selectById(entity.getOpportunityId());
+      if (opportunity != null) {
+        opportunityName = opportunity.getOpportunityName();
+        // 将数字阶段转换为对应的中文名称
+        currentStage = convertStageToChinese(opportunity.getStage());
+      }
+    }
 
-                  // 获取销售机会名称
-                  if (entity.getOpportunityId() != null) {
-                    SalesOpportunityEntity opportunity =
-                        salesOpportunityMapper.selectById(entity.getOpportunityId());
-                    if (opportunity != null) {
-                      opportunityName = opportunity.getOpportunityName();
-                      // 将数字阶段转换为对应的中文名称
-                      currentStage = convertStageToChinese(opportunity.getStage());
-                    }
-                  }
+    // 将目标阶段数字转换为对应的中文名称
+    targetStage = convertStageToChinese(entity.getTargetStage());
 
-                  // 将目标阶段数字转换为对应的中文名称
-                  targetStage = convertStageToChinese(entity.getTargetStage());
+    // 获取审批人姓名
+    if (entity.getApproverId() != null) {
+      UserEntity approver = userMapper.selectById(entity.getApproverId());
+      if (approver != null) {
+        approverName = approver.getRealName();
+      }
+    }
 
-                  // 获取审批人姓名
-                  if (entity.getApproverId() != null) {
-                    UserEntity approver = userMapper.selectById(entity.getApproverId());
-                    if (approver != null) {
-                      approverName = approver.getRealName();
-                    }
-                  }
-
-                  SalesStageApprovalVO vo =
-                      SalesStageApprovalVO.fromEntity(
-                          entity, opportunityName, currentStage, targetStage, approverName);
-                  return vo;
-                })
-            .collect(Collectors.toList());
-
-    // 批量组装协助人（按可见性过滤）
-    fillAssistUsers(voList, currentId);
-
-    Page<SalesStageApprovalVO> resultPage = new Page<>();
-    BeanUtils.copyProperties(pageResult, resultPage);
-    resultPage.setRecords(voList);
-
-    return resultPage;
+    return SalesStageApprovalVO.fromEntity(
+        entity, opportunityName, currentStage, targetStage, approverName);
   }
 
   /**

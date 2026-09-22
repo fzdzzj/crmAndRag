@@ -152,32 +152,46 @@ public class PermissionServiceImpl extends ServiceImpl<PermissionsMapper, Permis
         permissionsMapper.selectPermissionIdsByRoleId(roleANDPermissionDTOS.getRoleId());
     if (roleANDPermissionDTOS.getIsAdd()) {
       // 新增权限
-      List<Integer> repeatIds =
-          roleANDPermissionDTOS.getPermissionIds().stream()
-              .filter(hadPermissionIds::contains)
-              .toList();
-      if (!CollectionUtils.isEmpty(repeatIds)) {
-        throw new BaseException("角色已关联权限ID " + repeatIds + "，无需重复新增");
-      }
-
-      Long currentId = BaseUnit.getCurrentId();
-      permissionsMapper.batchAddPermissionToRole(
-          roleANDPermissionDTOS.getRoleId(), roleANDPermissionDTOS.getPermissionIds(), currentId);
+      addPermissionsToRole(roleANDPermissionDTOS, hadPermissionIds);
     } else {
       // 删除权限
-      List<Integer> notHadIds =
-          roleANDPermissionDTOS.getPermissionIds().stream()
-              .filter(id -> !hadPermissionIds.contains(id))
-              .toList();
-      if (!CollectionUtils.isEmpty(notHadIds)) {
-        throw new BaseException("角色未关联权限ID " + notHadIds + "，无法删除");
-      }
-
-      permissionsMapper.batchDeletePermissionToRole(
-          roleANDPermissionDTOS.getRoleId(), roleANDPermissionDTOS.getPermissionIds());
+      deletePermissionsFromRole(roleANDPermissionDTOS, hadPermissionIds);
     }
 
     return true;
+  }
+
+  /**
+   * 新增角色权限关联：校验重复关联后批量插入（拆自 addOrDeletePermissionsToRole，行为等价）。
+   *
+   * @param dto 角色权限关联请求
+   * @param hadPermissionIds 角色已关联的权限 ID
+   */
+  private void addPermissionsToRole(RoleANDPermissionDTO dto, List<Integer> hadPermissionIds) {
+    List<Integer> repeatIds =
+        dto.getPermissionIds().stream().filter(hadPermissionIds::contains).toList();
+    if (!CollectionUtils.isEmpty(repeatIds)) {
+      throw new BaseException("角色已关联权限ID " + repeatIds + "，无需重复新增");
+    }
+
+    Long currentId = BaseUnit.getCurrentId();
+    permissionsMapper.batchAddPermissionToRole(dto.getRoleId(), dto.getPermissionIds(), currentId);
+  }
+
+  /**
+   * 删除角色权限关联：校验未关联项后批量删除（拆自 addOrDeletePermissionsToRole，行为等价）。
+   *
+   * @param dto 角色权限关联请求
+   * @param hadPermissionIds 角色已关联的权限 ID
+   */
+  private void deletePermissionsFromRole(RoleANDPermissionDTO dto, List<Integer> hadPermissionIds) {
+    List<Integer> notHadIds =
+        dto.getPermissionIds().stream().filter(id -> !hadPermissionIds.contains(id)).toList();
+    if (!CollectionUtils.isEmpty(notHadIds)) {
+      throw new BaseException("角色未关联权限ID " + notHadIds + "，无法删除");
+    }
+
+    permissionsMapper.batchDeletePermissionToRole(dto.getRoleId(), dto.getPermissionIds());
   }
 
   @Override

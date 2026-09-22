@@ -280,6 +280,36 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
 
     LambdaQueryWrapper<UserEntity> wp = new LambdaQueryWrapper<>();
 
+    applyUserPageFilters(wp, dto);
+
+    Page<UserEntity> page = new Page<>(dto.getPageNum(), dto.getPageSize());
+
+    Page<UserEntity> userEntityPage = userMapper.selectPage(page, wp);
+
+    Page<UserVO> ans = new Page<>();
+    BeanUtils.copyProperties(userEntityPage, ans);
+    List<UserVO> userVOS = new ArrayList<>();
+
+    page.getRecords()
+        .forEach(
+            userEntity -> {
+              UserVO userVO = UserVO.fromEntity(userEntity);
+              userVOS.add(userVO);
+            });
+
+    ans.setRecords(userVOS);
+    fillDeptNames(userVOS);
+
+    return ans;
+  }
+
+  /**
+   * 组装用户分页查询条件（拆自 findPage，行为等价）。
+   *
+   * @param wp 查询构造器
+   * @param dto 查询条件
+   */
+  private void applyUserPageFilters(LambdaQueryWrapper<UserEntity> wp, GetUserDTO dto) {
     if (dto.getRoleId() != null && !dto.getRoleId().isEmpty()) {
       wp.in(UserEntity::getRoleId, dto.getRoleId());
     }
@@ -310,59 +340,58 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
       wp.eq(UserEntity::getCreatorId, dto.getCreatorId());
     }
 
-    if (dto.getCreatorName() != null) {
-      List<Long> list =
-          userMapper
-              .selectList(
-                  new LambdaQueryWrapper<UserEntity>()
-                      .like(UserEntity::getRealName, dto.getCreatorName()))
-              .stream()
-              .map(UserEntity::getId)
-              .toList();
+    applyCreatorNameFilter(wp, dto.getCreatorName());
+    applyRoleNameFilter(wp, dto.getRoleName());
+  }
 
-      if (!list.isEmpty()) {
-        wp.in(UserEntity::getCreatorId, list);
-      } else {
-        wp.eq(UserEntity::getCreatorId, 0);
-      }
+  /**
+   * 按创建人姓名解析用户 ID 并过滤：未命中置创建人 ID 为 0（拆自 findPage，行为等价）。
+   *
+   * @param wp 查询构造器
+   * @param creatorName 创建人姓名
+   */
+  private void applyCreatorNameFilter(LambdaQueryWrapper<UserEntity> wp, String creatorName) {
+    if (creatorName == null) {
+      return;
     }
+    List<Long> list =
+        userMapper
+            .selectList(
+                new LambdaQueryWrapper<UserEntity>().like(UserEntity::getRealName, creatorName))
+            .stream()
+            .map(UserEntity::getId)
+            .toList();
 
-    if (dto.getRoleName() != null) {
-      List<Long> list =
-          roleMapper
-              .selectList(
-                  new LambdaQueryWrapper<RoleEntity>()
-                      .like(RoleEntity::getRoleName, dto.getRoleName()))
-              .stream()
-              .map(RoleEntity::getId)
-              .toList();
-
-      if (!list.isEmpty()) {
-        wp.in(UserEntity::getCreatorId, list);
-      } else {
-        wp.eq(UserEntity::getCreatorId, 0);
-      }
+    if (!list.isEmpty()) {
+      wp.in(UserEntity::getCreatorId, list);
+    } else {
+      wp.eq(UserEntity::getCreatorId, 0);
     }
+  }
 
-    Page<UserEntity> page = new Page<>(dto.getPageNum(), dto.getPageSize());
+  /**
+   * 按角色名解析角色 ID 并过滤：未命中置创建人 ID 为 0（拆自 findPage，行为等价）。
+   *
+   * @param wp 查询构造器
+   * @param roleName 角色名
+   */
+  private void applyRoleNameFilter(LambdaQueryWrapper<UserEntity> wp, String roleName) {
+    if (roleName == null) {
+      return;
+    }
+    List<Long> list =
+        roleMapper
+            .selectList(
+                new LambdaQueryWrapper<RoleEntity>().like(RoleEntity::getRoleName, roleName))
+            .stream()
+            .map(RoleEntity::getId)
+            .toList();
 
-    Page<UserEntity> userEntityPage = userMapper.selectPage(page, wp);
-
-    Page<UserVO> ans = new Page<>();
-    BeanUtils.copyProperties(userEntityPage, ans);
-    List<UserVO> userVOS = new ArrayList<>();
-
-    page.getRecords()
-        .forEach(
-            userEntity -> {
-              UserVO userVO = UserVO.fromEntity(userEntity);
-              userVOS.add(userVO);
-            });
-
-    ans.setRecords(userVOS);
-    fillDeptNames(userVOS);
-
-    return ans;
+    if (!list.isEmpty()) {
+      wp.in(UserEntity::getCreatorId, list);
+    } else {
+      wp.eq(UserEntity::getCreatorId, 0);
+    }
   }
 
   /**

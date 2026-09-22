@@ -50,6 +50,30 @@ public class SysDeptServiceImpl extends ServiceImpl<SysDeptMapper, SysDeptEntity
   @Override
   @Transactional(rollbackFor = Exception.class)
   public Boolean add(SysDeptDTO dto) {
+    String deptName = requireValidNewDeptName(dto);
+
+    // 同级/父级存在性与父链完整性校验
+    validateParentChain(dto.getParentId(), null);
+    // 状态只允许 0（停用）/1（启用）
+    Integer status = dto.getStatus() == null ? 1 : dto.getStatus();
+    requireValidDeptStatus(status);
+
+    SysDeptEntity entity = new SysDeptEntity();
+    entity.setDeptName(deptName);
+    entity.setParentId(dto.getParentId());
+    entity.setSort(dto.getSort() == null ? 0 : dto.getSort());
+    entity.setStatus(status);
+    entity.setCreateTime(LocalDateTime.now());
+    return save(entity);
+  }
+
+  /**
+   * 校验新增部门名称：非空、长度不超 50、无同名部门（拆自 add，行为等价）。
+   *
+   * @param dto 新增部门请求
+   * @return 去除首尾空白后的部门名称
+   */
+  private String requireValidNewDeptName(SysDeptDTO dto) {
     if (dto == null || dto.getDeptName() == null || dto.getDeptName().trim().isEmpty()) {
       throw new BaseException(ErrorCode.PARAM_REQUIRED, "部门名称不能为空");
     }
@@ -63,22 +87,18 @@ public class SysDeptServiceImpl extends ServiceImpl<SysDeptMapper, SysDeptEntity
     if (count != null && count > 0) {
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "部门名称已存在");
     }
+    return deptName;
+  }
 
-    // 同级/父级存在性与父链完整性校验
-    validateParentChain(dto.getParentId(), null);
-    // 状态只允许 0（停用）/1（启用）
-    Integer status = dto.getStatus() == null ? 1 : dto.getStatus();
+  /**
+   * 校验部门状态只允许 0（停用）/1（启用）（拆自 add，行为等价）。
+   *
+   * @param status 部门状态
+   */
+  private void requireValidDeptStatus(Integer status) {
     if (status != 0 && status != 1) {
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "部门状态只能为 0（停用）或 1（启用）");
     }
-
-    SysDeptEntity entity = new SysDeptEntity();
-    entity.setDeptName(deptName);
-    entity.setParentId(dto.getParentId());
-    entity.setSort(dto.getSort() == null ? 0 : dto.getSort());
-    entity.setStatus(status);
-    entity.setCreateTime(LocalDateTime.now());
-    return save(entity);
   }
 
   @Override
@@ -92,27 +112,7 @@ public class SysDeptServiceImpl extends ServiceImpl<SysDeptMapper, SysDeptEntity
       throw new BaseException(ErrorCode.ID_NOT_EXISTS.getMessage().formatted("部门"));
     }
     if (dto.getDeptName() != null && !dto.getDeptName().trim().isEmpty()) {
-      String deptName = dto.getDeptName().trim();
-      if (deptName.length() > 50) {
-        throw new BaseException(ErrorCode.PARAM_LENGTH_EXCEEDED, "部门名称不能超过50个字符");
-      }
-      Long count =
-          count(
-              new LambdaQueryWrapper<SysDeptEntity>()
-                  .eq(SysDeptEntity::getDeptName, deptName)
-                  .ne(SysDeptEntity::getId, dto.getId()));
-      if (count != null && count > 0) {
-        throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "部门名称已存在");
-      }
-      boolean deptNameChanged = !Objects.equals(entity.getDeptName(), deptName);
-      entity.setDeptName(deptName);
-      if (deptNameChanged) {
-        // 部门名称变更：清除 deptName 缓存，避免列表/详情继续显示旧名称
-        Cache deptNameCache = cacheManager.getCache("deptName");
-        if (deptNameCache != null) {
-          deptNameCache.clear();
-        }
-      }
+      applyDeptNameUpdate(entity, dto);
     }
     if (dto.getParentId() != null) {
       validateParentChain(dto.getParentId(), dto.getId());
@@ -121,14 +121,54 @@ public class SysDeptServiceImpl extends ServiceImpl<SysDeptMapper, SysDeptEntity
     if (dto.getSort() != null) {
       entity.setSort(dto.getSort());
     }
+    applyDeptStatusUpdate(entity, dto);
+    entity.setUpdateTime(LocalDateTime.now());
+    return updateById(entity);
+  }
+
+  /**
+   * 应用部门名称变更：长度/重名校验并清除 deptName 缓存（拆自 update，行为等价；调用前需确认 deptName 非空白）。
+   *
+   * @param entity 部门实体
+   * @param dto 更新请求
+   */
+  private void applyDeptNameUpdate(SysDeptEntity entity, SysDeptDTO dto) {
+    String deptName = dto.getDeptName().trim();
+    if (deptName.length() > 50) {
+      throw new BaseException(ErrorCode.PARAM_LENGTH_EXCEEDED, "部门名称不能超过50个字符");
+    }
+    Long count =
+        count(
+            new LambdaQueryWrapper<SysDeptEntity>()
+                .eq(SysDeptEntity::getDeptName, deptName)
+                .ne(SysDeptEntity::getId, dto.getId()));
+    if (count != null && count > 0) {
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "部门名称已存在");
+    }
+    boolean deptNameChanged = !Objects.equals(entity.getDeptName(), deptName);
+    entity.setDeptName(deptName);
+    if (deptNameChanged) {
+      // 部门名称变更：清除 deptName 缓存，避免列表/详情继续显示旧名称
+      Cache deptNameCache = cacheManager.getCache("deptName");
+      if (deptNameCache != null) {
+        deptNameCache.clear();
+      }
+    }
+  }
+
+  /**
+   * 应用部门状态变更：只允许 0（停用）/1（启用）（拆自 update，行为等价）。
+   *
+   * @param entity 部门实体
+   * @param dto 更新请求
+   */
+  private void applyDeptStatusUpdate(SysDeptEntity entity, SysDeptDTO dto) {
     if (dto.getStatus() != null) {
       if (dto.getStatus() != 0 && dto.getStatus() != 1) {
         throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "部门状态只能为 0（停用）或 1（启用）");
       }
       entity.setStatus(dto.getStatus());
     }
-    entity.setUpdateTime(LocalDateTime.now());
-    return updateById(entity);
   }
 
   /**

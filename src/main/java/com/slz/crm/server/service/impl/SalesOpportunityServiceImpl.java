@@ -2,6 +2,7 @@ package com.slz.crm.server.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.slz.crm.common.enumeration.ErrorCode;
@@ -210,59 +211,22 @@ public class SalesOpportunityServiceImpl
     }
     // 公司名称模糊搜索
     if (queryDTO.getCompanyName() != null && !queryDTO.getCompanyName().isEmpty()) {
-      Set<Long> companyIds =
-          customerCompanyMapper.selectCompanyIdsByName(queryDTO.getCompanyName());
-      if (!companyIds.isEmpty()) {
-        queryWrapper.in(SalesOpportunityEntity::getCompanyId, companyIds);
-      } else {
-        queryWrapper.eq(SalesOpportunityEntity::getCompanyId, -1);
-      }
+      applyIdSetFilter(
+          queryWrapper,
+          customerCompanyMapper.selectCompanyIdsByName(queryDTO.getCompanyName()),
+          SalesOpportunityEntity::getCompanyId);
     }
     // 联系人名称模糊搜索
     if (queryDTO.getContactName() != null && !queryDTO.getContactName().isEmpty()) {
-      Set<Long> contactIds =
-          customerContactMapper.selectContactIdsByName(queryDTO.getContactName());
-      if (!contactIds.isEmpty()) {
-        queryWrapper.in(SalesOpportunityEntity::getContactId, contactIds);
-      } else {
-        queryWrapper.eq(SalesOpportunityEntity::getContactId, -1);
-      }
+      applyIdSetFilter(
+          queryWrapper,
+          customerContactMapper.selectContactIdsByName(queryDTO.getContactName()),
+          SalesOpportunityEntity::getContactId);
     }
-    // 负责人名称模糊搜索
-    if (queryDTO.getOwnerName() != null && !queryDTO.getOwnerName().isEmpty()) {
-      Set<Long> ownerIds = userMapper.selectUserIdsByUserName(queryDTO.getOwnerName());
-      if (!ownerIds.isEmpty()) {
-        queryWrapper.in(SalesOpportunityEntity::getOwnerId, ownerIds);
-      } else {
-        queryWrapper.eq(SalesOpportunityEntity::getOwnerId, -1);
-      }
-    }
-    // 审批人名称模糊搜索
-    if (queryDTO.getApproverName() != null && !queryDTO.getApproverName().isEmpty()) {
-      Set<Long> approverIds = userMapper.selectUserIdsByUserName(queryDTO.getApproverName());
-      if (!approverIds.isEmpty()) {
-        queryWrapper.in(SalesOpportunityEntity::getApproverId, approverIds);
-      } else {
-        queryWrapper.eq(SalesOpportunityEntity::getApproverId, -1);
-      }
-    }
-    // 创建人名称模糊搜索
-    if (queryDTO.getCreatorName() != null && !queryDTO.getCreatorName().isEmpty()) {
-      Set<Long> creatorIds = userMapper.selectUserIdsByUserName(queryDTO.getCreatorName());
-      if (!creatorIds.isEmpty()) {
-        queryWrapper.in(SalesOpportunityEntity::getCreatorId, creatorIds);
-      } else {
-        queryWrapper.eq(SalesOpportunityEntity::getCreatorId, -1);
-      }
-    }
+    // 负责人/审批人/创建人名称模糊搜索
+    applyUserRelatedFilters(queryWrapper, queryDTO);
     // 销售机会阶段搜索
-    if (queryDTO.getStage() != null) {
-      if (queryDTO.getStage() >= 0 && queryDTO.getStage() <= 5) {
-        queryWrapper.eq(SalesOpportunityEntity::getStage, queryDTO.getStage());
-      } else {
-        queryWrapper.eq(SalesOpportunityEntity::getStage, -1);
-      }
-    }
+    applyStageFilter(queryWrapper, queryDTO.getStage());
     // 销售机会描述模糊搜索
     if (queryDTO.getDescription() != null && !queryDTO.getDescription().isEmpty()) {
       queryWrapper.like(SalesOpportunityEntity::getDescription, queryDTO.getDescription());
@@ -271,6 +235,96 @@ public class SalesOpportunityServiceImpl
     if (queryDTO.getSource() != null && !queryDTO.getSource().isEmpty()) {
       queryWrapper.like(SalesOpportunityEntity::getSource, queryDTO.getSource());
     }
+    // 金额/创建时间/关闭日期范围搜索
+    applyRangeFilters(queryWrapper, queryDTO);
+    // 负责人用户ID精确匹配
+    if (queryDTO.getOwnerId() != null) {
+      queryWrapper.eq(SalesOpportunityEntity::getOwnerId, queryDTO.getOwnerId());
+    }
+    // 负责人用户名模糊搜索
+    if (queryDTO.getOwnerUserName() != null && !queryDTO.getOwnerUserName().isEmpty()) {
+      applyIdSetFilter(
+          queryWrapper,
+          userMapper.selectUserIdsByUserName(queryDTO.getOwnerUserName()),
+          SalesOpportunityEntity::getOwnerId);
+    }
+    return queryWrapper;
+  }
+
+  /**
+   * 负责人/审批人/创建人名称模糊搜索（拆自 getQueryWrapper，行为等价）。
+   *
+   * @param queryWrapper 查询构造器
+   * @param queryDTO 查询条件DTO
+   */
+  private void applyUserRelatedFilters(
+      LambdaQueryWrapper<SalesOpportunityEntity> queryWrapper, SalesOpportunityQueryDTO queryDTO) {
+    // 负责人名称模糊搜索
+    if (queryDTO.getOwnerName() != null && !queryDTO.getOwnerName().isEmpty()) {
+      applyIdSetFilter(
+          queryWrapper,
+          userMapper.selectUserIdsByUserName(queryDTO.getOwnerName()),
+          SalesOpportunityEntity::getOwnerId);
+    }
+    // 审批人名称模糊搜索
+    if (queryDTO.getApproverName() != null && !queryDTO.getApproverName().isEmpty()) {
+      applyIdSetFilter(
+          queryWrapper,
+          userMapper.selectUserIdsByUserName(queryDTO.getApproverName()),
+          SalesOpportunityEntity::getApproverId);
+    }
+    // 创建人名称模糊搜索
+    if (queryDTO.getCreatorName() != null && !queryDTO.getCreatorName().isEmpty()) {
+      applyIdSetFilter(
+          queryWrapper,
+          userMapper.selectUserIdsByUserName(queryDTO.getCreatorName()),
+          SalesOpportunityEntity::getCreatorId);
+    }
+  }
+
+  /**
+   * ID 集合过滤：非空用 in，否则置 -1 保证查不到（拆自 getQueryWrapper，行为等价）。
+   *
+   * @param queryWrapper 查询构造器
+   * @param ids 解析出的 ID 集合
+   * @param column 实体列
+   */
+  private void applyIdSetFilter(
+      LambdaQueryWrapper<SalesOpportunityEntity> queryWrapper,
+      Set<Long> ids,
+      SFunction<SalesOpportunityEntity, ?> column) {
+    if (ids != null && !ids.isEmpty()) {
+      queryWrapper.in(column, ids);
+    } else {
+      queryWrapper.eq(column, -1);
+    }
+  }
+
+  /**
+   * 销售机会阶段过滤：合法阶段精确匹配，非法阶段置 -1（拆自 getQueryWrapper，行为等价）。
+   *
+   * @param queryWrapper 查询构造器
+   * @param stage 阶段值
+   */
+  private void applyStageFilter(
+      LambdaQueryWrapper<SalesOpportunityEntity> queryWrapper, Integer stage) {
+    if (stage != null) {
+      if (stage >= 0 && stage <= 5) {
+        queryWrapper.eq(SalesOpportunityEntity::getStage, stage);
+      } else {
+        queryWrapper.eq(SalesOpportunityEntity::getStage, -1);
+      }
+    }
+  }
+
+  /**
+   * 金额/创建时间/关闭日期范围过滤（拆自 getQueryWrapper，行为等价）。
+   *
+   * @param queryWrapper 查询构造器
+   * @param queryDTO 查询条件DTO
+   */
+  private void applyRangeFilters(
+      LambdaQueryWrapper<SalesOpportunityEntity> queryWrapper, SalesOpportunityQueryDTO queryDTO) {
     // 金额范围搜索
     if (queryDTO.getMinAmount() != null && queryDTO.getMaxAmount() != null) {
       queryWrapper.between(
@@ -290,20 +344,6 @@ public class SalesOpportunityServiceImpl
           queryDTO.getMinExpectedCloseDate(),
           queryDTO.getMaxExpectedCloseDate());
     }
-    // 负责人用户ID精确匹配
-    if (queryDTO.getOwnerId() != null) {
-      queryWrapper.eq(SalesOpportunityEntity::getOwnerId, queryDTO.getOwnerId());
-    }
-    // 负责人用户名模糊搜索
-    if (queryDTO.getOwnerUserName() != null && !queryDTO.getOwnerUserName().isEmpty()) {
-      Set<Long> ownerUserIds = userMapper.selectUserIdsByUserName(queryDTO.getOwnerUserName());
-      if (!ownerUserIds.isEmpty()) {
-        queryWrapper.in(SalesOpportunityEntity::getOwnerId, ownerUserIds);
-      } else {
-        queryWrapper.eq(SalesOpportunityEntity::getOwnerId, -1);
-      }
-    }
-    return queryWrapper;
   }
 
   @Override
@@ -373,6 +413,37 @@ public class SalesOpportunityServiceImpl
     activities = visibility.filterActivities(activities);
 
     // 5. 按商机状态分组业务活动（根据审批完成时间匹配阶段）
+    detailVO.setActivitiesByStage(groupActivitiesByStage(opportunity, activities, approvals));
+
+    // 6. 构建审批记录VO列表（包含所有状态的审批记录）
+    List<com.slz.crm.pojo.vo.SalesStageApprovalVO> approvalVOs =
+        buildApprovalRecords(opportunity, opportunityId, visibility);
+
+    // 按每次审批组装协助人（不同审批协助人可能不同）
+    fillApprovalAssistUsers(approvalVOs, BaseUnit.getCurrentId());
+    detailVO.setStageChangeRecords(approvalVOs);
+
+    // 对象级授权已经确认当前用户与该商机有关，协助场景下视为本人不脱敏
+    if (currentId != null && temporaryAssistAccess) {
+      detailVO.setRelatedUserIds(Set.of(currentId));
+    }
+
+    return detailVO;
+  }
+
+  /**
+   * 按商机状态分组业务活动：无审批记录时全部归入当前阶段，否则按审批时间线匹配（拆自 getOpportunityDetailById，行为等价）。
+   *
+   * @param opportunity 商机实体
+   * @param activities 业务活动列表
+   * @param approvals 已通过的审批记录
+   * @return 阶段名 -> 活动 VO 列表
+   */
+  private java.util.Map<String, List<com.slz.crm.pojo.vo.BusinessActivityVO>>
+      groupActivitiesByStage(
+          SalesOpportunityEntity opportunity,
+          List<com.slz.crm.pojo.entity.BusinessActivityEntity> activities,
+          List<com.slz.crm.pojo.entity.SalesStageApprovalEntity> approvals) {
     java.util.Map<String, List<com.slz.crm.pojo.vo.BusinessActivityVO>> activitiesByStage =
         new java.util.LinkedHashMap<>();
 
@@ -430,9 +501,21 @@ public class SalesOpportunityServiceImpl
       }
     }
 
-    detailVO.setActivitiesByStage(activitiesByStage);
+    return activitiesByStage;
+  }
 
-    // 6. 构建审批记录VO列表（包含所有状态的审批记录）
+  /**
+   * 构建审批记录 VO 列表（包含所有状态的审批记录，拆自 getOpportunityDetailById，行为等价）。
+   *
+   * @param opportunity 商机实体
+   * @param opportunityId 商机 ID
+   * @param visibility 协助可见范围
+   * @return 审批记录 VO 列表
+   */
+  private List<com.slz.crm.pojo.vo.SalesStageApprovalVO> buildApprovalRecords(
+      SalesOpportunityEntity opportunity,
+      Long opportunityId,
+      OpportunityAssistVisibility visibility) {
     List<com.slz.crm.pojo.entity.SalesStageApprovalEntity> allApprovals =
         visibility.fullDetail()
             ? salesStageApprovalMapper.selectAllApprovalsByOpportunityId(opportunityId)
@@ -469,16 +552,7 @@ public class SalesOpportunityServiceImpl
       approvalVOs.add(approvalVO);
     }
 
-    // 按每次审批组装协助人（不同审批协助人可能不同）
-    fillApprovalAssistUsers(approvalVOs, BaseUnit.getCurrentId());
-    detailVO.setStageChangeRecords(approvalVOs);
-
-    // 对象级授权已经确认当前用户与该商机有关，协助场景下视为本人不脱敏
-    if (currentId != null && temporaryAssistAccess) {
-      detailVO.setRelatedUserIds(Set.of(currentId));
-    }
-
-    return detailVO;
+    return approvalVOs;
   }
 
   /** 商机详情的临时协助可见范围。 审批协助人可读完整详情；联络任务协助人只读该任务关联活动； 业务活动协助人只读被协助的活动。正常数据权限不进入该分支。 */

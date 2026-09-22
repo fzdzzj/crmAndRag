@@ -192,71 +192,84 @@ public class PendingActionServiceImpl
 
       result = toConfirmResult(idempotentResult, List.of());
     } else {
-      // 运行时权限校验（按 actionType 映射）
-      requirePermission(entity.getActionType(), userId);
-
-      if (!PendingActionStatus.PENDING.getValue().equals(entity.getStatus())
-          && !PendingActionStatus.FAILED.getValue().equals(entity.getStatus())) {
-
-        throw new BaseException(ErrorCode.AI_ACTION_PARAM_MISSING, "当前状态不可确认，请先补齐参数");
-      }
-
-      // 校验过期
-      if (entity.getExpireTime() != null && entity.getExpireTime().isBefore(LocalDateTime.now())) {
-
-        self.markExpired(pendingId);
-
-        throw new BaseException(ErrorCode.AI_ACTION_TIMEOUT, "确认已超时，请重新发起");
-      }
-
-      // 条件更新抢占执行权（防并发双击）
-      int affected =
-          baseMapper.update(
-              null,
-              new UpdateWrapper<AiPendingActionEntity>()
-                  .eq("pending_id", pendingId)
-                  .and(
-                      w ->
-                          w.eq("status", PendingActionStatus.PENDING.getValue())
-                              .or()
-                              .eq("status", PendingActionStatus.FAILED.getValue()))
-                  .set("status", PendingActionStatus.CONFIRMED.getValue())
-                  .set("confirmed_time", LocalDateTime.now())
-                  .set("updated_time", LocalDateTime.now()));
-
-      if (affected == 0) {
-
-        throw new BaseException(ErrorCode.AI_ACTION_ALREADY_HANDLED, "操作已被处理");
-      }
-
-      // 策略分发执行（以库中 payload 为准，忽略请求体）
-      AiActionExecutor executor = executorMap.get(entity.getActionType());
-
-      if (executor == null) {
-
-        throw new BaseException(
-            ErrorCode.AI_ACTION_PARAM_MISSING, "不支持的操作类型: " + entity.getActionType());
-      }
-      try {
-        AiExecutionResult execResult = executor.execute(entity.getPayload());
-
-        update(
-            new UpdateWrapper<AiPendingActionEntity>()
-                .eq("pending_id", pendingId)
-                .set("result", execResult.getResult()));
-
-        result = toConfirmResult(execResult.getResult(), execResult.getReferences());
-
-      } catch (Exception e) {
-
-        log.error("执行待确认操作失败, pendingId={}", pendingId, e);
-
-        markFailedAfterRollback(pendingId, buildErrorJson());
-
-        throw new BaseException(ErrorCode.AI_ACTION_EXECUTE_FAILED, "执行失败，请稍后重试");
-      }
+      result = executePendingAction(entity, pendingId, userId);
     }
     return result;
+  }
+
+  /**
+   * 执行待确认操作主体：权限校验、状态与过期校验、CAS 抢占、策略分发执行（拆自 confirm，行为等价）。
+   *
+   * @param entity 待确认动作实体
+   * @param pendingId 待确认动作 ID
+   * @param userId 当前用户 ID
+   * @return 确认结果
+   */
+  private AiConfirmResultVO executePendingAction(
+      AiPendingActionEntity entity, String pendingId, Long userId) {
+    // 运行时权限校验（按 actionType 映射）
+    requirePermission(entity.getActionType(), userId);
+
+    if (!PendingActionStatus.PENDING.getValue().equals(entity.getStatus())
+        && !PendingActionStatus.FAILED.getValue().equals(entity.getStatus())) {
+
+      throw new BaseException(ErrorCode.AI_ACTION_PARAM_MISSING, "当前状态不可确认，请先补齐参数");
+    }
+
+    // 校验过期
+    if (entity.getExpireTime() != null && entity.getExpireTime().isBefore(LocalDateTime.now())) {
+
+      self.markExpired(pendingId);
+
+      throw new BaseException(ErrorCode.AI_ACTION_TIMEOUT, "确认已超时，请重新发起");
+    }
+
+    // 条件更新抢占执行权（防并发双击）
+    int affected =
+        baseMapper.update(
+            null,
+            new UpdateWrapper<AiPendingActionEntity>()
+                .eq("pending_id", pendingId)
+                .and(
+                    w ->
+                        w.eq("status", PendingActionStatus.PENDING.getValue())
+                            .or()
+                            .eq("status", PendingActionStatus.FAILED.getValue()))
+                .set("status", PendingActionStatus.CONFIRMED.getValue())
+                .set("confirmed_time", LocalDateTime.now())
+                .set("updated_time", LocalDateTime.now()));
+
+    if (affected == 0) {
+
+      throw new BaseException(ErrorCode.AI_ACTION_ALREADY_HANDLED, "操作已被处理");
+    }
+
+    // 策略分发执行（以库中 payload 为准，忽略请求体）
+    AiActionExecutor executor = executorMap.get(entity.getActionType());
+
+    if (executor == null) {
+
+      throw new BaseException(
+          ErrorCode.AI_ACTION_PARAM_MISSING, "不支持的操作类型: " + entity.getActionType());
+    }
+    AiExecutionResult execResult;
+    try {
+      execResult = executor.execute(entity.getPayload());
+
+      update(
+          new UpdateWrapper<AiPendingActionEntity>()
+              .eq("pending_id", pendingId)
+              .set("result", execResult.getResult()));
+
+    } catch (Exception e) {
+
+      log.error("执行待确认操作失败, pendingId={}", pendingId, e);
+
+      markFailedAfterRollback(pendingId, buildErrorJson());
+
+      throw new BaseException(ErrorCode.AI_ACTION_EXECUTE_FAILED, "执行失败，请稍后重试");
+    }
+    return toConfirmResult(execResult.getResult(), execResult.getReferences());
   }
 
   @Override

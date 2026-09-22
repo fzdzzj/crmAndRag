@@ -226,7 +226,13 @@ public class CustomerContactServiceImpl
     }
 
     int remarkTypeCode = remark.getRemarkType();
+    validateRequiredFieldsByRemarkType(remark, remarkType, remarkTypeCode);
+    validateForbiddenFieldsByRemarkType(remark, remarkType, remarkTypeCode);
+  }
 
+  /** 按备注类型校验必填字段：喜好/住址/自定义需内容，本人出生日期需出生日期，亲属出生日期需姓名 */
+  private void validateRequiredFieldsByRemarkType(
+      CustomerContactRemarkDTO remark, RemarkType remarkType, int remarkTypeCode) {
     // 根据备注类型验证必填字段
     // 喜好、住址、自定义类型需要填写备注内容
     if (RemarkType.needContent(remarkTypeCode)
@@ -244,7 +250,11 @@ public class CustomerContactServiceImpl
         && (remark.getRemarkName() == null || remark.getRemarkName().trim().isEmpty())) {
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, remarkType.getDesc() + "类型需要填写姓名");
     }
+  }
 
+  /** 按备注类型校验禁止填写的字段，防止同一备注混入不属于该类型的字段 */
+  private void validateForbiddenFieldsByRemarkType(
+      CustomerContactRemarkDTO remark, RemarkType remarkType, int remarkTypeCode) {
     // 验证不能填写的字段
     // 喜好、住址、自定义类型只能填备注内容，不能填姓名和出生日期
     if (RemarkType.onlyNeedContent(remarkTypeCode)) {
@@ -497,28 +507,43 @@ public class CustomerContactServiceImpl
   public Page<CustomerContactVO> search(
       CustomerContactDTO customerContactDTO, Integer pageNum, Integer pageSize) {
     LambdaQueryWrapper<CustomerContactEntity> queryWrapper = new LambdaQueryWrapper<>();
-    if (customerContactDTO.getCompanyId() != null) {
-      queryWrapper.eq(CustomerContactEntity::getCompanyId, customerContactDTO.getCompanyId());
+    Page<CustomerContactEntity> page = new Page<>(pageNum, pageSize);
+    // 公司表无匹配时结果必为空，跳过查询
+    if (applyCompanyFilter(queryWrapper, customerContactDTO.getCompanyName())) {
+      applyContactSearchFilters(queryWrapper, customerContactDTO);
+      baseMapper.selectPage(page, queryWrapper);
     }
-    if (customerContactDTO.getCompanyName() != null
-        && !customerContactDTO.getCompanyName().isEmpty()) {
+    return buildContactSearchPage(page, pageNum, pageSize);
+  }
+
+  /** 按公司名称模糊过滤联系人：先反查公司 ID，公司表无匹配时返回 false 表示结果必为空 */
+  private boolean applyCompanyFilter(
+      LambdaQueryWrapper<CustomerContactEntity> queryWrapper, String companyName) {
+    boolean matched = true;
+    if (companyName != null && !companyName.isEmpty()) {
       // 先按公司名称模糊匹配出公司ID，再过滤联系人（公司表无匹配则返回空结果）
       List<Long> companyIds =
           customerCompanyMapper
               .selectList(
                   new LambdaQueryWrapper<CustomerCompanyEntity>()
-                      .like(
-                          CustomerCompanyEntity::getCompanyName,
-                          customerContactDTO.getCompanyName())
+                      .like(CustomerCompanyEntity::getCompanyName, companyName)
                       .eq(CustomerCompanyEntity::getIsDeleted, false))
               .stream()
               .map(CustomerCompanyEntity::getId)
               .collect(Collectors.toList());
       if (companyIds.isEmpty()) {
-        return new Page<>(pageNum, pageSize);
+        matched = false;
+      } else {
+        queryWrapper.in(CustomerContactEntity::getCompanyId, companyIds);
       }
-      queryWrapper.in(CustomerContactEntity::getCompanyId, companyIds);
     }
+    return matched;
+  }
+
+  /** 联系人其余检索条件：名称/职位/部门/电话/手机/邮箱模糊 + 性别/关系等级（0 视为未选）+ 删除标记缺省只查未删除 */
+  private void applyContactSearchFilters(
+      LambdaQueryWrapper<CustomerContactEntity> queryWrapper,
+      CustomerContactDTO customerContactDTO) {
     if (customerContactDTO.getName() != null && !customerContactDTO.getName().isEmpty()) {
       queryWrapper.like(CustomerContactEntity::getName, customerContactDTO.getName());
     }
@@ -550,8 +575,11 @@ public class CustomerContactServiceImpl
     } else {
       queryWrapper.eq(CustomerContactEntity::getIsDeleted, false);
     }
-    Page<CustomerContactEntity> page = new Page<>(pageNum, pageSize);
-    baseMapper.selectPage(page, queryWrapper);
+  }
+
+  /** 由实体分页构建 VO 分页：批量收集公司/创建人并统一查名称，逐条带出备注列表 */
+  private Page<CustomerContactVO> buildContactSearchPage(
+      Page<CustomerContactEntity> page, Integer pageNum, Integer pageSize) {
     List<CustomerContactEntity> customerContactEntityList = page.getRecords();
 
     // 批量收集ID后统一查询
@@ -772,41 +800,50 @@ public class CustomerContactServiceImpl
   @Override
   public List<String> getBirthdayReminderMessage(Long contactId) {
 
+    List<String> result;
     if (!birthdayReminderProperties.isEnabled()) {
       throw new BaseException(ErrorCode.NOT_ENABLED, "生日提醒功能未启用");
-    }
-
-    // 1. 查询联系人信息
-    CustomerContactEntity entity =
-        getOne(
-            new LambdaQueryWrapper<CustomerContactEntity>()
-                .eq(CustomerContactEntity::getId, contactId)
-                .eq(CustomerContactEntity::getIsDeleted, false));
-
-    if (entity == null) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "联系人不存在");
-    }
-
-    // 2. 获取称呼和性别
-    String title;
-    if (entity.getGender() == null) {
-      title = "";
     } else {
-      title = entity.getGender() == 1 ? "先生" : "女士";
-    }
-    String contactName = entity.getName();
+      // 1. 查询联系人信息
+      CustomerContactEntity entity =
+          getOne(
+              new LambdaQueryWrapper<CustomerContactEntity>()
+                  .eq(CustomerContactEntity::getId, contactId)
+                  .eq(CustomerContactEntity::getIsDeleted, false));
 
-    // 3. 查询联系人的所有生日备注（类型 3-本人，类型 4-亲属）
-    List<CustomerContactRemarkEntity> remarks =
-        customerContactRemarkMapper.selectByContactId(contactId);
-    if (remarks == null || remarks.isEmpty()) {
-      return List.of();
-    }
+      if (entity == null) {
+        throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "联系人不存在");
+      }
 
-    // 4. 筛选出有出生日期的备注
-    LocalDate today = LocalDate.now();
+      // 2. 获取称呼和性别
+      String title;
+      if (entity.getGender() == null) {
+        title = "";
+      } else {
+        title = entity.getGender() == 1 ? "先生" : "女士";
+      }
+      String contactName = entity.getName();
+
+      // 3. 查询联系人的所有生日备注（类型 3-本人，类型 4-亲属）
+      List<CustomerContactRemarkEntity> remarks =
+          customerContactRemarkMapper.selectByContactId(contactId);
+      if (remarks == null || remarks.isEmpty()) {
+        result = List.of();
+      } else {
+        // 4. 筛选出有出生日期的备注并计算剩余天数，5. 按天数排序，最近的在前面
+        List<BirthdayInfoDTO> birthdayInfos =
+            collectBirthdayInfos(contactName, remarks, LocalDate.now());
+        birthdayInfos.sort((a, b) -> a.getDaysUntil() - b.getDaysUntil());
+        result = buildBirthdayMessages(contactName, title, birthdayInfos);
+      }
+    }
+    return result;
+  }
+
+  /** 从备注中筛选本人/亲属生日项并计算今年 upcoming 日期与剩余天数 */
+  private List<BirthdayInfoDTO> collectBirthdayInfos(
+      String contactName, List<CustomerContactRemarkEntity> remarks, LocalDate today) {
     List<BirthdayInfoDTO> birthdayInfos = new ArrayList<>();
-
     for (CustomerContactRemarkEntity remark : remarks) {
       if (remark.getRemarkType() == 3 || remark.getRemarkType() == 4) {
         LocalDate birthday = remark.getRemarkDate();
@@ -828,10 +865,13 @@ public class CustomerContactServiceImpl
         }
       }
     }
+    return birthdayInfos;
+  }
 
-    // 5. 按天数排序，最近的在前面
-    birthdayInfos.sort((a, b) -> a.getDaysUntil() - b.getDaysUntil());
-
+  /** 按配置天数过滤后生成提醒消息列表，每个人对应一条消息 */
+  private List<String> buildBirthdayMessages(
+      String contactName, String title, List<BirthdayInfoDTO> birthdayInfos) {
+    List<String> result;
     // 6. 根据配置的天数过滤，只保留指定天数内的生日
     int reminderDays = birthdayReminderProperties.getDays();
     List<BirthdayInfoDTO> filteredInfos =
@@ -841,14 +881,15 @@ public class CustomerContactServiceImpl
 
     // 7. 生成提醒消息列表，每个人对应一条消息
     if (filteredInfos.isEmpty()) {
-      return List.of();
+      result = List.of();
     } else {
       List<String> messages = new ArrayList<>();
       for (BirthdayInfoDTO info : filteredInfos) {
         messages.add(buildSingleMessage(contactName, title, info));
       }
-      return messages;
+      result = messages;
     }
+    return result;
   }
 
   /** 构建单条提醒消息 */

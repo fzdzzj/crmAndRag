@@ -44,6 +44,23 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
   @Transactional(rollbackFor = Exception.class)
   public InvoiceInfoVO create(InvoiceInfoDTO dto) {
     // 参数校验
+    validateInvoiceCreate(dto);
+
+    InvoiceInfoEntity entity = buildInvoiceEntity(dto);
+
+    // 如果没有填写发票编号，自动生成（带重复检测和重试机制）
+    InvoiceInfoVO generated;
+    if (!StringUtils.hasText(entity.getInvoiceNo())) {
+      generated = insertWithGeneratedInvoiceNo(entity);
+    } else {
+      // 前端传入了发票编号，直接插入
+      generated = invoiceInfoMapper.insert(entity) > 0 ? toCreatedVO(entity) : null;
+    }
+    return generated;
+  }
+
+  /** 创建发票的关联校验：合同必须存在；指定回款记录时回款必须存在且属于该合同 */
+  private void validateInvoiceCreate(InvoiceInfoDTO dto) {
     if (dto.getContractId() == null) {
       throw new BaseException(ErrorCode.PARAM_EMPTY.getMessage());
     }
@@ -65,7 +82,10 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
         throw new BaseException("回款记录不属于该合同");
       }
     }
+  }
 
+  /** 由 DTO 手动装配发票实体（状态缺省为已开具 0） */
+  private InvoiceInfoEntity buildInvoiceEntity(InvoiceInfoDTO dto) {
     InvoiceInfoEntity entity = new InvoiceInfoEntity();
     // 手动设置属性，避免潜在的类型转换问题
     entity.setId(dto.getId());
@@ -84,36 +104,34 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
     } else {
       entity.setStatus(0); // 默认已开具
     }
+    return entity;
+  }
 
-    // 如果没有填写发票编号，自动生成（带重复检测和重试机制）
-    InvoiceInfoVO generated;
-    if (!StringUtils.hasText(entity.getInvoiceNo())) {
-      int maxRetries = 10; // 最大重试次数
-      int retryCount = 0;
-      boolean insertSuccess = false;
+  /** 自动生成发票编号并插入，编号冲突时重试生成，超过最大重试次数报错 */
+  private InvoiceInfoVO insertWithGeneratedInvoiceNo(InvoiceInfoEntity entity) {
+    InvoiceInfoVO result;
+    int maxRetries = 10; // 最大重试次数
+    int retryCount = 0;
+    boolean insertSuccess = false;
 
-      while (!insertSuccess && retryCount < maxRetries) {
-        entity.setInvoiceNo(NumberGenerator.generateInvoiceNo());
+    while (!insertSuccess && retryCount < maxRetries) {
+      entity.setInvoiceNo(NumberGenerator.generateInvoiceNo());
 
-        try {
-          int result = invoiceInfoMapper.insert(entity);
-          insertSuccess = result > 0;
-        } catch (org.springframework.dao.DuplicateKeyException e) {
-          // 发票编号重复，重试生成新的编号
-          retryCount++;
-          if (retryCount >= maxRetries) {
-            throw new BaseException("生成发票编号失败：已达到最大重试次数（" + maxRetries + "次），请稍后重试");
-          }
-          // 继续下一次循环，重新生成编号
+      try {
+        int insertResult = invoiceInfoMapper.insert(entity);
+        insertSuccess = insertResult > 0;
+      } catch (org.springframework.dao.DuplicateKeyException e) {
+        // 发票编号重复，重试生成新的编号
+        retryCount++;
+        if (retryCount >= maxRetries) {
+          throw new BaseException("生成发票编号失败：已达到最大重试次数（" + maxRetries + "次），请稍后重试");
         }
+        // 继续下一次循环，重新生成编号
       }
-
-      generated = insertSuccess ? toCreatedVO(entity) : null;
-    } else {
-      // 前端传入了发票编号，直接插入
-      generated = invoiceInfoMapper.insert(entity) > 0 ? toCreatedVO(entity) : null;
     }
-    return generated;
+
+    result = insertSuccess ? toCreatedVO(entity) : null;
+    return result;
   }
 
   private InvoiceInfoVO toCreatedVO(InvoiceInfoEntity entity) {
@@ -214,36 +232,13 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
     }
 
     // 开票日期范围查询
-    if (dto.getMinInvoiceDate() != null && dto.getMaxInvoiceDate() != null) {
-      queryWrapper.between(
-          InvoiceInfoEntity::getInvoiceDate, dto.getMinInvoiceDate(), dto.getMaxInvoiceDate());
-    } else if (dto.getMinInvoiceDate() != null) {
-      queryWrapper.ge(InvoiceInfoEntity::getInvoiceDate, dto.getMinInvoiceDate());
-    } else if (dto.getMaxInvoiceDate() != null) {
-      queryWrapper.le(InvoiceInfoEntity::getInvoiceDate, dto.getMaxInvoiceDate());
-    }
+    applyInvoiceDateRange(queryWrapper, dto);
 
     // 开票金额范围查询
-    if (dto.getMinInvoiceAmount() != null && dto.getMaxInvoiceAmount() != null) {
-      queryWrapper.between(
-          InvoiceInfoEntity::getInvoiceAmount,
-          dto.getMinInvoiceAmount(),
-          dto.getMaxInvoiceAmount());
-    } else if (dto.getMinInvoiceAmount() != null) {
-      queryWrapper.ge(InvoiceInfoEntity::getInvoiceAmount, dto.getMinInvoiceAmount());
-    } else if (dto.getMaxInvoiceAmount() != null) {
-      queryWrapper.le(InvoiceInfoEntity::getInvoiceAmount, dto.getMaxInvoiceAmount());
-    }
+    applyInvoiceAmountRange(queryWrapper, dto);
 
     // 创建时间范围查询
-    if (dto.getMinCreateTime() != null && dto.getMaxCreateTime() != null) {
-      queryWrapper.between(
-          InvoiceInfoEntity::getCreateTime, dto.getMinCreateTime(), dto.getMaxCreateTime());
-    } else if (dto.getMinCreateTime() != null) {
-      queryWrapper.ge(InvoiceInfoEntity::getCreateTime, dto.getMinCreateTime());
-    } else if (dto.getMaxCreateTime() != null) {
-      queryWrapper.le(InvoiceInfoEntity::getCreateTime, dto.getMaxCreateTime());
-    }
+    applyCreateTimeRange(queryWrapper, dto);
 
     // 按创建时间倒序
     queryWrapper.orderByDesc(InvoiceInfoEntity::getCreateTime);
@@ -259,6 +254,47 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
     voPage.setRecords(voList);
 
     return voPage;
+  }
+
+  /** 开票日期范围查询：双界 between，仅单界时 ge/le */
+  private void applyInvoiceDateRange(
+      LambdaQueryWrapper<InvoiceInfoEntity> queryWrapper, InvoiceInfoDTO dto) {
+    if (dto.getMinInvoiceDate() != null && dto.getMaxInvoiceDate() != null) {
+      queryWrapper.between(
+          InvoiceInfoEntity::getInvoiceDate, dto.getMinInvoiceDate(), dto.getMaxInvoiceDate());
+    } else if (dto.getMinInvoiceDate() != null) {
+      queryWrapper.ge(InvoiceInfoEntity::getInvoiceDate, dto.getMinInvoiceDate());
+    } else if (dto.getMaxInvoiceDate() != null) {
+      queryWrapper.le(InvoiceInfoEntity::getInvoiceDate, dto.getMaxInvoiceDate());
+    }
+  }
+
+  /** 开票金额范围查询：双界 between，仅单界时 ge/le */
+  private void applyInvoiceAmountRange(
+      LambdaQueryWrapper<InvoiceInfoEntity> queryWrapper, InvoiceInfoDTO dto) {
+    if (dto.getMinInvoiceAmount() != null && dto.getMaxInvoiceAmount() != null) {
+      queryWrapper.between(
+          InvoiceInfoEntity::getInvoiceAmount,
+          dto.getMinInvoiceAmount(),
+          dto.getMaxInvoiceAmount());
+    } else if (dto.getMinInvoiceAmount() != null) {
+      queryWrapper.ge(InvoiceInfoEntity::getInvoiceAmount, dto.getMinInvoiceAmount());
+    } else if (dto.getMaxInvoiceAmount() != null) {
+      queryWrapper.le(InvoiceInfoEntity::getInvoiceAmount, dto.getMaxInvoiceAmount());
+    }
+  }
+
+  /** 创建时间范围查询：双界 between，仅单界时 ge/le */
+  private void applyCreateTimeRange(
+      LambdaQueryWrapper<InvoiceInfoEntity> queryWrapper, InvoiceInfoDTO dto) {
+    if (dto.getMinCreateTime() != null && dto.getMaxCreateTime() != null) {
+      queryWrapper.between(
+          InvoiceInfoEntity::getCreateTime, dto.getMinCreateTime(), dto.getMaxCreateTime());
+    } else if (dto.getMinCreateTime() != null) {
+      queryWrapper.ge(InvoiceInfoEntity::getCreateTime, dto.getMinCreateTime());
+    } else if (dto.getMaxCreateTime() != null) {
+      queryWrapper.le(InvoiceInfoEntity::getCreateTime, dto.getMaxCreateTime());
+    }
   }
 
   @Override
