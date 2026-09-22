@@ -42,6 +42,7 @@ public class GovernanceAuditRecorder {
    *
    * @param event 审计事件
    */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 审计落库容错：ORM+provder+meter多源，失败计数不阻断业务
   public void record(GovernanceAuditEvent event) {
     Objects.requireNonNull(event, "治理审计事件不能为空");
     try {

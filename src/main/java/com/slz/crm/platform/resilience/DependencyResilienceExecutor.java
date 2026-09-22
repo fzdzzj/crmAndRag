@@ -95,6 +95,7 @@ public class DependencyResilienceExecutor {
    * @return 调用结果
    * @throws DependencyUnavailableException 依赖失败或熔断拒绝
    */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 容错执行器：operation.call()任意抛，计数重试/熔断/上抛
   public <T> T execute(String dependency, Callable<T> operation, Predicate<Throwable> retryable) {
     CircuitState circuitState =
         circuitStates.computeIfAbsent(dependency, name -> new CircuitState(name, meterRegistry));

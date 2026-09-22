@@ -428,6 +428,7 @@ public class DynamicConfigAdminService {
   }
 
   /** 审计事件（敏感值掩码后交 D 审计流 / 过渡期日志兜底） */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 审计旁路：recorder实现可抛任意运行时，不打断配置主流程
   private void recordAudit(
       ConfigKeyDefinition def,
       ConfigOperationType operation,

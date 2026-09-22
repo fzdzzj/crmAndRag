@@ -64,6 +64,7 @@ public class ReconciliationService {
    * @param request 扫描请求
    * @return 报告和差异
    */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 对账边界：源比对+ORM+审计多源，失败标记FAILED后上抛
   public ReconcileScanResult scan(ReconcileScanRequest request) {
     Objects.requireNonNull(request, "ReconcileScanRequest 不能为空");
     LocalDateTime now = LocalDateTime.now();

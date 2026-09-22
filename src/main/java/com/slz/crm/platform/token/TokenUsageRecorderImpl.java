@@ -38,6 +38,7 @@ public class TokenUsageRecorderImpl implements TokenUsageRecorder {
   }
 
   @Override
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 计量落库容错：ORM+provider+meter多源，失败计数不阻断调用链
   public void record(TokenUsageRecord record) {
     Objects.requireNonNull(record, "TokenUsageRecord 不能为空");
     try {

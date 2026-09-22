@@ -60,6 +60,7 @@ public class VectorStoreHealthIndicator implements HealthIndicator {
     return result;
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 健康检查边界：仓储探测外呼失败按不可达呈现不抛
   private Health probe(CrmVectorStoreHealth storeHealth) {
     String error = null;
     boolean reachable;

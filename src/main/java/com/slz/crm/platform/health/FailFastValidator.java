@@ -83,6 +83,7 @@ public class FailFastValidator {
   }
 
   @PostConstruct
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 启动fail-fast边界：多依赖健康校验多源，失败上抛阻止启动
   public void validateDependencies() {
     HealthContributorRegistry registry = registryProvider.getIfAvailable();
     if (registry == null) {

@@ -124,6 +124,7 @@ public class ContentSecurityService {
     return result;
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 落库容错：mapper Provider+ORM多源，失败仅告警不抛
   private void recordEvent(
       ContentSourceType sourceType, String sourceId, ContentSecurityResult result, String content) {
     meterRegistry

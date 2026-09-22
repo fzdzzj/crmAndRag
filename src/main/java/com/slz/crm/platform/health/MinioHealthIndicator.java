@@ -35,6 +35,7 @@ public class MinioHealthIndicator implements HealthIndicator {
   }
 
   @Override
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 健康检查边界：MinIO外呼失败按DOWN呈现不抛
   public Health health() {
     Health result;
     try {

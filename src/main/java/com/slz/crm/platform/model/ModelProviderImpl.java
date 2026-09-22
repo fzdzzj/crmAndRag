@@ -226,6 +226,7 @@ public class ModelProviderImpl implements ModelProvider {
   }
 
   /** 将 enable_thinking 双写注入 JSON body（sync 经 RestClient 拦截器调用）。 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // JSON构建容错：objectMapper+节点操作，失败仅告警不抛
   private byte[] injectThinkingIntoBody(byte[] body) {
     byte[] result = body;
     try {
@@ -265,6 +266,7 @@ public class ModelProviderImpl implements ModelProvider {
   }
 
   /** 构建 OpenAI chat completion JSON（thinking 路径）。 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // JSON构建容错：objectMapper+节点操作多源，统一包装上抛
   private String buildChatJsonBody(Prompt prompt, ModelCallOptions options, boolean stream) {
     try {
       ObjectNode root = objectMapper.createObjectNode();
@@ -294,6 +296,7 @@ public class ModelProviderImpl implements ModelProvider {
   }
 
   /** SSE data JSON 转 ChatResponse。 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // JSON解析容错：objectMapper+节点访问，失败回退空响应
   private ChatResponse chunkToChatResponse(String json) {
     ChatResponse result;
     try {
