@@ -1,6 +1,6 @@
 # PMD 存量条数基线：由 scripts/tests/pmd-baseline-check.sh --update 从一次真实 pmd:check 运行写入，禁止手改。
-# source-revision=unknown
-# measured-at=2026-09-22T11:41:33Z
+# source-revision=0129567
+# measured-at=2026-09-22T12:06:12Z
 # 生成命令：mvn -B -ntp pmd:check（产出 target/pmd.xml）后 bash scripts/tests/pmd-baseline-check.sh --update
 # pmd.violations = 声明尺子下的违规条数；pmd.files = 本轮被分析的源文件数（用来识破「根本没分析」）。
 #
