@@ -13,6 +13,7 @@ import com.slz.crm.pojo.excel.CustomerContactExcel;
 import com.slz.crm.server.mapper.CustomerCompanyMapper;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -137,7 +138,7 @@ public class CustomerContactListener implements ReadListener<CustomerContactExce
         remark.setRemarkDate(birthday);
         remark.setCreatorId(creatorId);
         remarkList.add(remark);
-      } catch (Exception e) {
+      } catch (DateTimeParseException e) {
         throw new BaseException(ErrorCode.EXCEL_FORMAT_ERROR, "本人出生日期格式错误，应为 yyyy-MM-dd");
       }
     }
@@ -162,7 +163,7 @@ public class CustomerContactListener implements ReadListener<CustomerContactExce
           remark.setRemarkDate(birthday);
           remark.setCreatorId(creatorId);
           remarkList.add(remark);
-        } catch (Exception e) {
+        } catch (DateTimeParseException e) {
           throw new BaseException(ErrorCode.EXCEL_FORMAT_ERROR, "亲属信息中日期格式错误，应为 yyyy-MM-dd");
         }
       }

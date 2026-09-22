@@ -95,6 +95,8 @@ public class ForeignKeyDeleteUtil {
   }
 
   /** 逻辑删除主表记录 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射+ORM 多源异常，统一转
+  // BaseException(DATA_DELETE_FAILED)，收窄不可行
   private <T> Integer logicalDeleteMainRecord(Class<T> entityClass, Long id) {
     Integer result = 0;
     String mapperBeanName = getMapperBeanName(entityClass);
@@ -211,7 +213,7 @@ public class ForeignKeyDeleteUtil {
           result = fieldInfo.getColumn();
         }
         return result;
-      } catch (Exception e) {
+      } catch (NoSuchFieldException e) {
         throw new BaseException(
             ErrorCode.ID_NOT_EXISTS,
             String.format(

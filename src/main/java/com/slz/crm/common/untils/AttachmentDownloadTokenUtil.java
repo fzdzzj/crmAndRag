@@ -111,6 +111,8 @@ public class AttachmentDownloadTokenUtil {
   }
 
   /** 内部统一构建令牌，区分实时协助上下文与终态历史快照上下文。 */
+  @SuppressWarnings(
+      "PMD.AvoidCatchingGenericException") // 收窄不可行：objectMapper/AES 多源(throws Exception)，统一转为业务异常
   private String generateDownloadToken(
       Long attachmentId,
       Long userId,
@@ -154,6 +156,8 @@ public class AttachmentDownloadTokenUtil {
    * @return 下载令牌对象
    * @throws IllegalArgumentException 令牌无效或已过期
    */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 令牌校验边界：AES解密/JSON多源异常统一转为
+  // IllegalArgumentException(无效/过期)
   public DownloadToken parseDownloadToken(String encryptedToken) {
     try {
       log.debug("开始解析下载令牌，令牌长度：{}", encryptedToken != null ? encryptedToken.length() : 0);

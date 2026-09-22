@@ -156,6 +156,8 @@ public class ActuatorProtectionFilter implements Filter {
    * @param request 当前请求
    * @return 用户 id；token 缺失/无效返回 {@code null}（统一按 401 处理，不区分具体原因，避免探测）
    */
+  @SuppressWarnings(
+      "PMD.AvoidCatchingGenericException") // 安全边界兜底：JWT 解析失败不向客户端透出细节，统一走 401，收窄会泄漏解析类型
   private Long authenticate(HttpServletRequest request) {
     Long result = null;
     String token = request.getHeader(jwtProperties.getTokenName());

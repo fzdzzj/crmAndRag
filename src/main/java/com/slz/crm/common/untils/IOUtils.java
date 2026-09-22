@@ -240,6 +240,7 @@ public class IOUtils {
     return true;
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 文件删除边界：逐文件收集失败后统一抛聚合异常，需宽捕获
   public static Boolean deleteFile(List<ApprovalAttachmentEntity> entitys) {
     if (entitys != null && !entitys.isEmpty()) {
       List<String> failedFiles = new ArrayList<>();
@@ -473,6 +474,7 @@ public class IOUtils {
    * @param fileIdentifier 文件唯一标识
    * @return 是否成功
    */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 分片目录删除边界：文件系统操作多源异常，统一转 ServiceException
   public static Boolean deleteChunks(String fileIdentifier) {
     try {
       File chunkDir = getChunkDir(fileIdentifier);
