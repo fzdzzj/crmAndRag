@@ -5,7 +5,6 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.exiception.BaseException;
-import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.common.untils.NumberGenerator;
 import com.slz.crm.pojo.dto.InvoiceInfoDTO;
 import com.slz.crm.pojo.entity.ContractEntity;
@@ -45,7 +44,7 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
     // 参数校验
     validateInvoiceCreate(dto);
 
-    InvoiceInfoEntity entity = buildInvoiceEntity(dto);
+    InvoiceInfoEntity entity = InvoiceVoSupport.buildInvoiceEntity(dto);
 
     // 如果没有填写发票编号，自动生成（带重复检测和重试机制）
     InvoiceInfoVO generated;
@@ -81,29 +80,6 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
         throw new BaseException("回款记录不属于该合同");
       }
     }
-  }
-
-  /** 由 DTO 手动装配发票实体（状态缺省为已开具 0） */
-  private InvoiceInfoEntity buildInvoiceEntity(InvoiceInfoDTO dto) {
-    InvoiceInfoEntity entity = new InvoiceInfoEntity();
-    // 手动设置属性，避免潜在的类型转换问题
-    entity.setId(dto.getId());
-    entity.setContractId(dto.getContractId());
-    entity.setPaymentId(dto.getPaymentId());
-    entity.setInvoiceNo(dto.getInvoiceNo());
-    entity.setInvoiceAmount(dto.getInvoiceAmount());
-    entity.setInvoiceDate(dto.getInvoiceDate());
-    entity.setInvoiceType(dto.getInvoiceType());
-    entity.setCreatorId(BaseUnit.getCurrentId());
-    entity.setRemark(dto.getRemark());
-
-    // 设置状态：如果前端传了就用前端的，否则默认已开具
-    if (dto.getStatus() != null) {
-      entity.setStatus(dto.getStatus());
-    } else {
-      entity.setStatus(0); // 默认已开具
-    }
-    return entity;
   }
 
   /** 自动生成发票编号并插入，编号冲突时重试生成，超过最大重试次数报错 */

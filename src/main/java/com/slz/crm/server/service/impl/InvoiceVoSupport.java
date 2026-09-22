@@ -1,6 +1,7 @@
 package com.slz.crm.server.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.pojo.dto.InvoiceInfoDTO;
 import com.slz.crm.pojo.entity.ContractEntity;
 import com.slz.crm.pojo.entity.InvoiceInfoEntity;
@@ -61,6 +62,29 @@ final class InvoiceVoSupport {
     }
 
     return vo;
+  }
+
+  /** 由 DTO 手动装配发票实体（状态缺省为已开具 0） */
+  static InvoiceInfoEntity buildInvoiceEntity(InvoiceInfoDTO dto) {
+    InvoiceInfoEntity entity = new InvoiceInfoEntity();
+    // 手动设置属性，避免潜在的类型转换问题
+    entity.setId(dto.getId());
+    entity.setContractId(dto.getContractId());
+    entity.setPaymentId(dto.getPaymentId());
+    entity.setInvoiceNo(dto.getInvoiceNo());
+    entity.setInvoiceAmount(dto.getInvoiceAmount());
+    entity.setInvoiceDate(dto.getInvoiceDate());
+    entity.setInvoiceType(dto.getInvoiceType());
+    entity.setCreatorId(BaseUnit.getCurrentId());
+    entity.setRemark(dto.getRemark());
+
+    // 设置状态：如果前端传了就用前端的，否则默认已开具
+    if (dto.getStatus() != null) {
+      entity.setStatus(dto.getStatus());
+    } else {
+      entity.setStatus(0); // 默认已开具
+    }
+    return entity;
   }
 
   /** 开票日期范围查询：双界 between，仅单界时 ge/le */
