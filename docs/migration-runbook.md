@@ -207,3 +207,27 @@ failsafe 侧的当前口径、CI 期望值与"无 Docker 下限"的含义一律�
   - 因此本条记录**只支撑**"PMD 在 verify 里真跑 + 本机一轮 IT 新鲜"，**不支撑**"无 Docker 时 B 组会优雅跳过"——6.2 里"该分支尚未在无 Docker 的机器上实测"那句悬置状态**未被本轮改变**，仍需一台真无 Docker 的 runner 复验。也不改变 6.2 的分层：「Flyway 真库迁移已验证」「真 MySQL 写链/数据权限已验证」这类结论必须有真库报告为凭，不能拿 `pmd:check` 的绿来顶。
 - **对照记录**（同一次变更的另 half，不属豁免）：`spotbugs-maven-plugin` 的 `<skip>` **已于 2026-09-21 删除并启用**，阈值的唯一读者是 pom 该块的 `threshold=High` + `excludeFilterFile=src/main/resources/spotbugs-exclude.xml`（存量 High 基线 12 条，由 `mvn -B -ntp compile spotbugs:spotbugs` 的一次真实运行生成，只允许由同一条命令更新）。新出现的 High 缺陷会让 `mvn -B -ntp spotbugs:check` 与 `mvn verify` 直接变红。
   → **2026-09-21 `wire-pmd-ruleset` P2：这处不对称已闭合** —— PMD 现在与 SpotBugs 同态（pom 单一读者 + 入库台账 + 过期防呆脚本 + 能变红的自测），本节剩下的"豁免"字样全部是解除前的历史对照。
+
+### 6.8 `tighten-pmd-violations` 分片 C 收窄：AvoidCatchingGenericException 归零（2026-09-22）
+
+**Q6 处置方式（owner 已拍板，混合双轨）**：① 叶子层能确定抛出源者**收窄为具体异常**；② 真正顶层兜底（调度 / 外呼 / 文件边界 / SSE 生命周期 / 异步任务）用 `@SuppressWarnings("PMD.AvoidCatchingGenericException")` + 中文理由注释，**不动宽捕获逻辑**。
+
+**实测结果（总收窄后）**：134 处 `catch` 通用异常归零，CATCH=0，全仓 PMD 条数 **459→325**（台账与 pom `<maxAllowedViolations>` 同步落 325）。逐模块处置表（收窄 25 + 豁免 109，其中 8 个 catch 共享 101 个方法级注解）：
+
+| 模块 | 收窄 | 豁免 |
+|---|---|---|
+| common | 3 | 6 |
+| quality | 0 | 1 |
+| knowledge | 1 | 46 |
+| platform | 0 | 12 |
+| server | 21 | 44 |
+| **合计** | **25** | **109** |
+
+（磁盘数一致的权威处置表见 `openspec/changes/tighten-pmd-violations/tasks.md` 3.1-T；每处豁免都带中文理由注释。）
+
+**两个新坑（复跑时对照）**：
+
+- **PMD 的 `@SuppressWarnings` 必须带 `PMD.` 前缀**（`PMD.AvoidCatchingGenericException`）才被识别；裸规则名字符串（`"AvoidCatchingGenericException"`）实测无效——带类型解析的 catch 计数纹丝不动，直到加上前缀。
+- **`java.lang.SuppressWarnings` 不可重复**：同一元素上两个 `@SuppressWarnings` 注解 = 编译失败，进而中断 Lombok 注解处理，级联出大量假「找不到符号」（ErrorCode/ProjectFileCategory/PermissionOperates/ActuatorProtectionFilter 等）。必须合并成单个 `@SuppressWarnings({"unchecked","PMD.AvoidCatchingGenericException"})`。合并后 `mvn -B -ntp test` 724/0/0/0 全绿复验。
+
+**读数坑（重基线时对照）**：`mvn clean pmd:check`（无编译产物）产出的是**伪值**——无类型解析时 PMD 会额外误报 `UnnecessaryImport` 等，当时读到 334 = 真值 325 + `UnnecessaryImport`(9)。**PMD 分析依赖已编译 class**，耗准确读数必须 `mvn -B -ntp compile pmd:check`（有 class）或直接 `mvn -B -ntp verify`。`pmd-baseline-check.sh --update` 硬拒绝上调，故向上对齐只能手编台账+pom 且需 owner 覆盖，非真值勿走此路。
