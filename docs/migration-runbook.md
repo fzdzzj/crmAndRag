@@ -127,7 +127,7 @@
 
 - 环境：Windows 11 `10.0.26200.8875`；Maven 3.9.4 / JDK 21.0.9；Testcontainers 1.21.4；failsafe 3.5.2；仓库 HEAD `45d0957`（master）。Docker Desktop 装在本机非默认路径 `D:\develop1\DockerDesktop\`。
 - 造“无 Docker”的方式：退出 `Docker Desktop.exe` 并清掉残留 `com.docker.backend` 进程后 `docker info` exit 1（`failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine`）——**不是**用环境变量模拟缺失。
-- 命令：`DASHSCOPE_API_KEY= mvn -B -ntp failsafe:integration-test`（先在同仓库根跑 `mvn -B -ntp test-compile`；key 置空只为兜住 C 组万一被 env 打开时不外发，本轮 C 组本来就全关）。
+- 命令：`DASHSCOPE_API_KEY= mvn -B -ntp failsafe:integration-test`（先在同仓库根跑 `mvn -B -ntp test-compile`；key 置空只为兜住 C 组万一被 env 打开时不外发，本轮 C 组本来就全关）。**本机工具 shell 默认带 `MSYS_NO_PATHCONV=1` 与 `MSYS2_ARG_CONV_EXCL=*`，这两个开关会让 bash 版 `mvn` 启动脚本把 unix 路径喂给 Windows java、直接报 `找不到或无法加载主类 ...Launcher`；离线那一轮因此用同一套 Maven 3.9.4 / JDK 21.0.9 的 classworlds 直启跑，在线对照则补跑了标准形态 `env -u MSYS_NO_PATHCONV -u MSYS2_ARG_CONV_EXCL ... mvn -B -ntp failsafe:integration-test`——两种启动形态在同一在线轮次都交出 `66 / 0 / 0 / 6`，等价性已实测。**
 - 总计：`Tests run: 12, Failures: 0, Errors: 0, Skipped: 6`，BUILD SUCCESS（58.8s）；紧随的 `failsafe:verify` 亦 BUILD SUCCESS。
 
 | 组 | 类数 | 用例 | 报告观察 | 判定 |
@@ -140,7 +140,7 @@
 - **守卫确实被触达**：日志里 `org.testcontainers.DockerClientFactory -- Testcontainers version: 1.21.4` 恰好出现 **12 次**（＝B 组每类各探一次 Docker），此后无任何容器启动记录。
 - **口径更正**：B 组那 54 个用例在报告里**既不计入 `Tests run` 也不计入 `Skipped`**（`Skipped=6` 全部来自 C 组），所以「B 组 54 个用例全记跳过」只是语义近似、数字上不成立；准确写法是「整类中止」。
 - **反向对照**（同一台机器，Docker 重启后立刻重跑同一命令）：failsafe 回到 `Tests run: 66, Failures: 0, Errors: 0, Skipped: 6`（B 组 12 类逐类合计 54，与本节表格逐项一致），`bash scripts/check-test-baseline.sh` 恢复 exit 0 通过；即离线那轮的 `12` 与在线 `66` 的差额 54 全部是 B 组。
-- 原始日志留在工作区 `work/nodocker-failsafe-20260922.log` 与 `work/online-failsafe-20260922.log`（未入库）。
+- 原始日志留在工作区 `work/nodocker-failsafe-20260922.log`、`work/online-failsafe-20260922.log` 与 `work/online-failsafe-20260922b-mvnwrapper.log`（未入库）。
 
 ### 6.3 反向警告：真外发 IT 一律需显式 opt-in
 
