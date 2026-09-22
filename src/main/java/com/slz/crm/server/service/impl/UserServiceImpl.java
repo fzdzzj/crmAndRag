@@ -280,7 +280,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
 
     LambdaQueryWrapper<UserEntity> wp = new LambdaQueryWrapper<>();
 
-    applyUserPageFilters(wp, dto);
+    UserQueryFilterSupport.applyUserPageFilters(wp, dto, userMapper, roleMapper);
 
     Page<UserEntity> page = new Page<>(dto.getPageNum(), dto.getPageSize());
 
@@ -301,97 +301,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     fillDeptNames(userVOS);
 
     return ans;
-  }
-
-  /**
-   * 组装用户分页查询条件（拆自 findPage，行为等价）。
-   *
-   * @param wp 查询构造器
-   * @param dto 查询条件
-   */
-  private void applyUserPageFilters(LambdaQueryWrapper<UserEntity> wp, GetUserDTO dto) {
-    if (dto.getRoleId() != null && !dto.getRoleId().isEmpty()) {
-      wp.in(UserEntity::getRoleId, dto.getRoleId());
-    }
-
-    if (dto.getId() != null && !dto.getId().isEmpty()) {
-      wp.in(UserEntity::getId, dto.getId());
-    }
-
-    if (dto.getPhone() != null) {
-      wp.like(UserEntity::getPhone, dto.getPhone());
-    }
-
-    if (dto.getEmail() != null) {
-      wp.like(UserEntity::getEmail, dto.getEmail());
-    }
-
-    if (dto.getRealName() != null) {
-      wp.like(UserEntity::getRealName, dto.getRealName());
-    }
-
-    if (dto.getStatus() != null && !dto.getStatus().isEmpty()) {
-      wp.in(UserEntity::getStatus, dto.getStatus());
-    } else {
-      wp.in(UserEntity::getStatus, 0, 1, 2);
-    }
-
-    if (dto.getCreatorId() != null) {
-      wp.eq(UserEntity::getCreatorId, dto.getCreatorId());
-    }
-
-    applyCreatorNameFilter(wp, dto.getCreatorName());
-    applyRoleNameFilter(wp, dto.getRoleName());
-  }
-
-  /**
-   * 按创建人姓名解析用户 ID 并过滤：未命中置创建人 ID 为 0（拆自 findPage，行为等价）。
-   *
-   * @param wp 查询构造器
-   * @param creatorName 创建人姓名
-   */
-  private void applyCreatorNameFilter(LambdaQueryWrapper<UserEntity> wp, String creatorName) {
-    if (creatorName == null) {
-      return;
-    }
-    List<Long> list =
-        userMapper
-            .selectList(
-                new LambdaQueryWrapper<UserEntity>().like(UserEntity::getRealName, creatorName))
-            .stream()
-            .map(UserEntity::getId)
-            .toList();
-
-    if (!list.isEmpty()) {
-      wp.in(UserEntity::getCreatorId, list);
-    } else {
-      wp.eq(UserEntity::getCreatorId, 0);
-    }
-  }
-
-  /**
-   * 按角色名解析角色 ID 并过滤：未命中置创建人 ID 为 0（拆自 findPage，行为等价）。
-   *
-   * @param wp 查询构造器
-   * @param roleName 角色名
-   */
-  private void applyRoleNameFilter(LambdaQueryWrapper<UserEntity> wp, String roleName) {
-    if (roleName == null) {
-      return;
-    }
-    List<Long> list =
-        roleMapper
-            .selectList(
-                new LambdaQueryWrapper<RoleEntity>().like(RoleEntity::getRoleName, roleName))
-            .stream()
-            .map(RoleEntity::getId)
-            .toList();
-
-    if (!list.isEmpty()) {
-      wp.in(UserEntity::getCreatorId, list);
-    } else {
-      wp.eq(UserEntity::getCreatorId, 0);
-    }
   }
 
   /**
