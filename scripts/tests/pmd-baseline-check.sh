@@ -26,7 +26,8 @@
 # 528 行全部换行尾），被跟踪文件的行尾属于工作树约定，不该由校验脚本污染。
 #
 # 退出码：0=口径唯一且实测正好落在基线上；1=过期 / 超基线 / pom 与台账漂移 / 拒绝写入；
-#         2=前置缺失（台账、报告、pom 接线，或 pmd 块内 <skip> 仍在位）。
+#         2=前置缺失（台账、报告、pom 接线，或 pmd 块内 <skip> 仍在位；另含"零违规但报告比源文件旧"
+#           这一种不可裁决态 —— 判定见 measure_report 上方注释）。
 #
 # 行尾注意：台账与被读的 pom 都是**被跟踪文本**，本机 core.autocrlf=true 检出后是 CRLF，
 # 末尾的 \r 会让 "1329" 变成 "1329\r" 从而永远不等。所有读取侧一律先 tr -d '\r'，且数字解析
@@ -128,15 +129,26 @@ preconditions() {
   fi
 }
 
-# measure_report -> "<violations> <files>"；报告里 0 个 <file> 时返回 2（根本没分析）
+# measure_report -> "<violations> <files>"；把"根本没分析"与"真·零违规"分开判。
+#
+# 零值边界（2026-09-23 tighten-pmd-residual-325 任务 6.5 实测补，此前基线从未降到 0 故未暴露）：
+# PMD 的 XMLRenderer **只为有违规的文件**输出 <file name=，因此把 src/main/java 全扫一遍而一条违规
+# 都没有时，报告里 files=0。沿用「files==0 即认为没分析」会把真·零违规误判成前置缺失，基线永远
+# 降不到 0（--update 与 check 两条路径都会 exit 2）。改判据：files==0 时，报告必须是"这一轮真跑过"
+# 的 —— 即报告 mtime 不早于 src/main/java 下最新的 .java；有更晚的源文件即判 2（报告过期＝结论不可用）。
+# 这一条比数文件更严：旧版对"过期但非空"的报告只发 NOTE 就放行，现在 files==0 这条路径强制新鲜度。
+# files>=1 的路径行为一字未改。
 measure_report() {
-  local violations files
+  local violations files stale
   violations=$(tr -d '\r' < "$report_file" | count_in '<violation ')
   files=$(tr -d '\r' < "$report_file" | count_in '<file name=')
   case "$violations$files" in
     '' | *[!0-9]*) return 1 ;;
   esac
-  [ "${files:-0}" -eq 0 ] && return 2
+  if [ "${violations:-0}" -eq 0 ] && [ "${files:-0}" -eq 0 ]; then
+    stale=$(find "$repo_root/src/main/java" -name '*.java' -newer "$report_file" 2>/dev/null | head -1)
+    [ -n "$stale" ] && return 2
+  fi
   printf '%s %s' "${violations:-0}" "${files:-0}"
 }
 
@@ -202,7 +214,7 @@ freshness_note
 measured=$(measure_report)
 code=$?
 if [ "$code" -eq 2 ]; then
-  err "报告里没有任何 <file name=>：PMD 这轮一个源文件都没分析。拒绝把「没分析」读成「零违规」—— 请确认 pmd:check 真的执行过、${report_file#"$repo_root"/} 没被别处覆盖"
+  err "PMD 报告不可用作裁决依据（${report_file#"$repo_root"/}）：零违规且报告比 src/main/java 下最新源文件旧 —— 要么这轮根本没执行 pmd:check，要么报告是上一轮遗留的。拒绝把「没分析 / 过期报告」读成「零违规」，请重跑 mvn -B -ntp pmd:check"
   exit 2
 fi
 if [ "$code" -ne 0 ] || [ -z "$measured" ]; then

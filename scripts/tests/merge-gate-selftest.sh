@@ -4,7 +4,8 @@
 # 锁住的是**聚合逻辑**：任一子门禁失败时整条命令必须非零退出、并且指名是哪一步；
 # 全过时零退出；[it] 默认不跑；失败可累积；[hook] 与 [bijection] 两道存在性判别确实会红；
 # [pmd] 与 [pmd-baseline]（wire-pmd-ruleset 组 4.3 新增）同样"失败即被指名"，且场景 11 用真实的
-# scripts/tests/pmd-baseline-check.sh + 临时夹具锁住三种态（相等 / 登记偏高 / 实测超登记）与 CRLF 双向。
+# scripts/tests/pmd-baseline-check.sh + 临时夹具锁住三种态（相等 / 登记偏高 / 实测超登记）与 CRLF 双向，
+# 另加零值路径双向锁（11h：零违规 + 新鲜报告 → 绿；11i：零违规 + 报告过期 → 红）。
 #
 # 无 Docker、无外网、不跑 Maven —— 靠 merge-gate.sh 顶部声明的 MERGE_GATE_* 测试钩子注入桩命令，
 # 口径同 scripts/check-test-baseline.sh 的 BASELINE_* 钩子。真实门禁各自的正确性由自己的
@@ -313,6 +314,43 @@ expect_has "11 漂移原因被透传" "两个数字" "$work/pmd-drift.out"
 rc=$(pmd_gate "$work/pmd-skip.out" "$work/pmd-ledger-eq.txt" "$work/pmd-pom-skip.xml")
 expect_eq "11 pmd 块重新出现 <skip> 时聚合非零" "1" "$rc"
 expect_has "11 跳过态的拒绝裁决理由被透传" "拒绝裁决" "$work/pmd-skip.out"
+
+# 11h 零违规报告（PMD 只为"有违规的文件"输出 <file name=，所以全清后报告里 0 个 <file>）：
+#     report 新鲜 → 必须绿，基线可以登记为 0（2026-09-23 F-4 批补的零值路径）。
+mk_pmd_report_zero() { # <out>
+  printf '<?xml version="1.0" encoding="UTF-8"?>\n<pmd xmlns="http://pmd.sourceforge.net/report/2.0.0" version="7.9.0">\n</pmd>\n' >"$1"
+}
+mk_pmd_report_zero "$work/pmd-report-zero.xml"
+mk_pmd_ledger "$work/pmd-ledger-zero.txt" 0 0
+mk_pmd_pom "$work/pmd-pom-zero.xml" 0 0
+(
+  export MERGE_GATE_CMD_UNIT="$OK_CMD" MERGE_GATE_CMD_SPOTBUGS="$OK_CMD" MERGE_GATE_CMD_PMD="$OK_CMD"
+  export MERGE_GATE_CMD_IT="$OK_CMD" MERGE_GATE_CMD_BASELINE="$OK_CMD" MERGE_GATE_CMD_FRONTEND="$OK_CMD"
+  export MERGE_GATE_CMD_BIJECTION="$OK_CMD" MERGE_GATE_HOOKS_DIR="$work/hooks-ok"
+  export PMD_REPORT="$work/pmd-report-zero.xml" PMD_BASELINE_LEDGER="$work/pmd-ledger-zero.txt"
+  export PMD_POM_FILE="$work/pmd-pom-zero.xml"
+  cd "$repo_root" && bash "$gate"
+) >"$work/pmd-zero.out" 2>&1
+rc=$?
+expect_eq "11 零违规 + 新鲜报告时聚合零退出（基线可登记为 0）" "0" "$rc"
+expect_has "11 零值路径真跑出 OK 结论" "RESULT=PMD_BASELINE_OK" "$work/pmd-zero.out"
+
+# 11i 同一份零违规报告但把 mtime 退到 2000 年（＝比源文件旧，等价于"没跑过/拿旧报告裁决"）
+#     → 必须按前置缺失判红并指名到 [pmd-baseline]，不许把"没分析"读成"零违规"。
+cp "$work/pmd-report-zero.xml" "$work/pmd-report-zero-stale.xml"
+touch -t 200001010000 "$work/pmd-report-zero-stale.xml"
+(
+  export MERGE_GATE_CMD_UNIT="$OK_CMD" MERGE_GATE_CMD_SPOTBUGS="$OK_CMD" MERGE_GATE_CMD_PMD="$OK_CMD"
+  export MERGE_GATE_CMD_IT="$OK_CMD" MERGE_GATE_CMD_BASELINE="$OK_CMD" MERGE_GATE_CMD_FRONTEND="$OK_CMD"
+  export MERGE_GATE_CMD_BIJECTION="$OK_CMD" MERGE_GATE_HOOKS_DIR="$work/hooks-ok"
+  export PMD_REPORT="$work/pmd-report-zero-stale.xml" PMD_BASELINE_LEDGER="$work/pmd-ledger-zero.txt"
+  export PMD_POM_FILE="$work/pmd-pom-zero.xml"
+  cd "$repo_root" && bash "$gate"
+) >"$work/pmd-zero-stale.out" 2>&1
+rc=$?
+expect_eq "11 零违规但报告比源文件旧时聚合非零" "1" "$rc"
+expect_has "11 失败被指名到 [pmd-baseline]" "FAIL [pmd-baseline]" "$work/pmd-zero-stale.out"
+expect_has "11 不可裁决态的理由被透传" "拒绝把" "$work/pmd-zero-stale.out"
 
 # 11g 被跟踪的 PMD 台账与 pom 不得被这些夹具改动（按进入本场景时的 cksum 比，忽略行尾差异）
 pom_hash_after=$(LC_ALL=C tr -d '\r' < "$repo_root/pom.xml" | cksum)
