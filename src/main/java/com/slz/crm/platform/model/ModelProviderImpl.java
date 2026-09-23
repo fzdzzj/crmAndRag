@@ -1,25 +1,17 @@
 package com.slz.crm.platform.model;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.slz.crm.platform.contract.ModelCallOptions;
 import com.slz.crm.platform.contract.ModelCallResult;
 import com.slz.crm.platform.contract.ModelProvider;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AssistantMessage;
-import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -27,16 +19,10 @@ import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.env.Environment;
-import org.springframework.http.MediaType;
-import org.springframework.http.client.ClientHttpRequestInterceptor;
-import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
-import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 
 /**
@@ -53,21 +39,20 @@ import reactor.core.publisher.Flux;
  *
  * <p>修正轮2：新增 {@link ModelCallOptions} 重载，thinking=true 时 sync 走 RestClient 拦截器注入 enable_thinking，
  * stream 走独立 JSON + WebClient（确保 body 带 enable_thinking 双写）。
+ *
+ * <p>tighten-pmd-residual-325 任务 6.4 批A：compatible-mode 协议细节（模型装配 / thinking JSON / SSE chunk 解析）拆至
+ * {@link CompatibleModeSupport}，本类只保留路由与结果转换，行为等价。
  */
 @Component
 public class ModelProviderImpl implements ModelProvider {
 
   private static final Logger LOG = LoggerFactory.getLogger(ModelProviderImpl.class);
-  private static final String COMPATIBLE_COMPLETIONS_PATH = "/chat/completions";
-  private static final String THINKING_HEADER = "X-Enable-Thinking";
 
   private final ObjectProvider<ChatModel> dashScopeChatModel;
   private final ObjectProvider<EmbeddingModel> dashScopeEmbeddingModel;
   private final ModelProviderProperties properties;
-  private final Environment environment;
   private final OpenAiChatModel compatibleChatModel;
-  private final ObjectMapper objectMapper = new ObjectMapper();
-  private final WebClient streamWebClient = WebClient.builder().build();
+  private final CompatibleModeSupport compatibleMode;
 
   public ModelProviderImpl(
       ObjectProvider<ChatModel> dashScopeChatModel,
@@ -77,8 +62,8 @@ public class ModelProviderImpl implements ModelProvider {
     this.dashScopeChatModel = dashScopeChatModel;
     this.dashScopeEmbeddingModel = dashScopeEmbeddingModel;
     this.properties = properties;
-    this.environment = environment;
-    this.compatibleChatModel = buildCompatibleChatModel();
+    this.compatibleMode = new CompatibleModeSupport(properties, environment);
+    this.compatibleChatModel = compatibleMode.buildCompatibleChatModel();
   }
 
   @Override
@@ -145,8 +130,8 @@ public class ModelProviderImpl implements ModelProvider {
       result = streamChat(translated);
     } else if (translated.getOptions() instanceof OpenAiChatOptions opts
         && opts.getHttpHeaders() != null
-        && "true".equals(opts.getHttpHeaders().get(THINKING_HEADER))) {
-      result = streamWithThinking(translated, options);
+        && "true".equals(opts.getHttpHeaders().get(CompatibleModeSupport.THINKING_HEADER))) {
+      result = compatibleMode.streamWithThinking(translated, options);
     } else {
       result = streamChat(translated);
     }
@@ -186,7 +171,7 @@ public class ModelProviderImpl implements ModelProvider {
             opts.getHttpHeaders() != null
                 ? new LinkedHashMap<>(opts.getHttpHeaders())
                 : new LinkedHashMap<>();
-        headers.put(THINKING_HEADER, "true");
+        headers.put(CompatibleModeSupport.THINKING_HEADER, "true");
         opts.setHttpHeaders(headers);
       }
       result = new Prompt(prompt.getInstructions(), opts);
@@ -225,128 +210,6 @@ public class ModelProviderImpl implements ModelProvider {
     return new Prompt(prompt.getInstructions(), options);
   }
 
-  /** 将 enable_thinking 双写注入 JSON body（sync 经 RestClient 拦截器调用）。 */
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // JSON构建容错：objectMapper+节点操作，失败仅告警不抛
-  private byte[] injectThinkingIntoBody(byte[] body) {
-    byte[] result = body;
-    try {
-      JsonNode root = objectMapper.readTree(body);
-      if (root instanceof ObjectNode obj) {
-        obj.put("enable_thinking", true);
-        ObjectNode kwargs;
-        if (obj.has("chat_template_kwargs") && obj.get("chat_template_kwargs").isObject()) {
-          kwargs = (ObjectNode) obj.get("chat_template_kwargs");
-        } else {
-          kwargs = obj.putObject("chat_template_kwargs");
-        }
-        kwargs.put("enable_thinking", true);
-        result = objectMapper.writeValueAsBytes(obj);
-      }
-    } catch (Exception e) {
-      LOG.warn("enable_thinking body 注入失败", e);
-    }
-    return result;
-  }
-
-  /** thinking=true 流式：手工 JSON + WebClient SSE。 */
-  private Flux<ChatResponse> streamWithThinking(Prompt prompt, ModelCallOptions options) {
-    String jsonBody = buildChatJsonBody(prompt, options, true);
-    String url = resolveBaseUrl() + COMPATIBLE_COMPLETIONS_PATH;
-    return streamWebClient
-        .post()
-        .uri(url)
-        .header("Authorization", "Bearer " + resolveApiKey())
-        .contentType(MediaType.APPLICATION_JSON)
-        .accept(MediaType.TEXT_EVENT_STREAM)
-        .bodyValue(jsonBody)
-        .retrieve()
-        .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {})
-        .filter(sse -> sse.data() != null && !"[DONE]".equals(sse.data().trim()))
-        .map(sse -> chunkToChatResponse(sse.data()));
-  }
-
-  /** 构建 OpenAI chat completion JSON（thinking 路径）。 */
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // JSON构建容错：objectMapper+节点操作多源，统一包装上抛
-  private String buildChatJsonBody(Prompt prompt, ModelCallOptions options, boolean stream) {
-    try {
-      ObjectNode root = objectMapper.createObjectNode();
-      String model =
-          StringUtils.hasText(options.model()) ? options.model() : properties.getChatModel();
-      root.put("model", model);
-      if (stream) {
-        root.put("stream", true);
-        root.putObject("stream_options").put("include_usage", true);
-      }
-      if (options.temperature() != null) root.put("temperature", options.temperature());
-      if (options.maxTokens() != null) root.put("max_tokens", options.maxTokens());
-
-      ArrayNode messages = root.putArray("messages");
-      for (Message msg : prompt.getInstructions()) {
-        ObjectNode m = messages.addObject();
-        m.put("role", msg.getMessageType().getValue());
-        m.put("content", msg.getText() != null ? msg.getText() : "");
-      }
-
-      root.put("enable_thinking", true);
-      root.putObject("chat_template_kwargs").put("enable_thinking", true);
-      return objectMapper.writeValueAsString(root);
-    } catch (Exception e) {
-      throw new IllegalStateException("构建 thinking JSON 失败", e);
-    }
-  }
-
-  /** SSE data JSON 转 ChatResponse。 */
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // JSON解析容错：objectMapper+节点访问，失败回退空响应
-  private ChatResponse chunkToChatResponse(String json) {
-    ChatResponse result;
-    try {
-      JsonNode root = objectMapper.readTree(json);
-      List<Generation> generations = new ArrayList<>();
-      JsonNode choices = root.get("choices");
-      if (choices != null && choices.isArray()) {
-        for (JsonNode choice : choices) {
-          JsonNode delta = choice.get("delta");
-          if (delta != null && delta.has("content")) {
-            String text = delta.get("content").asText("");
-            if (!text.isEmpty()) {
-              generations.add(new Generation(new AssistantMessage(text)));
-            }
-          }
-        }
-      }
-      result = new ChatResponse(generations);
-    } catch (Exception e) {
-      LOG.warn("SSE chunk 解析失败: {}", json, e);
-      result = new ChatResponse(List.of());
-    }
-    return result;
-  }
-
-  private OpenAiChatModel buildCompatibleChatModel() {
-    ClientHttpRequestInterceptor thinkingInterceptor =
-        (request, body, execution) -> {
-          String thinking = request.getHeaders().getFirst(THINKING_HEADER);
-          if ("true".equals(thinking)) {
-            request.getHeaders().remove(THINKING_HEADER);
-            return execution.execute(request, injectThinkingIntoBody(body));
-          }
-          return execution.execute(request, body);
-        };
-
-    OpenAiApi api =
-        OpenAiApi.builder()
-            .baseUrl(resolveBaseUrl())
-            .apiKey(resolveApiKey())
-            .completionsPath(COMPATIBLE_COMPLETIONS_PATH)
-            .restClientBuilder(
-                org.springframework.web.client.RestClient.builder()
-                    .requestInterceptor(thinkingInterceptor))
-            .build();
-    OpenAiChatOptions defaultOptions =
-        OpenAiChatOptions.builder().model(properties.getChatModel()).streamUsage(true).build();
-    return OpenAiChatModel.builder().openAiApi(api).defaultOptions(defaultOptions).build();
-  }
-
   private ModelCallResult<String> toTextResult(ChatResponse response, String fallbackModel) {
     String text = extractText(response);
     ChatResponseMetadata metadata = response.getMetadata();
@@ -374,29 +237,5 @@ public class ModelProviderImpl implements ModelProvider {
 
   private Long toLong(Integer value) {
     return value == null ? null : value.longValue();
-  }
-
-  private String resolveBaseUrl() {
-    String result = properties.getBaseUrl();
-    if (!StringUtils.hasText(result)) {
-      result = environment.getProperty("spring.ai.dashscope.base-url", "");
-      if (!StringUtils.hasText(result)) {
-        throw new IllegalStateException(
-            "compatible-mode base-url 未配置（platform.ai.model.base-url / spring.ai.dashscope.base-url）");
-      }
-    }
-    return result;
-  }
-
-  private String resolveApiKey() {
-    String result = properties.getApiKey();
-    if (!StringUtils.hasText(result)) {
-      result = environment.getProperty("spring.ai.dashscope.api-key", "");
-      if (!StringUtils.hasText(result)) {
-        LOG.warn("compatible-mode api-key 未配置：调用将在运行期失败");
-        result = "missing-api-key";
-      }
-    }
-    return result;
   }
 }
