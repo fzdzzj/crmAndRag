@@ -118,7 +118,7 @@ com.slz.crm
 `openspec/`（检索链路优化 + 治理提案）：
 - `project.md` —— 17 方案处置总表 + 硬约束（**改检索链路前必读**）
 - `git-workflow.md` —— 分支/提交/合并/CI 基线/成本闸门契约
-- `changes/` —— 在途提案；**当前实际目录以 `ls openspec/changes/` 为准**（本节只记“现在还剩谁”，不再复制会过期的全量清单）：add-frontend-workspace（前端工作区纯拷贝引入；**真在途**——tasks.md 组 8 的 git 收尾未落，无 `--no-ff` 合并提交）｜ add-knowledge-admin-api（知识库管理 API 7 端点 + 900 权限码 + V27 种子，已合入；组 6 真摄取/真检索试点**停下等授权**）｜ add-vision-pdf-ingest-pilot（图像 PDF 视觉转写试点，`vision-pdf.enabled=false` 默认关；生产打开待授权）
+- `changes/` —— 在途提案；**当前实际目录以 `ls openspec/changes/` 为准**（本节只记“现在还剩谁”，不再复制会过期的全量清单）：add-knowledge-admin-api（知识库管理 API 7 端点 + 900 权限码 + V27 种子，已合入；组 6 真摄取/真检索试点**停下等授权**）｜ add-vision-pdf-ingest-pilot（图像 PDF 视觉转写试点，`vision-pdf.enabled=false` 默认关；生产打开待授权）；原列于此的 add-frontend-workspace 已于 2026-09-23 按「等价完成」结案归档（owner 拍板，非按原文执行），去向见 `openspec/changes/archive/add-frontend-workspace/`
 - `changes/archive/` —— 已闭合提案统一移入此处（以 `ls openspec/changes/archive/` 为准；归档判定与引用同步口径见 `openspec/git-workflow.md` §8）
 
 性能基线：`docs/perf-baseline.md`（measure-perf-baseline）。

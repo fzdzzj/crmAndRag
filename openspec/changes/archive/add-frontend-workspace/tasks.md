@@ -57,13 +57,20 @@
 ## 8. 收尾与提交准备 (partial, git ops limited)
 
 - [x] 8.1 git status 确认仅剩三个已知未跟踪 _* 文件 + openspec/add-*-api/ （frontend 和本提案 untracked，.gitignore M） _* 文件 + 可能的 openspec/add-knowledge... （不提交它们）
-- [ ] 8.2 首次提交：（因 .git 写权限限制，实际未提交；变更已就绪）：包含 frontend/ (排除后) + .gitignore + 提案三件套 + tasks.md 勾选
-- [ ] 8.3 提交信息符合：feat(frontend): add frontend workspace by copy from crm-front
-- [ ] 8.4 亲验 mvn test 653 绿 + status 干净（除已知）
-- [ ] 8.5 git checkout master; git merge --no-ff ... （命令已尝试，lock 失败；实际 merge hash 无法产生） feature/add-frontend-workspace -m "Merge branch 'feature/add-frontend-workspace'：添加前端工作区拷贝"
-- [ ] 8.6 记录 merge hash
-- [ ] 8.7 不 push；更新 HANDOFF.md 如果需要（可选，本单重点在验证）
-- [ ] 8.8 最终汇报：merge hash、frontend/package.json 存在、未提交 node_modules、surefire 653、type-check 结果或失败原因
+- [x] 8.2 首次提交：（因 .git 写权限限制，实际未提交；变更已就绪）：包含 frontend/ (排除后) + .gitignore + 提案三件套 + tasks.md 勾选
+      → 结案依据（owner 2026-09-23 拍板）：本格所述「在 feature 分支上做首提」的流程动作实际未按提案路径执行（`.git` 写权限受限，feature 分支自始未建成）；交付物已由 `ba57e2b`（frontend/ 222 个 tracked 文件首入）/ `61c0f92`（提案三件套 + 其余 frontend 文件）批量导入等价落地（`frontend/` 262 个 tracked 文件现全数在 master）；按等价完成结案，非按原文执行。
+- [x] 8.3 提交信息符合：feat(frontend): add frontend workspace by copy from crm-front
+      → 结案依据（owner 2026-09-23 拍板）：本格指定的 `feat(frontend): add frontend workspace by copy from crm-front` 提交信息实际未按提案路径执行（feature 首提未发生，该信息从未被使用）；等价落地由 `ba57e2b` / `61c0f92` 承担，其提交信息为 TASK 分片口径，与提案预设前缀不同；交付物（`frontend/` 262 个 tracked 文件）已在 master，按等价完成结案，非按原文执行。
+- [x] 8.4 亲验 mvn test 653 绿 + status 干净（除已知）
+      → 结案依据（owner 2026-09-23 拍板）：本格所述「亲验 mvn test 653 绿 + status 干净」的流程动作实际未按提案路径执行；交付物已由 `ba57e2b` / `61c0f92` 批量导入等价落地（`frontend/` 262 个 tracked 文件在 master），按等价完成结案，非按原文执行。附注：653 是提案当时（2026-09-17）的 surefire 基线口径，随后续拆分已上调；本格只按当时口径记等价完成，不再以 653 断言当前基线。
+- [x] 8.5 git checkout master; git merge --no-ff ... （命令已尝试，lock 失败；实际 merge hash 无法产生） feature/add-frontend-workspace -m "Merge branch 'feature/add-frontend-workspace'：添加前端工作区拷贝"
+      → 结案依据（owner 2026-09-23 拍板）：本格所述 `git merge --no-ff feature/add-frontend-workspace` 的流程动作实际未按提案路径执行（无 feature 分支、无合并气泡，故无合并提交产生）；交付物已由 `ba57e2b` / `61c0f92` 批量导入等价落地（`frontend/` 262 个 tracked 文件在 master）；本仓存在「限路径直落 master」车道，无合并气泡亦为合法落法；按等价完成结案，非按原文执行。
+- [x] 8.6 记录 merge hash
+      → 结案依据（owner 2026-09-23 拍板）：本格所述「记录 merge hash」实际未按提案路径执行（无合并提交可记）；改为指认可指认的直落提交 `ba57e2b` / `61c0f92` 作为等价落地凭据（`frontend/` 262 个 tracked 文件在 master）；按等价完成结案，非按原文执行。
+- [x] 8.7 不 push；更新 HANDOFF.md 如果需要（可选，本单重点在验证）
+      → 结案依据（owner 2026-09-23 拍板）：本格所述流程动作实际未按提案路径执行；交付物已由 `ba57e2b` / `61c0f92` 批量导入等价落地（`frontend/` 262 个 tracked 文件在 master），按等价完成结案，非按原文执行。落地补记：`git remote -v` 实测为空 → 确无 push；HANDOFF.md 的同步更新在本批归档时随引用修正一并完成（§4 在途清单移除本案）。
+- [x] 8.8 最终汇报：merge hash、frontend/package.json 存在、未提交 node_modules、surefire 653、type-check 结果或失败原因
+      → 结案依据（owner 2026-09-23 拍板）：本格所述汇报项实际未按提案路径产出（无 merge hash 可报）；交付物已由 `ba57e2b` / `61c0f92` 批量导入等价落地（`frontend/` 262 个 tracked 文件在 master），按等价完成结案，非按原文执行。结案口径：`frontend/package.json` 实测已 tracked、`node_modules` 实测入库 0 个、type-check 失败原因（`ERR_PNPM_NO_OFFLINE_TARBALL` + `vue-tsc not found`）留在组 6 与本文件尾部。
 
 ## 9. 异常处理
 
