@@ -19,13 +19,13 @@
 ## 2. 权限与迁移（¥0） (completed)
 - [x] 2.1 核对 PermissionOperates 既有数值，新增 KNOWLEDGE 管理权限常量（读写同权单码 900），中文 Javadoc 标「add-knowledge-admin-api 任务 2.1」
 - [x] 2.2 创建 V27__knowledge_admin_permission_seed.sql：注册权限 + 同轮授权业务角色（role_id NOT IN (0,1,2)），头部注释对齐 V26 格式
-- [ ] 2.3 docs/permission-matrix-audit.md 追加 KnowledgeAdminController 行 [x]
+- [x] 2.3 docs/permission-matrix-audit.md 追加 KnowledgeAdminController 行
 
 ## 3. Controller / Service / DTO（¥0） (completed)
 - [x] 3.1 pojo 新增 KnowledgeAdmin dto/vo（列表项、上传响应、检索测试请求/响应）
 - [x] 3.2 KnowledgeAdminService 编排：列表/上传/删除/状态/重建/检索 dry-run，复用既有 service，不重写摄取与检索逻辑
 - [x] 3.3 KnowledgeAdminController 7 端点，全部 @RequirePermission；登记 PermissionCoverageScanner.CONTROLLER_REGISTRY
-- [ ] 3.4 检索 dry-run 默认稀疏零外呼；真向量检索走显式参数（授权节点用）
+- [x] 3.4 检索 dry-run 默认稀疏零外呼并返回实际授权候选；真向量检索走显式参数（授权节点用，路径仅 mock 验证，未执行真实外呼；2026-09-23 定向测试、离线 PMD、离线全量测试均通过）
 
 ## 4. 测试（¥0，embedding mock） (completed)
 - [x] 4.1 单测：service 编排正反向（上传校验、删除不存在、重建参数）
@@ -48,8 +48,5 @@
 - Constraints: 900 chosen (no conflict with max 4045, after 807 AI, logical for knowledge); single code for read/write.
 - Next will create V27 sql using apply_patch + readback.
 - No real embedding, no V1-V26 mods.
-
-
-
 
 
