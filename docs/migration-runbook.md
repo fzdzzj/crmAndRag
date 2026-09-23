@@ -204,7 +204,7 @@ failsafe 侧的当前口径、CI 期望值与"无 Docker 下限"的含义一律�
   3. **（曾长期未消除，2026-09-21 P2 才消除）阈值口径未定夺**：pom 注释写"阈值≤5"、`<failurePriority>4</failurePriority>`（真读者，但与"条数"不可换算）两处互不相干。（本条原列的第三处 —— `ci.yml` 的 `PMD_MAX_VIOLATIONS: 5` —— 已于 2026-09-21 `operationalize-harness-gates` 组 5.1 作为**无读者的装饰性阈值删除**，该 env 现不存在。）
      → 更正：装饰性"条数阈值"其实还有**第三处**在本节普查面之外——`src/main/resources/pmd-rules.xml:4` 头部注释"阈值≤5 violations 通过"。它是**规则集文件自己**的话，`grep pom.xml scripts/ docs/` 按定义扫不到，所以"全仓不存在第二处条数阈值表述"这类判别必须把 `src/main/resources/*.xml` 纳入普查面。
      → **2026-09-21 P2 已消除**：条数口径落到 `maxAllowedViolations` 这一个读者（值与只降不升的约束见本节开头），三处装饰性表述里活着的两处 —— `pom.xml` 的"代码异味检测（阈值≤5）"与 `src/main/resources/pmd-rules.xml` 头部的"阈值≤5 violations 通过" —— 已改写为指认真读者的措辞（句中不再出现任何条数数字）。扩面普查（`pom.xml scripts/ docs/ openspec/ src/main/resources/*.xml` + `.github/workflows/ci.yml`）实测：除上述两处已清外，全仓只剩**引用式指针**（`docs/` 与 `openspec/` 里转述"某处曾写着阈值≤5"、`ci.yml:119` 列已删 env 名的历史说明），按 `harness-gates` R1 口径不算第二处读者。
-  → 修复要动 `src/main/resources/pmd-rules.xml` 并重新定阈值口径，越出组 3"只动 pom 两个插件块"的文件面，**另立项**。→ 已立项 `openspec/changes/wire-pmd-ruleset`：理由 1/2 由 P1（接线修尺）消除，理由 3 待 P2（落 `maxAllowedViolations` + 摘 skip + 回接门禁）。
+  → 修复要动 `src/main/resources/pmd-rules.xml` 并重新定阈值口径，越出组 3"只动 pom 两个插件块"的文件面，**另立项**。→ 已立项 `openspec/changes/archive/wire-pmd-ruleset`：理由 1/2 由 P1（接线修尺）消除，理由 3 待 P2（落 `maxAllowedViolations` + 摘 skip + 回接门禁）。
   → **2026-09-21 P2：三条理由全部消除，本豁免作废**（`spec R4` 的"到期触发条件 ③"即此）。
 - **复测命令**（本机离线可复现，产物只落 `target/`；P2 删掉 `<skip>` 后**不再需要**任何临时旁路）：
   ```bash
@@ -242,7 +242,7 @@ failsafe 侧的当前口径、CI 期望值与"无 Docker 下限"的含义一律�
 | server | 21 | 44 |
 | **合计** | **25** | **109** |
 
-（磁盘数一致的权威处置表见 `openspec/changes/tighten-pmd-violations/tasks.md` 3.1-T；每处豁免都带中文理由注释。）
+（磁盘数一致的权威处置表见 `openspec/changes/archive/tighten-pmd-violations/tasks.md` 3.1-T；每处豁免都带中文理由注释。）
 
 **两个新坑（复跑时对照）**：
 

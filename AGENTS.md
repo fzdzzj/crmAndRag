@@ -49,7 +49,7 @@
 - PMD：尺子 = `src/main/resources/pmd-rules.xml`（由 pom pmd 块的 `<rulesets>` 加载，`grep -n "<ruleset>src" pom.xml` 定位），哪些条计入 = 同块 `<failurePriority>`，计入多少条算失败 = 同块 `<maxAllowedViolations>`（全仓唯一条数读者）。存量台账 `scripts/tests/pmd-violation-baseline.txt` 只允许 `bash scripts/tests/pmd-baseline-check.sh --update` 从一次真实 `mvn -B -ntp pmd:check` 写入且**只许下调**；过期/漂移判别跑 `bash scripts/tests/pmd-baseline-check.sh`（注意：`pmd:check` 只在实测**严格大于**登记值时才红，"该下调了"这一项它自己看不到，必须靠本脚本）。
 - SpotBugs 同构：读者 = pom 该块的 `threshold` + `<excludeFilterFile>`，台账 `src/main/resources/spotbugs-exclude.xml` + `scripts/tests/spotbugs-high-baseline.tsv`，双射校验 `bash scripts/tests/spotbugs-exclude-staleness-check.sh`。
 - `[pmd]` 与 `[pmd-baseline]` 在 `scripts/merge-gate.sh` 里是**显式单点调用**，不等 `[it]`（`mvn verify`）顺带——pmd 绑 verify 而默认序列不跑 verify，这是 `harness-gates` 已确认的坑。
-- 启用状态、豁免历史（三条理由的消除过程）与复测命令：`docs/migration-runbook.md` §6.7；变更规格：`openspec/changes/wire-pmd-ruleset/`。
+- 启用状态、豁免历史（三条理由的消除过程）与复测命令：`docs/migration-runbook.md` §6.7；变更规格：`openspec/changes/archive/wire-pmd-ruleset/`。
 
 ### 环境与迁移入口
 

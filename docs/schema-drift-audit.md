@@ -1,6 +1,6 @@
 # Schema 漂移审计报告（实体 ↔ 真库）
 
-> 来源：`openspec/changes/audit-entity-table-drift`（1.0，审计日 2026-09-13）｜ 门禁：`SchemaDriftAuditIT`
+> 来源：`openspec/changes/archive/audit-entity-table-drift`（1.0，审计日 2026-09-13）｜ 门禁：`SchemaDriftAuditIT`
 > 方法：真 MySQL（Testcontainers `mysql:8.0.36`，与 `FlywayMigrationIT` 同口径）+ Flyway 全链 V1..V25
 > 比对：53 个实体（`pojo/entity` 38 + `knowledge/entity` 7 + `platform` 8）↔ 迁移链建出 55 张表
 > 提取：实体侧 `SchemaDriftAuditor`（ClassPath 扫 `@TableName` + MyBatis-Plus `TableInfoHelper`，运行期同一套映射）；

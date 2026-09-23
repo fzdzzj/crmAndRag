@@ -202,7 +202,7 @@ controller 扫描数 ≠ 登记数（28）→ 抛错红。新 controller 必须�
 ## 6. 拍板记录（apply-permission-matrix，2026-09-14 用户已拍板）
 
 > 以下将 §4 全部"建议映射"正式落地为真实鉴权。落地细节见提案
-> `openspec/changes/apply-permission-matrix/proposal.md` 与产出 `V26__permission_seed.sql`。
+> `openspec/changes/archive/apply-permission-matrix/proposal.md` 与产出 `V26__permission_seed.sql`。
 
 | # | 决策点 | 拍板结论 | 落地方式 |
 |---|---|---|---|
@@ -255,4 +255,4 @@ controller 扫描数 ≠ 登记数（28）→ 抛错红。新 controller 必须�
 
 > 落地证据：`--no-ff` 合并提交 **`fad493b`**（分支 `feature/apply-permission-matrix`；任务组提交
 > `d96e920` 0.x / `b402018` 1.x-2.x / `337de73` 3.x / `a3911b7` 4.x）；逐项证据见
-> `openspec/changes/apply-permission-matrix/tasks.md`。**本报告至此不再构成"待拍板输入"，§4 建议映射已全部生效。**
+> `openspec/changes/archive/apply-permission-matrix/tasks.md`。**本报告至此不再构成"待拍板输入"，§4 建议映射已全部生效。**
