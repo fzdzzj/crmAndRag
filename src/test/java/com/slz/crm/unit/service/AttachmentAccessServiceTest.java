@@ -231,6 +231,84 @@ class AttachmentAccessServiceTest {
         () -> service.assertCanReadHistorical(attachment(11L, 100L, "business_activity"), 20L, 2L));
   }
 
+  @Test
+  @DisplayName("判定矩阵：实时协助来源附件拒绝非参与人（申请人/协助人/超管/任务参与人之外）")
+  void rejectsAssistSourceAttachmentForOutsider() {
+    when(userMapper.selectById(7L)).thenReturn(user(7L, 2L));
+    AssistRequestEntity assist = new AssistRequestEntity();
+    assist.setId(52L);
+    assist.setModelName(ModelName.CONTACT_TASK);
+    assist.setRecordId(101L);
+    assist.setApplicantId(8L);
+    assist.setAssistUserId(9L);
+    assist.setAssistStatus(0);
+    when(assistRequestMapper.selectById(52L)).thenReturn(assist);
+    var task = new com.slz.crm.pojo.entity.ContactTaskEntity();
+    task.setId(101L);
+    task.setAssigneeId(2L);
+    when(contactTaskMapper.selectById(101L)).thenReturn(task);
+
+    assertThrows(
+        BaseException.class,
+        () ->
+            service.assertCanReadAssistSource(
+                attachment(1L, 101L, ModelName.CONTACT_TASK), 52L, 7L));
+  }
+
+  @Test
+  @DisplayName("判定矩阵：参与人读实时来源附件，但附件挂错记录时拒绝")
+  void rejectsAssistSourceAttachmentNotBelongingToAssist() {
+    when(userMapper.selectById(2L)).thenReturn(user(2L, 2L));
+    AssistRequestEntity assist = new AssistRequestEntity();
+    assist.setId(53L);
+    assist.setModelName("business_activity");
+    assist.setRecordId(100L);
+    assist.setApplicantId(8L);
+    assist.setAssistUserId(2L);
+    assist.setAssistStatus(0);
+    when(assistRequestMapper.selectById(53L)).thenReturn(assist);
+
+    // 附件挂在 contact_task/101，与协助冻结的 business_activity/100 不一致
+    assertThrows(
+        BaseException.class,
+        () ->
+            service.assertCanReadAssistSource(
+                attachment(1L, 101L, ModelName.CONTACT_TASK), 53L, 2L));
+  }
+
+  @Test
+  @DisplayName("判定矩阵：历史附件拒绝非参与人（非超管/申请人/协助人）")
+  void rejectsHistoricalAttachmentForOutsider() {
+    when(userMapper.selectById(7L)).thenReturn(user(7L, 2L));
+    AssistRequestEntity assist = new AssistRequestEntity();
+    assist.setId(21L);
+    assist.setApplicantId(8L);
+    assist.setAssistUserId(9L);
+    assist.setAssistStatus(1);
+    assist.setRecordSnapshot("[{\"attachmentId\":10}]");
+    when(assistRequestMapper.selectById(21L)).thenReturn(assist);
+
+    assertThrows(
+        BaseException.class,
+        () -> service.assertCanReadHistorical(attachment(10L, 100L, "business_activity"), 21L, 7L));
+  }
+
+  @Test
+  @DisplayName("判定矩阵：待协助状态走历史入口被拒，必须回实时授权")
+  void rejectsHistoricalEntryForPendingAssist() {
+    when(userMapper.selectById(2L)).thenReturn(user(2L, 2L));
+    AssistRequestEntity assist = new AssistRequestEntity();
+    assist.setId(22L);
+    assist.setApplicantId(8L);
+    assist.setAssistUserId(2L);
+    assist.setAssistStatus(0);
+    when(assistRequestMapper.selectById(22L)).thenReturn(assist);
+
+    assertThrows(
+        BaseException.class,
+        () -> service.assertCanReadHistorical(attachment(10L, 100L, "business_activity"), 22L, 2L));
+  }
+
   private ApprovalAttachmentEntity attachment(Long id, Long andId, String modelName) {
     ApprovalAttachmentEntity attachment = new ApprovalAttachmentEntity();
     attachment.setId(id);

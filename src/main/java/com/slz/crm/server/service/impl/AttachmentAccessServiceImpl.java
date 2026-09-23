@@ -1,7 +1,6 @@
 package com.slz.crm.server.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.enumeration.ModelName;
@@ -11,10 +10,7 @@ import com.slz.crm.pojo.entity.ApprovalAttachmentEntity;
 import com.slz.crm.pojo.entity.AssistRequestEntity;
 import com.slz.crm.pojo.entity.BusinessActivityEntity;
 import com.slz.crm.pojo.entity.ContactTaskEntity;
-import com.slz.crm.pojo.entity.ContractEntity;
-import com.slz.crm.pojo.entity.ContractOrderItemEntity;
 import com.slz.crm.pojo.entity.ProjectFileEntity;
-import com.slz.crm.pojo.entity.SalesOpportunityEntity;
 import com.slz.crm.pojo.entity.SalesStageApprovalEntity;
 import com.slz.crm.pojo.entity.UserEntity;
 import com.slz.crm.server.mapper.AssistRequestMapper;
@@ -29,16 +25,18 @@ import com.slz.crm.server.mapper.UserMapper;
 import com.slz.crm.server.service.AttachmentAccessService;
 import com.slz.crm.server.service.PermissionService;
 import java.util.Objects;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /**
  * 统一普通附件记录级读写授权。
  *
  * <p>普通活动/任务附件只按业务记录相关人和预留的部门上司范围授权， 不读取协助关系；实时协助来源和历史快照则走下方独立的 assist 校验路径。
+ *
+ * <p>tighten-pmd-residual-325 任务 6.4 批B：快照递归匹配拆至 {@link AttachmentSnapshotMatcher}、 项目文件多维度判定拆至
+ * {@link ProjectFileAttachmentReader}，判定矩阵行为等价（配套反向用例见
+ * AttachmentAccessServiceTest），部门上司预留点签名契约与豁免原位保留。
  */
 @Service
-@RequiredArgsConstructor
 public class AttachmentAccessServiceImpl implements AttachmentAccessService {
 
   private final AssistRequestMapper assistRequestMapper;
@@ -52,6 +50,43 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
   private final UserMapper userMapper;
   private final PermissionService permissionService;
   private final ObjectMapper objectMapper;
+  private final AttachmentSnapshotMatcher snapshotMatcher;
+  private final ProjectFileAttachmentReader projectFileReader;
+
+  public AttachmentAccessServiceImpl(
+      AssistRequestMapper assistRequestMapper,
+      BusinessActivityMapper businessActivityMapper,
+      BusinessActivityUserMapper businessActivityUserMapper,
+      ContactTaskMapper contactTaskMapper,
+      SalesOpportunityMapper salesOpportunityMapper,
+      ContractMapper contractMapper,
+      ContractOrderItemMapper contractOrderItemMapper,
+      SalesStageApprovalMapper salesStageApprovalMapper,
+      UserMapper userMapper,
+      PermissionService permissionService,
+      ObjectMapper objectMapper) {
+    this.assistRequestMapper = assistRequestMapper;
+    this.businessActivityMapper = businessActivityMapper;
+    this.businessActivityUserMapper = businessActivityUserMapper;
+    this.contactTaskMapper = contactTaskMapper;
+    this.salesOpportunityMapper = salesOpportunityMapper;
+    this.contractMapper = contractMapper;
+    this.contractOrderItemMapper = contractOrderItemMapper;
+    this.salesStageApprovalMapper = salesStageApprovalMapper;
+    this.userMapper = userMapper;
+    this.permissionService = permissionService;
+    this.objectMapper = objectMapper;
+    this.snapshotMatcher = new AttachmentSnapshotMatcher(objectMapper);
+    this.projectFileReader =
+        new ProjectFileAttachmentReader(
+            businessActivityMapper,
+            businessActivityUserMapper,
+            salesOpportunityMapper,
+            contractMapper,
+            contractOrderItemMapper,
+            permissionService,
+            this::departmentManagerReadReserved);
+  }
 
   @Override
   public void assertCanRead(ApprovalAttachmentEntity attachment, Long userId) {
@@ -78,7 +113,8 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
           result =
               switch (modelName) {
                 case ModelName.BUSINESS_ACTIVITY ->
-                    canReadBusinessActivityAttachments(recordId, userId, modelName);
+                    projectFileReader.canReadBusinessActivityAttachments(
+                        recordId, userId, modelName);
                 case ModelName.CONTACT_TASK -> {
                   if (!permissionService.hasPermission(userId, PermissionOperates.TASK_VIEW_TASK)) {
                     yield false;
@@ -243,50 +279,9 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
         Objects.equals(user.getRoleId(), 1L)
             || Objects.equals(assist.getApplicantId(), userId)
             || Objects.equals(assist.getAssistUserId(), userId);
-    if (!participant || !snapshotContainsAttachment(assist.getRecordSnapshot(), attachment)) {
+    if (!participant || !snapshotMatcher.contains(assist.getRecordSnapshot(), attachment)) {
       throw new BaseException(ErrorCode.PERMISSION_DENIED, "附件不属于该协助历史快照");
     }
-  }
-
-  /** 将快照 JSON 解析后检查附件归属。解析失败或没有快照时按无权限处理，避免异常放宽授权。 */
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 快照解析+递归匹配多源，解析失败按无权限处理防例外放权
-  private boolean snapshotContainsAttachment(String snapshot, ApprovalAttachmentEntity attachment) {
-    boolean result = false;
-    if (snapshot != null && !snapshot.isBlank()) {
-      try {
-        result = containsAttachment(objectMapper.readTree(snapshot), attachment);
-      } catch (Exception exception) {
-        result = false;
-      }
-    }
-    return result;
-  }
-
-  /** 递归遍历快照全部层级，匹配附件 ID；新快照再匹配 modelName 和 recordId。 旧快照可能缺少后两项，因此缺失时保持兼容，但只要字段存在就必须与数据库真实记录一致。 */
-  private boolean containsAttachment(JsonNode node, ApprovalAttachmentEntity attachment) {
-    if (node == null) {
-      return false;
-    }
-    if (node.isObject()
-        && node.has("attachmentId")
-        && node.get("attachmentId").canConvertToLong()
-        && Objects.equals(node.get("attachmentId").longValue(), attachment.getId())) {
-      String snapshotModelName =
-          node.hasNonNull("modelName") ? node.get("modelName").asText() : null;
-      String snapshotRecordId = node.hasNonNull("recordId") ? node.get("recordId").asText() : null;
-      return (snapshotModelName == null
-              || Objects.equals(snapshotModelName, attachment.getModelName()))
-          && (snapshotRecordId == null
-              || Objects.equals(snapshotRecordId, String.valueOf(attachment.getAndId())));
-    }
-    if (node.isContainerNode()) {
-      for (JsonNode child : node) {
-        if (containsAttachment(child, attachment)) {
-          return true;
-        }
-      }
-    }
-    return false;
   }
 
   private boolean hasAssistParticipantById(Long assistId, Long userId) {
@@ -313,80 +308,10 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
       } else if (Objects.equals(user.getRoleId(), 1L)) {
         result = true;
       } else {
-        result = canReadProjectFileByDimension(file, userId);
+        result = projectFileReader.canReadByDimension(file, userId);
       }
     }
     return result;
-  }
-
-  /** 非超管的记录级判定：项目文件可能同时挂多个归属维度，任一维度可读即放行； 无任何归属维度的独立上传文件仅上传人本人可见；其余走部门主管保留通道。 */
-  private boolean canReadProjectFileByDimension(ProjectFileEntity file, Long userId) {
-    boolean result = false;
-    // 项目文件可能同时挂多个归属维度，任一维度可读即放行
-    boolean hasDimension = file.getActivityId() != null || file.getOpportunityId() != null;
-    if (!result && file.getActivityId() != null) {
-      result =
-          canReadBusinessActivityAttachments(
-              file.getActivityId(), userId, ModelName.BUSINESS_ACTIVITY);
-    }
-    if (!result && file.getOpportunityId() != null) {
-      result = canReadSalesOpportunity(file.getOpportunityId(), userId);
-    }
-    if (!result) {
-      Long contractId = resolveContractId(file);
-      if (contractId != null && canReadContract(contractId, userId)) {
-        result = true;
-      } else if (!hasDimension && contractId == null) {
-        // 无任何归属维度的独立上传文件：仅上传人本人可见（超管已在上方放行）
-        result = Objects.equals(file.getUploaderId(), userId);
-      } else {
-        result = departmentManagerReadReserved(ModelName.PROJECT_FILE, file.getId(), userId);
-      }
-    }
-    return result;
-  }
-
-  private boolean canReadBusinessActivityAttachments(Long recordId, Long userId, String modelName) {
-    if (!permissionService.hasPermission(userId, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY)) {
-      return false;
-    }
-    BusinessActivityEntity activity = businessActivityMapper.selectById(recordId);
-    return (activity != null
-            && (Objects.equals(activity.getCreatorId(), userId)
-                || businessActivityUserMapper.existsByActivityIdAndUserId(recordId, userId) > 0))
-        || departmentManagerReadReserved(modelName, recordId, userId);
-  }
-
-  private boolean canReadSalesOpportunity(Long opportunityId, Long userId) {
-    if (!permissionService.hasPermission(userId, PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY)) {
-      return false;
-    }
-    SalesOpportunityEntity opportunity = salesOpportunityMapper.selectById(opportunityId);
-    return opportunity != null
-        && (Objects.equals(opportunity.getOwnerId(), userId)
-            || Objects.equals(opportunity.getCreatorId(), userId)
-            || Objects.equals(opportunity.getApproverId(), userId));
-  }
-
-  private boolean canReadContract(Long contractId, Long userId) {
-    if (!permissionService.hasPermission(userId, PermissionOperates.SALES_VIEW_CONTRACT)) {
-      return false;
-    }
-    ContractEntity contract = contractMapper.selectById(contractId);
-    return contract != null
-        && (Objects.equals(contract.getOwnerId(), userId)
-            || Objects.equals(contract.getCreatorId(), userId));
-  }
-
-  /** 订单维度文件经订单项反查合同，与合同归属共用同一授权判断。 */
-  private Long resolveContractId(ProjectFileEntity file) {
-    if (file.getOrderId() != null) {
-      ContractOrderItemEntity orderItem = contractOrderItemMapper.selectById(file.getOrderId());
-      if (orderItem != null && orderItem.getContractId() != null) {
-        return orderItem.getContractId();
-      }
-    }
-    return file.getContractId();
   }
 
   /**
