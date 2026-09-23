@@ -18,9 +18,9 @@
 
 ## 2. 创建提案三件套（随首提） (completed)
 
-- [ ] 2.1 确保 proposal.md 存在并准确描述拷贝、不改 Java 等约束
-- [ ] 2.2 编写 tasks.md （本文件），列出可执行步骤，勾选随提交
-- [ ] 2.3 编写 specs/frontend-workspace/spec.md （需求增量）
+- [x] 2.1 确保 proposal.md 存在并准确描述拷贝、不改 Java 等约束（**核实依据（2026-09-23 归档批逐格核验）**：`git ls-files openspec/changes/add-frontend-workspace/` 命中 proposal.md（引入提交 `61c0f92`，92 行）；正文明写 robocopy 排除清单与「禁止改 Java / 改 ci 数字 / 跑 54 条基准 / 实现知识库页」（§What Changes 1、§Non-Goals）→ 动作已落 master，成立）
+- [x] 2.2 编写 tasks.md （本文件），列出可执行步骤，勾选随提交（**核实依据**：tasks.md 已 tracked（引入提交 `61c0f92`，按 0-9 组编排的可执行步骤）→ 动作已落 master，成立）
+- [x] 2.3 编写 specs/frontend-workspace/spec.md （需求增量）（**核实依据**：`git ls-files` 命中 `openspec/changes/add-frontend-workspace/specs/frontend-workspace/spec.md`（引入提交 `61c0f92`，61 行「ADDED Requirements」+ Scenario）→ 动作已落 master，成立）
 
 ## 3. 拷贝前端工作树 (completed)
 
