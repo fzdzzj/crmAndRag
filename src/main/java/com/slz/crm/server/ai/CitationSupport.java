@@ -1,6 +1,9 @@
 package com.slz.crm.server.ai;
 
+import com.slz.crm.platform.contract.SourceReference;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -15,6 +18,7 @@ import java.util.regex.Pattern;
 final class CitationSupport {
 
   private static final Pattern ASCII_TOKEN = Pattern.compile("[A-Za-z0-9]+");
+  private static final Pattern CITATION_PATTERN = Pattern.compile("\\[(\\d{1,3})]");
   private static final double TOKEN_BONUS_WEIGHT = 0.25;
 
   private CitationSupport() {}
@@ -101,5 +105,24 @@ final class CitationSupport {
     return block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
         || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
         || block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS;
+  }
+
+  /** 正文引用编号提取（tighten-pmd-residual-325 任务 6.4 批D：拆自 AiChatStreamFinalizer，行为等价）。 */
+  static List<Integer> extractCitations(String content, List<SourceReference> sources) {
+    List<Integer> result;
+    if (content == null || content.isBlank() || sources == null || sources.isEmpty()) {
+      result = List.of();
+    } else {
+      Set<Integer> citations = new LinkedHashSet<>();
+      Matcher matcher = CITATION_PATTERN.matcher(content);
+      while (matcher.find()) {
+        int citation = Integer.parseInt(matcher.group(1));
+        if (citation >= 1 && citation <= sources.size()) {
+          citations.add(citation);
+        }
+      }
+      result = List.copyOf(citations);
+    }
+    return result;
   }
 }

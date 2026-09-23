@@ -164,9 +164,8 @@ class AiChatServiceImplTest {
         promptService, "shortQuestionRewriter", new AiShortQuestionRewriter());
     ReflectionTestUtils.setField(streamLifecycle, "chatClientBuilder", chatClientBuilder);
     ReflectionTestUtils.setField(streamLifecycle, "aiProperties", aiProperties);
-    ReflectionTestUtils.setField(streamLifecycle, "aiMessageService", aiMessageService);
-    ReflectionTestUtils.setField(streamLifecycle, "promptService", promptService);
-    ReflectionTestUtils.setField(streamLifecycle, "eventWriter", eventWriter);
+    // 批D拆分后 aiMessageService/promptService/eventWriter 已随职责迁入 AiChatStreamFinalizer，
+    // 且构造器已注入同一实例，无需（也不能）再反射注入生命周期字段。
     useRegistry(new AiStreamRegistry());
   }
 
