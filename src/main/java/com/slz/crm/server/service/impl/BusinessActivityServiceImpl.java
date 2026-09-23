@@ -282,12 +282,10 @@ public class BusinessActivityServiceImpl
       throw new BaseException(ErrorCode.BUSINESS_ACTIVITY_NOT_EXISTS.getMessage());
     }
 
-    if (userRequestList == null || userRequestList.isEmpty()) {
-      return true;
+    if (userRequestList != null && !userRequestList.isEmpty()) {
+      BusinessActivityRelationSupport.addUserRelations(
+          activityId, userRequestList, BaseUnit.getCurrentId(), businessActivityUserMapper);
     }
-
-    BusinessActivityRelationSupport.addUserRelations(
-        activityId, userRequestList, BaseUnit.getCurrentId(), businessActivityUserMapper);
 
     return true;
   }
