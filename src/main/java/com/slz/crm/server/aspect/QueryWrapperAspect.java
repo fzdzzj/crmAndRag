@@ -173,11 +173,13 @@ public class QueryWrapperAspect {
   /** 探测接口上的重载方法；NoSuchMethodException 是「接口无该重载」的正常答案，非异常 */
   @SuppressWarnings("PMD.EmptyCatchBlock")
   private Method lookupMethod(Class<?> iface, String methodName, Class<?> parameterType) {
+    Method found = null;
     try {
-      return iface.getMethod(methodName, parameterType);
+      found = iface.getMethod(methodName, parameterType);
     } catch (NoSuchMethodException e) {
-      return null;
+      // 接口无该重载时保持 null，由调用方继续探测下一个候选
     }
+    return found;
   }
 
   /**

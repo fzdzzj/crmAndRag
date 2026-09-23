@@ -171,15 +171,11 @@ public class ReconciliationService {
         items.add(
             item(report, source.storageType(), resourceId, MISSING, "主数据存在但当前存储缺失", "REPAIR"));
       }
-      return;
-    }
-    if (authoritative != null
+    } else if (authoritative != null
         && authoritativeResource == null
         && !source.storageType().equals(authoritative.storageType())) {
       items.add(item(report, source.storageType(), resourceId, ORPHAN, "主数据缺失但当前存储存在", "CLEANUP"));
-      return;
-    }
-    if (authoritativeResource != null
+    } else if (authoritativeResource != null
         && !source.storageType().equals(authoritative.storageType())
         && !Objects.equals(current.fingerprint(), authoritativeResource.fingerprint())) {
       items.add(item(report, source.storageType(), resourceId, STALE, "资源指纹与主数据不一致", "REFRESH"));
