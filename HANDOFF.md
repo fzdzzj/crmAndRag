@@ -115,11 +115,11 @@ com.slz.crm
 | `assistant-decision-tree.md` | 助手情况处理树 + SSE payload 示例 |
 | `migration-inventory.md` / `migration-subtasks.md` / `db-table-coordination.md` | RAG 资产取舍、迁移子任务、表协调 |
 
-`openspec/`（检索链路优化，已完成）：
+`openspec/`（检索链路优化 + 治理提案）：
 - `project.md` —— 17 方案处置总表 + 硬约束（**改检索链路前必读**）
 - `git-workflow.md` —— 分支/提交/合并/CI 基线/成本闸门契约
-- `changes/archive/` —— 六案：add-rag-quality-baseline（评估基线）/ complete-hybrid-retrieval-and-rerank（混合检索+重排）/ add-context-compression-and-enrichment（压缩+邻居）/ upgrade-semantic-chunking-and-index（语义切分+双粒度）/ enhance-query-transformation（查询增强，默认关）/ run-baseline-ladder（基线阶梯五回）
-- `changes/`（进行中/待归档）—— audit-permission-matrix（端点权限矩阵审计 + 永久门禁，已合入；**映射已由 apply-permission-matrix 落地并合入 master `fad493b`，PENDING_DECISION 57→0**，见 `docs/permission-matrix-audit.md` §6）；apply-permission-matrix（权限矩阵落地：800 段 AI 常量 + 报表 501/502 激活 + V26 种子 + 冻结/离职绕过修复，已合入）；drift-disposition（schema 漂移 7 项定夺豁免 + KNOWN/NEW 二分，已合入，待授权清零）；expand-rag-benchmark（基准集 18→54 条 + SUITE_VERSION 2.0，已合入；v2 锚点已授权跑完，baseline-v2.json + baseline-v2-anchor.md 于 feature/rag-v2-anchor 合入）；fix-citation-alignment（生成后引用编号对齐，已合入；after-quality-loop 已合并复测，I-05 citP 仍 0）；add-excel-header-projection（Excel 表头投影，已合入；after-quality-loop 已合并复测，TB-01/TB-10 升 1）；fix-multicondition-recall（多条件拆路，已合入；after-quality-loop 已合并复测，T-14 仍 0.5）；research-visual-ingest（视觉摄取差距对照，已合入；实现另案，见 docs/ingest-gap-map.md）；trace-i05-citation-forensics（I-05 引用取证 only 过滤+旁路 JSON，已合入；结论 KEEP 错号，见 docs/rag-quality/i05-forensics.md，不改对齐器）；fix-i05-caption-chunk（图注独立语料对齐黄金块，已合入；I-05 重跑 citP 1.0，见 i05-after-caption-chunk.md）；measure-perf-baseline（性能基线只测不改，已合入，见 docs/perf-baseline.md）；add-paragraph-chunking（段落感知切分，**tasks 已全勾、已合入 master `ccbdbc1`**；默认策略仍 `fixed`，未翻默认）
+- `changes/` —— 在途提案；**当前实际目录以 `ls openspec/changes/` 为准**（本节只记“现在还剩谁”，不再复制会过期的全量清单）：add-frontend-workspace（前端工作区纯拷贝引入；**真在途**——tasks.md 组 8 的 git 收尾未落，无 `--no-ff` 合并提交）｜ add-knowledge-admin-api（知识库管理 API 7 端点 + 900 权限码 + V27 种子，已合入；组 6 真摄取/真检索试点**停下等授权**）｜ add-vision-pdf-ingest-pilot（图像 PDF 视觉转写试点，`vision-pdf.enabled=false` 默认关；生产打开待授权）
+- `changes/archive/` —— 已闭合提案统一移入此处（以 `ls openspec/changes/archive/` 为准；归档判定与引用同步口径见 `openspec/git-workflow.md` §8）
 
 性能基线：`docs/perf-baseline.md`（measure-perf-baseline）。
 
