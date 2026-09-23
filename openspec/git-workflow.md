@@ -70,3 +70,16 @@
    数字本身只在 `scripts/test-baseline.txt`，本文不复制，也不去 CI YAML 里找。
 3. `git log --oneline --graph`：提交按任务组整齐、merge 带 `--no-ff`。
 4. 汇报写明：实测测试数、baseline JSON 路径、遗留未勾项及原因（HANDOFF 教训：报完成要亲验 commit hash + status 干净）。
+
+## 8. 归档（提案闭合后的去向）
+
+- 归档 = `git mv openspec/changes/<change-id> openspec/changes/archive/`，**真移动**（`git log --follow` 仍可追），不是"复制一份再删一份"。
+- **判定三条件（全真才归档；任一不满足、或证据查不到 → 原地不动，列明缺哪条报 owner）**：
+  1. **代码与产物已落 master**：有 `--no-ff` 合并提交，或直落 master 的车道能指到具体 commit hash。"分支上做完了"不算。
+  2. **tasks.md 全勾**：只要还剩一个 `[ ]` 就不算——行尾另补一个 `[x]` 的"半勾"同样不算。
+  3. **无待拍板遗留**：tasks.md 尾部与 proposal.md 里的"待授权 / 待拍板 / 待定夺"项都已拍板或已明确移交下一条车道，且与 `HANDOFF.md` §3 的记录一致。
+- **永不归档的两类**：
+  - **常驻权威上下文**——被 `AGENTS.md` / `HANDOFF.md` 指为 living spec 或权威目录的（如 `spec/changes/add-crm-rag-fusion-platform/`）。它们是持续被读的"现在时"，不是某一次变更的规格。
+  - **在途提案**——还挂着未拍板的开关 / 授权节点，哪怕 tasks 全勾也留着：下一步动作还押在 owner 手上。
+- **移动与引用同步同一笔提交**：移动前对每个目录名 `grep` 全部被跟踪 `*.md`（排除 `archive/`），load-bearing 的活路径改指 `archive/<change-id>/`；纯历史叙述（带日期的状态快照、已记"完成于某提交"的动作记录）不动。
+- 提交信息：`docs(openspec): 归档 <change-id>`；一次多案用 `docs(openspec): 批量归档 N 案已闭合提案`，并逐案给出上面三条的判定结论。只动 `openspec/changes/**` 与同步改过的引用文件，不夹带代码改动。
