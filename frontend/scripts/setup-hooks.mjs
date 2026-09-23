@@ -4,7 +4,7 @@
 // 为什么不写 core.hooksPath：本仓生效目录是 .git/hooks，里面已有 Qoder 遥测钩子
 // （post-commit / post-checkout）。把 core.hooksPath 改到 frontend/.githooks 会静默顶掉它们，
 // 反过来装到 frontend/.githooks 又会顶掉前端检查器 —— 所以两侧共存：只增加一个转发器。
-// 依据 openspec/changes/operationalize-harness-gates/proposal.md 拍板记录 Q1（选项 A）。
+// 依据 openspec/changes/archive/operationalize-harness-gates/proposal.md 拍板记录 Q1（选项 A）。
 //
 // 转发器不记录仓根绝对路径，运行时自己 `git rev-parse --show-toplevel`，
 // 因此在任一链接工作树里安装一次即对全部工作树生效（.git/hooks 由主仓共享）。

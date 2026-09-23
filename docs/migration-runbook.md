@@ -192,7 +192,7 @@ failsafe 侧的当前口径、CI 期望值与"无 Docker 下限"的含义一律�
 
 以下三条是**解除前的原豁免理由**。按 `wire-pmd-ruleset` spec R4「解除必须留真跑证据」逐条标注消除日期并**保留原措辞作历史对照，不抹除**；任一条复活都按本节末的复测命令重新登记。
 
-登记依据：`openspec/changes/operationalize-harness-gates` 组 3（spec R1 第③要素「项 + 关闭理由 + 复测命令 + 到期触发条件」）。该豁免此前只存在于引入提交 `ba57e2b` 的正文里，本节是它第一次进被跟踪文档。以下数字均为 2026-09-21 离线实测（`mvn -o`），非历史快照。
+登记依据：`openspec/changes/archive/operationalize-harness-gates/` 组 3（spec R1 第③要素「项 + 关闭理由 + 复测命令 + 到期触发条件」）。该豁免此前只存在于引入提交 `ba57e2b` 的正文里，本节是它第一次进被跟踪文档。以下数字均为 2026-09-21 离线实测（`mvn -o`），非历史快照。
 
 - **项**（历史表述，解除前）：`pom.xml` 的 `maven-pmd-plugin` 插件块（定位用 `grep -n "<artifactId>maven-pmd-plugin" pom.xml`；该块内的 `<skip>true</skip>` 是字面量，`-Dpmd.skip=false` 抬不动）。绑定 `verify` 阶段，即当前 `mvn verify` 与 CI 阶段2 里 PMD 一步都不跑。
   → 2026-09-21 `wire-pmd-ruleset` P1 后该块**已接** `<rulesets>`（唯一尺子 = `src/main/resources/pmd-rules.xml`，不再是内置 quickstart），但 `<skip>` 仍在位，所以"PMD 一步都不跑"这一条**尚未改变**——变的是"打开时跑的是哪把尺子"。

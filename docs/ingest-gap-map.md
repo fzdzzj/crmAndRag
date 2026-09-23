@@ -1,6 +1,6 @@
 # 视觉摄取差距对照（ingest-gap-map）
 
-> 变更：`openspec/changes/research-visual-ingest`  
+> 变更：`openspec/changes/archive/research-visual-ingest/`  
 > 性质：**只读调研**。不实现解析器、不改 `src/main`、不调用 DashScope。  
 > 先决：`fix-multicondition-recall` 已合入 master（merge `ca6298d`）。  
 > 日期：2026-09-16

@@ -40,7 +40,8 @@
       → P3 完成 + 主 agent 复验：SpotBugs 走甲（`<skip>` 已删、新增 `<excludeFilterFile>src/main/resources/spotbugs-exclude.xml</excludeFilterFile>`；全仓仅剩 `pom.xml:457` 一处 `<skip>`＝pmd）。基线 **12 条 / 7 类 / 5 型**，无 `<Or>`、无 regex、无包级通配（文件注释里另有 3 处 `<Match>` 字样，实体计数须按元素数）。`target/spotbugsXml.xml` 213KB 落盘为凭
       → **P3 推翻两条前提（已回写 proposal 的 Why-2 与 Q3）**：① 原 `onlyAnalyze` 值 `com.slz.crm.**` 在 SpotBugs 4.8.6 属非法模式，去 skip 即 `BUILD FAILURE`（`Dangling meta character '*'`）→ 该门禁**自合入起从未跑过一次**，并非"只是被 skip 关掉"；已改合法写法 `com.slz.crm.-`。② PMD 摘掉 `<skip>` **会跑**（退出 1、`target/pmd.xml` 有产物、122 条违规），P0 报的"无产物"不成立；真因是 pom 从未写 `<rulesets>`，`src/main/resources/pmd-rules.xml` 是**孤儿配置**，实跑用插件内置 quickstart（122 条里 6 个规则不在声明的 28 条内）
       → PMD 走乙已登记 **§6.7**：三条理由各带实测数字 + 复测命令 + 到期触发条件；这是该豁免第一次进被跟踪文档（此前只活在 `ba57e2b` 提交正文）
-- [ ] 3.2 消除装饰性阈值：ci.yml 里 `CHECKSTYLE_MAX_VIOLATIONS`/`SPOTBUGS_MAX_HIGH`/`PMD_MAX_VIOLATIONS`/`SPOTLESS_APPLY_DIFF` 四个 env，逐个确认要么有 grep 得到的读者，要么删除；不允许"留着以后用"
+- [x] 3.2 消除装饰性阈值：ci.yml 里 `CHECKSTYLE_MAX_VIOLATIONS`/`SPOTBUGS_MAX_HIGH`/`PMD_MAX_VIOLATIONS`/`SPOTLESS_APPLY_DIFF` 四个 env，逐个确认要么有 grep 得到的读者，要么删除；不允许“留着以后用”
+      → **补勾依据（2026-09-23 归档批逐格核验）**：`grep -n` 这四个名字于 `.github/workflows/ci.yml` 得 **0 处 env 声明**（仅剩解释性注释，见 `ci.yml:117-126`），全仓被跟踪文件内亦无读者；实际删除提交 = `8db51cb`（提交信息「…清出四个无读者的阈值声明」，该提交同时承载 4.2 前端单元轨与 5.1 的 ci.yml 头部注释改写，故 owner 口径里的「5.1 落地」指的是同一提交）；逐变量处置依据写在 `ci.yml:119-124`（checkstyle 二值口径无计数概念 / spotbugs 由 threshold+exclude 承载 / pmd 当时未产出结论 / `SPOTLESS_APPLY_DIFF` 非插件识别属性名）
       → **移交 P4 执行**（`ci.yml` 归 P4 独占），逐条处置裁定见 `dispatch/P4-ci-mergegate.md` 任务 3
 - [x] 3.3 若 `pom.xml` 有任何插件配置变更，回归确认 JaCoCo 报告照常产出（`test-hygiene` 曾遇 `@{argLine}` 静默失效坑），并确认未触碰 surefire/failsafe/checkstyle/spotless 段
       → 复验 `git diff --stat`：`pom.xml` 仅 9 行变动、两个 hunk 全在 spotbugs 块内；JaCoCo 正常（`crm.exec`、359 类）；`mvn -B -ntp test` 全绿且 surefire=724 与基线一致
