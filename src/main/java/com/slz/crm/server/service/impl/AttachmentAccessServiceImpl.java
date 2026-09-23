@@ -1,17 +1,13 @@
 package com.slz.crm.server.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.enumeration.ModelName;
-import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.pojo.entity.ApprovalAttachmentEntity;
 import com.slz.crm.pojo.entity.AssistRequestEntity;
-import com.slz.crm.pojo.entity.BusinessActivityEntity;
 import com.slz.crm.pojo.entity.ContactTaskEntity;
 import com.slz.crm.pojo.entity.ProjectFileEntity;
-import com.slz.crm.pojo.entity.SalesStageApprovalEntity;
 import com.slz.crm.pojo.entity.UserEntity;
 import com.slz.crm.server.mapper.AssistRequestMapper;
 import com.slz.crm.server.mapper.BusinessActivityMapper;
@@ -52,6 +48,7 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
   private final ObjectMapper objectMapper;
   private final AttachmentSnapshotMatcher snapshotMatcher;
   private final ProjectFileAttachmentReader projectFileReader;
+  private final AttachmentModelScopeChecker modelScopeChecker;
 
   public AttachmentAccessServiceImpl(
       AssistRequestMapper assistRequestMapper,
@@ -86,6 +83,16 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
             contractOrderItemMapper,
             permissionService,
             this::departmentManagerReadReserved);
+    this.modelScopeChecker =
+        new AttachmentModelScopeChecker(
+            businessActivityMapper,
+            contactTaskMapper,
+            salesStageApprovalMapper,
+            assistRequestMapper,
+            permissionService,
+            projectFileReader,
+            this::departmentManagerReadReserved,
+            this::departmentManagerWriteReserved);
   }
 
   @Override
@@ -107,40 +114,10 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
     if (modelName != null && recordId != null && userId != null) {
       UserEntity user = userMapper.selectById(userId);
       if (user != null && Objects.equals(user.getStatus(), 1)) {
-        if (Objects.equals(user.getRoleId(), 1L)) {
-          result = true;
-        } else {
-          result =
-              switch (modelName) {
-                case ModelName.BUSINESS_ACTIVITY ->
-                    projectFileReader.canReadBusinessActivityAttachments(
-                        recordId, userId, modelName);
-                case ModelName.CONTACT_TASK -> {
-                  if (!permissionService.hasPermission(userId, PermissionOperates.TASK_VIEW_TASK)) {
-                    yield false;
-                  }
-                  ContactTaskEntity task = contactTaskMapper.selectById(recordId);
-                  yield (task != null
-                          && (Objects.equals(task.getCreatorId(), userId)
-                              || Objects.equals(task.getAssignerId(), userId)
-                              || Objects.equals(task.getAssigneeId(), userId)))
-                      || departmentManagerReadReserved(modelName, recordId, userId);
-                }
-                case ModelName.SALES_STAGE_APPROVAL, ModelName.APPROVAL_ATTACHMENT -> {
-                  if (!permissionService.hasPermission(
-                      userId, PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY_STAGE)) {
-                    yield false;
-                  }
-                  SalesStageApprovalEntity approval = salesStageApprovalMapper.selectById(recordId);
-                  yield (approval != null
-                          && (Objects.equals(approval.getApplicantId(), userId)
-                              || Objects.equals(approval.getApproverId(), userId)))
-                      || departmentManagerReadReserved(modelName, recordId, userId);
-                }
-                case ModelName.ASSIST_REQUEST -> hasAssistParticipantById(recordId, userId);
-                default -> false;
-              };
-        }
+        // 超管直通；其余按 modelName 路由到业务记录级判定（拆至 AttachmentModelScopeChecker）
+        result =
+            Objects.equals(user.getRoleId(), 1L)
+                || modelScopeChecker.canRead(modelName, recordId, userId);
       }
     }
     return result;
@@ -152,33 +129,9 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
     if (modelName != null && recordId != null && userId != null) {
       UserEntity user = userMapper.selectById(userId);
       if (user != null && Objects.equals(user.getStatus(), 1)) {
-        if (Objects.equals(user.getRoleId(), 1L)) {
-          result = true;
-        } else {
-          boolean owned =
-              switch (modelName) {
-                case ModelName.BUSINESS_ACTIVITY -> {
-                  BusinessActivityEntity activity = businessActivityMapper.selectById(recordId);
-                  yield activity != null && Objects.equals(activity.getCreatorId(), userId);
-                }
-                case ModelName.CONTACT_TASK -> {
-                  ContactTaskEntity task = contactTaskMapper.selectById(recordId);
-                  yield task != null
-                      && (Objects.equals(task.getCreatorId(), userId)
-                          || Objects.equals(task.getAssignerId(), userId)
-                          || Objects.equals(task.getAssigneeId(), userId));
-                }
-                case ModelName.SALES_STAGE_APPROVAL, ModelName.APPROVAL_ATTACHMENT -> {
-                  SalesStageApprovalEntity approval = salesStageApprovalMapper.selectById(recordId);
-                  yield approval != null
-                      && (Objects.equals(approval.getApplicantId(), userId)
-                          || Objects.equals(approval.getApproverId(), userId));
-                }
-                // 协助交付物的写权限还需要生命周期判断，不能从普通接口放行。
-                default -> false;
-              };
-          result = owned || departmentManagerWriteReserved(modelName, recordId, userId);
-        }
+        result =
+            Objects.equals(user.getRoleId(), 1L)
+                || modelScopeChecker.canWrite(modelName, recordId, userId);
       }
     }
     return result;
@@ -282,18 +235,6 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
     if (!participant || !snapshotMatcher.contains(assist.getRecordSnapshot(), attachment)) {
       throw new BaseException(ErrorCode.PERMISSION_DENIED, "附件不属于该协助历史快照");
     }
-  }
-
-  private boolean hasAssistParticipantById(Long assistId, Long userId) {
-    return assistRequestMapper.selectCount(
-            new LambdaQueryWrapper<AssistRequestEntity>()
-                .eq(AssistRequestEntity::getId, assistId)
-                .and(
-                    w ->
-                        w.eq(AssistRequestEntity::getApplicantId, userId)
-                            .or()
-                            .eq(AssistRequestEntity::getAssistUserId, userId)))
-        > 0;
   }
 
   @Override
