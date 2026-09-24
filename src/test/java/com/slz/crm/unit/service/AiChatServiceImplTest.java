@@ -769,6 +769,7 @@ class AiChatServiceImplTest {
     ObjectProvider<ModelProvider> modelProviderProvider = mock(ObjectProvider.class);
     when(modelProviderProvider.getIfAvailable()).thenReturn(modelProvider);
     ChatResponse providerResponse = buildChatResponseWithUsage("依据[2]结论", 123);
+    when(aiProperties.getLlmTimeoutSeconds()).thenReturn(1);
     when(modelProvider.streamChat(any(Prompt.class), any(ModelCallOptions.class)))
         .thenReturn(Flux.just(providerResponse));
     ReflectionTestUtils.setField(streamLifecycle, "modelProviderProvider", modelProviderProvider);
