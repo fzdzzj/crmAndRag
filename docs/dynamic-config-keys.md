@@ -12,11 +12,14 @@
 | 键 | 类型 | 默认值 | 语义与回退 |
 |---|---|---|---|
 | `rag.retrieval.topK` | Integer | 5 | 最终返回条数；调用方显式传入时优先生效 |
+| `rag.retrieval.admin-vector.enabled` | Boolean | **false** | 管理端真向量检索总开关；缺失/读取失败按关闭处理。仅超管可通过既有动态配置入口写入，实际开启仍需 owner 授权；不是金额上限 |
 | `rag.retrieval.minScore` | Double | 0.20 | 向量召回相似度下限（0~1），越界值回落默认 |
 | `rag.retrieval.strictKb` | Boolean | — | KB 空匹配兜底开关（D16，既有键） |
 | `rag.retrieval.chunkSize` | Integer | — | 入库切分尺寸（既有键） |
 | `rag.retrieval.chunkOverlap` | Integer | — | 入库切分重叠（既有键） |
 | `rag.retrieval.query-rewrite.enabled` | Boolean | true | 查询改写开关；关闭或模型失败时用原查询 |
+
+> 管理端真向量端点另有静态配额 `platform.quota.admin-vector-user-per-minute`，默认每用户每 JVM 实例每分钟 3 次。它是固定窗口的工作量保护，不是跨实例全局限制，也不是金额或 Provider 账户预算；禁用、参数拒绝、无授权 KB 不占用额度。生产开启和真实试点仍需 owner 授权。
 
 ## rag.retrieval.fusion.* —— 双路融合（提案2 新增，任务 3.1）
 

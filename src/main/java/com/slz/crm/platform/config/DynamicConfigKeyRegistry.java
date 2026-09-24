@@ -249,6 +249,18 @@ public class DynamicConfigKeyRegistry {
             100),
         def(
             objectMapper,
+            "rag.retrieval.admin-vector.enabled",
+            "rag.retrieval",
+            ConfigValueType.BOOLEAN,
+            "false",
+            "管理端真向量检索总开关（默认关闭）；开启前仍需 owner 授权，缺失或读取失败按关闭处理。",
+            null,
+            null,
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
             "rag.retrieval.minScore",
             "rag.retrieval",
             ConfigValueType.DOUBLE,

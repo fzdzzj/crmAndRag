@@ -70,6 +70,7 @@ public class RequestQuotaService {
   private long limit(QuotaDimension dimension) {
     return switch (dimension) {
       case USER -> properties.getUserPerMinute();
+      case ADMIN_VECTOR_USER -> properties.getAdminVectorUserPerMinute();
       case IP -> properties.getIpPerMinute();
       case KNOWLEDGE_BASE -> properties.getKnowledgeBasePerMinute();
       case GLOBAL -> properties.getGlobalPerMinute();

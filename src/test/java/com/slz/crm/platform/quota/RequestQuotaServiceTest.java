@@ -16,6 +16,7 @@ class RequestQuotaServiceTest {
   void setUp() {
     properties = new QuotaProperties();
     properties.setUserPerMinute(2);
+    properties.setAdminVectorUserPerMinute(3);
     properties.setIpPerMinute(3);
     properties.setKnowledgeBasePerMinute(4);
     properties.setGlobalPerMinute(100);
@@ -31,6 +32,16 @@ class RequestQuotaServiceTest {
     assertThat(denied.allowed()).isFalse();
     assertThat(denied.used()).isEqualTo(2);
     assertThat(denied.retryAfterSeconds()).isPositive();
+  }
+
+  @Test
+  void shouldRejectAdminVectorUserAfterThreeRequestsWithoutAffectingGenericUserQuota() {
+    for (int i = 0; i < 3; i++) {
+      assertThat(service.tryAcquire(QuotaDimension.ADMIN_VECTOR_USER, "user:1").allowed()).isTrue();
+    }
+    assertThat(service.tryAcquire(QuotaDimension.ADMIN_VECTOR_USER, "user:1").allowed()).isFalse();
+    assertThat(service.tryAcquire(QuotaDimension.ADMIN_VECTOR_USER, "user:2").allowed()).isTrue();
+    assertThat(service.tryAcquire(QuotaDimension.USER, "user:1").allowed()).isTrue();
   }
 
   @Test

@@ -12,10 +12,14 @@ import com.slz.crm.knowledge.entity.KnowledgeBaseEntity;
 import com.slz.crm.knowledge.retrieval.KnowledgeRetrievalServiceImpl;
 import com.slz.crm.knowledge.retrieval.RetrievalCandidate;
 import com.slz.crm.knowledge.retrieval.SparseRecallService;
+import com.slz.crm.platform.contract.DynamicConfigService;
 import com.slz.crm.platform.contract.SourceReference;
 import com.slz.crm.platform.contract.UserContext;
 import com.slz.crm.platform.contract.UserContextHolder;
 import com.slz.crm.platform.contract.VectorSearchHit;
+import com.slz.crm.platform.quota.QuotaDecision;
+import com.slz.crm.platform.quota.QuotaDimension;
+import com.slz.crm.platform.quota.RequestQuotaService;
 import com.slz.crm.pojo.dto.KnowledgeAdminRetrievalRequest;
 import com.slz.crm.pojo.vo.KnowledgeAdminRetrievalResponse;
 import com.slz.crm.pojo.vo.KnowledgeBaseVO;
@@ -42,6 +46,8 @@ class KnowledgeAdminServiceTest {
   @Mock private DocumentIngestionService ingestionService;
   @Mock private KnowledgeRetrievalServiceImpl retrievalService;
   @Mock private SparseRecallService sparseRecallService;
+  @Mock private DynamicConfigService dynamicConfigService;
+  @Mock private RequestQuotaService requestQuotaService;
   @Mock private MultipartFile multipartFile;
 
   @InjectMocks private KnowledgeAdminService knowledgeAdminService;
@@ -137,7 +143,88 @@ class KnowledgeAdminServiceTest {
   }
 
   @Test
+  void retrievalTest_vectorDisabledByDefault_rejectsBeforeAuthorizationOrQuota() {
+    try (MockedStatic<UserContextHolder> holder = mockStatic(UserContextHolder.class)) {
+      holder.when(UserContextHolder::current).thenReturn(testUser);
+      KnowledgeAdminRetrievalRequest req = vectorRequest(42L, 3);
+
+      var ex =
+          assertThrows(
+              com.slz.crm.common.exiception.BaseException.class,
+              () -> knowledgeAdminService.retrievalTest(req));
+
+      assertEquals(
+          com.slz.crm.common.enumeration.ErrorCode.SERVICE_UNAVAILABLE.getCode(), ex.getCode());
+      verifyNoInteractions(authorizationService, requestQuotaService, retrievalService);
+    }
+  }
+
+  @Test
+  void retrievalTest_configReadFailure_failsClosedBeforeAuthorizationQuotaOrRetrieval() {
+    when(dynamicConfigService.get(
+            "rag.retrieval.admin-vector.enabled", Boolean.class, Boolean.FALSE))
+        .thenThrow(new IllegalStateException("dynamic config unavailable"));
+    try (MockedStatic<UserContextHolder> holder = mockStatic(UserContextHolder.class)) {
+      holder.when(UserContextHolder::current).thenReturn(testUser);
+      KnowledgeAdminRetrievalRequest req = vectorRequest(42L, 3);
+
+      var ex =
+          assertThrows(
+              com.slz.crm.common.exiception.BaseException.class,
+              () -> knowledgeAdminService.retrievalTest(req));
+
+      assertEquals(
+          com.slz.crm.common.enumeration.ErrorCode.SERVICE_UNAVAILABLE.getCode(), ex.getCode());
+      verifyNoInteractions(authorizationService, requestQuotaService, retrievalService);
+    }
+  }
+
+  @Test
+  void retrievalTest_vectorInputBoundaries_rejectBeforeAuthorizationOrQuota() {
+    when(dynamicConfigService.get(
+            "rag.retrieval.admin-vector.enabled", Boolean.class, Boolean.FALSE))
+        .thenReturn(true);
+    try (MockedStatic<UserContextHolder> holder = mockStatic(UserContextHolder.class)) {
+      holder.when(UserContextHolder::current).thenReturn(testUser);
+      for (int topK : new int[] {0, 11}) {
+        KnowledgeAdminRetrievalRequest req = vectorRequest(42L, topK);
+
+        var ex =
+            assertThrows(
+                com.slz.crm.common.exiception.BaseException.class,
+                () -> knowledgeAdminService.retrievalTest(req));
+
+        assertEquals(
+            com.slz.crm.common.enumeration.ErrorCode.PARAM_OUT_OF_RANGE.getCode(), ex.getCode());
+      }
+      verifyNoInteractions(authorizationService, requestQuotaService, retrievalService);
+    }
+  }
+
+  @Test
+  void retrievalTest_vectorRequiresSingleKnowledgeBaseBeforeAuthorization() {
+    when(dynamicConfigService.get(
+            "rag.retrieval.admin-vector.enabled", Boolean.class, Boolean.FALSE))
+        .thenReturn(true);
+    try (MockedStatic<UserContextHolder> holder = mockStatic(UserContextHolder.class)) {
+      holder.when(UserContextHolder::current).thenReturn(testUser);
+      KnowledgeAdminRetrievalRequest req = vectorRequest(null, 3);
+
+      var ex =
+          assertThrows(
+              com.slz.crm.common.exiception.BaseException.class,
+              () -> knowledgeAdminService.retrievalTest(req));
+
+      assertEquals(com.slz.crm.common.enumeration.ErrorCode.PARAM_REQUIRED.getCode(), ex.getCode());
+      verifyNoInteractions(authorizationService, requestQuotaService, retrievalService);
+    }
+  }
+
+  @Test
   void retrievalTest_noAuthorizedRequestedKnowledgeBase_skipsSparseAndVectorServices() {
+    when(dynamicConfigService.get(
+            "rag.retrieval.admin-vector.enabled", Boolean.class, Boolean.FALSE))
+        .thenReturn(true);
     try (MockedStatic<UserContextHolder> holder = mockStatic(UserContextHolder.class)) {
       holder.when(UserContextHolder::current).thenReturn(testUser);
       when(authorizationService.authorizedKnowledgeBaseIds(testUser, List.of("99")))
@@ -157,7 +244,36 @@ class KnowledgeAdminServiceTest {
   }
 
   @Test
+  void retrievalTest_vectorQuotaExceeded_rejectsBeforeRetrieval() {
+    when(dynamicConfigService.get(
+            "rag.retrieval.admin-vector.enabled", Boolean.class, Boolean.FALSE))
+        .thenReturn(true);
+    when(requestQuotaService.tryAcquire(QuotaDimension.ADMIN_VECTOR_USER, "1"))
+        .thenReturn(new QuotaDecision(false, 3, 3, 42, "RATE_LIMITED"));
+    try (MockedStatic<UserContextHolder> holder = mockStatic(UserContextHolder.class)) {
+      holder.when(UserContextHolder::current).thenReturn(testUser);
+      when(authorizationService.authorizedKnowledgeBaseIds(testUser, List.of("42")))
+          .thenReturn(List.of(42L));
+
+      var ex =
+          assertThrows(
+              com.slz.crm.common.exiception.BaseException.class,
+              () -> knowledgeAdminService.retrievalTest(vectorRequest(42L, 3)));
+
+      assertEquals(
+          com.slz.crm.common.enumeration.ErrorCode.RATE_LIMIT_EXCEEDED.getCode(), ex.getCode());
+      verify(requestQuotaService).tryAcquire(QuotaDimension.ADMIN_VECTOR_USER, "1");
+      verifyNoInteractions(retrievalService);
+    }
+  }
+
+  @Test
   void retrievalTest_useVector_true_delegatesExplicitlyAndScopesKb() {
+    when(dynamicConfigService.get(
+            "rag.retrieval.admin-vector.enabled", Boolean.class, Boolean.FALSE))
+        .thenReturn(true);
+    when(requestQuotaService.tryAcquire(QuotaDimension.ADMIN_VECTOR_USER, "1"))
+        .thenReturn(new QuotaDecision(true, 1, 3, 0, "OK"));
     try (MockedStatic<UserContextHolder> holder = mockStatic(UserContextHolder.class)) {
       holder.when(UserContextHolder::current).thenReturn(testUser);
       when(authorizationService.authorizedKnowledgeBaseIds(testUser, List.of("42")))
@@ -197,6 +313,16 @@ class KnowledgeAdminServiceTest {
       assertEquals("vector test", captured.query());
       assertEquals(3, captured.topK());
       verifyNoInteractions(sparseRecallService);
+      verify(requestQuotaService).tryAcquire(QuotaDimension.ADMIN_VECTOR_USER, "1");
     }
+  }
+
+  private KnowledgeAdminRetrievalRequest vectorRequest(Long kbId, int topK) {
+    KnowledgeAdminRetrievalRequest req = new KnowledgeAdminRetrievalRequest();
+    req.setKbId(kbId);
+    req.setQuery("vector test");
+    req.setTopK(topK);
+    req.setUseVector(true);
+    return req;
   }
 }
