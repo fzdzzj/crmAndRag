@@ -13,9 +13,13 @@ import com.slz.crm.knowledge.entity.KnowledgeBaseEntity;
 import com.slz.crm.knowledge.entity.UploadedFileEntity;
 import com.slz.crm.knowledge.retrieval.KnowledgeRetrievalServiceImpl;
 import com.slz.crm.knowledge.retrieval.SparseRecallService;
+import com.slz.crm.platform.contract.DynamicConfigService;
 import com.slz.crm.platform.contract.RetrievalDefaults;
 import com.slz.crm.platform.contract.UserContext;
 import com.slz.crm.platform.contract.UserContextHolder;
+import com.slz.crm.platform.quota.QuotaDecision;
+import com.slz.crm.platform.quota.QuotaDimension;
+import com.slz.crm.platform.quota.RequestQuotaService;
 import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.dto.KnowledgeAdminRetrievalRequest;
 import com.slz.crm.pojo.vo.KnowledgeAdminRetrievalResponse;
@@ -42,6 +46,8 @@ public class KnowledgeAdminService {
   private final DocumentIngestionService ingestionService;
   private final KnowledgeRetrievalServiceImpl retrievalService;
   private final SparseRecallService sparseRecallService;
+  private final DynamicConfigService dynamicConfigService;
+  private final RequestQuotaService requestQuotaService;
 
   @org.springframework.beans.factory.annotation.Autowired
   public KnowledgeAdminService(
@@ -50,13 +56,17 @@ public class KnowledgeAdminService {
       KnowledgeBaseAuthorizationService authorizationService,
       DocumentIngestionService ingestionService,
       KnowledgeRetrievalServiceImpl retrievalService,
-      SparseRecallService sparseRecallService) {
+      SparseRecallService sparseRecallService,
+      DynamicConfigService dynamicConfigService,
+      RequestQuotaService requestQuotaService) {
     this.knowledgeBaseMapper = knowledgeBaseMapper;
     this.uploadedFileMapper = uploadedFileMapper;
     this.authorizationService = authorizationService;
     this.ingestionService = ingestionService;
     this.retrievalService = retrievalService;
     this.sparseRecallService = sparseRecallService;
+    this.dynamicConfigService = dynamicConfigService;
+    this.requestQuotaService = requestQuotaService;
   }
 
   /** 兼容仅覆盖当前用户桥接逻辑的单元测试；生产装配使用六参构造注入稀疏召回服务。 */
@@ -72,6 +82,8 @@ public class KnowledgeAdminService {
         authorizationService,
         ingestionService,
         retrievalService,
+        null,
+        null,
         null);
   }
 
@@ -176,9 +188,16 @@ public class KnowledgeAdminService {
     if (req == null || req.getQuery() == null || req.getQuery().isBlank()) {
       throw new IllegalArgumentException("检索 query 不能为空");
     }
-    UserContext user = currentUser();
-    int topK = resolveTopK(req.getTopK());
     boolean useVector = Boolean.TRUE.equals(req.getUseVector());
+    if (useVector && !adminVectorEnabled()) {
+      throw new BaseException(ErrorCode.SERVICE_UNAVAILABLE, "管理端真向量检索未开启");
+    }
+    int topK = resolveTopK(req.getTopK(), useVector);
+    if (useVector && req.getKbId() == null) {
+      throw new BaseException(ErrorCode.PARAM_REQUIRED, "真向量检索必须指定一个知识库");
+    }
+
+    UserContext user = currentUser();
     List<Long> authorizedKbIds = resolveAuthorizedKnowledgeBaseIds(user, req.getKbId());
 
     KnowledgeAdminRetrievalResponse response = new KnowledgeAdminRetrievalResponse();
@@ -188,6 +207,7 @@ public class KnowledgeAdminService {
     response.setCandidates(List.of());
     if (!authorizedKbIds.isEmpty()) {
       if (useVector) {
+        acquireAdminVectorQuota(user);
         response.setCandidates(
             retrieveVectorCandidates(req.getQuery(), topK, user, authorizedKbIds));
       } else if (sparseRecallService != null) {
@@ -210,12 +230,47 @@ public class KnowledgeAdminService {
     return result == null ? List.of() : result;
   }
 
-  private int resolveTopK(Integer requestedTopK) {
+  private int resolveTopK(Integer requestedTopK, boolean useVector) {
     int result = requestedTopK == null ? RetrievalDefaults.TOP_K : requestedTopK;
     if (result <= 0) {
+      if (useVector) {
+        throw new BaseException(ErrorCode.PARAM_OUT_OF_RANGE, "topK 必须大于 0");
+      }
       throw new IllegalArgumentException("topK 必须大于 0");
     }
+    if (useVector && result > 10) {
+      throw new BaseException(ErrorCode.PARAM_OUT_OF_RANGE, "管理端真向量检索 topK 必须不大于 10");
+    }
     return result;
+  }
+
+  @SuppressWarnings("PMD.AvoidCatchingGenericException")
+  private boolean adminVectorEnabled() {
+    boolean enabled = false;
+    if (dynamicConfigService != null) {
+      try {
+        enabled =
+            Boolean.TRUE.equals(
+                dynamicConfigService.get(
+                    "rag.retrieval.admin-vector.enabled", Boolean.class, Boolean.FALSE));
+      } catch (RuntimeException ex) {
+        // 动态配置读取故障必须保持管理端真向量关闭，避免故障时意外产生模型调用。
+        log.warn("读取管理端真向量开关失败，按关闭处理", ex);
+      }
+    }
+    return enabled;
+  }
+
+  private void acquireAdminVectorQuota(UserContext user) {
+    if (requestQuotaService == null) {
+      throw new BaseException(ErrorCode.SERVICE_UNAVAILABLE, "管理端真向量配额服务不可用");
+    }
+    QuotaDecision decision =
+        requestQuotaService.tryAcquire(
+            QuotaDimension.ADMIN_VECTOR_USER, String.valueOf(user.userId()));
+    if (!decision.allowed()) {
+      throw new BaseException(ErrorCode.RATE_LIMIT_EXCEEDED, "管理端真向量检索请求频率超限");
+    }
   }
 
   private List<KnowledgeAdminRetrievalResponse.Candidate> retrieveVectorCandidates(

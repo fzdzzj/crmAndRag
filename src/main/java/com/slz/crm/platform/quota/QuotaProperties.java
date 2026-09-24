@@ -13,6 +13,9 @@ public class QuotaProperties {
   /** 单用户每分钟请求上限。 */
   private long userPerMinute = 30;
 
+  /** 管理端真向量检索的单用户每分钟请求上限。 */
+  private long adminVectorUserPerMinute = 3;
+
   /** 单 IP 每分钟请求上限。 */
   private long ipPerMinute = 60;
 

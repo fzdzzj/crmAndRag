@@ -34,6 +34,8 @@ class DynamicConfigKeyRegistryTest {
 
     // 布尔
     assertThat(registry.validate("rag.retrieval.strictKb", "true").typed()).isEqualTo(true);
+    assertThat(registry.validate("rag.retrieval.admin-vector.enabled", "false").typed())
+        .isEqualTo(false);
     assertThat(registry.validate("rag.retrieval.strictKb", "FALSE").typed()).isEqualTo(false);
 
     // STRING_LIST：解析为 List<String>，规范化为紧凑 JSON
@@ -97,6 +99,7 @@ class DynamicConfigKeyRegistryTest {
     // 覆盖 spec 优先项：提示词/模型/检索/strict-KB/意图类目/图片缓存上限
     assertThat(registry.definitionOf("ai.prompt.system")).isPresent();
     assertThat(registry.definitionOf("rag.retrieval.strictKb")).isPresent();
+    assertThat(registry.definitionOf("rag.retrieval.admin-vector.enabled")).isPresent();
     assertThat(registry.definitionOf("rag.intent.categories")).isPresent();
     assertThat(registry.definitionOf("business.assistant.imageCacheMaxEntries")).isPresent();
   }

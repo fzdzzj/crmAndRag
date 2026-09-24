@@ -85,6 +85,14 @@ function doRetrievalTest() {
     message.warning('请输入查询文本');
     return;
   }
+  if (useVector.value && selectedKbId.value == null) {
+    message.warning('真向量检索必须先选择一个知识库');
+    return;
+  }
+  if (useVector.value && (!Number.isInteger(topK.value) || topK.value < 1 || topK.value > 10)) {
+    message.warning('真向量检索 topK 必须是 1-10 的整数');
+    return;
+  }
   retrievalMutation.mutate({
     kbId: selectedKbId.value,
     query: query.value.trim(),
@@ -105,7 +113,7 @@ function resetRetrieval() {
 // 明示默认零外呼
 const retrievalHint = computed(() => 
   useVector.value 
-    ? '当前使用真向量检索（授权节点）' 
+    ? '真向量检索：须选择单个知识库；服务端默认关闭，开启后会产生模型调用费用'
     : '默认零外呼：稀疏检索（BM25），不触发 embedding 模型'
 );
 

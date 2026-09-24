@@ -5,6 +5,8 @@ public enum QuotaDimension {
 
   /** 按登录用户限流。 */
   USER,
+  /** 管理端真向量检索的用户固定窗口，与通用 USER 配额隔离。 */
+  ADMIN_VECTOR_USER,
   /** 按客户端 IP 限流，用于未登录入口或异常调用。 */
   IP,
   /** 按知识库限流，防止单库入库/检索抢占全局资源。 */
