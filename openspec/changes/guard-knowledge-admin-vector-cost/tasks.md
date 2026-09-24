@@ -32,4 +32,4 @@
 
 - [x] 4.1 单测覆盖默认关、配置缺失、参数拒绝、无授权、同用户第 4 次拒绝、不同用户独立计数、合法请求仍正确传递 userId/kbScope、稀疏路不受影响；被拒绝路径断言检索/模型接口零交互。
 - [x] 4.2 跑受影响 Java 测试、静态门禁与前端 `pnpm type-check:check`/相关单测；合并前按 `openspec/git-workflow.md` 真跑 `scripts/merge-gate.sh`，涉及 failsafe 时依 runbook 确认 Docker；测试基线仅脚本从干净真实报告更新。记录未跑项与原因，禁真实外呼。
-- [ ] 4.3 仅纳入本案文件、核对 diff 与原工作树他人变更；分支/合并按项目工作流、不得 push。旧 `add-knowledge-admin-api` 任务组 6 仍在途，不因本案代码通过而自动勾选或归档。
+- [x] 4.3 仅纳入本案文件、核对 diff 与原工作树他人变更；分支/合并按项目工作流、不得 push。旧 `add-knowledge-admin-api` 任务组 6 仍在途，不因本案代码通过而自动勾选或归档。
