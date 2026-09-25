@@ -1,0 +1,98 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：释放点",
+    "task": "归档成功后清会话缓存",
+    "steps": [
+      {
+        "step": "确认 archiveSession 目前不调用 evictSession",
+        "completed": true
+      },
+      {
+        "step": "只在状态更新成功后释放该 sessionId",
+        "completed": true
+      },
+      {
+        "step": "归档因会话不存在或已归档而返回时不清别的会话",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：缓存边界",
+    "task": "清理过期会话并加上会话数上限",
+    "steps": [
+      {
+        "step": "put 时移除条目已全部过期的会话",
+        "completed": true
+      },
+      {
+        "step": "外层会话数使用固定上限，淘汰最久未访问的会话",
+        "completed": true
+      },
+      {
+        "step": "单会话 8 条和 TTL 默认值保持不变",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：语义",
+    "task": "不改变未过期命中",
+    "steps": [
+      {
+        "step": "同一会话未过期条目仍按现有问题键返回摘要和向量副本",
+        "completed": true
+      },
+      {
+        "step": "不把向量缓存改成跨会话共享",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：测试",
+    "task": "锁住释放和上限",
+    "steps": [
+      {
+        "step": "归档成功后 get 不再返回该会话缓存",
+        "completed": true
+      },
+      {
+        "step": "归档提前返回时缓存仍在",
+        "completed": true
+      },
+      {
+        "step": "超过会话数上限时只淘汰最久未访问的会话",
+        "completed": true
+      },
+      {
+        "step": "未过期会话在上限之内仍然命中",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 4：验收",
+    "task": "离线验证",
+    "steps": [
+      {
+        "step": "跑图片上下文缓存和会话归档相关单测",
+        "completed": true
+      },
+      {
+        "step": "不调用视觉模型，不改 JVM 和线程池",
+        "completed": true
+      }
+    ],
+    "passes": true
+  }
+]
