@@ -1,0 +1,54 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：复现与边界",
+    "task": "先让生产搜索非空路径真实变红",
+    "steps": [
+      {"step": "核对源表达式、Qdrant 1.13.0 getScore 返回类型、现有测试盲区和本案文件边界", "completed": true},
+      {"step": "补直接调用生产 QdrantVectorStore.search 的非空回归，改代码前记录 Float/Double 失败证据", "completed": true},
+      {"step": "用纯 JVM 验证空结果、分数转换及 payload/过滤不变量，避免任何真实模型调用", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：最小修复",
+    "task": "只修分数装箱根因",
+    "steps": [
+      {"step": "仅将生产 search 的反射 score 结果做 Number.doubleValue 数值转换", "completed": true},
+      {"step": "定向回归转绿，核对 topK/阈值/KB 过滤/payload/重试/顺序均未改", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：取消测试绕路",
+    "task": "恢复度量入口生产搜索链路",
+    "steps": [
+      {"step": "度量入口直接接修复后 QdrantVectorStore，移除只为该强转存在的测试侧 shim", "completed": true},
+      {"step": "保留独立 opt-in、一次性本地容器、镜像预检、确定性假模型与原调用形状断言", "completed": true},
+      {"step": "本地预存镜像可用时运行生产 store 非空搜索回归及一轮隔离度量，否则标记未测并停止完成断言", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：记录与验证",
+    "task": "历史基线不改写，修复证据分开记",
+    "steps": [
+      {"step": "报告 §5 追加实际命令、生产 store 回归结果和日期；历史 shim 数字原样保留", "completed": true},
+      {"step": "运行定向测试、默认 merge-gate、git diff --check，核对未改费用/迁移/依赖/基线", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：提交合并",
+    "task": "一次完成受限范围收尾",
+    "steps": [
+      {"step": "仅本案源码、回归测试、度量 shim 接线及报告与三件套暂存提交到 codex 分支", "completed": true},
+      {"step": "门禁通过且端到端证据充分后 --no-ff 合入权威树 master，复核双亲、第一父文件和两树状态；不 push 不归档", "completed": true}
+    ],
+    "passes": true
+  }
+]

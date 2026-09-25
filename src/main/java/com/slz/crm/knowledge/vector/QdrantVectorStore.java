@@ -168,7 +168,10 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
                   new VectorSearchHit(
                       metadata.getOrDefault("chunkId", "").toString(),
                       metadata.getOrDefault("documentId", "").toString(),
-                      (Double) SCORED_POINT_CLASS.getMethod("getScore").invoke(point),
+                      // client 1.13.0 的 getScore() 是原始 float，反射装箱为 Float；
+                      // 必须数值转换成 double（VectorSearchHit 契约），(Double) 强转会抛 ClassCastException
+                      ((Number) SCORED_POINT_CLASS.getMethod("getScore").invoke(point))
+                          .doubleValue(),
                       text,
                       metadata));
             }

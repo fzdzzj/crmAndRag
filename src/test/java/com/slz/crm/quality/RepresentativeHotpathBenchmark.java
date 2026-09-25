@@ -26,7 +26,6 @@ import com.slz.crm.knowledge.retrieval.RuleContextCompressor;
 import com.slz.crm.knowledge.retrieval.SparseRecallService;
 import com.slz.crm.knowledge.storage.InMemoryFileStorageService;
 import com.slz.crm.knowledge.vector.QdrantVectorStore;
-import com.slz.crm.knowledge.vector.RepresentativeHotpathQdrantSearchShim;
 import com.slz.crm.platform.audit.GovernanceAuditRecorder;
 import com.slz.crm.platform.contract.CrmVectorStore;
 import com.slz.crm.platform.contract.DynamicConfigService;
@@ -246,7 +245,7 @@ class RepresentativeHotpathBenchmark {
 
       printEnvironment(mysqlImage, qdrantImage, qdrant);
       runBothRounds(env);
-      env.searchShim().close();
+      env.rawStore().close();
       printf(
           "REPHOT verdict: evidence-class=local-real-storage+local-model-stub production-rtt=unknown");
     } finally {
@@ -504,10 +503,8 @@ class RepresentativeHotpathBenchmark {
     qdrantProperties.setInitializeOnStartup(true);
     QdrantVectorStore rawStore = new QdrantVectorStore(qdrantProperties);
     rawStore.initialize();
-    // 写/删走生产 QdrantVectorStore；search 经测试侧 shim（生产过滤器/读回 + 分数装箱修正，见 shim javadoc）
-    RepresentativeHotpathQdrantSearchShim searchShim =
-        new RepresentativeHotpathQdrantSearchShim(qdrantProperties, rawStore);
-    TimedVectorStore vectorStore = new TimedVectorStore(searchShim, counters);
+    // 检索/写/删全部走修复后的生产 QdrantVectorStore（fix-qdrant-search-score-conversion 之后无需测试侧 shim）
+    TimedVectorStore vectorStore = new TimedVectorStore(rawStore, counters);
 
     KnowledgeBaseAuthorizationService authorization =
         new KnowledgeBaseAuthorizationService(kbMapper, memberMapper);
@@ -546,7 +543,7 @@ class RepresentativeHotpathBenchmark {
             vectorStore,
             new GovernanceAuditRecorder(null, null));
 
-    Environment env = new Environment(retrieval, ingestion, rawStore, searchShim, pooledDataSource);
+    Environment env = new Environment(retrieval, ingestion, rawStore, pooledDataSource);
     // 语料种子经生产摄取路径落库（真实 SQL + 真实 Qdrant upsert），随后清零计数（语料不在测量窗口内）
     for (Long kbId : KB_IDS) {
       DocumentIngestionResult corpus = ingestion.ingest(ingestCommand(kbId, corpusText(kbId)));
@@ -1647,7 +1644,6 @@ class RepresentativeHotpathBenchmark {
       KnowledgeRetrievalPort retrieval,
       DocumentIngestionService ingestion,
       QdrantVectorStore rawStore,
-      RepresentativeHotpathQdrantSearchShim searchShim,
       PooledTimingDataSource pooledDataSource) {}
 
   // ---------------------------------------------------------------- 工具
