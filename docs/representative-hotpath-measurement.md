@@ -266,3 +266,4 @@ system-out，不入库。
 |---|---|
 | 2026-09-25 | 首版：两执行 × 两轮全绿采集；披露 QdrantVectorStore#search Float/Double 装箱缺陷与测试侧 shim；c8 波动记无法归因 |
 | 2026-09-25 | §5.1 追加修复案（fix-qdrant-search-score-conversion）独立实测：红绿证据、生产 store 非空搜索回归与切回后的隔离度量；历史 shim 数字未改动，shim 文件已删除 |
+| 2026-09-26 | 索引：c8 波动的受控归因实验（预热方式/相位顺序对照 + 请求级分段）见 `docs/hotpath-concurrency-attribution.md`（update-hotpath-concurrency-attribution）；本文全部数字未改动 |

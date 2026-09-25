@@ -203,12 +203,38 @@ class RepresentativeHotpathBenchmark {
   /** 共享分段计数器。 */
   private final Counters counters = new Counters();
 
+  /** 归因诊断设置（update-hotpath-concurrency-attribution）：默认关闭；入口在 requireOptIn 之后经组合闸解析。 */
+  private HotpathConcurrencyAttribution.Settings attribution =
+      HotpathConcurrencyAttribution.Settings.off();
+
+  /** 诊断轮容器 id（仅诊断模式用于 docker stats 只读采样；默认模式恒为 null）。 */
+  private String attributionMysqlContainerId;
+
+  private String attributionQdrantContainerId;
+
   // ---------------------------------------------------------------- 度量入口
 
   @Test
   void measureWithRealLocalStorageAndStubModels() throws Exception {
     // 1) 独立 opt-in：先于任何 Docker/镜像/装配动作（spec 阶段 1 的硬顺序）
     requireOptIn();
+    // 1.5) 归因诊断组合闸（update-hotpath-concurrency-attribution）：诊断选项显式给出时必须同时有独立 opt-in，
+    //      缺任一/非法值一律 fail closed；关闭时其余字段无意义，原路径逐字节保持历史形状
+    this.attribution =
+        HotpathConcurrencyAttribution.gate(
+            System.getenv(OPT_IN_ENV),
+            HotpathConcurrencyAttribution.option(
+                HotpathConcurrencyAttribution.ATTR_PROP, HotpathConcurrencyAttribution.ATTR_ENV),
+            HotpathConcurrencyAttribution.option(
+                HotpathConcurrencyAttribution.EXEC_PROP, HotpathConcurrencyAttribution.EXEC_ENV),
+            HotpathConcurrencyAttribution.option(
+                HotpathConcurrencyAttribution.OUT_PROP, HotpathConcurrencyAttribution.OUT_ENV),
+            HotpathConcurrencyAttribution.option(
+                HotpathConcurrencyAttribution.DOCKER_STATS_PROP,
+                HotpathConcurrencyAttribution.DOCKER_STATS_ENV));
+    if (attribution.on()) {
+      HotpathConcurrencyAttribution.printModeLine(attribution);
+    }
     // 2) 模型桩硬绑定自证
     assertStubProviderHardwired();
     // 3) Docker/镜像只读预检：缺失即 fail closed，不自动拉取
@@ -231,6 +257,10 @@ class RepresentativeHotpathBenchmark {
               .waitingFor(Wait.forListeningPort());
       qdrant.start();
       awaitQdrantReady(qdrant);
+      if (attribution.on()) {
+        this.attributionMysqlContainerId = mysql.getContainerId();
+        this.attributionQdrantContainerId = qdrant.getContainerId();
+      }
 
       migrateAndSeed(mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
 
@@ -244,7 +274,10 @@ class RepresentativeHotpathBenchmark {
               qdrant.getMappedPort(6334));
 
       printEnvironment(mysqlImage, qdrantImage, qdrant);
-      runBothRounds(env);
+      if (attribution.on()) {
+        printAttributionManifest(mysqlImage, qdrantImage, mysql, qdrant, env);
+      }
+      runBothRounds(env, attribution);
       env.rawStore().close();
       printf(
           "REPHOT verdict: evidence-class=local-real-storage+local-model-stub production-rtt=unknown");
@@ -328,24 +361,42 @@ class RepresentativeHotpathBenchmark {
 
   // ---------------------------------------------------------------- 两轮同负载度量
 
-  private void runBothRounds(Environment env) throws Exception {
+  private void runBothRounds(
+      Environment env, HotpathConcurrencyAttribution.Settings attributionSettings)
+      throws Exception {
+    // 诊断对照 B：仅反转 c1/c8 顺序（摄取相保持在最后，不混入第二个变量）；默认序列与历史完全一致
+    boolean phaseReversed =
+        attributionSettings.on()
+            && attributionSettings.condition()
+                == HotpathConcurrencyAttribution.Condition.PHASE_REVERSED;
     for (int round = 1; round <= ROUNDS; round++) {
       printf("REPHOT round %d: begin", round);
-      runRetrievalPhase(env, round, 1, RETRIEVAL_C1_WARMUP, RETRIEVAL_C1_SAMPLES, true);
-      runRetrievalPhase(
-          env,
-          round,
-          RETRIEVAL_C8_THREADS,
-          RETRIEVAL_C8_WARMUP,
-          RETRIEVAL_C8_THREADS * RETRIEVAL_C8_SAMPLES_PER_THREAD,
-          false);
+      if (phaseReversed) {
+        runRetrievalPhase(
+            env,
+            round,
+            RETRIEVAL_C8_THREADS,
+            RETRIEVAL_C8_WARMUP,
+            RETRIEVAL_C8_THREADS * RETRIEVAL_C8_SAMPLES_PER_THREAD,
+            false);
+        runRetrievalPhase(env, round, 1, RETRIEVAL_C1_WARMUP, RETRIEVAL_C1_SAMPLES, true);
+      } else {
+        runRetrievalPhase(env, round, 1, RETRIEVAL_C1_WARMUP, RETRIEVAL_C1_SAMPLES, true);
+        runRetrievalPhase(
+            env,
+            round,
+            RETRIEVAL_C8_THREADS,
+            RETRIEVAL_C8_WARMUP,
+            RETRIEVAL_C8_THREADS * RETRIEVAL_C8_SAMPLES_PER_THREAD,
+            false);
+      }
       runIngestPhase(
           env, round, INGEST_THREADS, INGEST_WARMUP, INGEST_THREADS * INGEST_SAMPLES_PER_THREAD);
       printf("REPHOT round %d: end", round);
     }
   }
 
-  /** 检索相：预热 → 计数清零 → 稳态采样 → 分段/资源汇总 → 调用形状断言。 */
+  /** 检索相：预热 → 计数清零 → 稳态采样 → 分段/资源汇总 → 调用形状断言（诊断开启时另挂请求级账本与同窗资源采样）。 */
   private void runRetrievalPhase(
       Environment env,
       int round,
@@ -354,43 +405,96 @@ class RepresentativeHotpathBenchmark {
       int samples,
       boolean perRequestAssert)
       throws Exception {
+    String phaseLabel = concurrency == RETRIEVAL_C8_THREADS ? "c8" : "c1";
     counters.reset();
-    for (int i = 0; i < warmup; i++) {
-      retrieveOnce(env);
+    if (attribution.on()
+        && concurrency == RETRIEVAL_C8_THREADS
+        && attribution.condition() == HotpathConcurrencyAttribution.Condition.WARMUP_SYNC) {
+      // 诊断对照 A：预热次数不变（8），仅把顺序预热换成 8-worker 同步起跑（每 worker 1 次）
+      runConcurrently(RETRIEVAL_C8_THREADS, RETRIEVAL_C8_WARMUP, () -> retrieveOnce(env), null);
+    } else {
+      for (int i = 0; i < warmup; i++) {
+        retrieveOnce(env);
+      }
     }
     counters.reset();
 
+    HotpathConcurrencyAttribution.RequestLedger ledger =
+        attribution.on()
+            ? HotpathConcurrencyAttribution.RequestLedger.open(
+                attribution, round, phaseLabel, concurrency)
+            : null;
+    HotpathConcurrencyAttribution.AttributionResourceRecorder attrResources =
+        attribution.on()
+            ? HotpathConcurrencyAttribution.AttributionResourceRecorder.start(
+                attribution,
+                round,
+                phaseLabel,
+                List.of(attributionMysqlContainerId, attributionQdrantContainerId))
+            : null;
     ResourceWindow resources = ResourceWindow.start();
     ConcurrentLinkedQueue<Long> e2eNanos = new ConcurrentLinkedQueue<>();
     ConcurrentLinkedQueue<Long> failures = new ConcurrentLinkedQueue<>();
     // 单并发档逐请求形状断言：用上一请求快照作 before（c1 下确定性好）；并发档只做轮级总量断言
     AtomicReference<long[]> lastSnapshot = new AtomicReference<>(counters.snapshot());
-    runConcurrently(
-        concurrency,
-        samples,
-        () -> {
-          long start = System.nanoTime();
-          try {
-            KnowledgeRetrievalPort.RetrievalResult result = retrieveOnce(env);
-            e2eNanos.add(System.nanoTime() - start);
-            if (perRequestAssert) {
-              long[] before = lastSnapshot.get();
-              long[] after = counters.snapshot();
-              assertRetrievalShape(before, after, result);
-              lastSnapshot.compareAndSet(before, after);
+    try {
+      if (ledger != null) {
+        counters.setAttributionHook(ledger);
+      }
+      runConcurrently(
+          concurrency,
+          samples,
+          () -> {
+            HotpathConcurrencyAttribution.RequestSpan span =
+                ledger == null ? null : ledger.beginSpan();
+            long start = System.nanoTime();
+            try {
+              KnowledgeRetrievalPort.RetrievalResult result = retrieveOnce(env);
+              long e2e = System.nanoTime() - start;
+              if (span != null) {
+                span.completeOk(e2e);
+              }
+              e2eNanos.add(e2e);
+              if (perRequestAssert) {
+                long[] before = lastSnapshot.get();
+                long[] after = counters.snapshot();
+                assertRetrievalShape(before, after, result);
+                lastSnapshot.compareAndSet(before, after);
+              }
+            } catch (RuntimeException exception) {
+              long e2e = System.nanoTime() - start;
+              if (span != null) {
+                span.completeFail(e2e, exception.getClass().getName(), exception.getMessage());
+              }
+              failures.add(e2e);
+            } finally {
+              if (span != null) {
+                ledger.endSpan(span);
+              }
             }
-          } catch (RuntimeException exception) {
-            failures.add(System.nanoTime() - start);
-          }
-        });
-    ResourceSample resourceSample = resources.stop();
-
-    reportPhase("retrieval", round, concurrency, samples, e2eNanos, failures, resourceSample);
-    assertRetrievalTotals(samples);
-    verifyKbFilterCoverage(samples);
+          },
+          ledger);
+      ResourceSample resourceSample = resources.stop();
+      reportPhase("retrieval", round, concurrency, samples, e2eNanos, failures, resourceSample);
+      assertRetrievalTotals(samples);
+      verifyKbFilterCoverage(samples);
+      if (ledger != null) {
+        ledger.verifyAndSummarize(counters.snapshot(), samples);
+        HotpathConcurrencyAttribution.printPoolSnapshot(
+            phaseLabel, round, env.pooledDataSource().delegate());
+      }
+    } finally {
+      counters.setAttributionHook(null);
+      if (attrResources != null) {
+        attrResources.close();
+      }
+      if (ledger != null) {
+        ledger.close();
+      }
+    }
   }
 
-  /** 摄取相：预热 → 计数清零 → 稳态采样（每样本计时窗口外复位）→ 分段/资源汇总 → 形状与初始状态断言。 */
+  /** 摄取相：预热 → 计数清零 → 稳态采样（每样本计时窗口外复位）→ 分段/资源汇总 → 形状与初始状态断言（诊断开启时另挂账本/采样）。 */
   private void runIngestPhase(Environment env, int round, int concurrency, int warmup, int samples)
       throws Exception {
     counters.reset();
@@ -403,45 +507,91 @@ class RepresentativeHotpathBenchmark {
     long chunksBefore = countRows(env, "document_vector_chunk");
     long filesBefore = countRows(env, "uploaded_file");
 
+    HotpathConcurrencyAttribution.RequestLedger ledger =
+        attribution.on()
+            ? HotpathConcurrencyAttribution.RequestLedger.open(
+                attribution, round, "ingest", concurrency)
+            : null;
+    HotpathConcurrencyAttribution.AttributionResourceRecorder attrResources =
+        attribution.on()
+            ? HotpathConcurrencyAttribution.AttributionResourceRecorder.start(
+                attribution,
+                round,
+                "ingest",
+                List.of(attributionMysqlContainerId, attributionQdrantContainerId))
+            : null;
     ResourceWindow resources = ResourceWindow.start();
     ConcurrentLinkedQueue<Long> e2eNanos = new ConcurrentLinkedQueue<>();
     ConcurrentLinkedQueue<Long> failures = new ConcurrentLinkedQueue<>();
-    runConcurrently(
-        concurrency,
-        samples,
-        () -> {
-          long start = System.nanoTime();
-          String documentId = null;
-          try {
-            DocumentIngestionResult result =
-                env.ingestion().ingest(ingestCommand(INGEST_KB_ID, ingestText()));
-            documentId = result.documentId();
-            e2eNanos.add(System.nanoTime() - start);
-            if (result.chunkCount() != INGEST_CHUNK_TARGET) {
-              throw new IllegalStateException(
-                  "子块数漂移：期望 " + INGEST_CHUNK_TARGET + " 实际 " + result.chunkCount());
+    try {
+      if (ledger != null) {
+        counters.setAttributionHook(ledger);
+      }
+      runConcurrently(
+          concurrency,
+          samples,
+          () -> {
+            HotpathConcurrencyAttribution.RequestSpan span =
+                ledger == null ? null : ledger.beginSpan();
+            long start = System.nanoTime();
+            String documentId = null;
+            try {
+              DocumentIngestionResult result =
+                  env.ingestion().ingest(ingestCommand(INGEST_KB_ID, ingestText()));
+              documentId = result.documentId();
+              long e2e = System.nanoTime() - start;
+              e2eNanos.add(e2e);
+              if (result.chunkCount() != INGEST_CHUNK_TARGET) {
+                throw new IllegalStateException(
+                    "子块数漂移：期望 " + INGEST_CHUNK_TARGET + " 实际 " + result.chunkCount());
+              }
+              if (span != null) {
+                span.completeOk(e2e);
+              }
+            } catch (RuntimeException exception) {
+              long e2e = System.nanoTime() - start;
+              if (span != null) {
+                span.completeFail(e2e, exception.getClass().getName(), exception.getMessage());
+              }
+              failures.add(e2e);
+              printf(
+                  "REPHOT ingest-failure: %s: %s",
+                  exception.getClass().getSimpleName(), String.valueOf(exception.getMessage()));
+            } finally {
+              // 先落账并清线程内标识，再做复位——复位动作不进任何请求账本
+              if (span != null) {
+                ledger.endSpan(span);
+              }
+              // 复位在计时窗口之外：每个样本的初始数据规模一致；失败样本也按 documentId 兜底清理
+              resetDocument(env, documentId);
             }
-          } catch (RuntimeException exception) {
-            failures.add(System.nanoTime() - start);
-            printf(
-                "REPHOT ingest-failure: %s: %s",
-                exception.getClass().getSimpleName(), String.valueOf(exception.getMessage()));
-          } finally {
-            // 复位在计时窗口之外：每个样本的初始数据规模一致；失败样本也按 documentId 兜底清理
-            resetDocument(env, documentId);
-          }
-        });
-    ResourceSample resourceSample = resources.stop();
+          },
+          ledger);
+      ResourceSample resourceSample = resources.stop();
 
-    reportPhase("ingest", round, concurrency, samples, e2eNanos, failures, resourceSample);
-    assertIngestTotals(samples);
-    long chunksAfter = countRows(env, "document_vector_chunk");
-    long filesAfter = countRows(env, "uploaded_file");
-    assertEquals(chunksBefore, chunksAfter, "摄取轮结束后切片行数必须复位（样本初始数据状态一致）");
-    assertEquals(filesBefore, filesAfter, "摄取轮结束后文件行数必须复位（样本初始数据状态一致）");
-    printf(
-        "REPHOT ingest-state: round=%d chunks_before=%d chunks_after=%d files_before=%d files_after=%d",
-        round, chunksBefore, chunksAfter, filesBefore, filesAfter);
+      reportPhase("ingest", round, concurrency, samples, e2eNanos, failures, resourceSample);
+      assertIngestTotals(samples);
+      long chunksAfter = countRows(env, "document_vector_chunk");
+      long filesAfter = countRows(env, "uploaded_file");
+      assertEquals(chunksBefore, chunksAfter, "摄取轮结束后切片行数必须复位（样本初始数据状态一致）");
+      assertEquals(filesBefore, filesAfter, "摄取轮结束后文件行数必须复位（样本初始数据状态一致）");
+      printf(
+          "REPHOT ingest-state: round=%d chunks_before=%d chunks_after=%d files_before=%d files_after=%d",
+          round, chunksBefore, chunksAfter, filesBefore, filesAfter);
+      if (ledger != null) {
+        ledger.verifyAndSummarize(counters.snapshot(), samples);
+        HotpathConcurrencyAttribution.printPoolSnapshot(
+            "ingest", round, env.pooledDataSource().delegate());
+      }
+    } finally {
+      counters.setAttributionHook(null);
+      if (attrResources != null) {
+        attrResources.close();
+      }
+      if (ledger != null) {
+        ledger.close();
+      }
+    }
   }
 
   // ---------------------------------------------------------------- 装配
@@ -719,6 +869,19 @@ class RepresentativeHotpathBenchmark {
   // ---------------------------------------------------------------- 并发执行
 
   private void runConcurrently(int concurrency, int samples, Runnable body) throws Exception {
+    runConcurrently(concurrency, samples, body, null);
+  }
+
+  /**
+   * 并发执行（{@code workerListener} 非空时采集 worker 就绪→同步起跑/调度关联与线程复用清理）。 worker id = 任务提交序号（固定池、每 worker
+   * 一个任务），配额分配与历史一致。
+   */
+  private void runConcurrently(
+      int concurrency,
+      int samples,
+      Runnable body,
+      HotpathConcurrencyAttribution.WorkerListener workerListener)
+      throws Exception {
     ExecutorService pool = Executors.newFixedThreadPool(concurrency);
     try {
       CountDownLatch ready = new CountDownLatch(concurrency);
@@ -733,9 +896,13 @@ class RepresentativeHotpathBenchmark {
                 : perThread;
         assigned += quota;
         final int runs = quota;
+        final int workerId = thread;
         futures.add(
             pool.submit(
                 () -> {
+                  if (workerListener != null) {
+                    workerListener.onWorkerStart(workerId);
+                  }
                   ready.countDown();
                   try {
                     go.await();
@@ -743,8 +910,17 @@ class RepresentativeHotpathBenchmark {
                     Thread.currentThread().interrupt();
                     return;
                   }
-                  for (int i = 0; i < runs; i++) {
-                    body.run();
+                  if (workerListener != null) {
+                    workerListener.onWorkerReady(workerId);
+                  }
+                  try {
+                    for (int i = 0; i < runs; i++) {
+                      body.run();
+                    }
+                  } finally {
+                    if (workerListener != null) {
+                      workerListener.onWorkerEnd(workerId);
+                    }
                   }
                 }));
       }
@@ -752,6 +928,9 @@ class RepresentativeHotpathBenchmark {
         throw new IllegalStateException("并发档样本分配不齐：" + assigned + " != " + samples);
       }
       ready.await();
+      if (workerListener != null) {
+        workerListener.onGoSignaled(System.currentTimeMillis());
+      }
       go.countDown();
       long deadlineNanos = System.nanoTime() + TimeUnit.MINUTES.toNanos(5);
       for (Future<?> future : futures) {
@@ -1138,6 +1317,122 @@ class RepresentativeHotpathBenchmark {
     }
   }
 
+  // ---------------------------------------------------------------- 归因诊断清单与状态记录
+
+  /** 诊断模式初始状态清单（可比性的硬记录）：镜像 digest、容器 id、种子行数、Qdrant 点数、池画像、有效配置。 全部只读探测；取不到的项记 unknown，不写 0。 */
+  private void printAttributionManifest(
+      String mysqlImage,
+      String qdrantImage,
+      MySQLContainer<?> mysql,
+      GenericContainer<?> qdrant,
+      Environment env)
+      throws Exception {
+    long kbRows = countRows(env, "knowledge_base");
+    long chunkRows = countRows(env, "document_vector_chunk");
+    long fileRows = countRows(env, "uploaded_file");
+    HotpathConcurrencyAttribution.PoolSnapshot pool =
+        HotpathConcurrencyAttribution.poolSnapshot(env.pooledDataSource().delegate());
+    String qdrantPoints = qdrantPointsCount(qdrant);
+    HotpathConcurrencyAttribution.JsonObj manifest =
+        new HotpathConcurrencyAttribution.JsonObj()
+            .str("kind", "manifest")
+            .str("exec", attribution.execId())
+            .str("cond", attribution.condition().name().toLowerCase(Locale.ROOT))
+            .num("created_epoch_ms", System.currentTimeMillis())
+            .str("java_version", System.getProperty("java.version"))
+            .num("available_processors", Runtime.getRuntime().availableProcessors())
+            .bool("jacoco_attached", jacocoAgentAttached())
+            .str("mysql_image", mysqlImage)
+            .raw("mysql_digests", jsonArrayString(imageDigests(mysqlImage)))
+            .str("qdrant_image", qdrantImage)
+            .raw("qdrant_digests", jsonArrayString(imageDigests(qdrantImage)))
+            .str("mysql_container_id", mysql.getContainerId())
+            .str("qdrant_container_id", qdrant.getContainerId())
+            .str("qdrant_points", qdrantPoints)
+            .num("seed_kb_rows", kbRows)
+            .num("seed_chunk_rows", chunkRows)
+            .num("seed_file_rows", fileRows)
+            .str("pool_type", pool.poolType())
+            .num("pool_max_active", pool.maxActive())
+            .num("pool_max_idle", pool.maxIdle())
+            .num("pool_max_checkout_ms", pool.maxCheckoutMs())
+            .num("pool_time_to_wait_ms", pool.timeToWaitMs())
+            .raw(
+                "kb_ids", KB_IDS.stream().map(String::valueOf).toList().toString().replace(" ", ""))
+            .str("query", RETRIEVAL_QUERY)
+            .num("top_k", TOP_K)
+            .num("rounds", ROUNDS)
+            .str("c8_warmup_mode", c8WarmupMode())
+            .str("phase_order", phaseOrder())
+            .num("c1_warmup", RETRIEVAL_C1_WARMUP)
+            .num("c1_samples", RETRIEVAL_C1_SAMPLES)
+            .num("c8_warmup", RETRIEVAL_C8_WARMUP)
+            .num("c8_samples", RETRIEVAL_C8_THREADS * RETRIEVAL_C8_SAMPLES_PER_THREAD)
+            .num("ingest_threads", INGEST_THREADS)
+            .num("ingest_samples", INGEST_THREADS * INGEST_SAMPLES_PER_THREAD);
+    HotpathConcurrencyAttribution.writeManifest(attribution, manifest.build());
+    HotpathConcurrencyAttribution.out(
+        "REPHOT-ATTR initial-state: kb_rows=%d chunk_rows=%d file_rows=%d qdrant_points=%s",
+        kbRows, chunkRows, fileRows, qdrantPoints);
+    HotpathConcurrencyAttribution.out(
+        "REPHOT-ATTR images: mysql=%s digests=%s qdrant=%s digests=%s",
+        mysqlImage, imageDigests(mysqlImage), qdrantImage, imageDigests(qdrantImage));
+    HotpathConcurrencyAttribution.printPoolSnapshot(
+        "manifest", 0, env.pooledDataSource().delegate());
+  }
+
+  /** 诊断条件下的 c8 预热方式标签（清单可比性字段）。 */
+  private String c8WarmupMode() {
+    return attribution.condition() == HotpathConcurrencyAttribution.Condition.WARMUP_SYNC
+        ? "sync8"
+        : "sequential";
+  }
+
+  /** 诊断条件下的相位顺序标签（清单可比性字段）。 */
+  private String phaseOrder() {
+    return attribution.condition() == HotpathConcurrencyAttribution.Condition.PHASE_REVERSED
+        ? "c8-c1"
+        : "c1-c8";
+  }
+
+  /** 镜像 digest 只读探测（不 pull；失败记 unknown）。 */
+  private static List<String> imageDigests(String image) {
+    try {
+      return DockerClientFactory.instance().client().inspectImageCmd(image).exec().getRepoDigests();
+    } catch (RuntimeException exception) {
+      return List.of("unknown");
+    }
+  }
+
+  private static String jsonArrayString(List<String> values) {
+    return values.stream()
+        .map(HotpathConcurrencyAttribution.JsonObj::escape)
+        .reduce((a, b) -> a + "," + b)
+        .map(v -> "[" + v + "]")
+        .orElse("[]");
+  }
+
+  /** Qdrant 集合点数只读查询（REST /collections，失败记 unknown）。 */
+  private static String qdrantPointsCount(GenericContainer<?> qdrant) {
+    try {
+      HttpClient client = HttpClient.newHttpClient();
+      String url =
+          "http://"
+              + qdrant.getHost()
+              + ":"
+              + qdrant.getMappedPort(6333)
+              + "/collections/representative_hotpath";
+      HttpRequest request = HttpRequest.newBuilder(URI.create(url)).GET().build();
+      HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+      java.util.regex.Matcher matcher =
+          java.util.regex.Pattern.compile("\"points_count\"\\s*:\\s*(\\d+)")
+              .matcher(response.body());
+      return matcher.find() ? matcher.group(1) : "unknown";
+    } catch (Exception exception) {
+      return "unknown";
+    }
+  }
+
   // ---------------------------------------------------------------- 一次性容器等待与状态核对
 
   private static void awaitQdrantReady(GenericContainer<?> qdrant) throws Exception {
@@ -1240,8 +1535,19 @@ class RepresentativeHotpathBenchmark {
       }
     }
 
+    /** 归因诊断钩子（update-hotpath-concurrency-attribution）：null = 关闭，add 行为与历史逐字节一致。 */
+    private volatile HotpathConcurrencyAttribution.CountersHook attributionHook;
+
+    void setAttributionHook(HotpathConcurrencyAttribution.CountersHook hook) {
+      this.attributionHook = hook;
+    }
+
     void add(int index, long amount) {
       values[index].add(amount);
+      HotpathConcurrencyAttribution.CountersHook hook = attributionHook;
+      if (hook != null) {
+        hook.onAdd(index, amount);
+      }
     }
 
     void reset() {
@@ -1267,6 +1573,10 @@ class RepresentativeHotpathBenchmark {
 
     void recordSearchedKb(Object kbId) {
       searchedKbIds.add(String.valueOf(kbId));
+      HotpathConcurrencyAttribution.CountersHook hook = attributionHook;
+      if (hook != null) {
+        hook.onSearchedKb(kbId);
+      }
     }
   }
 
@@ -1363,6 +1673,11 @@ class RepresentativeHotpathBenchmark {
         String driver, String url, String user, String password, Counters counters) {
       this.delegate = new PooledDataSource(driver, url, user, password);
       this.counters = counters;
+    }
+
+    /** 诊断模式读取实际池画像用（MyBatis PooledDataSource 原对象，只读访问）。 */
+    PooledDataSource delegate() {
+      return delegate;
     }
 
     Connection rawConnection() throws SQLException {

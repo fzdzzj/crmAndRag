@@ -1,0 +1,57 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：复核与实验设计",
+    "task": "先锁定 c8 差异及控制变量",
+    "steps": [
+      {"step": "复核 c1/c8 旧报告与顺序预热/窗口合计代码，逐项列待验证解释", "completed": true},
+      {"step": "固定四库、topK、样本、预热次数、数据规模和两种独立对照的执行顺序", "completed": true},
+      {"step": "预检本地 Docker 与镜像，确认无需下载和无需真实 Provider", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：请求级诊断",
+    "task": "测试侧采集慢尾分段与等待",
+    "steps": [
+      {"step": "在现有显式入口增加独立诊断选项，保留默认不发现和隔离安全守卫", "completed": true},
+      {"step": "关联 worker/request 端到端、调度、连接获取、SQL/Qdrant/本地段与失败，不混算嵌套段", "completed": true},
+      {"step": "记录真实池类型/限制、同窗 CPU/堆/GC/线程及采样开销，其他资源不可得就标未知", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：受控本机实验",
+    "task": "分别隔离预热和阶段顺序",
+    "steps": [
+      {"step": "相同预热次数下对比原顺序预热与 8-worker 同步预热，只改这一变量", "completed": true},
+      {"step": "单独反转 c1/c8 阶段顺序并重置可比的容器/种子状态，不混入预热变量", "completed": true},
+      {"step": "每条件至少两独立执行并核对 160 样本/轮、四库过滤与调用形状", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：文档与回归",
+    "task": "基于证据解释或继续标未知",
+    "steps": [
+      {"step": "纯 JVM 测试关联/清理/安全反例，诊断下异常与超时不吞样本", "completed": true},
+      {"step": "新文档记录条件、分位、慢尾阶段、资源与不可比反例，原历史数字不改", "completed": true},
+      {"step": "若波动不能由单因素重复实验解释，明确结论仍未知且不得改生产参数", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：门禁与收尾",
+    "task": "一次提交合并仅本案度量文件",
+    "steps": [
+      {"step": "定向运行诊断与安全守卫，默认 merge-gate、git diff --check 均实测通过", "completed": true},
+      {"step": "核对无 src/main/迁移/依赖/阈值改动，准确区分真实执行与未测项", "completed": true},
+      {"step": "仅本案在 codex 分支提交并 --no-ff 合入权威 master；不 push 不归档", "completed": true}
+    ],
+    "passes": true
+  }
+]
