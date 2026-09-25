@@ -12,7 +12,7 @@ import java.util.Set;
  *
  * @param key 完整配置键（点分，如 {@code rag.retrieval.topK}，全局唯一）
  * @param namespace 命名空间（{@code ai.prompt}/{@code ai.model}/{@code rag.retrieval}/{@code
- *     rag.intent}/{@code business}）
+ *     rag.context}/{@code rag.chunking}/{@code rag.query}/{@code rag.intent}/{@code business}）
  * @param type 值类型（决定解析与校验规则）
  * @param defaultValue 展示用静态默认值（真实回退由消费方调用 get 时自带 default 决定）
  * @param description 含义与影响面说明（超管界面展示，必须中文、可读）

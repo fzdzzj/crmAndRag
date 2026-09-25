@@ -13,9 +13,13 @@ import org.springframework.stereotype.Component;
  * 动态配置键注册表：平台已知配置键的“schema 唯一来源”（校验护栏）。
  *
  * <p>覆盖 spec-delta（D10）优先纳入的动态配置范围：提示词、模型 Provider/名称/温度/最大 token、 限流与配额阈值、检索
- * topK/阈值/分块参数、strict-KB 空匹配兜底开关（D16）、 意图类目与关键词 / intent-filter-enabled（D17）、图片缓存上限（D13）、业务功能开关。
+ * topK/阈值/分块参数、strict-KB 空匹配兜底开关（D16）、 意图类目与关键词 / intent-filter-enabled（D17）、图片缓存上限（D13）、业务功能开关；
+ * register-rag-retrieval-dynamic-keys（2026-09-25）补登记 11 个检索管线键；
+ * register-rag-context-query-dynamic-keys（2026-09-25）扩 {@code rag.context}/{@code rag.chunking}/
+ * {@code rag.query} 三命名空间并登记 13 个检索周边键（默认值 = 各消费点代码内联缺省）。
  *
- * <p>命名空间约定（任务 16）：{@code ai.prompt}/{@code ai.model}/{@code rag.retrieval}/ {@code
+ * <p>命名空间约定（任务 16 起五命名空间，2026-09-25 扩为八个）：{@code ai.prompt}/{@code ai.model}/{@code
+ * rag.retrieval}/{@code rag.context}/{@code rag.chunking}/{@code rag.query}/{@code
  * rag.intent}/{@code business}；每个键 = 命名空间 + '.' + 键名。
  *
  * <p>敏感值说明：密钥/凭据按 D10 边界仍走环境变量（静态），本域原则上不注册敏感键； {@code sensitive} 标记与掩码逻辑完整保留，供将来确需运行期调整的半敏感参数使用。
@@ -28,9 +32,17 @@ public class DynamicConfigKeyRegistry {
   /** 键 → 定义，保序（管理端列表按注册顺序展示） */
   private final Map<String, ConfigKeyDefinition> definitions = new LinkedHashMap<>();
 
-  /** 五个官方命名空间（任务 16 强制） */
+  /** 官方命名空间白名单（任务 16 五命名空间；register-rag-context-query-dynamic-keys 扩为八个） */
   public static final Set<String> NAMESPACES =
-      Set.of("ai.prompt", "ai.model", "rag.retrieval", "rag.intent", "business");
+      Set.of(
+          "ai.prompt",
+          "ai.model",
+          "rag.retrieval",
+          "rag.context",
+          "rag.chunking",
+          "rag.query",
+          "rag.intent",
+          "business");
 
   public DynamicConfigKeyRegistry(ObjectMapper objectMapper) {
     register(catalog(objectMapper));
@@ -484,6 +496,182 @@ public class DynamicConfigKeyRegistry {
             "图文路由融合图片路权重（0~1），越界回落 0.30。",
             "0.0",
             "1.0",
+            Set.of(),
+            false,
+            100),
+
+        // register-rag-context-query-dynamic-keys（2026-09-25）：文档已有、此前不在白名单的三个
+        // 检索周边命名空间补登记。默认值 = 各消费点代码内联缺省；登记只补 schema 护栏，不改任何读取路径。
+
+        // ---------------- rag.context.*：上下文组装（邻居/预算/压缩/父块展开） ----------------
+        def(
+            objectMapper,
+            "rag.context.neighbors",
+            "rag.context",
+            ConfigValueType.INTEGER,
+            "1",
+            "邻居增强开关：1=取命中块紧邻前/后各一片（默认）；0=关闭，输出与关闭邻居增强一致。"
+                + "消费点 >=1 为开、0 或负值为关；登记范围 0~1。邻居只进上下文、不进 SourceReference。",
+            "0",
+            "1",
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "rag.context.token-budget",
+            "rag.context",
+            ConfigValueType.INTEGER,
+            "4096",
+            "上下文 token 预算（TokenEstimator 估算口径）：超预算触发压缩，未超预算原文逐字保留。"
+                + "消费点 <1 回落默认 4096；上限为登记护栏宽松界。影响面：上下文长度与压缩触发频率。",
+            "1",
+            "100000",
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "rag.context.compressor.mode",
+            "rag.context",
+            ConfigValueType.STRING,
+            "rule",
+            "上下文压缩器选择：rule（确定性规则压缩，默认）| llm（LLM 要点化压缩——默认关闭，"
+                + "开启会产生模型调用费用，本案不授权打开）。llm 未装配或值非法时消费点落规则链。",
+            null,
+            null,
+            Set.of("rule", "llm"),
+            false,
+            100),
+        def(
+            objectMapper,
+            "rag.context.compressor.llm.timeout-ms",
+            "rag.context",
+            ConfigValueType.LONG,
+            "3000",
+            "LLM 压缩等待超时（毫秒）：超时/失败/空输出/编号不完整/仍超预算均回退规则压缩链。"
+                + "消费点 <1 回落默认 3000。仅在 compressor.mode=llm 时参与（该模式本案不授权打开）。",
+            "1",
+            "60000",
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "rag.context.parent-expand",
+            "rag.context",
+            ConfigValueType.STRING,
+            "on",
+            "父块展开开关：on（默认，命中挂父块的子块时上下文放父块全文，引用/锚点仍指子块）| "
+                + "off（回退邻居增强模式）。未挂父块的命中（fixed 切分等）逐块回退邻居拼装。",
+            null,
+            null,
+            Set.of("on", "off"),
+            false,
+            100),
+
+        // ---------------- rag.chunking.*：切分策略 ----------------
+        def(
+            objectMapper,
+            "rag.chunking.strategy",
+            "rag.chunking",
+            ConfigValueType.STRING,
+            "fixed",
+            "切分策略：fixed（升级前滑窗，默认）| semantic（标题/段落/转折词边界，段长受 max-chunk-size 约束）| "
+                + "paragraph（同窗滑窗优先在段落界收刀）。其他值一律按 fixed 处理。"
+                + "只影响新摄取/重建的切片，已有向量不会自动重嵌（本案不授权 reingest）。",
+            null,
+            null,
+            Set.of("fixed", "semantic", "paragraph"),
+            false,
+            100),
+        def(
+            objectMapper,
+            "rag.chunking.max-chunk-size",
+            "rag.chunking",
+            ConfigValueType.INTEGER,
+            "480",
+            "semantic 策略单块字符上限：超上限段落按句界二次切分。消费点 <1 回落默认 480；" + "上限为登记护栏宽松界。影响面：semantic 切分粒度。",
+            "1",
+            "10000",
+            Set.of(),
+            false,
+            100),
+
+        // ---------------- rag.query.*：查询侧增强（默认全关，开启产生模型费用） ----------------
+        def(
+            objectMapper,
+            "rag.query.multi-query.enabled",
+            "rag.query",
+            ConfigValueType.BOOLEAN,
+            "false",
+            "多查询变体开关（默认关闭）。开启后对主查询一次 LLM 生成 N 变体多路召回再 RRF 融合——"
+                + "会产生模型调用费用，本案不授权打开。关闭/LLM 失败/空输出回退单查询。",
+            null,
+            null,
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "rag.query.multi-query.variants",
+            "rag.query",
+            ConfigValueType.INTEGER,
+            "3",
+            "多查询变体数量：消费点钳位 1~5、越界回落默认 3（防 runaway 成本）。"
+                + "仅在 multi-query.enabled=true 时参与（该开关本案不授权打开）。",
+            "1",
+            "5",
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "rag.query.hyde.enabled",
+            "rag.query",
+            ConfigValueType.BOOLEAN,
+            "false",
+            "HyDE 假设答案开关（默认关闭）。开启后生成假设答案→嵌入→向量召回路与原查询路融合——"
+                + "会产生模型调用费用，本案不授权打开。假设答案只用于检索向量，不进生成上下文/SourceReference。",
+            null,
+            null,
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "rag.query.hyde.timeout-ms",
+            "rag.query",
+            ConfigValueType.LONG,
+            "3000",
+            "HyDE 生成等待超时（毫秒）：超时跳过 HyDE 路回退原查询路。消费点 <1 回落默认 3000。"
+                + "仅在 hyde.enabled=true 时参与（该开关本案不授权打开）。",
+            "1",
+            "60000",
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "rag.query.derived-questions.enabled",
+            "rag.query",
+            ConfigValueType.BOOLEAN,
+            "false",
+            "衍生问题入库旁路开关（默认关闭）。开启后入库/重建成功后异步每块生成反向问题→嵌入→关联原块——" + "会产生模型调用费用，本案不授权打开。关闭=无衍生向量。",
+            null,
+            null,
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "rag.query.derived-questions.max-per-chunk",
+            "rag.query",
+            ConfigValueType.INTEGER,
+            "2",
+            "每块反向问题上限：消费点钳位 1~5、越界回落默认 2。" + "仅在 derived-questions.enabled=true 时参与（该开关本案不授权打开）。",
+            "1",
+            "5",
             Set.of(),
             false,
             100),

@@ -133,6 +133,58 @@ describe('useConfigItems', () => {
     expect(result().grouped.value[0].items[0].key).toBe('rag.retrieval.topK');
   });
 
+  it('新命名空间插在 rag.retrieval 之后、rag.intent 之前且标签为中文', async () => {
+    sdkState.getPlatformConfigItems.mockResolvedValue({
+      data: {
+        code: 1,
+        data: [
+          makeItem({ key: 'rag.retrieval.topK' }),
+          makeItem({ key: 'rag.context.neighbors', namespace: 'rag.context' }),
+          makeItem({ key: 'rag.chunking.strategy', namespace: 'rag.chunking' }),
+          makeItem({ key: 'rag.query.hyde.enabled', namespace: 'rag.query' }),
+          makeItem({ key: 'rag.intent.categories', namespace: 'rag.intent' }),
+        ],
+      },
+    });
+    const { result } = withSetup(() => useConfigItems());
+    await vi.waitFor(() => expect(result().query.isSuccess.value).toBe(true));
+    expect(result().grouped.value.map((g) => g.namespace)).toEqual([
+      'rag.retrieval',
+      'rag.context',
+      'rag.chunking',
+      'rag.query',
+      'rag.intent',
+    ]);
+    expect(result().grouped.value.map((g) => g.label)).toEqual([
+      'RAG 检索',
+      'RAG 上下文',
+      'RAG 切分',
+      'RAG 查询增强',
+      'RAG 意图',
+    ]);
+  });
+
+  it('只有旧命名空间数据时分组保持既有顺序不变', async () => {
+    sdkState.getPlatformConfigItems.mockResolvedValue({
+      data: {
+        code: 1,
+        data: [
+          makeItem({ key: 'ai.model.name', namespace: 'ai.model', valueType: 'STRING' }),
+          makeItem({ key: 'ai.prompt.system', namespace: 'ai.prompt', value: '你是助手' }),
+          makeItem({ key: 'rag.retrieval.topK' }),
+        ],
+      },
+    });
+    const { result } = withSetup(() => useConfigItems());
+    await vi.waitFor(() => expect(result().query.isSuccess.value).toBe(true));
+    expect(result().grouped.value.map((g) => g.namespace)).toEqual([
+      'ai.prompt',
+      'ai.model',
+      'rag.retrieval',
+    ]);
+    expect(result().grouped.value.map((g) => g.label)).toEqual(['AI 提示词', 'AI 模型', 'RAG 检索']);
+  });
+
   it('接口错误进入 isError 状态', async () => {
     sdkState.getPlatformConfigItems.mockRejectedValue(new Error('boom'));
     const { result } = withSetup(() => useConfigItems());

@@ -221,3 +221,7 @@
 - [ ] 页面：知识库检索测试 | useVector=true 且未选择知识库时，点击“测试检索”仅提示先选择知识库，不发送请求
 - [ ] 页面：知识库检索测试 | useVector=true 且 topK 为非整数、0 或大于 10 时，点击“测试检索”仅提示 topK 范围错误，不发送请求
 - [ ] 页面：知识库检索测试 | useVector=true 时显示默认关闭、单 KB 与模型调用费用提示；后端关闭或限流错误沿既有错误提示显示，不渲染为成功空结果
+
+## register-rag-context-query-dynamic-keys（平台配置页新命名空间分组，2026-09-25）
+
+- [ ] 页面：`/privilege/platform-config` | 接口返回 rag.context / rag.chunking / rag.query 配置项时，分组按「RAG 检索 → RAG 上下文 → RAG 切分 → RAG 查询增强 → RAG 意图」稳定排序，组标题为中文标签而非原始键名；接口只有旧三组数据时分组与顺序保持原样

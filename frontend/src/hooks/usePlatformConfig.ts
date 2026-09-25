@@ -89,11 +89,14 @@ export interface ConfigUpdatePayload {
 
 export const CONFIG_ITEMS_QUERY_KEY = 'platformConfigItems';
 
-/** 命名空间展示顺序（与主仓 DynamicConfigKeyRegistry 五命名空间对齐） */
+/** 命名空间展示顺序（与主仓 DynamicConfigKeyRegistry 八命名空间对齐） */
 export const NAMESPACE_ORDER = [
   'ai.prompt',
   'ai.model',
   'rag.retrieval',
+  'rag.context',
+  'rag.chunking',
+  'rag.query',
   'rag.intent',
   'business',
 ] as const;
@@ -102,6 +105,9 @@ export const NAMESPACE_LABELS: Record<string, string> = {
   'ai.prompt': 'AI 提示词',
   'ai.model': 'AI 模型',
   'rag.retrieval': 'RAG 检索',
+  'rag.context': 'RAG 上下文',
+  'rag.chunking': 'RAG 切分',
+  'rag.query': 'RAG 查询增强',
   'rag.intent': 'RAG 意图',
   business: '业务参数',
 };
