@@ -1,0 +1,122 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：负载",
+    "task": "固定检索与摄取负载",
+    "steps": [
+      {
+        "step": "检索负载固定为 4 个授权库、1 条不拆分查询、topK 5",
+        "completed": true
+      },
+      {
+        "step": "摄取负载固定为 24 个非空子块、0 个父块",
+        "completed": true
+      },
+      {
+        "step": "两遍运行使用同一输入，不允许测试里改生产默认值",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 1：计数",
+    "task": "数清一次请求的调用",
+    "steps": [
+      {
+        "step": "假嵌入记录调用次数和文本条数",
+        "completed": true
+      },
+      {
+        "step": "假向量库记录检索次数，并保留每个过滤条件里的库 id",
+        "completed": true
+      },
+      {
+        "step": "假 Mapper 记录 selectList 次数，假向量库记录 upsert 次数",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 2：时间",
+    "task": "分开零延迟和注入延迟",
+    "steps": [
+      {
+        "step": "第一遍全部延迟为 0，记录墙钟 p50 与 p95",
+        "completed": true
+      },
+      {
+        "step": "第二遍只给嵌入、向量检索和 SQL 注入写死的延迟",
+        "completed": true
+      },
+      {
+        "step": "零延迟墙钟仅标记测试侧本地路径，不等同纯 CPU 或生产业务规则时间",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 2：未观测项",
+    "task": "锁、GC 和 JVM 保持未观测",
+    "steps": [
+      {
+        "step": "文档写明本测试没有 JFR 和 GC 日志",
+        "completed": true
+      },
+      {
+        "step": "不添加 JVM 参数，不改线程池、队列和超时",
+        "completed": true
+      },
+      {
+        "step": "未观测的桶不能被选为下一类改动",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 3：闸门",
+    "task": "解释合成占比，不预定生产瓶颈",
+    "steps": [
+      {
+        "step": "比较合成注入场景的远程、数据库与本地路径时间，仅作为条件结论",
+        "completed": true
+      },
+      {
+        "step": "文档明确远程领先只由注入假设得出，未知真实瓶颈时不得限定下一案",
+        "completed": true
+      },
+      {
+        "step": "修正文档闸门结论与修订记录，列出同负载实测分段和成本授权前提",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 6,
+    "category": "阶段 4：验收",
+    "task": "次数做断言，耗时不做门禁",
+    "steps": [
+      {
+        "step": "断言检索的嵌入次数、向量检索次数和邻居查询次数",
+        "completed": true
+      },
+      {
+        "step": "断言摄取的嵌入次数与子块数一致，且只有一次 upsert",
+        "completed": true
+      },
+      {
+        "step": "把本机耗时抄入文档并注明机器和 JDK，不写入 ci.yml",
+        "completed": true
+      }
+    ],
+    "passes": true
+  }
+]
