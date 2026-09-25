@@ -207,6 +207,33 @@ system-out，不入库。
 - **影响**：§3/§4 的 qdrant_search/向量写删段仍是「真实 Qdrant + 生产过滤条件」；search 的编排水位（超时/重试语义）与生产
   `QdrantVectorStore` 有 shim 级差异。修复缺陷需**另案**（含真实 Qdrant 的 search 回归用例）。
 
+### 5.1 修复后独立实测（2026-09-25，fix-qdrant-search-score-conversion）
+
+上节 shim 与其全部测量数字**原样保留**（历史 shim 口径，不得追认为生产基线）。以下为修复案在**生产 store（无 shim）**上的
+独立验证记录，全部当天实跑：
+
+- **修复内容**：`QdrantVectorStore#search` 分数映射由 `(Double) ...getScore()` 改为
+  `((Number) ...getScore()).doubleValue()`（数值转换；请求/集合/limit/阈值/KB 过滤/payload 解析/顺序/超时/重试均未动）。
+- **红灯证据（修复前）**：
+  - 纯 JVM 契约测试 `QdrantScoreMappingContractTest` 4 条中 tripwire
+    `productionSearchMustNotCastReflectedScoreToDouble` 红（源码仍含旧强转），其余 3 条绿（gRPC `getScore()` 返回
+    原始 `float`、装箱 Float `(Double)` 强转必抛 ClassCastException、`Number.doubleValue` 精确保真 0.75f→0.75d）；
+  - 真容器回归 `QdrantVectorStoreSearchRealIT`（一次性 `qdrant/qdrant:v1.18.3`，直接调生产 store）3 条中 2 条
+    **非空命中测试以 `java.lang.ClassCastException: class java.lang.Float cannot be cast to class java.lang.Double`
+    报错**；空结果测试绿（不进映射循环，与根因一致）。
+- **绿灯证据（修复后）**：
+  - `QdrantScoreMappingContractTest` 4/4 绿；`QdrantVectorStoreSearchRealIT` 3/3 绿——非空命中返回契约 double 分数
+    （已知夹角向量精确 0.75±1e-4）、chunkId/documentId/text/metadata 与 payload 对齐、KB 过滤不放大、命中降序保留、
+    topK/minScore 传递不变、空结果保持空列表；
+  - 度量入口切回生产 store（shim 文件已删除）后完整跑通两轮隔离度量（含每轮形状断言与摄取复位断言），复现命令：
+    `REPRESENTATIVE_HOTPATH_MEASURE=1 mvn -B -ntp -Dtest=RepresentativeHotpathBenchmark test`。
+- **修复后生产 store 度量摘要**（单次命令执行 × 2 轮，§头同机；证据级别仍为「本机真实存储 + 本地模型桩」，非生产 RTT）：
+  检索 c1 p50 **48.225 / 31.327 ms**（r1/r2，吞吐 19.5→29.2 ok/s，0 失败）；qdrant_search 段 **17.725 / 10.180 ms**
+  （4 次/请求）；摄取 c4 p50 **509.555 ms**（0 失败）；每轮摄取前后 44/4 行复位断言通过。
+  单轮样本量与历史口径一致，跨轮/跨执行波动（尤其 c8）未见收敛证据，**不做** shim→生产数字的直接比较结论。
+- **剩余限制**：真实模型/embedding RTT 仍未观测；生产跨机 RTT、生产盘 fsync 未验证；修复只解决命中映射的数值类型根因，
+  不预先保证其他 Qdrant payload/过滤/权限问题不存在。
+
 ---
 
 ## 6. 剩余未知（不得以 0 填充、不得推断）
@@ -238,3 +265,4 @@ system-out，不入库。
 | 日期 | 说明 |
 |---|---|
 | 2026-09-25 | 首版：两执行 × 两轮全绿采集；披露 QdrantVectorStore#search Float/Double 装箱缺陷与测试侧 shim；c8 波动记无法归因 |
+| 2026-09-25 | §5.1 追加修复案（fix-qdrant-search-score-conversion）独立实测：红绿证据、生产 store 非空搜索回归与切回后的隔离度量；历史 shim 数字未改动，shim 文件已删除 |
