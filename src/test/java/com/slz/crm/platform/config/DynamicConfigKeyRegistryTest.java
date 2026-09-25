@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -102,6 +103,91 @@ class DynamicConfigKeyRegistryTest {
     assertThat(registry.definitionOf("rag.retrieval.admin-vector.enabled")).isPresent();
     assertThat(registry.definitionOf("rag.intent.categories")).isPresent();
     assertThat(registry.definitionOf("business.assistant.imageCacheMaxEntries")).isPresent();
+  }
+
+  @Test
+  @DisplayName("register-rag-retrieval-dynamic-keys：11 个检索管线键已登记，默认值=消费点代码缺省")
+  void retrievalPipelineKeysRegisteredWithCodeDefaults() {
+    // （键, 登记默认值）；默认值与消费点内联缺省一致：
+    // RetrievalQueryRewriteService(true)、RetrievalConfigResolver(rrf/60/4/0.70/0.30)、
+    // KnowledgeRetrievalServiceImpl(default)、DefaultWeightedReranker(0.60/0.40)、LlmReranker(3000/20)。
+    var expectedDefaults =
+        Map.ofEntries(
+            Map.entry("rag.retrieval.query-rewrite.enabled", "true"),
+            Map.entry("rag.retrieval.fusion.mode", "rrf"),
+            Map.entry("rag.retrieval.fusion.rrf-k", "60"),
+            Map.entry("rag.retrieval.rerank.mode", "default"),
+            Map.entry("rag.retrieval.rerank.vector-weight", "0.6"),
+            Map.entry("rag.retrieval.rerank.bm25-weight", "0.4"),
+            Map.entry("rag.retrieval.rerank.candidate-multiplier", "4"),
+            Map.entry("rag.retrieval.rerank.llm.timeout-ms", "3000"),
+            Map.entry("rag.retrieval.rerank.llm.max-candidates", "20"),
+            Map.entry("rag.retrieval.image-text-route-weight", "0.7"),
+            Map.entry("rag.retrieval.image-vector-route-weight", "0.3"));
+    for (var entry : expectedDefaults.entrySet()) {
+      var definition = registry.definitionOf(entry.getKey());
+      assertThat(definition).as("键 %s 必须已登记", entry.getKey()).isPresent();
+      assertThat(definition.orElseThrow().defaultValue())
+          .as("键 %s 登记默认值须与消费点代码缺省一致", entry.getKey())
+          .isEqualTo(entry.getValue());
+    }
+    // 合法值逐键放行（覆盖 Boolean/枚举/整数/长整数/浮点全部类型）
+    assertThat(registry.validate("rag.retrieval.query-rewrite.enabled", "false").typed())
+        .isEqualTo(false);
+    assertThat(registry.validate("rag.retrieval.fusion.mode", "weighted").typed())
+        .isEqualTo("weighted");
+    assertThat(registry.validate("rag.retrieval.fusion.rrf-k", "60").typed()).isEqualTo(60);
+    assertThat(registry.validate("rag.retrieval.rerank.mode", "llm").typed()).isEqualTo("llm");
+    assertThat(registry.validate("rag.retrieval.rerank.vector-weight", "0.6").typed())
+        .isEqualTo(0.6d);
+    assertThat(registry.validate("rag.retrieval.rerank.bm25-weight", "0.4").typed())
+        .isEqualTo(0.4d);
+    assertThat(registry.validate("rag.retrieval.rerank.candidate-multiplier", "4").typed())
+        .isEqualTo(4);
+    assertThat(registry.validate("rag.retrieval.rerank.llm.timeout-ms", "3000").typed())
+        .isEqualTo(3000L);
+    assertThat(registry.validate("rag.retrieval.rerank.llm.max-candidates", "20").typed())
+        .isEqualTo(20);
+    assertThat(registry.validate("rag.retrieval.image-text-route-weight", "0.7").typed())
+        .isEqualTo(0.7d);
+    assertThat(registry.validate("rag.retrieval.image-vector-route-weight", "0.3").typed())
+        .isEqualTo(0.3d);
+  }
+
+  @Test
+  @DisplayName("register-rag-retrieval-dynamic-keys：布尔/枚举/0~1/整数下限非法值一律拒绝")
+  void retrievalPipelineKeysRejectInvalidValues() {
+    // Boolean 只收 true/false
+    assertRejected("rag.retrieval.query-rewrite.enabled", "yes");
+    // 枚举白名单外（含消费侧会按 rrf 兜底的写法，写入期直接拒绝）
+    assertRejected("rag.retrieval.fusion.mode", "linear");
+    assertRejected("rag.retrieval.rerank.mode", "bm25");
+    // Double 0~1 越界
+    assertRejected("rag.retrieval.rerank.vector-weight", "1.1");
+    assertRejected("rag.retrieval.rerank.bm25-weight", "-0.1");
+    assertRejected("rag.retrieval.image-text-route-weight", "1.5");
+    assertRejected("rag.retrieval.image-vector-route-weight", "-0.2");
+    // 整数/长整数下限拒绝（消费侧 <1 回落默认，写入期护栏直接拒）
+    assertRejected("rag.retrieval.fusion.rrf-k", "0");
+    assertRejected("rag.retrieval.rerank.candidate-multiplier", "0");
+    assertRejected("rag.retrieval.rerank.llm.timeout-ms", "0");
+    assertRejected("rag.retrieval.rerank.llm.max-candidates", "0");
+  }
+
+  @Test
+  @DisplayName("register-rag-retrieval-dynamic-keys：未扩 NAMESPACES，context/chunking/query 仍未知")
+  void nonWhitelistedNamespacesStayUnknown() {
+    // 白名单不扩：五个官方命名空间不变
+    assertThat(DynamicConfigKeyRegistry.NAMESPACES)
+        .containsExactlyInAnyOrder(
+            "ai.prompt", "ai.model", "rag.retrieval", "rag.intent", "business");
+    // 未登记的检索链路键仍为未知键（写入拒绝）
+    assertThat(registry.definitionOf("rag.query.multi-query.enabled")).isEmpty();
+    assertThat(registry.definitionOf("rag.context.token-budget")).isEmpty();
+    assertThat(registry.definitionOf("rag.chunking.strategy")).isEmpty();
+    ConfigValueType.Parsed unknown = registry.validate("rag.context.token-budget", "4096");
+    assertThat(unknown.valid()).isFalse();
+    assertThat(unknown.errorMessage()).contains("未知配置键");
   }
 
   private void assertRejected(String key, String raw) {
