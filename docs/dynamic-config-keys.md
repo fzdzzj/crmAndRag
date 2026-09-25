@@ -6,6 +6,16 @@
 > 单一真相源（TASK-18）：`rag.retrieval.topK`=5、`rag.retrieval.minScore`=0.20 两行的默认值与
 > `RetrievalDefaults` 常量、`DynamicConfigKeyRegistry` 展示默认、检索服务运行默认及基准 TOP_K=5 由
 > `RetrievalParamTruthSourceTest`（CI 阶段 1）强制一致，本表任一侧单独改动即红。
+>
+> 注册状态（register-rag-retrieval-dynamic-keys，2026-09-25）：下列 11 键已登记进
+> `DynamicConfigKeyRegistry`（`rag.retrieval` 命名空间），超管可经既有动态配置管理入口写入、热生效；
+> 登记未改任何默认值或语义，本表默认值即消费点代码缺省——
+> `rag.retrieval.query-rewrite.enabled`、`rag.retrieval.fusion.mode`、`rag.retrieval.fusion.rrf-k`、
+> `rag.retrieval.rerank.mode`、`rag.retrieval.rerank.vector-weight`、`rag.retrieval.rerank.bm25-weight`、
+> `rag.retrieval.rerank.candidate-multiplier`、`rag.retrieval.rerank.llm.timeout-ms`、
+> `rag.retrieval.rerank.llm.max-candidates`、`rag.retrieval.image-text-route-weight`、
+> `rag.retrieval.image-vector-route-weight`。
+> 未列出的 `rag.context.*` / `rag.chunking.*` / `rag.query.*` 仍不在注册表命名空间白名单内，写入将被拒绝。
 
 ## rag.retrieval.* —— 检索管线（Lane B）
 
