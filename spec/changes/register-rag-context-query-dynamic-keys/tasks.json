@@ -1,0 +1,102 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：白名单",
+    "task": "扩展动态配置命名空间",
+    "steps": [
+      {
+        "step": "NAMESPACES 增加 rag.context / rag.chunking / rag.query",
+        "completed": true
+      },
+      {
+        "step": "同步 Registry 与 ConfigKeyDefinition javadoc 列举",
+        "completed": true
+      },
+      {
+        "step": "改 namespacesComplete 断言为八个命名空间",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：登记",
+    "task": "按代码默认登记 13 键",
+    "steps": [
+      {
+        "step": "用现有 def(...) 登记 proposal 表中 13 键",
+        "completed": true
+      },
+      {
+        "step": "默认值逐一对齐代码读取点，不改消费点",
+        "completed": true
+      },
+      {
+        "step": "费用键描述写明默认关且开启会产生模型费用",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：测试与文档",
+    "task": "锁住登记并更新文档前端",
+    "steps": [
+      {
+        "step": "替换 nonWhitelistedNamespacesStayUnknown 为 13 键已知+非法值拒绝",
+        "completed": true
+      },
+      {
+        "step": "抽 1-2 个消费点确认默认读取路径未改",
+        "completed": true
+      },
+      {
+        "step": "更新 dynamic-config-keys.md 注册状态注记",
+        "completed": true
+      },
+      {
+        "step": "补 NAMESPACE_ORDER/LABELS、Vitest 与 Playwright 检查点",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：验收",
+    "task": "离线门禁",
+    "steps": [
+      {
+        "step": "定向跑注册表与前端相关测试，禁真实外呼",
+        "completed": true
+      },
+      {
+        "step": "用 Git Bash 跑 scripts/merge-gate.sh",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：收尾",
+    "task": "分支提交并无快进合并",
+    "steps": [
+      {
+        "step": "只暂存本案文件，热路径三件保持未跟踪",
+        "completed": true
+      },
+      {
+        "step": "feature 分支一笔提交后 --no-ff 合入 master",
+        "completed": true
+      },
+      {
+        "step": "不 push、不归档、不碰原工作树",
+        "completed": true
+      }
+    ],
+    "passes": true
+  }
+]

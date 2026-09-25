@@ -84,11 +84,18 @@ class DynamicConfigKeyRegistryTest {
   }
 
   @Test
-  @DisplayName("五个官方命名空间齐全，键名与命名空间自洽")
+  @DisplayName("八个官方命名空间齐全，键名与命名空间自洽")
   void namespacesComplete() {
     assertThat(DynamicConfigKeyRegistry.NAMESPACES)
         .containsExactlyInAnyOrder(
-            "ai.prompt", "ai.model", "rag.retrieval", "rag.intent", "business");
+            "ai.prompt",
+            "ai.model",
+            "rag.retrieval",
+            "rag.context",
+            "rag.chunking",
+            "rag.query",
+            "rag.intent",
+            "business");
     var defs = registry.definitions();
     assertThat(defs).isNotEmpty();
     // 键必须以命名空间开头；同一命名空间下键前缀一致（V6 脚本分组约定）
@@ -175,17 +182,72 @@ class DynamicConfigKeyRegistryTest {
   }
 
   @Test
-  @DisplayName("register-rag-retrieval-dynamic-keys：未扩 NAMESPACES，context/chunking/query 仍未知")
-  void nonWhitelistedNamespacesStayUnknown() {
-    // 白名单不扩：五个官方命名空间不变
-    assertThat(DynamicConfigKeyRegistry.NAMESPACES)
-        .containsExactlyInAnyOrder(
-            "ai.prompt", "ai.model", "rag.retrieval", "rag.intent", "business");
-    // 未登记的检索链路键仍为未知键（写入拒绝）
-    assertThat(registry.definitionOf("rag.query.multi-query.enabled")).isEmpty();
-    assertThat(registry.definitionOf("rag.context.token-budget")).isEmpty();
-    assertThat(registry.definitionOf("rag.chunking.strategy")).isEmpty();
-    ConfigValueType.Parsed unknown = registry.validate("rag.context.token-budget", "4096");
+  @DisplayName(
+      "register-rag-context-query-dynamic-keys：13 个 context/chunking/query 键已登记，默认值=消费点代码缺省")
+  void contextChunkingQueryKeysRegisteredWithCodeDefaults() {
+    // 默认值与消费点内联缺省一致：ContextBuilder(1/4096/rule/on)、LlmContextCompressor(3000)、
+    // DocumentService(fixed/480)、MultiQueryRewriteService(false/3)、HydeQueryExpander(false/3000)、
+    // DerivedQuestionService(false/2)。
+    var expectedDefaults =
+        Map.ofEntries(
+            Map.entry("rag.context.neighbors", "1"),
+            Map.entry("rag.context.token-budget", "4096"),
+            Map.entry("rag.context.compressor.mode", "rule"),
+            Map.entry("rag.context.compressor.llm.timeout-ms", "3000"),
+            Map.entry("rag.context.parent-expand", "on"),
+            Map.entry("rag.chunking.strategy", "fixed"),
+            Map.entry("rag.chunking.max-chunk-size", "480"),
+            Map.entry("rag.query.multi-query.enabled", "false"),
+            Map.entry("rag.query.multi-query.variants", "3"),
+            Map.entry("rag.query.hyde.enabled", "false"),
+            Map.entry("rag.query.hyde.timeout-ms", "3000"),
+            Map.entry("rag.query.derived-questions.enabled", "false"),
+            Map.entry("rag.query.derived-questions.max-per-chunk", "2"));
+    for (var entry : expectedDefaults.entrySet()) {
+      var definition = registry.definitionOf(entry.getKey());
+      assertThat(definition).as("键 %s 必须已登记", entry.getKey()).isPresent();
+      assertThat(definition.orElseThrow().defaultValue())
+          .as("键 %s 登记默认值须与消费点代码缺省一致", entry.getKey())
+          .isEqualTo(entry.getValue());
+    }
+    // 合法值逐键放行（含上下边界：neighbors 0~1、variants 1~5、timeout 1~60000）
+    assertThat(registry.validate("rag.context.neighbors", "1").typed()).isEqualTo(1);
+    assertThat(registry.validate("rag.context.neighbors", "0").typed()).isEqualTo(0);
+    assertThat(registry.validate("rag.context.token-budget", "4096").typed()).isEqualTo(4096);
+    assertThat(registry.validate("rag.context.compressor.mode", "llm").typed()).isEqualTo("llm");
+    assertThat(registry.validate("rag.context.parent-expand", "off").typed()).isEqualTo("off");
+    assertThat(registry.validate("rag.chunking.strategy", "paragraph").typed())
+        .isEqualTo("paragraph");
+    assertThat(registry.validate("rag.chunking.max-chunk-size", "480").typed()).isEqualTo(480);
+    assertThat(registry.validate("rag.query.multi-query.enabled", "true").typed()).isEqualTo(true);
+    assertThat(registry.validate("rag.query.multi-query.variants", "5").typed()).isEqualTo(5);
+    assertThat(registry.validate("rag.query.hyde.timeout-ms", "60000").typed()).isEqualTo(60000L);
+    assertThat(registry.validate("rag.query.derived-questions.max-per-chunk", "2").typed())
+        .isEqualTo(2);
+  }
+
+  @Test
+  @DisplayName("register-rag-context-query-dynamic-keys：非法值拒绝，未列出的运维键仍未知")
+  void contextChunkingQueryKeysRejectInvalidAndUnlistedStayUnknown() {
+    // Boolean 只收 true/false（消费点默认 false 的费用开关，写入期即护栏；解析不区分大小写，"TRUE" 是合法值）
+    assertRejected("rag.query.hyde.enabled", "yes");
+    assertRejected("rag.query.multi-query.enabled", "on");
+    // 枚举白名单外（含大小写不符：allowed 是 trim 后精确匹配）
+    assertRejected("rag.context.compressor.mode", "LLM");
+    assertRejected("rag.context.parent-expand", "ON");
+    assertRejected("rag.chunking.strategy", "hybrid");
+    // 越界：neighbors 只许 0~1；variants 只许 1~5（0 与 6 都拒绝）
+    assertRejected("rag.context.neighbors", "2");
+    assertRejected("rag.context.neighbors", "-1");
+    assertRejected("rag.query.multi-query.variants", "0");
+    assertRejected("rag.query.multi-query.variants", "6");
+    assertRejected("rag.query.derived-questions.max-per-chunk", "6");
+    assertRejected("rag.context.token-budget", "0");
+    assertRejected("rag.context.compressor.llm.timeout-ms", "60001");
+    // 未列出的运维键仍未知（rag.reingest.* 是 runner 环境变量，platform.async.* 是 Spring 静态配置）
+    assertThat(registry.definitionOf("rag.reingest.trigger")).isEmpty();
+    assertThat(registry.definitionOf("platform.async.derived-questions.queue-capacity")).isEmpty();
+    ConfigValueType.Parsed unknown = registry.validate("rag.reingest.trigger", "all");
     assertThat(unknown.valid()).isFalse();
     assertThat(unknown.errorMessage()).contains("未知配置键");
   }

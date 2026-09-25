@@ -15,7 +15,16 @@
 > `rag.retrieval.rerank.candidate-multiplier`、`rag.retrieval.rerank.llm.timeout-ms`、
 > `rag.retrieval.rerank.llm.max-candidates`、`rag.retrieval.image-text-route-weight`、
 > `rag.retrieval.image-vector-route-weight`。
-> 未列出的 `rag.context.*` / `rag.chunking.*` / `rag.query.*` 仍不在注册表命名空间白名单内，写入将被拒绝。
+> 注册状态（register-rag-context-query-dynamic-keys，2026-09-25）：命名空间白名单扩为八个（新增
+> `rag.context` / `rag.chunking` / `rag.query`），下列 13 键已同样登记进 `DynamicConfigKeyRegistry`，
+> 超管可经既有动态配置管理入口写入、热生效；登记未改任何默认值或语义，本表默认值即消费点代码缺省——
+> `rag.context.neighbors`、`rag.context.token-budget`、`rag.context.compressor.mode`、
+> `rag.context.compressor.llm.timeout-ms`、`rag.context.parent-expand`、`rag.chunking.strategy`、
+> `rag.chunking.max-chunk-size`、`rag.query.multi-query.enabled`、`rag.query.multi-query.variants`、
+> `rag.query.hyde.enabled`、`rag.query.hyde.timeout-ms`、`rag.query.derived-questions.enabled`、
+> `rag.query.derived-questions.max-per-chunk`。
+> HyDE / 多查询 / 衍生问题 / LLM 压缩默认关，开启会产生模型调用费用（登记描述已写明，是否开启由 owner 拍板）；
+> 切分策略只影响新摄取/重建，不自动重嵌。
 
 ## rag.retrieval.* —— 检索管线（Lane B）
 
@@ -70,7 +79,7 @@
 
 | 键 | 类型 | 默认值 | 语义与回退 |
 |---|---|---|---|
-| `rag.context.neighbors` | Integer | 1 | 邻居增强开关：1（默认，取命中块紧邻前/后各一片）\| 0（关闭，输出与升级前逐字一致）。&lt;0 按 1 处理。邻居只进上下文、不进 SourceReference |
+| `rag.context.neighbors` | Integer | 1 | 邻居增强开关：1（默认，取命中块紧邻前/后各一片）\| 0 或负值（关闭，输出与关闭邻居增强一致；消费点按 `>=1` 为开判定）。邻居只进上下文、不进 SourceReference |
 | `rag.context.token-budget` | Integer | 4096 | 上下文 token 预算（TokenEstimator 估算口径）；超预算触发压缩，未超预算原文逐字保留。&lt;1 回落默认 |
 | `rag.context.compressor.mode` | String | `rule` | 压缩器选择：`rule`（确定性规则压缩，默认）\| `llm`（LLM 要点化压缩，需 ModelProvider 可用）。llm 未装配或值非法时落规则链 |
 | `rag.context.compressor.llm.timeout-ms` | Long | 3000 | LLM 压缩等待超时；超时/失败/空输出/编号不完整/仍超预算均回退规则压缩链 |
