@@ -1,0 +1,57 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：安全入口",
+    "task": "隔离执行条件与模型端口",
+    "steps": [
+      {"step": "检查默认 surefire/failsafe 命名规则，创建仅显式选中的入口并在容器启动前检查独立开关", "completed": true},
+      {"step": "镜像与 Docker 只读预检，缺失时失败且不自动下载或连已有业务数据库", "completed": true},
+      {"step": "硬绑定本地确定性模型/改写桩，测试环境留有真实 key 或开关时仍无真实 Provider", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：固定负载",
+    "task": "本机存储与生产路径装配",
+    "steps": [
+      {"step": "一次性 MySQL 经 Flyway、Qdrant 经生产客户端装配，零生产代码/迁移修改", "completed": true},
+      {"step": "复用旧案检索 4 KB/单路/topK 5 及摄取 6600 字符/fixed 320/40 负载，记录种子和有效配置", "completed": true},
+      {"step": "记录授权 SQL、实际过滤与命中；摄取重复样本起始状态一致且不污染检索种子", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：分段与资源",
+    "task": "逐请求同窗采样",
+    "steps": [
+      {"step": "测试侧收集端到端及授权/JDBC/改写桩/嵌入桩/Qdrant/融合重排/上下文/摄取分段计数与耗时", "completed": true},
+      {"step": "预热后单并发及固定并发档测检索，独立固定档测摄取，报告分位/吞吐/失败与超时", "completed": true},
+      {"step": "同窗采集 CPU/堆/GC/线程并尽可能采集锁等待和容器资源，无法采集写未知", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：报告与保护测试",
+    "task": "复跑证据与失败场景",
+    "steps": [
+      {"step": "至少两轮相同负载记录环境、预热、数据规模、样本数、计时覆盖与原始汇总到新文档", "completed": true},
+      {"step": "验证默认不会发现入口、缺镜像/缺开关 fail closed、真实模型配置不影响本地桩", "completed": true},
+      {"step": "标注本机存储测量与生产 RTT 之间的未知，差异/波动大时拒绝生产瓶颈归因", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：门禁与收尾",
+    "task": "验证范围并一次性提交合并",
+    "steps": [
+      {"step": "定向运行显式入口及安全反例，确认零外发且不改变旧基线数字和断言", "completed": true},
+      {"step": "运行项目 merge-gate 并核对变更范围、基线与 git diff --check", "completed": true},
+      {"step": "仅本案文件在 codex 分支提交后 --no-ff 合入权威树，核对双亲与状态；不 push 不归档", "completed": true}
+    ],
+    "passes": true
+  }
+]
