@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.slz.crm.pojo.entity.AiSessionEntity;
 import com.slz.crm.pojo.vo.AiSessionVO;
+import com.slz.crm.server.ai.AiChatImageContextCache;
 import com.slz.crm.server.mapper.AiSessionMapper;
 import com.slz.crm.server.service.AiSessionService;
 import com.slz.crm.server.service.PendingActionService;
@@ -17,6 +18,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Slf4j
 @Service
@@ -24,6 +27,8 @@ public class AiSessionServiceImpl extends ServiceImpl<AiSessionMapper, AiSession
     implements AiSessionService {
 
   @Autowired @Lazy private PendingActionService pendingActionService;
+
+  @Autowired private AiChatImageContextCache imageContextCache;
 
   @Override
   public AiSessionEntity createSession(Long userId, String title) {
@@ -114,6 +119,23 @@ public class AiSessionServiceImpl extends ServiceImpl<AiSessionMapper, AiSession
 
     // 级联取消该会话的 PENDING/DRAFTING 待确认操作
     pendingActionService.cancelBySessionId(sessionId);
+
+    evictImageContextAfterCommit(sessionId);
+  }
+
+  /** 缓存释放不可随数据库回滚，必须在两次写操作都成功返回后注册：提交后清该会话，回滚则什么都不清。 */
+  private void evictImageContextAfterCommit(Long sessionId) {
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(
+          new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+              imageContextCache.evictSession(sessionId);
+            }
+          });
+    } else {
+      imageContextCache.evictSession(sessionId);
+    }
   }
 
   @Override
