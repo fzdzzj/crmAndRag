@@ -98,6 +98,52 @@ class ContextBatchReadEquivalenceTest {
     assertThat(actual).isEqualTo("[1] A文第1块\n（后文承接）A文第2块\n[2] （前文承接）B文第1块\nB文第2块\n（后文承接）B文第3块");
   }
 
+  /**
+   * 多文档密集语料（行数有界反例）：4 个文档共享同一段密集序号、命中错位分布。 批读查询按文档 OR 分组，返回行 = 各文档目标序号并集之和（16 行）； 若实现为
+   * document_id/chunk_index 双 IN 叉积，同样语料会返回 4 文档 × 12 序号并集 = 48 行——本用例锁死不回退到叉积形状。
+   */
+  @Test
+  void multiDocumentDenseCorpusReturnsExactPairsAndEquivalent() {
+    FakeChunkMapper fake = new FakeChunkMapper();
+    String[] docs = {DOC_A, "doc-b", "doc-c", "doc-d"};
+    int[] hitIndexes = {5, 6, 15, 16, 25, 26, 5, 6};
+    long id = 1;
+    for (String doc : docs) {
+      for (int index = 0; index < 30; index++) {
+        fake.addChildRow(id++, doc, index, doc + "第" + index + "块", 1);
+      }
+    }
+    List<RetrievalCandidate> candidates = new ArrayList<>();
+    for (int index = 0; index < hitIndexes.length; index++) {
+      String doc = docs[index / 2];
+      int hitIndex = hitIndexes[index];
+      long rowId = (long) (docOrdinal(doc) * 30 + hitIndex + 1);
+      candidates.add(candidate(String.valueOf(rowId), doc, hitIndex, doc + "命中" + hitIndex, 1));
+    }
+    ContextBuilder builder = newBuilder(fake);
+
+    String legacy = legacyParentExpand(candidates, fake.proxy(), true);
+    long[] before = fake.counters();
+    int recordedBefore = fake.selectListRowCounts.size();
+    String actual = builder.build(candidates);
+    long[] delta = fake.deltasSince(before);
+
+    assertByteEquivalent(legacy, actual);
+    assertThat(delta[FakeChunkMapper.LIST]).isEqualTo(1); // 多文档仍是一次批查
+    assertThat(fake.selectListRowCounts.subList(recordedBefore, fake.selectListRowCounts.size()))
+        .containsExactly(16); // 各文档目标序号并集之和 = 4 文档 × 4 序号；叉积形状会返回 48
+  }
+
+  /** 命中所在文档的序号（docs 数组下标），与多文档密集语料的行 id 计算配套。 */
+  private static int docOrdinal(String doc) {
+    return switch (doc) {
+      case DOC_A -> 0;
+      case "doc-b" -> 1;
+      case "doc-c" -> 2;
+      default -> 3;
+    };
+  }
+
   /** 父块与邻居混合：有父块用父块全文、父块缺行/未挂父块/非数字 id/快照缺行回退邻居；输出逐字等价，快照 SQL ≤ 3。 */
   @Test
   void mixedParentAndNeighborPathsAreEquivalentWithinThreeSnapshotSql() {
@@ -687,20 +733,33 @@ class ContextBatchReadEquivalenceTest {
     }
 
     private List<DocumentVectorChunkEntity> selectList(Object wrapper) {
-      Map<String, List<Object>> criteria = parseCriteria(wrapper);
+      ParsedCriteria parsed = parseCriteria(wrapper);
       List<DocumentVectorChunkEntity> matched = new ArrayList<>();
       for (DocumentVectorChunkEntity row : rows) {
-        if (matches(criteria, row)) {
+        if (matches(parsed, row)) {
           matched.add(row);
         }
       }
+      selectListRowCounts.add(matched.size());
       return matched;
     }
 
-    private Map<String, List<Object>> parseCriteria(Object wrapper) {
+    /** 每次 selectList 返回的行数（按调用序），供行数有界断言使用。 */
+    final List<Integer> selectListRowCounts = new ArrayList<>();
+
+    /** 解析结果：扁平列条件（AND）+ 可选的按文档 OR 分组（生产批读邻居查询形状，忠实建模行数）。 */
+    private record ParsedCriteria(
+        Map<String, List<Object>> flat,
+        List<String> orDocuments,
+        List<List<Object>> orIndexGroups,
+        boolean orMode) {}
+
+    private ParsedCriteria parseCriteria(Object wrapper) {
       Map<String, List<Object>> criteria = new LinkedHashMap<>();
+      List<String> orDocuments = new ArrayList<>();
+      List<List<Object>> orIndexGroups = new ArrayList<>();
       if (!(wrapper instanceof AbstractWrapper<?, ?, ?> abstractWrapper)) {
-        return criteria;
+        return new ParsedCriteria(criteria, orDocuments, orIndexGroups, false);
       }
       String sql = String.valueOf(abstractWrapper.getSqlSegment());
       Map<String, Object> params = new LinkedHashMap<>(abstractWrapper.getParamNameValuePairs());
@@ -711,19 +770,49 @@ class ContextBatchReadEquivalenceTest {
         while (token.find()) {
           values.add(resolveParam(params, token.group()));
         }
-        criteria.put(inMatcher.group(1).toLowerCase(java.util.Locale.ROOT), values);
+        if ("chunk_index".equalsIgnoreCase(inMatcher.group(1).trim())) {
+          orIndexGroups.add(values);
+        }
+        criteria
+            .computeIfAbsent(
+                inMatcher.group(1).toLowerCase(java.util.Locale.ROOT), key -> new ArrayList<>())
+            .addAll(values);
       }
       Matcher eqMatcher = Pattern.compile("([\\w_]+)\\s*=\\s*#\\{([^}]*\\.(\\w+))\\}").matcher(sql);
       while (eqMatcher.find()) {
-        criteria.put(
-            eqMatcher.group(1).toLowerCase(java.util.Locale.ROOT),
-            List.of(resolveParam(params, eqMatcher.group(3))));
+        Object value = resolveParam(params, eqMatcher.group(3));
+        if ("document_id".equalsIgnoreCase(eqMatcher.group(1).trim())) {
+          orDocuments.add(value == null ? null : String.valueOf(value));
+        }
+        criteria
+            .computeIfAbsent(
+                eqMatcher.group(1).toLowerCase(java.util.Locale.ROOT), key -> new ArrayList<>())
+            .add(value);
       }
-      return criteria;
+      // 生产批读邻居查询：k 个 document_id 等值按出现序配对 k 个 chunk_index IN 组 → 各组 (文档, 序号集合) 的 OR
+      boolean orMode = orDocuments.size() > 1 && orIndexGroups.size() == orDocuments.size();
+      if (orMode) {
+        criteria.remove("document_id");
+        criteria.remove("chunk_index");
+      }
+      return new ParsedCriteria(criteria, orDocuments, orIndexGroups, orMode);
     }
 
-    private boolean matches(Map<String, List<Object>> criteria, DocumentVectorChunkEntity row) {
-      for (Map.Entry<String, List<Object>> entry : criteria.entrySet()) {
+    private boolean matches(ParsedCriteria parsed, DocumentVectorChunkEntity row) {
+      if (parsed.orMode()) {
+        boolean anyGroup = false;
+        for (int index = 0; index < parsed.orDocuments().size(); index++) {
+          if (parsed.orDocuments().get(index).equals(row.getDocumentId())
+              && containsIndex(parsed.orIndexGroups().get(index), row.getChunkIndex())) {
+            anyGroup = true;
+            break;
+          }
+        }
+        if (!anyGroup) {
+          return false;
+        }
+      }
+      for (Map.Entry<String, List<Object>> entry : parsed.flat().entrySet()) {
         switch (entry.getKey()) {
           case "document_id" -> {
             if (!entry.getValue().contains(row.getDocumentId())) {
@@ -736,17 +825,7 @@ class ContextBatchReadEquivalenceTest {
             }
           }
           case "chunk_index" -> {
-            boolean hit = false;
-            for (Object value : entry.getValue()) {
-              Long number = asLong(value);
-              if (number != null
-                  && row.getChunkIndex() != null
-                  && number.longValue() == row.getChunkIndex().longValue()) {
-                hit = true;
-                break;
-              }
-            }
-            if (!hit) {
+            if (!parsed.orMode() && !containsIndex(entry.getValue(), row.getChunkIndex())) {
               return false;
             }
           }
@@ -756,6 +835,19 @@ class ContextBatchReadEquivalenceTest {
         }
       }
       return true;
+    }
+
+    private static boolean containsIndex(List<Object> values, Integer chunkIndex) {
+      if (chunkIndex == null) {
+        return false;
+      }
+      for (Object value : values) {
+        Long number = asLong(value);
+        if (number != null && number.longValue() == chunkIndex.longValue()) {
+          return true;
+        }
+      }
+      return false;
     }
 
     private static Object resolveParam(Map<String, Object> params, String tokenName) {
