@@ -122,6 +122,7 @@ class RequestHotpathBaselineTest {
   private static final int INSERT_PARENT_CALLS = 9;
   private static final int SEARCHED_KB_COUNT = 10;
   private static final int SNAPSHOT_LEN = 11;
+  private static final int SELECT_BATCH_CALLS = 11;
 
   // ---------------------------------------------------------------- 检索基线
 
@@ -322,8 +323,9 @@ class RequestHotpathBaselineTest {
     assertDelta(counters, before, CHAT_CALLS, 1L, pass + "：查询改写 LLM 桩 1 次（即时返回，不计桶）");
     assertDelta(counters, before, SEARCH_CALLS, KB_IDS.size(), pass + "：向量检索 = 授权库数");
     assertDelta(counters, before, FULLTEXT_CALLS, 1L, pass + "：稀疏检索 1 次");
-    assertDelta(counters, before, SELECT_BY_ID_CALLS, TOP_K, pass + "：父块展开 selectById = 命中数");
-    assertDelta(counters, before, SELECT_LIST_CALLS, TOP_K, pass + "：邻居查询 = 命中数");
+    assertDelta(counters, before, SELECT_BATCH_CALLS, 1L, pass + "：子块快照批查 1 次（五命中收敛）");
+    assertDelta(counters, before, SELECT_BY_ID_CALLS, 0L, pass + "：检索不再逐命中 selectById");
+    assertDelta(counters, before, SELECT_LIST_CALLS, 1L, pass + "：邻居快照批查 1 次（五命中收敛）");
     assertDelta(counters, before, UPSERT_ALL_CALLS, 0L, pass + "：检索不写向量库");
     long searched = counters.snapshot()[SEARCHED_KB_COUNT] - before[SEARCHED_KB_COUNT];
     assertEquals(KB_IDS.size(), searched, pass + "：过滤条件里的库 id 个数");
@@ -580,8 +582,8 @@ class RequestHotpathBaselineTest {
 
   /**
    * 内存 + 计数 {@link DocumentVectorChunkMapper} double：insert 分配数字主键（等价 MP 自增），
-   * selectById/selectList/fulltextSearch 计数计时并可注入 SQL 延迟；fulltextSearch 用字符 bigram 重叠分近似 ngram
-   * FULLTEXT（与 InMemoryDocumentVectorChunkMapper 同口径；语料全部在授权集合内，不建模授权 JOIN）。
+   * selectById/selectBatchIds/selectList/fulltextSearch 计数计时并可注入 SQL 延迟；fulltextSearch 用字符 bigram
+   * 重叠分近似 ngram FULLTEXT（与 InMemoryDocumentVectorChunkMapper 同口径；语料全部在授权集合内，不建模授权 JOIN）。
    */
   static final class CountingChunkMapper {
 
@@ -616,6 +618,7 @@ class RequestHotpathBaselineTest {
         return switch (method.getName()) {
           case "insert" -> insert(args[0]);
           case "selectById" -> selectById(args.length > 0 ? args[0] : null);
+          case "selectBatchIds" -> selectBatchIds(args.length > 0 ? args[0] : null);
           case "selectList" -> selectList(args.length > 0 ? args[0] : null);
           case "fulltextSearch" ->
               fulltextSearch(
@@ -659,6 +662,31 @@ class RequestHotpathBaselineTest {
               return null;
             },
             counters.selectByIdCalls);
+      }
+
+      /** 批量主键查询：计数计时与 selectById 同桶口径（快照 SQL），语义 = 逐条 selectById 的行集。 */
+      @SuppressWarnings("unchecked")
+      private List<DocumentVectorChunkEntity> selectBatchIds(Object ids) {
+        return timedSql(
+            () -> {
+              List<DocumentVectorChunkEntity> matched = new ArrayList<>();
+              if (ids instanceof Iterable<?> iterable) {
+                for (Object id : iterable) {
+                  Long target = asLong(id);
+                  if (target == null) {
+                    continue;
+                  }
+                  for (DocumentVectorChunkEntity row : rows) {
+                    if (target.equals(row.getId())) {
+                      matched.add(row);
+                      break;
+                    }
+                  }
+                }
+              }
+              return List.copyOf(matched);
+            },
+            counters.selectBatchIdsCalls);
       }
 
       private List<DocumentVectorChunkEntity> selectList(Object wrapper) {
@@ -941,6 +969,7 @@ class RequestHotpathBaselineTest {
     final AtomicLong fulltextCalls = new AtomicLong();
     final AtomicLong selectByIdCalls = new AtomicLong();
     final AtomicLong selectListCalls = new AtomicLong();
+    final AtomicLong selectBatchIdsCalls = new AtomicLong();
     final AtomicLong insertChildCalls = new AtomicLong();
     final AtomicLong insertParentCalls = new AtomicLong();
     final AtomicLong sqlNanos = new AtomicLong();
@@ -958,6 +987,7 @@ class RequestHotpathBaselineTest {
       fulltextCalls.set(0);
       selectByIdCalls.set(0);
       selectListCalls.set(0);
+      selectBatchIdsCalls.set(0);
       insertChildCalls.set(0);
       insertParentCalls.set(0);
       sqlNanos.set(0);
@@ -983,7 +1013,8 @@ class RequestHotpathBaselineTest {
         selectListCalls.get(),
         insertChildCalls.get(),
         insertParentCalls.get(),
-        searchedKbIds.size()
+        searchedKbIds.size(),
+        selectBatchIdsCalls.get()
       };
     }
   }

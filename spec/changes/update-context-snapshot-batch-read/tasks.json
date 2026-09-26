@@ -1,0 +1,57 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：复核与前测",
+    "task": "锁定现行行为及同负载旧路径基线",
+    "steps": [
+      {"step": "核对权威 HEAD、工作树未提交文件、归档 rag-context 语义和冻结引用契约，确认仅本案范围", "completed": true},
+      {"step": "不改生产代码，预检本地镜像和假 Provider 保护；旧路径至少两独立执行取得 c1/c8 对应轮次与资源", "completed": true},
+      {"step": "硬断言五命中原 5 子块查询加 5 邻居查询，记录旧路径输出、父块/邻居及失败回退对照", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：单因素实现",
+    "task": "只收敛上下文快照查询往返",
+    "steps": [
+      {"step": "设计有界 ID 和文档索引批查，复核逻辑删除、CHILD 角色、跨文档校验及当前索引 EXPLAIN，不改迁移", "completed": true},
+      {"step": "在 ContextBuilder、NeighborContextSupport 和必要 mapper 内替换逐命中快照读取；不动授权/向量/模型/检索接口", "completed": true},
+      {"step": "批查异常保留成功批次，受影响批次有界回查或降级，避免持续故障放大；关开关/空命中保持原行为", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：语义与调用形状",
+    "task": "原新输出逐字等价且失败不放大",
+    "steps": [
+      {"step": "覆盖父块存在/缺行、邻居开关、首末块、同页优先与同页小 ID、重复命中、跨文档、压缩与引用编号", "completed": true},
+      {"step": "五命中无父块快照 SQL 不超过 3 次；更新合成基线、真存储入口与请求账本的精确断言/批查桩，不删除门禁", "completed": true},
+      {"step": "注入批查异常并核对成功批次、受影响批次的有界降级及查询上限；缺失 chunkIndex 另案修复", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：复测与判定",
+    "task": "在可比条件下验收或否决假设",
+    "steps": [
+      {"step": "同种子假模型与固定负载复测至少两独立执行，c1 稳态为主、c8 首窗/次窗分别报告", "completed": true},
+      {"step": "新报告记录上下文/端到端 P50 P95、吞吐、失败、批查 SQL/连接等待、资源及观测开销，旧历史数字不改", "completed": true},
+      {"step": "若语义回归、负载不可比或收益不可复现则停止生产改动并记录负结果，不能仅凭 SQL 降次宣称加速", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：门禁与范围收尾",
+    "task": "一次轮次完成验证与有条件交付",
+    "steps": [
+      {"step": "执行定向回归、默认 merge-gate 和 git diff --check；明列未跑的 failsafe IT 与 opt-in 实验", "completed": true},
+      {"step": "核对只含本案生产/测试/报告/三件套文件；按真实干净运行处理必要基线，不夹带候选清单", "completed": true},
+      {"step": "仅验收成立且获执行授权时在 codex 分支分范围提交并 --no-ff 合入，核双亲/第一父差异；不 push 不归档", "completed": true}
+    ],
+    "passes": true
+  }
+]

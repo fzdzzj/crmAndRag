@@ -191,8 +191,8 @@ class RepresentativeHotpathBenchmark {
   /** 检索每请求 Qdrant search：= 授权库数。 */
   private static final long QDRANT_SEARCH_PER_RETRIEVAL = 4;
 
-  /** 检索每请求 SQL 总数（授权 3 + 稀疏 1 + 父块展开 5 + 邻居 5）。 */
-  private static final long SQL_PER_RETRIEVAL = 14;
+  /** 检索每请求 SQL 总数（授权 3 + 稀疏 1 + 子块批查 1 + 邻居批查 1；update-context-snapshot-batch-read 后形状）。 */
+  private static final long SQL_PER_RETRIEVAL = 6;
 
   /** 摄取每文档授权/库读取 SQL（knowledge_base selectById；owner 短路不再查成员表）。 */
   private static final long AUTH_SQL_PER_INGEST = 1;
@@ -795,7 +795,7 @@ class RepresentativeHotpathBenchmark {
 
   // ---------------------------------------------------------------- 断言
 
-  /** 检索每请求形状（单并发档逐请求断言）：命中 topK、授权 3 SQL、向量检索 4、稀疏 1、父块展开/邻居各 5。 */
+  /** 检索每请求形状（单并发档逐请求断言）：命中 topK、授权 3 SQL、向量检索 4、稀疏 1、子块/邻居批查各 1。 */
   private void assertRetrievalShape(
       long[] before, long[] after, KnowledgeRetrievalPort.RetrievalResult result) {
     assertEquals(TOP_K, result.hitCount(), "命中数应为 topK");
@@ -810,8 +810,9 @@ class RepresentativeHotpathBenchmark {
     assertDelta(
         before, after, Counters.QDRANT_SEARCH_CALLS, QDRANT_SEARCH_PER_RETRIEVAL, "向量检索 = 授权库数");
     assertDelta(before, after, Counters.FULLTEXT_CALLS, 1L, "稀疏检索 1 次");
-    assertDelta(before, after, Counters.SELECT_BY_ID_CALLS, TOP_K, "父块展开 selectById = 命中数");
-    assertDelta(before, after, Counters.SELECT_LIST_CALLS, TOP_K, "邻居查询 = 命中数");
+    assertDelta(before, after, Counters.SELECT_BATCH_CALLS, 1L, "子块快照批查 1 次（五命中收敛）");
+    assertDelta(before, after, Counters.SELECT_BY_ID_CALLS, 0L, "检索不再逐命中 selectById");
+    assertDelta(before, after, Counters.SELECT_LIST_CALLS, 1L, "邻居快照批查 1 次（五命中收敛）");
     assertDelta(before, after, Counters.QDRANT_UPSERT_CALLS, 0L, "检索不写向量库");
   }
 
@@ -832,7 +833,8 @@ class RepresentativeHotpathBenchmark {
         after,
         Counters.SQL_CALLS,
         samples * SQL_PER_RETRIEVAL,
-        "轮内 SQL 总数 = 样本数 × 14（授权+稀疏+父块+邻居）");
+        "轮内 SQL 总数 = 样本数 × 6（授权+稀疏+子块批查+邻居批查）");
+    assertDelta(after, Counters.SELECT_BATCH_CALLS, samples, "轮内子块批查总数 = 样本数（五命中 ≤ 3 条快照 SQL）");
   }
 
   /** 逐库过滤覆盖：本轮每个授权库 id 恰好被检索 samples 次（Qdrant payload 过滤真的逐库下发）。 */
@@ -1059,6 +1061,15 @@ class RepresentativeHotpathBenchmark {
         after,
         Counters.SELECT_BY_ID_NANOS,
         Counters.SELECT_BY_ID_CALLS,
+        requests);
+    segment(
+        phase,
+        round,
+        concurrency,
+        "snapshot_batch_sql",
+        after,
+        Counters.SELECT_BATCH_NANOS,
+        Counters.SELECT_BATCH_CALLS,
         requests);
     segment(
         phase,
@@ -1524,7 +1535,9 @@ class RepresentativeHotpathBenchmark {
     static final int CONTEXT_NANOS = 32;
     static final int PARSE_CALLS = 33;
     static final int PARSE_NANOS = 34;
-    static final int COUNTER_COUNT = 36;
+    static final int SELECT_BATCH_CALLS = 36;
+    static final int SELECT_BATCH_NANOS = 37;
+    static final int COUNTER_COUNT = 38;
 
     private final LongAdder[] values = new LongAdder[COUNTER_COUNT];
     private final List<String> searchedKbIds = Collections.synchronizedList(new ArrayList<>());
@@ -1636,6 +1649,13 @@ class RepresentativeHotpathBenchmark {
                     if (type == DocumentVectorChunkMapper.class) {
                       counters.add(Counters.SELECT_BY_ID_CALLS, 1);
                       counters.add(Counters.SELECT_BY_ID_NANOS, nanos);
+                    }
+                  }
+                  case "selectBatchIds" -> {
+                    // 子块/父块快照批查（update-context-snapshot-batch-read）：切片快照表专属桶
+                    if (type == DocumentVectorChunkMapper.class) {
+                      counters.add(Counters.SELECT_BATCH_CALLS, 1);
+                      counters.add(Counters.SELECT_BATCH_NANOS, nanos);
                     }
                   }
                   case "selectList" -> {

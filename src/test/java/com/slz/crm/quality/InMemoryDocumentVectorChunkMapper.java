@@ -96,7 +96,7 @@ final class InMemoryDocumentVectorChunkMapper {
     return entity;
   }
 
-  /** InvocationHandler：仅 fulltextSearch/selectById/selectList 有语义，其余走类型安全默认。 */
+  /** InvocationHandler：仅 fulltextSearch/selectById/selectBatchIds/selectList 有语义，其余走类型安全默认。 */
   private static final class Handler implements InvocationHandler {
     private final List<DocumentVectorChunkEntity> rows;
 
@@ -113,6 +113,8 @@ final class InMemoryDocumentVectorChunkMapper {
               (String) args[0], unchecked(args[1]), (String) args[2], (int) args[3]);
         case "selectById":
           return selectById(args.length > 0 ? args[0] : null);
+        case "selectBatchIds":
+          return selectBatchIds(args.length > 0 ? args[0] : null);
         case "selectList":
           return selectList(args.length > 0 ? args[0] : null);
         case "deletePhysicallyByDocumentId":
@@ -203,6 +205,20 @@ final class InMemoryDocumentVectorChunkMapper {
         }
       }
       return null;
+    }
+
+    /** 批量主键查询（update-context-snapshot-batch-read）：返回集合内主键命中的行，语义与逐条 selectById 一致。 */
+    private List<DocumentVectorChunkEntity> selectBatchIds(Object ids) {
+      List<DocumentVectorChunkEntity> result = new ArrayList<>();
+      if (ids instanceof Iterable<?> iterable) {
+        for (Object id : iterable) {
+          DocumentVectorChunkEntity entity = selectById(id);
+          if (entity != null) {
+            result.add(entity);
+          }
+        }
+      }
+      return result;
     }
 
     /** 解析 QueryWrapper 的 sqlSegment + 参数对，按列条件过滤；未识别列安全放行。 */
