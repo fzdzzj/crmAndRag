@@ -117,7 +117,7 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
         // 超管直通；其余按 modelName 路由到业务记录级判定（拆至 AttachmentModelScopeChecker）
         result =
             Objects.equals(user.getRoleId(), 1L)
-                || modelScopeChecker.canRead(modelName, recordId, userId, user.getRoleId());
+                || modelScopeChecker.canRead(modelName, recordId, userId);
       }
     }
     return result;
@@ -249,8 +249,7 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
       } else if (Objects.equals(user.getRoleId(), 1L)) {
         result = true;
       } else {
-        // update-project-file-list-auth-hotpath：复用上面刚读到的 user.roleId，维度权限判定不再回查 sys_user
-        result = projectFileReader.canReadByDimension(file, userId, user.getRoleId());
+        result = projectFileReader.canReadByDimension(file, userId);
       }
     }
     return result;

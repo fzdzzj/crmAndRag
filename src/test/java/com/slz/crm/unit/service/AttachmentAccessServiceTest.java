@@ -59,8 +59,7 @@ class AttachmentAccessServiceTest {
   void rejectsActivityAttachmentOutsideRecordScope() {
     UserEntity user = user(2L, 2L);
     when(userMapper.selectById(2L)).thenReturn(user);
-    when(permissionService.hasPermissionByRoleId(
-            2L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY))
+    when(permissionService.hasPermission(2L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY))
         .thenReturn(true);
     BusinessActivityEntity activity = new BusinessActivityEntity();
     activity.setId(100L);
@@ -77,8 +76,7 @@ class AttachmentAccessServiceTest {
   @DisplayName("活动创建人可在无协助关系时读取自己的附件")
   void allowsActivityCreatorWithoutAssistRelationship() {
     when(userMapper.selectById(2L)).thenReturn(user(2L, 2L));
-    when(permissionService.hasPermissionByRoleId(
-            2L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY))
+    when(permissionService.hasPermission(2L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY))
         .thenReturn(true);
     BusinessActivityEntity activity = new BusinessActivityEntity();
     activity.setId(100L);
@@ -92,15 +90,13 @@ class AttachmentAccessServiceTest {
   @DisplayName("仅协助身份不能通过普通活动附件下载入口")
   void rejectsActivityAttachmentForAssistParticipantOnOrdinaryEntry() {
     when(userMapper.selectById(2L)).thenReturn(user(2L, 2L));
-    when(permissionService.hasPermissionByRoleId(
-            2L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY))
+    when(permissionService.hasPermission(2L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY))
         .thenReturn(false);
 
     ApprovalAttachmentEntity attachment = attachment(1L, 100L, "business_activity");
 
     assertThrows(BaseException.class, () -> service.assertCanRead(attachment, 2L));
-    verify(permissionService)
-        .hasPermissionByRoleId(2L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY);
+    verify(permissionService).hasPermission(2L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY);
   }
 
   @Test
@@ -325,8 +321,7 @@ class AttachmentAccessServiceTest {
   @DisplayName("项目文件：业务活动参与人可读")
   void allowsProjectFileForActivityParticipant() {
     when(userMapper.selectById(2L)).thenReturn(user(2L, 2L));
-    when(permissionService.hasPermissionByRoleId(
-            2L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY))
+    when(permissionService.hasPermission(2L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY))
         .thenReturn(true);
     BusinessActivityEntity activity = new BusinessActivityEntity();
     activity.setId(100L);
@@ -343,8 +338,7 @@ class AttachmentAccessServiceTest {
   @DisplayName("项目文件：商机负责人可读")
   void allowsProjectFileForOpportunityOwner() {
     when(userMapper.selectById(3L)).thenReturn(user(3L, 2L));
-    when(permissionService.hasPermissionByRoleId(
-            2L, PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY))
+    when(permissionService.hasPermission(3L, PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY))
         .thenReturn(true);
     SalesOpportunityEntity opportunity = new SalesOpportunityEntity();
     opportunity.setId(200L);
@@ -360,7 +354,7 @@ class AttachmentAccessServiceTest {
   @DisplayName("项目文件：订单维度经订单项反查合同后由合同负责人可读")
   void allowsProjectFileForContractOwnerViaOrder() {
     when(userMapper.selectById(4L)).thenReturn(user(4L, 2L));
-    when(permissionService.hasPermissionByRoleId(2L, PermissionOperates.SALES_VIEW_CONTRACT))
+    when(permissionService.hasPermission(4L, PermissionOperates.SALES_VIEW_CONTRACT))
         .thenReturn(true);
     ContractOrderItemEntity orderItem = new ContractOrderItemEntity();
     orderItem.setId(300L);
@@ -380,8 +374,7 @@ class AttachmentAccessServiceTest {
   @DisplayName("项目文件：无关用户所有维度均不命中时拒绝")
   void rejectsProjectFileForUnrelatedUser() {
     when(userMapper.selectById(5L)).thenReturn(user(5L, 2L));
-    when(permissionService.hasPermissionByRoleId(
-            2L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY))
+    when(permissionService.hasPermission(5L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY))
         .thenReturn(true);
     BusinessActivityEntity activity = new BusinessActivityEntity();
     activity.setId(100L);
@@ -413,24 +406,26 @@ class AttachmentAccessServiceTest {
   }
 
   @Test
-  @DisplayName("项目文件：维度权限按已加载用户的 roleId 判定，不再按 userId 回查用户（update-project-file-list-auth-hotpath）")
-  void projectFileDimensionPermissionReusesLoadedUserRole() {
-    // 用户 2 的角色是 77（非常规值），维度权限必须按 77 判定而非按 userId 再查一次用户
+  @DisplayName(
+      "项目文件：维度权限按判定时刻的当前用户（userId）判定，不复用早期读取的旧 roleId（update-project-file-list-auth-hotpath 安全等价修复）")
+  void projectFileDimensionPermissionUsesCurrentUserRole() {
+    // 早期状态闸读到用户 2 的 roleId=77（非常规值），但维度权限判定必须仍按 userId=2 实时取当前角色，
+    // 不得复用旧 roleId=77——否则角色被改派后会按旧角色放行（安全等价回归）。
     when(userMapper.selectById(2L)).thenReturn(user(2L, 77L));
-    when(permissionService.hasPermissionByRoleId(
-            77L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY))
+    when(permissionService.hasPermission(2L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY))
         .thenReturn(true);
     BusinessActivityEntity activity = new BusinessActivityEntity();
     activity.setId(100L);
-    activity.setCreatorId(2L);
+    activity.setCreatorId(8L);
     when(businessActivityMapper.selectById(100L)).thenReturn(activity);
+    when(businessActivityUserMapper.existsByActivityIdAndUserId(100L, 2L)).thenReturn(1);
 
     ProjectFileEntity file = projectFile(1L, 100L, null, null, null);
 
     assertTrue(service.canReadProjectFile(file, 2L));
-    verify(permissionService)
-        .hasPermissionByRoleId(77L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY);
-    verify(permissionService, never()).hasPermission(anyLong(), any(PermissionOperates.class));
+    verify(permissionService).hasPermission(2L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY);
+    verify(permissionService, never())
+        .hasPermission(77L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY);
   }
 
   private ProjectFileEntity projectFile(

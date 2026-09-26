@@ -34,20 +34,10 @@ public class PermissionServiceImpl extends ServiceImpl<PermissionsMapper, Permis
 
   @Override
   public boolean hasPermission(Long userId, PermissionOperates targetPerm) {
-    return hasPermissionByRoleId(
-        userMapper
-            .selectOne(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getId, userId))
-            .getRoleId(),
-        targetPerm);
-  }
-
-  /**
-   * update-project-file-list-auth-hotpath：复用调用方已加载用户的 roleId，省掉一次 {@code sys_user} 回查； 权限链仍按 roleId
-   * 实时查库，语义与 {@link #hasPermission(Long, PermissionOperates)} 等价。
-   */
-  @Override
-  public boolean hasPermissionByRoleId(Long roleId, PermissionOperates targetPerm) {
-    return hasPermission(targetPerm, getPermissionList(roleId));
+    // update-project-file-list-auth-hotpath 安全等价修复：判定必须使用「判定时刻」用户当前角色的权限链，
+    // 不能复用请求早期状态闸读到的旧 roleId，否则并发改派角色后仍会按旧角色放行。
+    // 联查 sys_user 与角色权限，一次查询即取得当前角色权限链；空权限链仍抛「该用户没有权限」，口径与旧实现一致。
+    return hasPermission(targetPerm, permissionsMapper.getPermissionListByUserId(userId));
   }
 
   @Override

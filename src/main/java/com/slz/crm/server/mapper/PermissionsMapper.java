@@ -11,6 +11,12 @@ import org.apache.ibatis.annotations.Param;
 public interface PermissionsMapper extends BaseMapper<PermissionsEntity> {
   List<PermissionsEntity> getPermissionList(Long roleId);
 
+  /**
+   * update-project-file-list-auth-hotpath 安全等价修复：按 userId 联查「当前用户 → 当前角色 → 权限链」，
+   * 使权限判定始终基于判定时刻数据库中的当前角色， 不复用请求早期读到的旧 roleId。
+   */
+  List<PermissionsEntity> getPermissionListByUserId(Long userId);
+
   void insertANDID(PermissionsEntity perm);
 
   void batchAddPermissionToRole(
