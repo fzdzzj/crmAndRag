@@ -5,13 +5,46 @@ import com.slz.crm.knowledge.entity.DocumentVectorChunkEntity;
 import com.slz.crm.knowledge.retrieval.SparseChunkRow;
 import java.util.List;
 import org.apache.ibatis.annotations.Delete;
+import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 /** 文档向量切片快照表 Mapper。 */
 @Mapper
 public interface DocumentVectorChunkMapper extends BaseMapper<DocumentVectorChunkEntity> {
+
+  /**
+   * 受限批次写入切片快照行（update-document-chunk-write-batching）。
+   *
+   * <p>以单条多行 {@code INSERT ... VALUES (...),(...)} 代替逐条写入，用 MyBatis {@code keyProperty}
+   * 按行序把自增主键回填到传入实体（与 {@code ContractOrderItemMapper#insertBatch} 同一机制）：一行数据行的物理写入形状从「一行一次往返/提交」收敛为
+   * 「一批一次」，但仍保持每行一行记录、列语义与原逐条插入等价（未列出的时间列/软删列走数据库默认值）。
+   *
+   * <p>批次大小由调用方按固定上限切分（{@code
+   * DocumentIngestionSupport.PERSIST_BATCH_SIZE}），本方法不接收无界集合；主键逐行回填的可用性由一次性真库 可行性闸 {@code
+   * ChunkBatchInsertGeneratedKeyIT} 验证，回填不完整由调用方按生成键缺失失败处理（不静默继续）。
+   *
+   * @param rows 待写入切片行（非空；调用方保证有界批次）
+   * @return 实际写入行数
+   */
+  @Insert(
+      """
+            <script>
+            INSERT INTO document_vector_chunk
+              (document_id, chunk_index, chunk_text, chunk_hash, filename, category, keywords,
+               page_no, row_index, parent_chunk_id, chunk_role)
+            VALUES
+              <foreach collection="list" item="row" separator=",">
+                (#{row.documentId}, #{row.chunkIndex}, #{row.chunkText}, #{row.chunkHash},
+                 #{row.filename}, #{row.category}, #{row.keywords}, #{row.pageNo}, #{row.rowIndex},
+                 #{row.parentChunkId}, #{row.chunkRole})
+              </foreach>
+            </script>
+            """)
+  @Options(useGeneratedKeys = true, keyProperty = "id")
+  int insertBatch(List<DocumentVectorChunkEntity> rows);
 
   /**
    * 物理删除文档全部切片行（提案4 任务 4.1，reingest 幂等前置）。

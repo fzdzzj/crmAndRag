@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
@@ -75,6 +76,39 @@ class DocumentIngestionServiceTest {
   @Mock private ObjectProvider<TokenUsageRecorder> usageRecorderProvider;
   @Mock private TokenUsageRecorder usageRecorder;
 
+  /** 批写桩快照：生产实现复用同一批缓冲并在写入后 clear，故必须按调用快照行内容而非持有缓冲引用。 */
+  private final List<List<DocumentVectorChunkEntity>> persistedBatches =
+      new java.util.ArrayList<>();
+
+  /** 批写生成键序列（每次重置，保证两次重建的 chunkId 可比）。 */
+  private final java.util.concurrent.atomic.AtomicLong idSequence =
+      new java.util.concurrent.atomic.AtomicLong(100);
+
+  /**
+   * 批写桩（update-document-chunk-write-batching）：按行序逐行回填自增主键并快照本批实际写入行， 使断言仍按「逻辑行」口径（3/4/24 行等）而非物理
+   * INSERT 次数。
+   */
+  private void stubBatchInsert() {
+    persistedBatches.clear();
+    idSequence.set(100);
+    doAnswer(
+            invocation -> {
+              List<DocumentVectorChunkEntity> rows = invocation.getArgument(0);
+              persistedBatches.add(new java.util.ArrayList<>(rows));
+              for (DocumentVectorChunkEntity row : rows) {
+                row.setId(idSequence.getAndIncrement());
+              }
+              return rows.size();
+            })
+        .when(chunkMapper)
+        .insertBatch(any());
+  }
+
+  /** 全部批写行按落库顺序展平（父块批在前、子块批在后），供逻辑行口径断言复用。 */
+  private List<DocumentVectorChunkEntity> persistedRows() {
+    return persistedBatches.stream().flatMap(List::stream).toList();
+  }
+
   @BeforeEach
   void setUp() {
     KnowledgeBaseEntity knowledgeBase = new KnowledgeBaseEntity();
@@ -87,12 +121,7 @@ class DocumentIngestionServiceTest {
     when(fileStorageService.open(anyString()))
         .thenAnswer(
             invocation -> new ByteArrayInputStream("file-body".getBytes(StandardCharsets.UTF_8)));
-    when(chunkMapper.insert(any(DocumentVectorChunkEntity.class)))
-        .thenAnswer(
-            invocation -> {
-              invocation.getArgument(0, DocumentVectorChunkEntity.class).setId(100L);
-              return 1;
-            });
+    stubBatchInsert();
     when(embeddingService.embed(anyString())).thenReturn(new float[] {1f, 0f});
   }
 
@@ -141,11 +170,9 @@ class DocumentIngestionServiceTest {
     assertThat(embedArgs.getAllValues().get(1)).startsWith("【a.txt | crm | 第3行】").contains("切片正文二");
 
     // 展示分离：DB chunk_text 与向量记录文本均为原文，不含头前缀
-    ArgumentCaptor<DocumentVectorChunkEntity> entities =
-        ArgumentCaptor.forClass(DocumentVectorChunkEntity.class);
-    org.mockito.Mockito.verify(chunkMapper, org.mockito.Mockito.times(2))
-        .insert(entities.capture());
-    assertThat(entities.getAllValues())
+    // 批写口径（不放宽）：2 个无父块子块 → 恰 1 次受限批次调用，仍 2 个逻辑行
+    org.mockito.Mockito.verify(chunkMapper, org.mockito.Mockito.times(1)).insertBatch(any());
+    assertThat(persistedRows())
         .extracting(DocumentVectorChunkEntity::getChunkText)
         .containsExactly("切片正文一", "切片正文二");
 
@@ -175,26 +202,31 @@ class DocumentIngestionServiceTest {
                 new DocumentChunk("独立切片", 2, 3, null, "crm", List.of(), null)));
     ingest();
 
-    ArgumentCaptor<DocumentVectorChunkEntity> inserts =
-        ArgumentCaptor.forClass(DocumentVectorChunkEntity.class);
-    org.mockito.Mockito.verify(chunkMapper, org.mockito.Mockito.times(4)).insert(inserts.capture());
-    List<DocumentVectorChunkEntity> rows = inserts.getAllValues();
+    // 批写形状（不放宽）：父块批 1 行 + 子块批 3 行 = 4 个逻辑行、2 次受限批次调用，父块批先行
+    org.mockito.Mockito.verify(chunkMapper, org.mockito.Mockito.times(2)).insertBatch(any());
+    assertThat(persistedBatches).hasSize(2);
+    assertThat(persistedBatches.get(0)).as("父块批必须先行且只含父块行").hasSize(1);
+    assertThat(persistedBatches.get(1)).as("子块批含 3 个子块逻辑行").hasSize(3);
 
     // 父块行先落库（子块要挂它的主键）：role/text/锚点/编号隔离全对齐
-    DocumentVectorChunkEntity parent = rows.get(0);
+    DocumentVectorChunkEntity parent = persistedBatches.get(0).get(0);
     assertThat(parent.getChunkRole()).isEqualTo("PARENT");
     assertThat(parent.getChunkText()).isEqualTo("第2页逻辑段全文");
     assertThat(parent.getChunkIndex()).as("父块从子块总数+1 起编号，与子块序号空间隔离").isEqualTo(4);
     assertThat(parent.getPageNo()).isEqualTo(2);
     assertThat(parent.getId()).isNotNull();
 
-    assertThat(rows.get(1).getChunkRole()).isEqualTo("CHILD");
-    assertThat(rows.get(1).getParentChunkId()).isEqualTo(parent.getId());
-    assertThat(rows.get(2).getParentChunkId()).isEqualTo(parent.getId());
+    List<DocumentVectorChunkEntity> children = persistedBatches.get(1);
+    assertThat(children.get(0).getChunkRole()).isEqualTo("CHILD");
+    assertThat(children.get(0).getParentChunkId()).isEqualTo(parent.getId());
+    assertThat(children.get(1).getParentChunkId()).isEqualTo(parent.getId());
     // 单片逻辑段（独立切片）：自身即父块，不挂父块行
-    assertThat(rows.get(3).getChunkText()).isEqualTo("独立切片");
-    assertThat(rows.get(3).getParentChunkId()).isNull();
-    assertThat(rows.get(3).getChunkRole()).isEqualTo("CHILD");
+    assertThat(children.get(2).getChunkText()).isEqualTo("独立切片");
+    assertThat(children.get(2).getParentChunkId()).isNull();
+    assertThat(children.get(2).getChunkRole()).isEqualTo("CHILD");
+    assertThat(children)
+        .extracting(DocumentVectorChunkEntity::getChunkIndex)
+        .containsExactly(0, 1, 2);
 
     // 父块是生成单元不是检索单元：只有 3 个子块被嵌入
     org.mockito.Mockito.verify(embeddingService, org.mockito.Mockito.times(3)).embed(anyString());
@@ -215,10 +247,9 @@ class DocumentIngestionServiceTest {
                 new DocumentChunk("切片丙", 2, 1, null, "crm", List.of(), null)));
     ingest();
 
-    ArgumentCaptor<DocumentVectorChunkEntity> inserts =
-        ArgumentCaptor.forClass(DocumentVectorChunkEntity.class);
-    org.mockito.Mockito.verify(chunkMapper, org.mockito.Mockito.times(3)).insert(inserts.capture());
-    assertThat(inserts.getAllValues())
+    // 批写口径（不放宽）：3 个无父块子块 → 恰 1 次受限批次调用，仍 3 个逻辑行
+    org.mockito.Mockito.verify(chunkMapper, org.mockito.Mockito.times(1)).insertBatch(any());
+    assertThat(persistedRows())
         .allSatisfy(
             row -> {
               assertThat(row.getChunkRole()).isEqualTo("CHILD");
@@ -318,18 +349,9 @@ class DocumentIngestionServiceTest {
 
   /** 单次重建的切片集合快照：文本+锚点+角色+父块链接（父块经 id 解析为文本），id 序列每次重置保证可比。 */
   private List<Map<String, Object>> runReingestCaptureChunkSet() throws Exception {
-    java.util.concurrent.atomic.AtomicInteger idSequence =
-        new java.util.concurrent.atomic.AtomicInteger(100);
-    List<DocumentVectorChunkEntity> inserted = new java.util.ArrayList<>();
-    when(chunkMapper.insert(any(DocumentVectorChunkEntity.class)))
-        .thenAnswer(
-            invocation -> {
-              DocumentVectorChunkEntity entity = invocation.getArgument(0);
-              entity.setId((long) idSequence.getAndIncrement());
-              inserted.add(entity);
-              return 1;
-            });
+    stubBatchInsert();
     service().reingest("doc-9", USER);
+    List<DocumentVectorChunkEntity> inserted = persistedRows();
     Map<Long, String> textById = new java.util.HashMap<>();
     for (DocumentVectorChunkEntity entity : inserted) {
       textById.put(entity.getId(), entity.getChunkText());
@@ -475,19 +497,9 @@ class DocumentIngestionServiceTest {
   /** 单次重建并返回本次 upsertAll 的衍生记录签名快照（主链调用不含衍生标记 → 空表被过滤）。 id 序列每次重置（100 起），保证两次重建的 chunkId 可比。 */
   private List<String> runReingestCapturingDerived(DocumentIngestionService ingestion)
       throws Exception {
-    java.util.concurrent.atomic.AtomicInteger idSequence =
-        new java.util.concurrent.atomic.AtomicInteger(100);
-    List<DocumentVectorChunkEntity> inserted = new java.util.ArrayList<>();
-    when(chunkMapper.insert(any(DocumentVectorChunkEntity.class)))
-        .thenAnswer(
-            invocation -> {
-              DocumentVectorChunkEntity entity = invocation.getArgument(0);
-              entity.setId((long) idSequence.getAndIncrement());
-              inserted.add(entity);
-              return 1;
-            });
+    stubBatchInsert();
     when(chunkMapper.selectList(any()))
-        .thenAnswer(invocation -> new java.util.ArrayList<>(inserted));
+        .thenAnswer(invocation -> new java.util.ArrayList<>(persistedRows()));
     List<List<String>> perCallSignatures = new java.util.ArrayList<>();
     org.mockito.Mockito.doAnswer(
             invocation -> {
