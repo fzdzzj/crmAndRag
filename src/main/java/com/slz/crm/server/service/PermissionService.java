@@ -20,6 +20,19 @@ public interface PermissionService {
   boolean hasPermission(Long userId, PermissionOperates targetPerm);
 
   /**
+   * 按「已加载用户的 roleId」判断权限。
+   *
+   * <p>update-project-file-list-auth-hotpath：热路径（如项目文件逐行记录级鉴权）在同一请求内已读到当前用户实体时， 复用其 {@code roleId}
+   * 即可，无需再按 userId 回查一次 {@code sys_user} 解析角色；判定口径与 {@link #hasPermission(Long,
+   * PermissionOperates)} 完全一致（都经 {@link #getPermissionList(Long)} 实时取角色权限链）。
+   *
+   * @param roleId 角色ID（来自本次请求已加载的用户实体/令牌）
+   * @param targetPerm 权限枚举
+   * @return 是否拥有权限
+   */
+  boolean hasPermissionByRoleId(Long roleId, PermissionOperates targetPerm);
+
+  /**
    * 判断权限是否在权限链表中
    *
    * @param targetPerm 权限枚举

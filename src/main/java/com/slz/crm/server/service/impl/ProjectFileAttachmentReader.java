@@ -54,21 +54,26 @@ class ProjectFileAttachmentReader {
     this.reservedRead = reservedRead;
   }
 
-  /** 非超管的记录级判定：项目文件可能同时挂多个归属维度，任一维度可读即放行； 无任何归属维度的独立上传文件仅上传人本人可见；其余走部门主管保留通道。 */
-  boolean canReadByDimension(ProjectFileEntity file, Long userId) {
+  /**
+   * 非超管的记录级判定：项目文件可能同时挂多个归属维度，任一维度可读即放行； 无任何归属维度的独立上传文件仅上传人本人可见；其余走部门主管保留通道。
+   *
+   * <p>update-project-file-list-auth-hotpath：{@code roleId} 来自调用方同一请求内已加载的用户实体， 维度权限判定复用该角色值， 不再按
+   * userId 回查 {@code sys_user}；用户状态闸门与超管闸门仍由主服务在调用前实时校验。
+   */
+  boolean canReadByDimension(ProjectFileEntity file, Long userId, Long roleId) {
     boolean result = false;
     boolean hasDimension = file.getActivityId() != null || file.getOpportunityId() != null;
     if (file.getActivityId() != null) {
       result =
           canReadBusinessActivityAttachments(
-              file.getActivityId(), userId, ModelName.BUSINESS_ACTIVITY);
+              file.getActivityId(), userId, roleId, ModelName.BUSINESS_ACTIVITY);
     }
     if (!result && file.getOpportunityId() != null) {
-      result = canReadSalesOpportunity(file.getOpportunityId(), userId);
+      result = canReadSalesOpportunity(file.getOpportunityId(), userId, roleId);
     }
     if (!result) {
       Long contractId = resolveContractId(file);
-      if (contractId != null && canReadContract(contractId, userId)) {
+      if (contractId != null && canReadContract(contractId, userId, roleId)) {
         result = true;
       } else if (!hasDimension && contractId == null) {
         // 无任何归属维度的独立上传文件：仅上传人本人可见（超管已在主服务放行）
@@ -80,10 +85,16 @@ class ProjectFileAttachmentReader {
     return result;
   }
 
-  /** 活动附件记录级校验：模块查看权限 + 创建人/参与人，或部门主管预留通道；被主服务活动分支复用。 */
-  boolean canReadBusinessActivityAttachments(Long recordId, Long userId, String modelName) {
+  /**
+   * 活动附件记录级校验：模块查看权限 + 创建人/参与人，或部门主管预留通道；被主服务活动分支复用。
+   *
+   * <p>update-project-file-list-auth-hotpath：查看权限按调用方传入的 {@code roleId} 判定，省掉按 userId 回查用户解析角色。
+   */
+  boolean canReadBusinessActivityAttachments(
+      Long recordId, Long userId, Long roleId, String modelName) {
     boolean hasViewPermission =
-        permissionService.hasPermission(userId, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY);
+        permissionService.hasPermissionByRoleId(
+            roleId, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY);
     BusinessActivityEntity activity =
         hasViewPermission ? businessActivityMapper.selectById(recordId) : null;
     boolean recordVisible =
@@ -93,9 +104,10 @@ class ProjectFileAttachmentReader {
     return recordVisible || reservedRead.reserved(modelName, recordId, userId);
   }
 
-  private boolean canReadSalesOpportunity(Long opportunityId, Long userId) {
+  private boolean canReadSalesOpportunity(Long opportunityId, Long userId, Long roleId) {
     boolean hasViewPermission =
-        permissionService.hasPermission(userId, PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY);
+        permissionService.hasPermissionByRoleId(
+            roleId, PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY);
     SalesOpportunityEntity opportunity =
         hasViewPermission ? salesOpportunityMapper.selectById(opportunityId) : null;
     return opportunity != null
@@ -104,9 +116,9 @@ class ProjectFileAttachmentReader {
             || Objects.equals(opportunity.getApproverId(), userId));
   }
 
-  private boolean canReadContract(Long contractId, Long userId) {
+  private boolean canReadContract(Long contractId, Long userId, Long roleId) {
     boolean hasViewPermission =
-        permissionService.hasPermission(userId, PermissionOperates.SALES_VIEW_CONTRACT);
+        permissionService.hasPermissionByRoleId(roleId, PermissionOperates.SALES_VIEW_CONTRACT);
     ContractEntity contract = hasViewPermission ? contractMapper.selectById(contractId) : null;
     return contract != null
         && (Objects.equals(contract.getOwnerId(), userId)

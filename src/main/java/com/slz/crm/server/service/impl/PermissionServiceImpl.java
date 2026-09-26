@@ -34,12 +34,20 @@ public class PermissionServiceImpl extends ServiceImpl<PermissionsMapper, Permis
 
   @Override
   public boolean hasPermission(Long userId, PermissionOperates targetPerm) {
-    return hasPermission(
-        targetPerm,
-        getPermissionList(
-            userMapper
-                .selectOne(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getId, userId))
-                .getRoleId()));
+    return hasPermissionByRoleId(
+        userMapper
+            .selectOne(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getId, userId))
+            .getRoleId(),
+        targetPerm);
+  }
+
+  /**
+   * update-project-file-list-auth-hotpath：复用调用方已加载用户的 roleId，省掉一次 {@code sys_user} 回查； 权限链仍按 roleId
+   * 实时查库，语义与 {@link #hasPermission(Long, PermissionOperates)} 等价。
+   */
+  @Override
+  public boolean hasPermissionByRoleId(Long roleId, PermissionOperates targetPerm) {
+    return hasPermission(targetPerm, getPermissionList(roleId));
   }
 
   @Override

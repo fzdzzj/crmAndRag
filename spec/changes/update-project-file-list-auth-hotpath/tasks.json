@@ -1,0 +1,57 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：范围与安全入口",
+    "task": "冻结分页权限和本机隔离条件",
+    "steps": [
+      {"step": "核实权威树 HEAD/脏文件与权限矩阵，锁定 queryPage、total、records、签发及下载复核原有口径", "completed": true},
+      {"step": "非默认发现的显式 opt-in 真 MySQL 基准，Docker/镜像只读预检，种子及令牌仅本地假身份，不连业务库", "completed": true},
+      {"step": "守卫测试证实默认门禁不启动容器，缺开关/镜像 fail closed，ThreadLocal/测试用户在 finally 清理", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：新鲜请求级前测",
+    "task": "按权限分布量 SQL、端到端和资源",
+    "steps": [
+      {"step": "固定 10/50/100 页、全可见/部分可见/全无权/超管和业务归属组合，记录页面与令牌输出", "completed": true},
+      {"step": "每条件至少两独立执行并区分冷暖缓存、预热/计时，逐请求计数分页/用户/权限/关联 SQL 和耗时", "completed": true},
+      {"step": "写明 P50/P95、吞吐、失败/资源和实际主导段；没有可复现单类主因则报告 no-go，不改生产代码", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：仅一类条件优化",
+    "task": "有明确主因才收敛安全读取",
+    "steps": [
+      {"step": "仅针对前测领先一类选择窄改，不做跨请求授权缓存、不改 total/分页 SQL 或下载实时复核", "completed": true},
+      {"step": "如复用页内判定，先覆盖并发撤权/签发时序；无法等价则保留二次判断改其下方其他可复用 DB 数据", "completed": true},
+      {"step": "写可见/不可见混合、多归属 OR、订单反查合同、独立上传、超管/离职及 listBy* 受影响面回归", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：同负载复测与判定",
+    "task": "以请求收益及安全等价为准",
+    "steps": [
+      {"step": "复用相同种子/权限快照/缓存状态，至少两独立执行复测 P50/P95、吞吐、分段 SQL 和资源", "completed": true},
+      {"step": "逐页断言 total/ID顺序/链接用户与下载撤权再校验，失败与不满页不伪装等价", "completed": true},
+      {"step": "收益不稳、资源或 P95 退化、权限输出不等价即 no-go；报告负结果不提交生产实现", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：门禁与有条件收尾",
+    "task": "一轮完成证据和可验收交付",
+    "steps": [
+      {"step": "定向单测/真库 opt-in、默认 merge-gate、git diff --check；明列默认门禁不含 failsafe IT", "completed": true},
+      {"step": "新报告保存前后数字/结论与未知；测试基线如需变化只由真实干净运行 --update，保护未跟踪文档", "completed": true},
+      {"step": "仅主验收成立在 codex 分支精确提交并 --no-ff 合 master，核双亲/差异/两树状态；不 push/归档", "completed": false}
+    ],
+    "passes": false
+  }
+]
