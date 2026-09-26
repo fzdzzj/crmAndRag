@@ -1054,6 +1054,7 @@ final class HotpathConcurrencyAttribution {
     names[RepresentativeHotpathBenchmark.Counters.INSERT_CHILD_CALLS] = "insert_child_calls";
     names[RepresentativeHotpathBenchmark.Counters.INSERT_PARENT_CALLS] = "insert_parent_calls";
     names[RepresentativeHotpathBenchmark.Counters.INSERT_NANOS] = "insert_us";
+    names[RepresentativeHotpathBenchmark.Counters.INSERT_BATCH_CALLS] = "insert_batch_calls";
     names[RepresentativeHotpathBenchmark.Counters.FILE_SQL_CALLS] = "file_calls";
     names[RepresentativeHotpathBenchmark.Counters.FILE_SQL_NANOS] = "file_us";
     names[RepresentativeHotpathBenchmark.Counters.CONN_CALLS] = "conn_calls";

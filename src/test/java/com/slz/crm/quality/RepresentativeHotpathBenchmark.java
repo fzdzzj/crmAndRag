@@ -197,8 +197,16 @@ class RepresentativeHotpathBenchmark {
   /** 摄取每文档授权/库读取 SQL（knowledge_base selectById；owner 短路不再查成员表）。 */
   private static final long AUTH_SQL_PER_INGEST = 1;
 
-  /** 摄取每文档 SQL（库读取 1 + 子块 insert 24 + 文件 insert 1 + 文件 update 1）。 */
-  private static final long SQL_PER_INGEST = 27;
+  /**
+   * 摄取每文档可观测 Mapper 调用数（库读取 1 + 子块受限批次 1 + 文件 insert 1 + 文件 update 1）。
+   *
+   * <p>口径：这是<b>可观测的 Mapper 调用次数</b>（每次调用经 {@code timed} 代理记 1 次），不是物理数据库执行次数、网络往返或 commit
+   * 次数——后者在本基准不可观测，一律 unknown。24 个逻辑子块行的口径由 {@link Counters#INSERT_CHILD_CALLS} 单独保留并断言。
+   */
+  private static final long SQL_PER_INGEST = 4;
+
+  /** 摄取每文档可观测批次写库调用次数（24 子块受 PERSIST_BATCH_SIZE=64 上限约束 → 1 批）。 */
+  private static final long INSERT_BATCH_PER_INGEST = 1;
 
   /** 共享分段计数器。 */
   private final Counters counters = new Counters();
@@ -851,12 +859,21 @@ class RepresentativeHotpathBenchmark {
   private void assertIngestTotals(int samples) {
     long[] after = counters.snapshot();
     assertDelta(after, Counters.EMBED_CALLS, samples * INGEST_CHUNK_TARGET, "每子块 1 次嵌入");
-    assertDelta(after, Counters.INSERT_CHILD_CALLS, samples * INGEST_CHUNK_TARGET, "子块行 = 24/文档");
-    assertDelta(after, Counters.INSERT_PARENT_CALLS, 0L, "父块行 = 0（fixed 无父块）");
+    assertDelta(after, Counters.INSERT_CHILD_CALLS, samples * INGEST_CHUNK_TARGET, "子块逻辑行 = 24/文档");
+    assertDelta(after, Counters.INSERT_PARENT_CALLS, 0L, "父块逻辑行 = 0（fixed 无父块）");
+    assertDelta(
+        after,
+        Counters.INSERT_BATCH_CALLS,
+        samples * INSERT_BATCH_PER_INGEST,
+        "每文档 1 次可观测批次写库调用（物理执行/往返/commit 不可观测）");
     assertDelta(after, Counters.QDRANT_UPSERT_CALLS, samples, "整文档一次 upsertAll");
     assertDelta(after, Counters.QDRANT_SEARCH_CALLS, 0L, "摄取不检索");
     assertDelta(after, Counters.AUTH_SQL_CALLS, samples * AUTH_SQL_PER_INGEST, "每文档 1 条库读取 SQL");
-    assertDelta(after, Counters.SQL_CALLS, samples * SQL_PER_INGEST, "每文档 27 条 SQL（库读取+切片+文件）");
+    assertDelta(
+        after,
+        Counters.SQL_CALLS,
+        samples * SQL_PER_INGEST,
+        "每文档 4 次可观测 Mapper 调用（库读取+批次切片+文件 insert+文件 update）");
   }
 
   private static void assertDelta(
@@ -1537,7 +1554,11 @@ class RepresentativeHotpathBenchmark {
     static final int PARSE_NANOS = 34;
     static final int SELECT_BATCH_CALLS = 36;
     static final int SELECT_BATCH_NANOS = 37;
-    static final int COUNTER_COUNT = 38;
+
+    /** 可观测的切片批次写库 Mapper 调用次数（每次 insertBatch 记 1）；物理语句/往返/commit 次数不可观测。 */
+    static final int INSERT_BATCH_CALLS = 38;
+
+    static final int COUNTER_COUNT = 39;
 
     private final LongAdder[] values = new LongAdder[COUNTER_COUNT];
     private final List<String> searchedKbIds = Collections.synchronizedList(new ArrayList<>());
@@ -1673,6 +1694,25 @@ class RepresentativeHotpathBenchmark {
                               && "PARENT".equalsIgnoreCase(entity.getChunkRole());
                       counters.add(
                           parent ? Counters.INSERT_PARENT_CALLS : Counters.INSERT_CHILD_CALLS, 1);
+                      counters.add(Counters.INSERT_NANOS, nanos);
+                    }
+                  }
+                  case "insertBatch" -> {
+                    // 批次写库（update-document-chunk-write-batching）：逻辑行仍逐行计入
+                    // INSERT_CHILD/PARENT_CALLS，另记可观测批次调用次数；物理执行/往返/commit 不可观测。
+                    if (type == DocumentVectorChunkMapper.class) {
+                      Object arg = args == null || args.length == 0 ? null : args[0];
+                      if (arg instanceof Iterable<?> rows) {
+                        for (Object row : rows) {
+                          boolean parent =
+                              row instanceof DocumentVectorChunkEntity entity
+                                  && "PARENT".equalsIgnoreCase(entity.getChunkRole());
+                          counters.add(
+                              parent ? Counters.INSERT_PARENT_CALLS : Counters.INSERT_CHILD_CALLS,
+                              1);
+                        }
+                      }
+                      counters.add(Counters.INSERT_BATCH_CALLS, 1);
                       counters.add(Counters.INSERT_NANOS, nanos);
                     }
                   }

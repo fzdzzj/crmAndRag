@@ -617,6 +617,7 @@ class RequestHotpathBaselineTest {
       public Object invoke(Object proxy, Method method, Object[] args) {
         return switch (method.getName()) {
           case "insert" -> insert(args[0]);
+          case "insertBatch" -> insertBatch(args[0]);
           case "selectById" -> selectById(args.length > 0 ? args[0] : null);
           case "selectBatchIds" -> selectBatchIds(args.length > 0 ? args[0] : null);
           case "selectList" -> selectList(args.length > 0 ? args[0] : null);
@@ -645,6 +646,23 @@ class RequestHotpathBaselineTest {
           return 1;
         }
         return defaultReturn(int.class);
+      }
+
+      /**
+       * 批次写库桩：逐行走同一 {@link #insert(Object)}（分配自增主键 + 角色计数），返回批内行数。
+       *
+       * <p>口径：{@code INSERT_CHILD_CALLS}/{@code INSERT_PARENT_CALLS}
+       * 恒为<b>逻辑行</b>（切片行数），与批写实现的物理批次调用次数无关； 本桩不建模真实数据库执行次数、网络往返与 commit。
+       */
+      private Object insertBatch(Object rowsArg) {
+        int count = 0;
+        if (rowsArg instanceof Iterable<?> iterable) {
+          for (Object row : iterable) {
+            insert(row);
+            count++;
+          }
+        }
+        return count;
       }
 
       private DocumentVectorChunkEntity selectById(Object id) {

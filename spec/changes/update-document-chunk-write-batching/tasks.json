@@ -1,0 +1,57 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：前测与可行性",
+    "task": "先锁定旧路径负载和生成键约束",
+    "steps": [
+      {"step": "核对权威 HEAD、工作树、旧文档与现有 ingest/reingest 失败语义；保护未跟踪候选清单", "completed": true},
+      {"step": "旧代码安全 opt-in 真存储至少两独立执行，固定 c4/24 子块与每轮样本，记录端到端和写库分段/资源", "completed": true},
+      {"step": "一次性 MySQL 试验批次自增 ID 回填、父块先行及部分失败；不可靠即停止生产实现并报告", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：仅写库变更",
+    "task": "以有限批次保持行与主键语义",
+    "steps": [
+      {"step": "只在切片写入协作层实现受限批次，保持父块生成 ID 后关联子块、子块 ID 后组装向量引用", "completed": true},
+      {"step": "事务只覆盖必要数据库写入，不能跨解析/文件/embedding/Qdrant/异步旁路，记录执行和提交次数", "completed": true},
+      {"step": "固定和语义切分均核对 chunkIndex/角色/父子关系/文本/锚点/返回顺序；大文档批次参数有界", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：回归与失败补偿",
+    "task": "真库验证部分失败和重建幂等",
+    "steps": [
+      {"step": "真 MySQL 或等价测试验证生成键逐行回填，断言 24 逻辑子行及父/子 ID 与向量 chunkId 一一对应", "completed": true},
+      {"step": "注入批次中途/ID 回填/嵌入/upsert/清理子操作失败，验证尽力清理、FAILED 状态、告警与残留风险", "completed": true},
+      {"step": "覆盖 reingest 物理删旧行/再次执行、写授权与审计，更新基准桩的精确逻辑行和物理提交断言不放宽", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：复测与裁决",
+    "task": "以端到端收益作主验收",
+    "steps": [
+      {"step": "同种子假模型与相同样本后测至少两独立执行，逐轮对齐 c4 r1/r2 并记录失败/资源", "completed": true},
+      {"step": "新报告分开记录逻辑 24 行、可观测的物理执行/提交（缺测标 unknown）、写库段与端到端 P50/P95/吞吐", "completed": true},
+      {"step": "端到端改善不一致或不超前测噪声、P95/失败退化时明确否决生产代码合入，不以分段改善替代", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：门禁与有条件交付",
+    "task": "一次执行轮次完成验证和收尾",
+    "steps": [
+      {"step": "定向测试/默认 merge-gate/git diff --check 实跑，区分 opt-in 真库实验与未跑 failsafe IT", "completed": true},
+      {"step": "核对仅本案文件；必要基线更新只从真实干净运行经脚本写入，保护旧报告和未跟踪文档", "completed": true},
+      {"step": "仅主验收成立才在 codex 分支提交并 --no-ff 合 master，核双亲/第一父差异；无新 push/归档授权", "completed": true}
+    ],
+    "passes": true
+  }
+]

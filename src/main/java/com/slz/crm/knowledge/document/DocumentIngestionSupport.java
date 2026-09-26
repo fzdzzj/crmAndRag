@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,6 +25,9 @@ final class DocumentIngestionSupport {
   static final String CHUNK_ROLE_CHILD = "CHILD";
 
   static final String CHUNK_ROLE_PARENT = "PARENT";
+
+  /** 切片写库单批上限（update-document-chunk-write-batching）：固定有界，避免构造无界 SQL/参数或随块数无界的批处理缓冲。 */
+  static final int PERSIST_BATCH_SIZE = 64;
 
   private DocumentIngestionSupport() {}
 
@@ -65,6 +69,9 @@ final class DocumentIngestionSupport {
    *
    * <p>父块行不嵌入、不产向量记录——父块是生成单元不是检索单元（稀疏召回与邻居 增强只消费 CHILD 行）。
    *
+   * <p>写库批次化（update-document-chunk-write-batching）：父块与子块各以固定上限的受限批次多行 INSERT 落库 （父块先取得自增 ID，再把
+   * parent_chunk_id 写给子块），行数/顺序/锚点/角色/父子分组与逐条写库一致。
+   *
    * @return 已落库的子块行（按 chunkIndex 升序，即向量写库与计数的口径）
    */
   private static List<DocumentVectorChunkEntity> persistChunks(
@@ -72,29 +79,65 @@ final class DocumentIngestionSupport {
       List<DocumentChunk> chunks,
       DocumentVectorChunkMapper chunkMapper,
       DocumentService documentService) {
-    List<DocumentVectorChunkEntity> children = new ArrayList<>(chunks.size());
+    // 第一遍：父块按逻辑段批量落库取得自增主键（子块第二遍才能挂 parent_chunk_id）。
+    // 批次缓冲固定上限；父块引用表以逻辑段起点为键，规模 ≤ 子块数，与既有 children 同量级，不是批处理缓冲。
+    Map<Integer, DocumentVectorChunkEntity> parentByRunStart = new HashMap<>();
+    List<DocumentVectorChunkEntity> batch = new ArrayList<>(PERSIST_BATCH_SIZE);
     int index = 0;
     int parentOrdinal = 0;
     while (index < chunks.size()) {
       int runEnd = groupRunEnd(chunks, index);
-      DocumentVectorChunkEntity parent = null;
       if (runEnd - index >= 2) {
-        parent = createParentEntity(file, chunks.get(index), documentService);
+        DocumentVectorChunkEntity parent =
+            createParentEntity(file, chunks.get(index), documentService);
         parent.setChunkIndex(chunks.size() + 1 + parentOrdinal);
         parentOrdinal++;
-        chunkMapper.insert(parent);
+        parentByRunStart.put(index, parent);
+        batch.add(parent);
+        if (batch.size() == PERSIST_BATCH_SIZE) {
+          persistBatch(chunkMapper, batch);
+        }
       }
+      index = runEnd;
+    }
+    persistBatch(chunkMapper, batch);
+
+    // 第二遍：子块按 chunkIndex 原顺序批量落库，父块 ID 已可用；返回顺序与逐条写入一致。
+    List<DocumentVectorChunkEntity> children = new ArrayList<>(chunks.size());
+    index = 0;
+    while (index < chunks.size()) {
+      int runEnd = groupRunEnd(chunks, index);
+      DocumentVectorChunkEntity parent = parentByRunStart.get(index);
       for (int i = index; i < runEnd; i++) {
         DocumentVectorChunkEntity entity = createChunkEntity(file, chunks.get(i));
         if (parent != null) {
           entity.setParentChunkId(parent.getId());
         }
-        chunkMapper.insert(entity);
+        batch.add(entity);
         children.add(entity);
+        if (batch.size() == PERSIST_BATCH_SIZE) {
+          persistBatch(chunkMapper, batch);
+        }
       }
       index = runEnd;
     }
+    persistBatch(chunkMapper, batch);
     return children;
+  }
+
+  /** 有界批次写入并在生成键回填后清空缓冲；任一行缺主键即按生成键不完整失败，交上层走现有失败清理语义。 */
+  private static void persistBatch(
+      DocumentVectorChunkMapper chunkMapper, List<DocumentVectorChunkEntity> batch) {
+    if (batch.isEmpty()) {
+      return;
+    }
+    chunkMapper.insertBatch(batch);
+    for (DocumentVectorChunkEntity row : batch) {
+      if (row.getId() == null) {
+        throw new IllegalStateException("切片批次主键回填不完整: documentId=" + row.getDocumentId());
+      }
+    }
+    batch.clear();
   }
 
   /** 从 index 起的同一逻辑段连续区段：parentText 非空逐字相同且页锚点一致才延续。 */
