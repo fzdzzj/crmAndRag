@@ -587,6 +587,8 @@ final class HotpathConcurrencyAttribution {
                 + segmentMillis(span, RepresentativeHotpathBenchmark.Counters.FULLTEXT_NANOS)
                 + " parent_ms="
                 + segmentMillis(span, RepresentativeHotpathBenchmark.Counters.SELECT_BY_ID_NANOS)
+                + " batch_ms="
+                + segmentMillis(span, RepresentativeHotpathBenchmark.Counters.SELECT_BATCH_NANOS)
                 + " neighbor_ms="
                 + segmentMillis(span, RepresentativeHotpathBenchmark.Counters.SELECT_LIST_NANOS)
                 + " qdrant_ms="
@@ -1045,6 +1047,8 @@ final class HotpathConcurrencyAttribution {
     names[RepresentativeHotpathBenchmark.Counters.FULLTEXT_NANOS] = "sparse_us";
     names[RepresentativeHotpathBenchmark.Counters.SELECT_BY_ID_CALLS] = "parent_calls";
     names[RepresentativeHotpathBenchmark.Counters.SELECT_BY_ID_NANOS] = "parent_us";
+    names[RepresentativeHotpathBenchmark.Counters.SELECT_BATCH_CALLS] = "batch_calls";
+    names[RepresentativeHotpathBenchmark.Counters.SELECT_BATCH_NANOS] = "batch_us";
     names[RepresentativeHotpathBenchmark.Counters.SELECT_LIST_CALLS] = "neighbor_calls";
     names[RepresentativeHotpathBenchmark.Counters.SELECT_LIST_NANOS] = "neighbor_us";
     names[RepresentativeHotpathBenchmark.Counters.INSERT_CHILD_CALLS] = "insert_child_calls";

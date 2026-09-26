@@ -5,7 +5,9 @@ import com.slz.crm.knowledge.entity.DocumentVectorChunkEntity;
 import com.slz.crm.platform.contract.VectorSearchHit;
 import com.slz.crm.server.mapper.DocumentVectorChunkMapper;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,12 +15,21 @@ import org.slf4j.LoggerFactory;
  * 邻居上下文拼装支持类（tighten-pmd-residual-325 任务 6.3 自 ContextBuilder 拆出，行为等价）。 对每个命中块按 {@code documentId +
  * 相邻 chunkIndex} 从 {@code document_vector_chunk} 快照表取前/后邻居（chunkIndex 为全文档切片序号、0 起，故 ±1
  * 即紧邻；同一序号多行按「同页优先 + 主键小者」确定性取舍），拼装为「[n]（前文承接）邻居 / 命中块 / （后文承接）邻居」。
+ *
+ * <p>快照批读（update-context-snapshot-batch-read）：多命中的邻居行按 {@code document_id IN + chunk_index IN +
+ * chunk_role=CHILD} 有界批次一次取回，批查失败时仅受影响批次按旧路径逐命中回查一次后按原语义降级，
+ * 不做无上限重试；行级过滤（同文档、目标序号、同页优先）与逐命中查询完全一致，输出逐字等价。
  */
 final class NeighborContextSupport {
   private static final Logger LOG = LoggerFactory.getLogger(NeighborContextSupport.class);
 
   /** 快照表只把 CHILD 行当邻居候选（PARENT 父块行占独立 chunk_index 空间，不作邻居）。 */
   static final String CHUNK_ROLE_CHILD = "CHILD";
+
+  /**
+   * 单批安全参数上限（update-context-snapshot-batch-read）：IN 集合按命中数分批， 不生成无界 IN 参数；超限候选拆为多个有限批次，任何命中都不省略。
+   */
+  static final int SNAPSHOT_BATCH_LIMIT = 500;
 
   private static final String PREV_LABEL = "（前文承接）";
   private static final String NEXT_LABEL = "（后文承接）";
@@ -27,26 +38,26 @@ final class NeighborContextSupport {
 
   static String assembleWithNeighbors(
       List<RetrievalCandidate> candidates, DocumentVectorChunkMapper chunkMapper) {
+    List<VectorSearchHit> hits = hits(candidates);
+    List<DocumentVectorChunkEntity> rows = fetchNeighborsBatched(hits, chunkMapper);
     StringBuilder builder = new StringBuilder();
     for (int index = 0; index < candidates.size(); index++) {
       if (index > 0) {
         builder.append('\n');
       }
-      VectorSearchHit hit = candidates.get(index).hit();
       builder.append('[').append(index + 1).append("] ");
-      appendWithNeighbors(builder, hit, chunkMapper);
+      appendWithNeighbors(builder, hits.get(index), rows);
     }
     return builder.toString();
   }
 
-  /** 命中块 + 前/后邻居拼装；邻居缺失（首末块/跨文档/快照表不可用）时静默跳过对应一侧。 */
+  /** 命中块 + 前/后邻居拼装（邻居行来自批次预取）；邻居缺失（首末块/跨文档/批查降级）时静默跳过对应一侧。 */
   static void appendWithNeighbors(
-      StringBuilder builder, VectorSearchHit hit, DocumentVectorChunkMapper chunkMapper) {
+      StringBuilder builder, VectorSearchHit hit, List<DocumentVectorChunkEntity> rows) {
     String hitText = hit.text() == null ? "" : hit.text().strip();
-    List<DocumentVectorChunkEntity> neighbors = fetchNeighbors(hit, chunkMapper);
     Integer hitChunkIndex = chunkIndex(hit);
-    DocumentVectorChunkEntity prev = neighborAt(neighbors, hitChunkIndex - 1, hit);
-    DocumentVectorChunkEntity next = neighborAt(neighbors, hitChunkIndex + 1, hit);
+    DocumentVectorChunkEntity prev = neighborAt(rows, hitChunkIndex - 1, hit);
+    DocumentVectorChunkEntity next = neighborAt(rows, hitChunkIndex + 1, hit);
     if (prev != null && !prev.getChunkText().isBlank()) {
       builder.append(PREV_LABEL).append(prev.getChunkText().strip()).append('\n');
     }
@@ -56,7 +67,71 @@ final class NeighborContextSupport {
     }
   }
 
-  /** 查询命中块的潜在邻居行（chunkIndex-1 与 chunkIndex+1，同文档）。 chunkIndex 缺失或查询失败时返回空列表（无邻居降级，不抛错）。 */
+  /**
+   * 多命中的邻居行批读（update-context-snapshot-batch-read）：一次查询取回本批全部 {@code (document_id, chunk_index±1)} 的
+   * CHILD 行，行内含跨文档/跨序号行由 {@link #neighborAt} 按命中逐个过滤。 批次大小受 {@link #SNAPSHOT_BATCH_LIMIT}
+   * 约束；批查失败时仅受影响批次按旧路径逐命中回查一次（原异常语义），仍失败按无邻居降级。
+   */
+  static List<DocumentVectorChunkEntity> fetchNeighborsBatched(
+      List<VectorSearchHit> hits, DocumentVectorChunkMapper chunkMapper) {
+    List<DocumentVectorChunkEntity> rows = new ArrayList<>();
+    for (int start = 0; start < hits.size(); start += SNAPSHOT_BATCH_LIMIT) {
+      rows.addAll(
+          fetchNeighborBatch(
+              hits.subList(start, Math.min(hits.size(), start + SNAPSHOT_BATCH_LIMIT)),
+              chunkMapper));
+    }
+    return rows;
+  }
+
+  /** 单批邻居行查询：批查失败时对受影响批次按旧路径逐命中回查一次（fetchNeighbors 原异常语义），不做无上限重试。 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // ORM查询边界：chunkMapper批查多源，失败按无邻居降级
+  private static List<DocumentVectorChunkEntity> fetchNeighborBatch(
+      List<VectorSearchHit> batch, DocumentVectorChunkMapper chunkMapper) {
+    Set<String> documentIds = new LinkedHashSet<>();
+    Set<Integer> indexes = new LinkedHashSet<>();
+    for (VectorSearchHit hit : batch) {
+      collectNeighborTargets(hit, documentIds, indexes);
+    }
+    List<DocumentVectorChunkEntity> result = new ArrayList<>();
+    if (!documentIds.isEmpty() && !indexes.isEmpty()) {
+      try {
+        result.addAll(
+            chunkMapper.selectList(
+                new QueryWrapper<DocumentVectorChunkEntity>()
+                    .in("document_id", documentIds)
+                    .eq("chunk_role", CHUNK_ROLE_CHILD)
+                    .in("chunk_index", indexes)));
+      } catch (Exception exception) {
+        LOG.warn("邻居切片批查失败，受影响命中按旧路径逐条回查: {}", exception.getMessage());
+        for (VectorSearchHit hit : batch) {
+          result.addAll(fetchNeighbors(hit, chunkMapper));
+        }
+      }
+    }
+    return result;
+  }
+
+  /** 收集单个命中的邻居查询目标（同文档 + 前后序号）；chunkIndex 缺失或 documentId 空白的命中不产生目标。 */
+  private static void collectNeighborTargets(
+      VectorSearchHit hit, Set<String> documentIds, Set<Integer> indexes) {
+    Integer chunkIndex = chunkIndex(hit);
+    if (chunkIndex != null
+        && chunkIndex >= 0
+        && hit.documentId() != null
+        && !hit.documentId().isBlank()) {
+      documentIds.add(hit.documentId());
+      if (chunkIndex > 0) {
+        indexes.add(chunkIndex - 1);
+      }
+      indexes.add(chunkIndex + 1);
+    }
+  }
+
+  /**
+   * 查询单个命中块的潜在邻居行（chunkIndex-1 与 chunkIndex+1，同文档）；仅批查失败后的有界回查复用。 chunkIndex
+   * 缺失或查询失败时返回空列表（无邻居降级，不抛错）。
+   */
   @SuppressWarnings("PMD.AvoidCatchingGenericException") // ORM查询边界：chunkMapper批查多源，失败按无邻居降级
   private static List<DocumentVectorChunkEntity> fetchNeighbors(
       VectorSearchHit hit, DocumentVectorChunkMapper chunkMapper) {
@@ -123,6 +198,15 @@ final class NeighborContextSupport {
               && candidate.getId() < current.getId();
     }
     return result;
+  }
+
+  /** 候选列表 → 命中列表（按原顺序）。 */
+  static List<VectorSearchHit> hits(List<RetrievalCandidate> candidates) {
+    List<VectorSearchHit> hits = new ArrayList<>(candidates.size());
+    for (RetrievalCandidate candidate : candidates) {
+      hits.add(candidate.hit());
+    }
+    return hits;
   }
 
   private static Integer chunkIndex(VectorSearchHit hit) {

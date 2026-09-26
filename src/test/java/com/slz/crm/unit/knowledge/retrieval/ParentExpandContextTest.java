@@ -100,8 +100,8 @@ class ParentExpandContextTest {
                     0.9d,
                     CHILD_TEXT,
                     Map.of("chunkIndex", 2, "filename", "sales.txt", "pageNo", 3L))));
-    when(chunkMapper.selectById(12L)).thenReturn(childRow(12L, 7L));
-    when(chunkMapper.selectById(7L)).thenReturn(parentRow(7L, PARENT_TEXT));
+    when(chunkMapper.selectBatchIds(List.of(12L))).thenReturn(List.of(childRow(12L, 7L)));
+    when(chunkMapper.selectBatchIds(List.of(7L))).thenReturn(List.of(parentRow(7L, PARENT_TEXT)));
 
     KnowledgeRetrievalPort.RetrievalResult result =
         service()
@@ -167,7 +167,7 @@ class ParentExpandContextTest {
                     0.8d,
                     "命中子块二：逾期口径",
                     Map.of("chunkIndex", 5, "filename", "sales.txt", "pageNo", 4L))));
-    when(chunkMapper.selectById(13L)).thenReturn(childRow(13L, null));
+    when(chunkMapper.selectBatchIds(List.of(13L))).thenReturn(List.of(childRow(13L, null)));
     when(chunkMapper.selectList(any()))
         .thenReturn(List.of(neighborRow(1L, "邻居一：合同审批前置流程"), neighborRow(3L, "邻居三：回款确认后续动作")));
 
@@ -177,8 +177,8 @@ class ParentExpandContextTest {
                 new KnowledgeRetrievalPort.RetrievalQuery(QUERY, 1L, List.of("1"), 2, null, null));
 
     assertThat(result.context()).contains("（前文承接）邻居一").contains("（后文承接）邻居三");
-    // 非数字占位 id 不查快照表；数字 id（未挂父块）查一次后回退邻居
-    verify(chunkMapper).selectById(13L);
+    // 非数字占位 id 不查快照表；数字 id（未挂父块）批查一次后回退邻居
+    verify(chunkMapper).selectBatchIds(List.of(13L));
     assertThat(result.sources())
         .extracting(SourceReference::excerpt)
         .containsExactly(CHILD_TEXT, "命中子块二：逾期口径");
@@ -197,8 +197,8 @@ class ParentExpandContextTest {
                     0.9d,
                     CHILD_TEXT,
                     Map.of("chunkIndex", 2, "filename", "sales.txt", "pageNo", 3L))));
-    when(chunkMapper.selectById(12L)).thenReturn(childRow(12L, 99L));
-    when(chunkMapper.selectById(99L)).thenReturn(null);
+    when(chunkMapper.selectBatchIds(List.of(12L))).thenReturn(List.of(childRow(12L, 99L)));
+    when(chunkMapper.selectBatchIds(List.of(99L))).thenReturn(List.of());
     when(chunkMapper.selectList(any())).thenReturn(List.of(neighborRow(1L, "邻居一：合同审批前置流程")));
 
     KnowledgeRetrievalPort.RetrievalResult result =
