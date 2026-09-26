@@ -54,16 +54,11 @@ class AttachmentModelScopeChecker {
     this.reservedWrite = reservedWrite;
   }
 
-  /**
-   * 非超管的读范围判定：按 modelName 路由到对应业务记录的参与人判定。
-   *
-   * <p>update-project-file-list-auth-hotpath：{@code roleId} 为调用方同一请求内已加载用户的角色值， 供活动分支复用（省掉一次 {@code
-   * sys_user} 回查）；其余分支签名与判定不变。
-   */
-  boolean canRead(String modelName, Long recordId, Long userId, Long roleId) {
+  /** 非超管的读范围判定：按 modelName 路由到对应业务记录的参与人判定。 */
+  boolean canRead(String modelName, Long recordId, Long userId) {
     return switch (modelName) {
       case ModelName.BUSINESS_ACTIVITY ->
-          projectFileReader.canReadBusinessActivityAttachments(recordId, userId, roleId, modelName);
+          projectFileReader.canReadBusinessActivityAttachments(recordId, userId, modelName);
       case ModelName.CONTACT_TASK -> canReadContactTaskAttachments(modelName, recordId, userId);
       case ModelName.SALES_STAGE_APPROVAL, ModelName.APPROVAL_ATTACHMENT ->
           canReadApprovalAttachments(modelName, recordId, userId);

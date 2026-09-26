@@ -14,7 +14,7 @@
 |---|---|
 | 数据库 | 一次性 Testcontainers MySQL `mysql:8.0`（本机既有镜像，只读 `inspect` 预检，**未 pull**） |
 | 建库方式 | **生产 Flyway 迁移链**（V1 基线 + V3/V4/V4_1/V5/V6 + V21..V28） |
-| 被调用实现 | `ProjectFileServiceImpl#queryPage/filterReadable/entityToVO`、`AttachmentAccessServiceImpl#canReadProjectFile/canReadAttachments`、`ProjectFileAttachmentReader#canReadByDimension`、`PermissionServiceImpl#hasPermission/hasPermissionByRoleId`、`DataConvertServiceImpl#getUserName` |
+| 被调用实现 | `ProjectFileServiceImpl#queryPage/filterReadable/entityToVO`、`AttachmentAccessServiceImpl#canReadProjectFile/canReadAttachments`、`ProjectFileAttachmentReader#canReadByDimension`、`PermissionServiceImpl#hasPermission`（经 `PermissionsMapper#getPermissionListByUserId` 联查当前角色）、`DataConvertServiceImpl#getUserName` |
 | Mapper / SQL | 真实 Mapper 与真实 SQL（MyBatis `Interceptor` 按 `MappedStatement.getId()` 分类计数与计时） |
 | 身份与数据 | 全部为**确定性假身份/假业务记录**（`ADMIN=1 / SALES=50 / FROZEN=51 / LEAVER=52 / OTHER=99`，业务记录 500–801，文件组 1000/2000/3000/4000） |
 | 令牌 | 本文件内 16 字节**本地常量密钥**签发；**不读任何真实凭据、不连业务库、不调用外部服务、不下载镜像** |
@@ -35,7 +35,7 @@
 | 生产 `@Cacheable` 真实 Spring 缓存管理器行为 | 以同语义本地壳近似，非生产实测 |
 | 网络 / 反向代理层耗时 | 不含 |
 | 生产真实数据规模（远超 120 条/组） | 未测 |
-| 并发撤权与列表签发之间的时序竞态窗口 | 未测（仅测「撤权后旧令牌被拒」） |
+| 并发改派角色与列表签发 / 下载复核之间的时序竞态窗口 | **已测**（确定性交错回归，见第 5.2 节：另一条独立连接在固定交错点改派并提交） |
 
 **固定负载**（`PFLHOT load`）：页大小 `[10, 50, 100]`、预热 3 次、每条件每轮采样 15 次、**每 run 2 轮独立执行**、并发相 8 线程 × 20 次、组大小 120 条/组、探针组 15 条。
 
@@ -109,7 +109,7 @@
 | PART-50-C8（8 线程） | WARM | 447.5/425.8 | 430.6/381.4 | 275.6/273.0 | 258.5/274.0 | -36.0%/-28.4% | -40.0%/-28.2% |
 | NONE-50-C8（8 线程） | WARM | 254.4/251.1 | 258.3/240.8 | 183.2/171.1 | 170.6/180.0 | -29.1%/-28.9% | -34.0%/-25.3% |
 
-**读法**：全部 11 个被改路径条件（ALL/PART/NONE × 3 页大小 + 2 并发相）在**全部 4 个配对格（2 run × 2 轮）**上 P50 均为负（下降），幅度 **-8.5% ~ -40.0%**。
+**读法**：全部 11 个被改路径条件（ALL/PART/NONE × 3 页大小 + 2 并发相）在 **WARM（稳态）的 4 个配对格（2 run × 2 轮：`d1` r1/r2、`d2` r1/r2）** 上 P50 均为负（下降），幅度 **-8.5% ~ -40.0%**。配对格统一取 WARM，以与并发相（仅 WARM）口径一致；COLD 行仅作原始数据留档，不计入本汇总。
 
 ### 3.2 P95（`e2e_p95_ms`）
 
@@ -142,7 +142,7 @@
 | PART-50-C8（8 线程） | WARM | 536.3/569.3 | 638.0/448.7 | 404.7/323.6 | 401.3/344.7 | -36.6%/-27.9% | -37.1%/-23.2% |
 | NONE-50-C8（8 线程） | WARM | 310.1/299.9 | 352.0/310.5 | 229.0/192.8 | 222.4/205.7 | -34.9%/-37.9% | -36.8%/-33.8% |
 
-**读法**：被改路径条件 44 个配对格中 39 格 P95 下降；5 格小幅正抖动，全部落在低延迟 COLD / 页大小 10 区间（`ALL-10 COLD r2 +2.9%`、`+5.7%`、`PART-10 COLD r1 +0.8%`、`NONE-10 WARM r1 +12.2%`、`ALL-100 COLD r1 +2.4%`、`PART-100 WARM r1 +3.8%`）。其中最大离群 `PART-10 COLD r1 +57.8%`（96.9→152.8ms）与 **同配置 PRE 两次 run 之间的自身跨度 131.6 vs 96.9（±36%）** 同量级，且同一条件在 POST-1 为 `+0.8%`、第二轮为 `-34.6%` —— 归因不支持「改动导致 P95 退化」。
+**读法**：被改路径条件在 **WARM（稳态）的 44 个配对格中 41 格 P95 下降、3 格小幅正抖动、0 格持平**。3 格正抖动是 `PART-100` 的 `d2` r1 `+3.8%`（939.9→975.3ms）、`NONE-10` 的 `d2` r1 `+12.2%`（66.0→74.0ms）与 r2 `+1.2%`（64.4→65.2ms）—— 均落在 PRE 两次 run 在同一条件上的自身跨度量级内（同条件 `NONE-10 WARM` PRE 两次 run 首轮为 158.5 vs 66.0ms，约 2.4×），绝对量最大仅 +35ms，且同条件其他格为正负交替，归因不支持「改动导致 P95 退化」。配对格统一取 WARM，以与并发相（仅 WARM）口径一致；COLD 行仅作原始数据留档，不计入本汇总。
 
 ### 3.3 成功吞吐（`throughput_req_s`）
 
@@ -175,7 +175,7 @@
 | PART-50-C8（8 线程） | WARM | 2.2/2.3 | 2.3/2.6 | 3.6/3.7 | 3.9/3.6 | 56.5%/42.3% | 69.6%/38.5% |
 | NONE-50-C8（8 线程） | WARM | 3.9/4.0 | 3.9/4.2 | 5.5/5.8 | 5.9/5.6 | 41.0%/38.1% | 51.3%/33.3% |
 
-**读法**：被改路径条件 **44/44 配对格吞吐全部上升**，幅度 **+10.0% ~ +69.6%**；并发相 +38% ~ +70%。未改路径条件（ADMIN-10 / FROZEN-10 / LEAVER-10）正负抖动均落在毫秒级绝对量（27~45ms）之内，方向不一致 —— 反证改动未旁路影响这些路径，且测量口径可比。
+**读法**：被改路径条件在 WARM（稳态）的 44 个配对格中 **43 格吞吐上升、1 格持平（`ALL-10` WARM `d2` r1 `0.0%`，11.5→11.5 req/s，处于低延迟小页区间的测量步进粒度内）、0 格下降**，上升幅度 **+10.0% ~ +69.6%**；并发相 +33.3% ~ +69.6%。未改路径条件（ADMIN-10 / FROZEN-10 / LEAVER-10）正负抖动均落在毫秒级绝对量（27~45ms）之内，方向不一致 —— 反证改动未旁路影响这些路径，且测量口径可比。
 
 ---
 
@@ -266,24 +266,41 @@ ADMIN/FROZEN 的 `auth/user` 前后均为调用次数本身（超管/状态闸�
 
 ## 5. 单因素优化与安全等价论证
 
-**唯一改动因素**：热路径复用「同一请求内、同一次鉴权调用已加载的当前用户实体」的 `roleId`，省掉 `PermissionServiceImpl#hasPermission(Long, PermissionOperates)` 内部的 `sys_user` 回查。
+### 5.1 唯一改动因素（S2 定稿）
 
-**改动文件（4 个主 + 1 接口）**
+**唯一改动因素**：`PermissionServiceImpl#hasPermission(Long, PermissionOperates)` 内部由「先 `sys_user` 回查 `roleId`、再按 `roleId` 取角色权限链」改为「一次联查 `sys_user → 当前 role_id → role_permissions → permissions`，取得**判定时刻当前角色**的权限链」。
 
-- `server/service/PermissionService.java` —— 新增 `boolean hasPermissionByRoleId(Long roleId, PermissionOperates targetPerm)`
-- `server/service/impl/PermissionServiceImpl.java` —— `hasPermission(Long, X)` 委托到新方法；新方法体 = `hasPermission(targetPerm, getPermissionList(roleId))`
-- `server/service/impl/ProjectFileAttachmentReader.java` —— 维度鉴权改走 `hasPermissionByRoleId(roleId, X)`（225 / 204 / 215）
-- `server/service/impl/AttachmentModelScopeChecker.java` —— `canRead(modelName, recordId, userId, roleId)`；仅 BUSINESS_ACTIVITY 分支传 `roleId`，CONTACT_TASK / APPROVAL / ASSIST 分支**保持原样**
-- `server/service/impl/AttachmentAccessServiceImpl.java` —— 传入刚读到的 `user.getRoleId()`；`canWriteAttachments` 未改
+由此热路径每行的 `auth/user`（`sys_user` 读取）仍由 2 次降为 1 次、`auth/permission` 仍为 1 次 —— 收益来源与原始方案**完全相同**（`auth/user` 次数减半），只是把「省下的那次 `sys_user` 回读」由「缓存进请求的旧 roleId」改为「并入权限查询的联查」。
 
-**安全等价论证（逐条由实测支撑）**
+**改动文件（相对 31ba8c4；4 个生产 + 3 个测试）**
 
-1. **不跨请求缓存**：复用范围严格限定在**单次调用栈内**已 `selectById` 得到的用户实体，未引入任何静态/请求间缓存 —— `auth/user` 未清零、仅按调用次数减半即为证据。
-2. **权限链仍实时查库**：`hasPermissionByRoleId` 内部仍每次 `permissionsMapper.getPermissionList(roleId)`；实测 `auth/permission` 次数**前后完全一致**（200/150/100/75…）。
-3. **用户状态闸仍实时**：`canReadProjectFile` 顶部的 `userMapper.selectById(userId)`（冻结/离职/超管判定）**保留未动**；实测冻结/离职 `total=120 records=0` 前后一致，且 `auth/user` 计数对这些路径为 0 变化。
-4. **下载实时复核未合并**：`PublicAttachmentController#downloadProjectFileByToken` 仍独立调 `canReadProjectFile` 重新取用户与权限；令牌反例 `old_token_still_parses=true` + `recheck_denied=true` 验证。
-5. **两次鉴权边界未合并**：`filterReadable` 首轮与 `entityToVO` 次轮**各自仍独立**调 `canReadProjectFile`（因此撤权窗口内链接签发时序不变）；未下推过滤，`total` / 页号 / `records` 语义未动（第 2 节与第 6 节实测）。
-6. **未触碰禁区**：未改迁移、依赖、权限码/注解/矩阵、API 响应结构、下载端点实时鉴权、前端、AI/RAG、生产配置、JVM/线程池/连接池参数；未调用真实模型或外部服务；未下载镜像。
+- `server/mapper/PermissionsMapper.java` —— 新增 `List<PermissionsEntity> getPermissionListByUserId(Long userId)`
+- `server/resources/mapper/PermissionsMapper.xml` —— 新增 `getPermissionListByUserId` select（`permissions p` join `role_permissions rp` join `sys_role r` join `sys_user u on u.role_id = rp.role_id`，`where u.id = #{userId} and r.is_deleted = 0`；与既有 `getPermissionList` 口径一致，**不**过滤 `rp.is_deleted`）
+- `server/service/impl/PermissionServiceImpl.java` —— `hasPermission(Long, X)` 改为 `hasPermission(X, permissionsMapper.getPermissionListByUserId(userId))`；**删除** `hasPermissionByRoleId`
+- `server/service/PermissionService.java` —— **删除** `hasPermissionByRoleId` 接口方法及其旧 javadoc
+- `ProjectFileAttachmentReader` / `AttachmentModelScopeChecker` / `AttachmentAccessServiceImpl` —— **整体回退**到 31ba8c4 原样（roleId 传递链撤除，判定回到 `permissionService.hasPermission(userId, …)`）
+
+### 5.2 被否决的 S1 方案与确定性反例
+
+S1（ce85e09）在同一次鉴权调用内复用**首次状态闸读到的** `user.getRoleId()`：`canReadProjectFile` 先 `userMapper.selectById(userId)`（读 `status` / `roleId`），再把该 `roleId` 传进 `hasPermissionByRoleId`。若在「首次用户读取返回」与「维度权限判定」之间，另一连接把该用户改派为无权角色并提交，判定仍按**过期角色快照**放行。
+
+该反例已用**确定性交错回归**实测复现，不依赖线程调度：`ProjectFileListAuthHotpathBenchmark#runRoleReassignInterleavingRegression` 用 JDK 动态代理包装真实 `UserMapper`，在首次 `selectById(改派目标用户)` 返回处，以另一条独立连接 `UPDATE sys_user SET role_id = <无权角色>` 并提交（默认 autocommit），再把旧快照返回给调用方；**只改 `role_id`**，用户保持在职（`status=1`）、业务参与关系不变，隔离「角色变化」这一个因素。
+
+- **红灯（S1 = ce85e09）**：`PFLHOT interleave: list_after_reassign total=3 records=[5000]`，断言失败于 `verifyReassignListAndSigning`（改派后列表仍返回第 1 行并为其签发下载链接），`Tests run: 1, Failures: 1`。
+- **绿灯（S0 = 31ba8c4，同一 benchmark 文件、同一测试方法）**：`records=[]`，且 `download_recheck_after_reassign denied=true`、`dimension_rows_after_reassign all_denied=true`、`shared_activity_entry_after_reassign denied=true`、`isolation role_only=true status=1 participation_unchanged=true`、`semantics empty_role_throws=true revoke_dimension_isolated=true`，`Tests run: 1, Failures: 0` —— 证明回归确实卡在上述窗口、且旧路径（按 userId 实时回查）本可正确处理。
+- **修复后（S2）**：同一测试在修复实现上 `Tests run: 1, Failures: 0`，`records=[]` 且上述全部反例维持绿灯（原始输出见第 6 节）。
+
+### 5.3 安全等价论证（逐条由实测支撑）
+
+1. **判定用当前角色（本次修复的要点）**：`hasPermission` 的权限链由 `sys_user u` ⋈ `role_permissions` 按**同一时刻**的 `role_id` 联查取得，请求内不存在角色快照。交错回归的四条断言（列表 `records` / 已签发令牌下载复核 / 三维度行 / 共享活动附件入口）在修复后全部转绿，且在 S0 上同样为绿、在 S1 上为红。
+2. **不跨请求缓存**：未引入任何静态 / 请求间缓存；`auth/user` 未清零、仅按调用次数减半即为证据。
+3. **权限链仍实时查库**：`getPermissionListByUserId` 每次真实查库；实测 `auth/permission` 次数**前后完全一致**（200/150/100/75…）。
+4. **用户状态闸仍实时**：`canReadProjectFile` 顶部的 `userMapper.selectById(userId)`（冻结 / 离职 / 超管判定）**保留未动**；实测冻结 / 离职 `total=120 records=0` 前后一致，`auth/user` 计数对这些路径 0 变化。
+5. **下载实时复核未合并**：`PublicAttachmentController#downloadProjectFileByToken` 仍独立调 `canReadProjectFile` 重新取用户与权限；令牌反例 `old_token_still_parses=true` + `recheck_denied=true` 验证，并新增「改派后已签发令牌复核被拒且令牌绑定不变」反例。
+6. **两次鉴权边界未合并**：`filterReadable` 首轮与 `entityToVO` 次轮**各自仍独立**调 `canReadProjectFile`（撤权窗口内链接签发时序不变）；未下推过滤，`total` / 页号 / `records` 语义未动（第 2 节与第 6 节实测）。
+7. **异常 / 空权限 / 撤权语义与旧实现一致**：交错回归 `verifyReassignPermissionSemantics` 实测 —— 有权限链但不含目标权限 → `false`（不抛）；零权限角色 → `BaseException("该用户没有权限")`；显式删除 `role_permissions`(225) 后活动维度拒绝而商机 / 合同维度不受影响、恢复后复可读。三者在 31ba8c4 与修复实现上输出一致。
+   - **已知差异（诚实记录）**：对**不存在的用户**，旧实现 `userMapper.selectOne(...).getRoleId()` 抛 NPE，新实现联查得空权限链后抛 `BaseException("该用户没有权限")`；两者均为拒绝。生产调用方（`PrivacyAspect` ×2、`PendingActionGuards` ×1、`AttachmentModelScopeChecker` ×2）均传现存用户 id，无行为差异。
+8. **未触碰禁区**：未改迁移、依赖、权限码 / 注解 / 矩阵、API 响应结构、下载端点实时鉴权、前端、AI/RAG、生产配置、JVM/线程池/连接池参数；未调用真实模型或外部服务；未下载镜像。
 
 ---
 
@@ -299,6 +316,20 @@ PFLHOT listby: order=n31 urls=31 bind=ok ids=[...逐字一致...]
 PFLHOT revocation: old_token_still_parses=true recheck_denied=true list_excludes_opportunity_rows=true window_total=15 window_readable=[4013, 4010, 4008, 4007, 4001, 4000]
 PFLHOT revocation: permission_restored=true full_readable_set_restored=[4013, 4012, 4010, 4008, 4007, 4005, 4004, 4003, 4001, 4000]
 PFLHOT frozen: all frozen-behavior and permission probes passed
+```
+
+**角色改派交错回归（安全等价复核；修复后 S2 原始输出，S0 对照同形且同样全绿，S1 在 `list_after_reassign` 处红灯）**
+
+```
+PFLHOT interleave: begin window=after_first_user_read_before_dimension_permission_check
+PFLHOT interleave: baseline_old_role_readable=true
+PFLHOT interleave: list_after_reassign total=3 records=[]
+PFLHOT interleave: download_recheck_after_reassign denied=true token_binding_unchanged=true
+PFLHOT interleave: dimension_rows_after_reassign all_denied=true
+PFLHOT interleave: shared_activity_entry_after_reassign denied=true
+PFLHOT interleave: isolation role_only=true status=1 participation_unchanged=true
+PFLHOT interleave: semantics empty_role_throws=true revoke_dimension_isolated=true
+PFLHOT interleave: all role-reassign interleaving assertions passed
 ```
 
 **覆盖的正反回归**
@@ -317,6 +348,7 @@ PFLHOT frozen: all frozen-behavior and permission probes passed
 | 10 | 冻结 / 离职 | `total=120 records=0`，前后一致 |
 | 11 | 撤权后旧令牌被拒 | 旧令牌仍可解析但 `recheck_denied=true`，列表剔除商机依赖行，`window_total` 不变 |
 | 12 | 共享授权协作类 `listBy*` 四条路径 | 输出条数 / ID 序列**逐字不变**；可读行**全部**签发下载链接（urls==n）；令牌用户绑定 `userId=SALES_USER_ID`、`fileType=project_file`、未过期（`bind=ok`）。
+| 13 | **角色改派交错**（本次新增） | 首次用户读取返回后、维度权限判定前由另一连接改派为无权角色并提交：修复后列表 `records=[]`（不再签发）、已签发令牌下载复核 `denied=true` 且绑定不变、活动/商机/合同三维度行 `all_denied=true`、共享活动附件入口 `denied=true`；S1 在列表 `records=[5000]` 处红灯 |
 
 **令牌比较口径**：令牌含时间与随机内容，故**不比较密文逐字相等**，只比较「签发资格（可读行才签发，urls==n）」「用户绑定（userId/fileType/attachmentId 一致）」「有效性（未过期）」—— 四项在前后测与四次 run 中全部一致。
 
@@ -345,16 +377,16 @@ PFLHOT frozen: all frozen-behavior and permission probes passed
 
 | 判据 | 阈值 | 实测 | 结论 |
 |---|---|---|---|
-| P50：被改路径条件 | 稳定下降 | 44/44 配对格下降（-8.5% ~ -40.0%），两次独立后测方向一致 | **通过** |
-| P95：被改路径条件 | 无一致退化 | 44 格中 39 格下降；5 格小幅正抖动均落在**未改路径条件同等量级**的 run 间噪声内（含最大离群 PART-10 COLD r1 与 PRE 自身跨度 ±36% 同量级） | **通过** |
-| 成功吞吐 | 稳定上升 | 44/44 配对格上升（+10.0% ~ +69.6%），并发相 +38% ~ +70% | **通过** |
+| P50：被改路径条件 | 稳定下降 | WARM 稳态 44/44 配对格下降（-8.5% ~ -40.0%），两次独立后测方向一致 | **通过** |
+| P95：被改路径条件 | 无一致退化 | WARM 稳态 44 格中 41 格下降、3 格小幅正抖动（+1.2% ~ +12.2%，绝对量 ≤ +35ms），均落在**未改路径条件同等量级**的 run 间噪声内 | **通过** |
+| 成功吞吐 | 稳定上升 | WARM 稳态 43/44 配对格上升、1 格持平（0.0%）、0 格下降（+10.0% ~ +69.6%），并发相 +33.3% ~ +69.6% | **通过** |
 | 失败 | 0 | 四次 run 全部 `failures=0`，每条件 `ok==requests` | **通过** |
 | 权限输出零回归（一票否决） | 完全一致 | 探针 / 状态闸 / 撤权 / listBy* 指纹**四次 run 逐字相同** | **通过** |
 | 归因可隔离 | 单一类别 | 仅 `auth/user` 次数变化，`Δauth/user == auth/calls`；其余类别次数逐条不变 | **通过** |
 | 权限/分页/令牌语义 | 无差异 | total=数据库条件总数、records 可不足额/为空、下载实时复核独立保留、令牌绑定与有效性一致 | **通过** |
 | 测量可比 | 是 | 同种子/同权限状态/同页大小/同缓存预热/同并发/同观测口径；未改路径条件仅毫秒级抖动 | **通过** |
 
-**裁决：GO。** 主验收成立，且不是「SQL 次数降低但端到端收益不稳」的 no-go 情形 —— 端到端 P50 与吞吐在**两个独立后测 run × 两轮 × 冷/暖缓存 × 三种页大小 × 8 线程并发相**上方向一致，权限输出零回归。
+**裁决：GO（仅覆盖原始 ce85e09 口径）。** 主验收成立，且不是「SQL 次数降低但端到端收益不稳」的 no-go 情形 —— WARM 稳态下端到端 P50 在**两个独立后测 run × 两轮 × 三种页大小 × 8 线程并发相**共 44 个配对格上全部下降，吞吐 43 升 / 1 持平 / 0 降，P95 仅 3 格小幅正抖动且绝对量 ≤ +35ms；权限输出零回归。本裁决不涵盖安全等价修复后的实现，复测裁决见第 11 节。
 
 **未叠加第二类优化**，未调 JVM / 连接池追指标。
 
@@ -372,7 +404,9 @@ PROJECT_FILE_LIST_HOTPATH_MEASURE=1 mvn -B -ntp -Dtest=ProjectFileListAuthHotpat
 
 **实际运行**
 
-- `mvn -B -ntp -Dtest=ProjectFileListAuthHotpathBenchmark test`（前测 ×2、后测 ×2；均需 Docker 与本地 `mysql:8.0` 镜像）
+- `mvn -B -ntp -Dtest=ProjectFileListAuthHotpathBenchmark test`（原始前测 ×2、后测 ×2，口径 S0 → S1；需 Docker 与本地 `mysql:8.0` 镜像，未 pull）
+- `PROJECT_FILE_LIST_HOTPATH_MEASURE=1 mvn -B -ntp -Dtest='ProjectFileListAuthHotpathBenchmark#runRoleReassignInterleavingRegression' test`（确定性交错回归：S1 红灯、S0 对照绿灯、S2 绿灯）
+- `mvn -B -ntp -Dtest='ProjectFileListAuthHotpathBenchmark#runProjectFileListAuthHotpathMeasurement' test`（安全等价修复后复测：S0 前测 ×2 + S2 后测 ×2，同种子、同条件、同测量口径）
 - 定向单测与守卫（见第 10 节）
 - `bash scripts/merge-gate.sh` 默认序列
 - `git diff --check`
@@ -388,19 +422,20 @@ PROJECT_FILE_LIST_HOTPATH_MEASURE=1 mvn -B -ntp -Dtest=ProjectFileListAuthHotpat
 
 ## 10. 改动文件与提交
 
-**生产代码（5 个）**
+**生产代码（4 个，相对 31ba8c4）**
 
-- `src/main/java/com/slz/crm/server/service/PermissionService.java`
-- `src/main/java/com/slz/crm/server/service/impl/PermissionServiceImpl.java`
-- `src/main/java/com/slz/crm/server/service/impl/ProjectFileAttachmentReader.java`
-- `src/main/java/com/slz/crm/server/service/impl/AttachmentModelScopeChecker.java`
-- `src/main/java/com/slz/crm/server/service/impl/AttachmentAccessServiceImpl.java`
+- `src/main/java/com/slz/crm/server/mapper/PermissionsMapper.java`（新增 `getPermissionListByUserId`）
+- `src/main/resources/mapper/PermissionsMapper.xml`（新增 `getPermissionListByUserId` select）
+- `src/main/java/com/slz/crm/server/service/impl/PermissionServiceImpl.java`（`hasPermission` 改为联查当前角色权限；删除 `hasPermissionByRoleId`）
+- `src/main/java/com/slz/crm/server/service/PermissionService.java`（删除 `hasPermissionByRoleId` 接口方法）
+
+> `ProjectFileAttachmentReader` / `AttachmentModelScopeChecker` / `AttachmentAccessServiceImpl` 相对 31ba8c4 **无差异**：S1 引入的 roleId 传递链已整体回退（S1 的 `hasPermissionByRoleId` 已被删除，不存在遗留的危险调用点）。
 
 **测试（3 个）**
 
-- `src/test/java/com/slz/crm/unit/service/AttachmentAccessServiceTest.java`（协作契约适配 + 新增「按 roleId 判定、不再回查 userId」用例）
-- `src/test/java/com/slz/crm/quality/ProjectFileListAuthHotpathBenchmark.java`（新增，非默认发现 + opt-in 度量入口）
-- `src/test/java/com/slz/crm/quality/ProjectFileListAuthHotpathGuardTest.java`（新增，默认执行的纯 JVM 边界守卫）
+- `src/test/java/com/slz/crm/unit/service/AttachmentAccessServiceTest.java`（桩改回 `hasPermission(userId, …)`；原「按已加载 roleId 判定」缺陷契约用例改写为「按判定时刻当前用户判定」）
+- `src/test/java/com/slz/crm/quality/ProjectFileListAuthHotpathBenchmark.java`（度量入口 + 确定性角色改派交错回归，非默认发现 + opt-in）
+- `src/test/java/com/slz/crm/quality/ProjectFileListAuthHotpathGuardTest.java`（默认执行的纯 JVM 边界守卫）
 
 **文档与规格（4 个）**
 
@@ -410,3 +445,210 @@ PROJECT_FILE_LIST_HOTPATH_MEASURE=1 mvn -B -ntp -Dtest=ProjectFileListAuthHotpat
 - `spec/changes/update-project-file-list-auth-hotpath/specs/project-file-list/spec-delta.md`
 
 **保护项（不修改、不删除、不暂存）**：`docs/backend-optimization-candidates.md`
+
+---
+
+---
+
+## 11. 安全等价修复（S2）复测与最终裁决
+
+> 本节覆盖第 3–8 节的原始口径（S0 → S1，裁决见第 8 节末尾「仅覆盖原始 ce85e09 口径」）。本节把被测实现换成**保留安全等价性**的 S2 定稿，重新做同种子、同条件、同测量口径的两次独立前测 + 两次独立后测。
+
+### 11.1 复测口径
+
+**被测实现（S2）**：权威工作树未提交改动，`PermissionServiceImpl#hasPermission(Long, X)` 由「先按 `userId` 回查 `roleId`、再按 `roleId` 取角色权限链」改为「一次联查 `sys_user → 当前 role_id → role_permissions → permissions`，取**判定时刻当前角色**的权限链」。`ProjectFileAttachmentReader` / `AttachmentModelScopeChecker` / `AttachmentAccessServiceImpl` 相对 `31ba8c4` 无差异（S1 的 `hasPermissionByRoleId` 传递链已整体回退，工作树中不存在该方法的任何引用）。
+
+**前测树身份（本 turn 实测）**：`D:\code\pflhot-pre-31ba8c4` 是 `31ba8c4` 的纯复制 —— `31ba8c4:src/main` 下 685 个文件逐一 `git hash-object` 与基线对象**全等（mismatch=0 / missing=0）**；整树 `hasPermissionByRoleId` 引用数为 0；其度量入口 `ProjectFileListAuthHotpathBenchmark.java` 与权威树**字节相同**。
+
+**四次独立 run**（同种子、同权限状态、同页大小 `[10, 50, 100]`、同预热 3、同每条件采样 15、同每 run 2 轮、同并发相 8 线程 × 20、同观测口径）：
+
+| 代号 | 日志 | 被测树 | 轮次 | 结果 |
+|---|---|---|---|---|
+| PRE-1 | `D:\code\pflhot-logs\s2pre1.log` | S0（`31ba8c4` 纯复制） | 2 | `Tests run: 1, Failures: 0, Errors: 0, Skipped: 0`；`done: failures=0`；07:19 min |
+| PRE-2 | `D:\code\pflhot-logs\s2pre2.log` | S0 | 2 | 同上；06:28 min |
+| POST-1 | `D:\code\pflhot-logs\s2post1.log` | S2（权威工作树） | 2 | 同上；05:36 min |
+| POST-2 | `D:\code\pflhot-logs\s2post2.log` | S2 | 2 | 同上；05:54 min |
+
+**失败口径**：四次 run 全部 `failures=0`，每条件 `ok==requests`（列表相 15/15，并发相 160/160）。`total=120`、`records` 的足额/不足额/为空形态在四次 run 逐格一致。
+
+**表格格式**：每格 = 第 1 轮 / 第 2 轮。**区间分离列** = `min(POST-1, POST-2, 两轮)` 与 `max(PRE-1, PRE-2, 两轮)` 的比较（括号内比值 = min POST ÷ max PRE；P50/P95 小于 1、吞吐大于 1 才算分离）。
+
+### 11.2 P50 原始表（26 行：12 条件 × COLD/WARM + 2 并发相）
+
+| 条件 | 缓存 | PRE-1 r1/r2 | PRE-2 r1/r2 | POST-1 r1/r2 | POST-2 r1/r2 | min(POST) vs max(PRE) |
+|---|---|---|---|---|---|---|
+| ALL-10 | COLD | 124.8/113.0 | 144.3/86.2 | 111.7/91.2 | 129.5/90.9 | 是（0.630） |
+| ALL-10 | WARM | 102.8/97.4 | 109.1/89.1 | 97.3/88.4 | 100.7/91.8 | 是（0.810） |
+| ALL-50 | COLD | 537.1/650.9 | 656.7/509.9 | 487.6/513.6 | 517.4/533.4 | 是（0.743） |
+| ALL-50 | WARM | 578.7/528.8 | 548.8/477.0 | 446.5/378.3 | 456.6/422.2 | 是（0.654） |
+| ALL-100 | COLD | 1177.6/1399.6 | 1261.6/893.1 | 1001.0/1067.0 | 1147.4/1075.5 | 是（0.715） |
+| ALL-100 | WARM | 1021.5/1281.9 | 1192.4/919.6 | 879.5/775.9 | 887.3/926.6 | 是（0.605） |
+| PART-10 | COLD | 93.2/100.5 | 99.7/63.1 | 72.6/70.4 | 74.9/67.8 | 是（0.675） |
+| PART-10 | WARM | 85.4/103.3 | 87.4/66.1 | 66.8/63.2 | 103.3/71.6 | 是（0.612） |
+| PART-50 | COLD | 448.9/540.5 | 494.9/323.4 | 367.8/308.7 | 338.8/371.6 | 是（0.571） |
+| PART-50 | WARM | 365.1/526.4 | 428.9/337.3 | 299.8/293.5 | 296.5/316.4 | 是（0.558） |
+| PART-100 | COLD | 729.8/949.6 | 1006.3/630.9 | 622.7/733.3 | 745.1/790.6 | 是（0.619） |
+| PART-100 | WARM | 867.5/976.4 | 848.3/596.1 | 573.0/729.8 | 701.7/691.7 | 是（0.587） |
+| NONE-10 | COLD | 57.7/60.1 | 61.2/40.3 | 38.3/48.4 | 53.1/60.4 | 是（0.626） |
+| NONE-10 | WARM | 64.8/85.4 | 55.5/38.4 | 46.2/50.5 | 50.8/52.2 | 是（0.541） |
+| NONE-50 | COLD | 311.1/264.9 | 315.9/244.6 | 194.7/221.0 | 258.1/255.3 | 是（0.616） |
+| NONE-50 | WARM | 327.7/354.4 | 301.0/298.0 | 183.0/215.6 | 239.0/259.6 | 是（0.516） |
+| NONE-100 | COLD | 607.7/557.9 | 599.2/613.6 | 474.6/423.4 | 469.4/478.9 | 是（0.690） |
+| NONE-100 | WARM | 548.7/617.0 | 561.7/589.2 | 419.2/464.5 | 415.3/482.8 | 是（0.673） |
+| ADMIN-10（未改路径） | COLD | 33.0/36.8 | 40.7/39.9 | 46.8/39.1 | 41.5/38.9 | 是（0.955） |
+| ADMIN-10（未改路径） | WARM | 21.4/27.7 | 28.4/28.3 | 29.3/27.1 | 27.8/37.4 | 是（0.956） |
+| FROZEN-10（未改路径） | COLD | 10.9/12.4 | 15.2/14.5 | 18.0/18.8 | 16.3/18.9 | 否（1.069） |
+| FROZEN-10（未改路径） | WARM | 11.1/18.5 | 13.0/17.0 | 14.4/15.2 | 16.2/18.7 | 是（0.779） |
+| LEAVER-10（未改路径） | COLD | 11.9/13.6 | 14.1/13.4 | 13.1/19.3 | 15.6/16.4 | 是（0.929） |
+| LEAVER-10（未改路径） | WARM | 11.1/14.7 | 14.5/11.3 | 19.3/18.1 | 14.5/17.9 | 是（0.986） |
+| PART-50-C8（8 线程） | WARM | 482.1/706.4 | 481.4/395.8 | 433.6/253.4 | 394.2/233.9 | 是（0.331） |
+| NONE-50-C8（8 线程） | WARM | 291.4/320.6 | 305.6/255.2 | 234.1/164.0 | 237.4/152.9 | 是（0.477） |
+
+### 11.3 P95 原始表
+
+| 条件 | 缓存 | PRE-1 r1/r2 | PRE-2 r1/r2 | POST-1 r1/r2 | POST-2 r1/r2 | min(POST) vs max(PRE) |
+|---|---|---|---|---|---|---|
+| ALL-10 | COLD | 146.2/144.6 | 213.9/98.7 | 146.1/114.4 | 186.2/125.6 | 是（0.534） |
+| ALL-10 | WARM | 129.9/140.2 | 153.8/113.0 | 106.8/139.1 | 147.1/115.3 | 是（0.694） |
+| ALL-50 | COLD | 685.4/898.5 | 815.5/812.1 | 588.8/614.4 | 681.3/635.4 | 是（0.655） |
+| ALL-50 | WARM | 709.7/635.9 | 594.0/623.1 | 544.3/528.0 | 528.8/542.3 | 是（0.744） |
+| ALL-100 | COLD | 1384.1/1639.1 | 1544.7/1035.4 | 1142.1/1157.0 | 1816.0/1161.4 | 是（0.697） |
+| ALL-100 | WARM | 1220.7/1350.0 | 1390.7/1115.6 | 1024.9/901.9 | 955.5/1044.5 | 是（0.649） |
+| PART-10 | COLD | 176.2/116.5 | 110.4/80.3 | 88.6/73.5 | 88.4/85.3 | 是（0.417） |
+| PART-10 | WARM | 109.2/120.0 | 121.1/80.9 | 79.1/73.1 | 143.4/80.2 | 是（0.604） |
+| PART-50 | COLD | 574.9/563.6 | 526.2/398.3 | 439.7/357.1 | 483.8/561.4 | 是（0.621） |
+| PART-50 | WARM | 492.4/609.9 | 456.6/372.6 | 504.4/369.1 | 367.3/393.9 | 是（0.602） |
+| PART-100 | COLD | 850.1/1231.2 | 1176.5/696.9 | 806.4/928.1 | 792.2/867.5 | 是（0.643） |
+| PART-100 | WARM | 962.8/1201.4 | 944.1/681.2 | 807.4/784.6 | 759.4/874.2 | 是（0.632） |
+| NONE-10 | COLD | 79.0/106.6 | 81.9/47.6 | 60.5/61.4 | 59.7/81.7 | 是（0.560） |
+| NONE-10 | WARM | 89.8/117.8 | 68.6/61.0 | 55.1/68.1 | 62.3/64.6 | 是（0.468） |
+| NONE-50 | COLD | 401.0/363.6 | 349.6/303.7 | 231.0/309.3 | 289.7/271.0 | 是（0.576） |
+| NONE-50 | WARM | 346.7/445.9 | 364.2/404.8 | 227.7/274.6 | 274.2/298.9 | 是（0.511） |
+| NONE-100 | COLD | 752.7/771.8 | 707.0/772.5 | 545.8/515.2 | 521.2/645.2 | 是（0.667） |
+| NONE-100 | WARM | 601.4/682.5 | 665.0/687.1 | 482.6/519.2 | 542.6/535.1 | 是（0.702） |
+| ADMIN-10（未改路径） | COLD | 41.9/70.3 | 45.1/73.0 | 59.7/65.2 | 63.1/44.2 | 是（0.605） |
+| ADMIN-10（未改路径） | WARM | 27.8/32.9 | 33.4/45.0 | 33.7/31.9 | 30.5/54.2 | 是（0.677） |
+| FROZEN-10（未改路径） | COLD | 20.8/30.1 | 38.4/15.7 | 19.8/21.5 | 18.0/20.2 | 是（0.468） |
+| FROZEN-10（未改路径） | WARM | 12.9/23.8 | 14.9/44.2 | 16.0/16.8 | 20.1/20.8 | 是（0.361） |
+| LEAVER-10（未改路径） | COLD | 24.1/19.2 | 16.0/25.6 | 20.6/23.3 | 17.5/17.8 | 是（0.684） |
+| LEAVER-10（未改路径） | WARM | 13.5/22.5 | 17.2/12.6 | 25.8/19.4 | 18.8/22.0 | 是（0.833） |
+| PART-50-C8（8 线程） | WARM | 649.5/1519.1 | 1203.5/463.4 | 966.4/299.5 | 580.3/350.0 | 是（0.197） |
+| NONE-50-C8（8 线程） | WARM | 447.0/586.9 | 430.6/335.3 | 383.9/234.8 | 356.6/199.3 | 是（0.340） |
+
+### 11.4 成功吞吐原始表（`throughput_req_s`）
+
+| 条件 | 缓存 | PRE-1 r1/r2 | PRE-2 r1/r2 | POST-1 r1/r2 | POST-2 r1/r2 | min(POST) vs max(PRE) |
+|---|---|---|---|---|---|---|
+| ALL-10 | COLD | 8.0/8.9 | 6.9/11.6 | 9.0/11.0 | 7.7/11.0 | 否（0.664） |
+| ALL-10 | WARM | 9.7/10.3 | 9.2/11.2 | 10.3/11.3 | 9.9/10.9 | 否（0.884） |
+| ALL-50 | COLD | 1.9/1.5 | 1.5/2.0 | 2.1/1.9 | 1.9/1.9 | 否（0.950） |
+| ALL-50 | WARM | 1.7/1.9 | 1.8/2.1 | 2.2/2.6 | 2.2/2.4 | 是（1.048） |
+| ALL-100 | COLD | 0.8/0.7 | 0.8/1.1 | 1.0/0.9 | 0.9/0.9 | 否（0.818） |
+| ALL-100 | WARM | 1.0/0.8 | 0.8/1.1 | 1.1/1.3 | 1.1/1.1 | 否（1.000） |
+| PART-10 | COLD | 10.7/9.9 | 10.0/15.9 | 13.8/14.2 | 13.3/14.7 | 否（0.836） |
+| PART-10 | WARM | 11.7/9.7 | 11.4/15.1 | 15.0/15.8 | 9.7/14.0 | 否（0.642） |
+| PART-50 | COLD | 2.2/1.9 | 2.0/3.1 | 2.7/3.2 | 3.0/2.7 | 否（0.871） |
+| PART-50 | WARM | 2.7/1.9 | 2.3/3.0 | 3.3/3.4 | 3.4/3.2 | 是（1.067） |
+| PART-100 | COLD | 1.4/1.1 | 1.0/1.6 | 1.6/1.4 | 1.3/1.3 | 否（0.813） |
+| PART-100 | WARM | 1.2/1.0 | 1.2/1.7 | 1.7/1.4 | 1.4/1.4 | 否（0.824） |
+| NONE-10 | COLD | 17.3/16.6 | 16.3/24.8 | 26.1/20.7 | 18.8/16.6 | 否（0.669） |
+| NONE-10 | WARM | 15.4/11.7 | 18.0/26.0 | 21.7/19.8 | 19.7/19.1 | 否（0.735） |
+| NONE-50 | COLD | 3.2/3.8 | 3.2/4.1 | 5.1/4.5 | 3.9/3.9 | 否（0.951） |
+| NONE-50 | WARM | 3.1/2.8 | 3.3/3.4 | 5.5/4.6 | 4.2/3.9 | 是（1.147） |
+| NONE-100 | COLD | 1.6/1.8 | 1.7/1.6 | 2.1/2.4 | 2.1/2.1 | 是（1.167） |
+| NONE-100 | WARM | 1.8/1.6 | 1.8/1.7 | 2.4/2.2 | 2.4/2.1 | 是（1.167） |
+| ADMIN-10（未改路径） | COLD | 30.3/27.2 | 24.6/25.0 | 21.4/25.6 | 24.1/25.7 | 否（0.706） |
+| ADMIN-10（未改路径） | WARM | 46.7/36.1 | 35.2/35.4 | 34.1/36.8 | 36.0/26.7 | 否（0.572） |
+| FROZEN-10（未改路径） | COLD | 91.7/80.6 | 65.6/68.9 | 55.7/53.1 | 61.3/52.9 | 否（0.577） |
+| FROZEN-10（未改路径） | WARM | 90.5/54.1 | 76.7/59.0 | 69.4/65.6 | 61.6/53.5 | 否（0.591） |
+| LEAVER-10（未改路径） | COLD | 83.9/73.3 | 71.0/74.7 | 76.5/51.8 | 64.1/61.1 | 否（0.617） |
+| LEAVER-10（未改路径） | WARM | 90.4/68.0 | 69.1/88.2 | 51.7/55.4 | 69.0/55.8 | 否（0.572） |
+| PART-50-C8（8 线程） | WARM | 2.1/1.4 | 2.1/2.5 | 2.3/3.9 | 2.5/4.3 | 否（0.920） |
+| NONE-50-C8（8 线程） | WARM | 3.4/3.1 | 3.3/3.9 | 4.3/6.1 | 4.2/6.5 | 是（1.077） |
+
+### 11.5 SQL 分类（第 2 轮 WARM，格式 `次数/耗时ms`）
+
+| 条件 | 类别 | PRE-1 | PRE-2 | POST-1 | POST-2 |
+|---|---|---|---|---|---|
+| ALL-100 | auth/calls | 200.00/1245.51 | 200.00/925.22 | 200.00/779.71 | 200.00/886.04 |
+| ALL-100 | auth/user | 400.00/537.20 | 400.00/405.93 | 200.00/218.90 | 200.00/249.58 |
+| ALL-100 | auth/permission | 200.00/302.11 | 200.00/227.24 | 200.00/254.73 | 200.00/295.79 |
+| ALL-100 | residual_ms | 62.21 | 34.76 | 26.53 | 21.97 |
+| PART-100 | auth/calls | 150.00/965.14 | 150.00/600.68 | 150.00/705.19 | 150.00/680.86 |
+| PART-100 | auth/user | 350.00/486.92 | 350.00/304.25 | 200.00/257.63 | 200.00/251.12 |
+| PART-100 | auth/permission | 150.00/235.37 | 150.00/145.17 | 150.00/227.96 | 150.00/222.13 |
+| PART-100 | residual_ms | 35.02 | 22.59 | 19.38 | 18.23 |
+| NONE-100 | auth/calls | 100.00/619.64 | 100.00/593.51 | 100.00/464.34 | 100.00/483.16 |
+| NONE-100 | auth/user | 250.00/313.11 | 250.00/304.91 | 150.00/179.58 | 150.00/189.71 |
+| NONE-100 | auth/permission | 100.00/142.25 | 100.00/140.19 | 100.00/143.78 | 100.00/150.75 |
+| NONE-100 | residual_ms | 34.40 | 22.39 | 13.82 | 11.71 |
+| PART-50-C8（8 线程） | auth/calls | 75.00/820.31 | 75.00/391.36 | 75.00/247.73 | 75.00/240.13 |
+| PART-50-C8（8 线程） | auth/user | 175.00/278.60 | 175.00/167.15 | 100.00/87.92 | 100.00/81.88 |
+| PART-50-C8（8 线程） | auth/permission | 75.00/120.40 | 75.00/76.61 | 75.00/75.44 | 75.00/71.52 |
+| PART-50-C8（8 线程） | residual_ms | 308.79 | 78.82 | 19.91 | 25.61 |
+| NONE-50-C8（8 线程） | auth/calls | 50.00/331.52 | 50.00/258.23 | 50.00/172.88 | 50.00/154.00 |
+| NONE-50-C8（8 线程） | auth/user | 125.00/137.35 | 125.00/118.23 | 75.00/64.73 | 75.00/56.75 |
+| NONE-50-C8（8 线程） | auth/permission | 50.00/58.88 | 50.00/51.48 | 50.00/50.86 | 50.00/45.65 |
+| NONE-50-C8（8 线程） | residual_ms | 82.38 | 41.59 | 13.21 | 12.65 |
+| ADMIN-10 | auth/calls | 20.00/23.15 | 20.00/26.89 | 20.00/22.77 | 20.00/32.53 |
+| ADMIN-10 | auth/user | 20.00/22.75 | 20.00/26.43 | 20.00/22.24 | 20.00/31.93 |
+| ADMIN-10 | auth/permission | n/a | n/a | n/a | n/a |
+| ADMIN-10 | residual_ms | 1.35 | 1.66 | 1.87 | 2.15 |
+| FROZEN-10 | auth/calls | 10.00/15.25 | 10.00/19.80 | 10.00/11.08 | 10.00/13.99 |
+| FROZEN-10 | auth/user | 10.00/14.99 | 10.00/19.54 | 10.00/10.81 | 10.00/13.66 |
+| FROZEN-10 | auth/permission | n/a | n/a | n/a | n/a |
+| FROZEN-10 | residual_ms | 1.19 | 1.23 | 1.61 | 1.90 |
+
+**程序化核对**（被改路径 11 单元 + 未改路径 2 单元）：`auth/calls` 与 `auth/permission` 的次数在四次 run 逐条不变；被改路径条件的 `auth/user` 满足 `PRE(auth/user) − POST(auth/user) == auth/calls`；未改路径条件（ADMIN/FROZEN）四次 run 均 `auth/user == auth/calls` 且无 `auth/permission`。 本 turn 实测结论：**全部成立**。
+
+### 11.6 稳健性检验与复测裁决
+
+#### 11.6.1 逐格方向（被改路径 11 单元 × 4 格 = 44 格）
+
+| 指标 | 下降 | 上升 | 持平 | 合计 | 判定方向 |
+|---|---|---|---|---|---|
+| P50 | 43 | 1 | 0 | 44 | 下降为好 |
+| P95 | 40 | 4 | 0 | 44 | 下降为好 |
+| 吞吐 | 1 | 43 | 0 | 44 | 上升为好 |
+
+#### 11.6.2 噪声地板（PRE-1 vs PRE-2，26 单元 × 2 同轮格 = 52 格）
+
+| 指标 | 下降 | 上升 | 持平 |
+|---|---|---|---|
+| P50 | 28 | 24 | 0 |
+| P95 | 30 | 22 | 0 |
+| 吞吐 | 21 | 26 | 5 |
+
+#### 11.6.3 区间分离（min POST vs max PRE）与阴性对照
+
+| 指标 | 被改路径 20 单元 | 全 26 单元 | 阴性对照（ADMIN/FROZEN/LEAVER 6 单元） |
+|---|---|---|---|
+| P50 | 20/20 | 25/26 | 5/6 |
+| P95 | 20/20 | 26/26 | 6/6 |
+| 吞吐 | 6/20 | 6/26 | 0/6 |
+
+**聚合 P50 均值（被改路径 11 单元 × 两轮）**：PRE-1 `476.5`、PRE-2 `425.7` → POST-1 `350.1`、POST-2 `376.1` ms。两次后测均值均低于两次前测。
+
+#### 11.6.4 裁决
+
+**裁决：GO（S2 口径）—— 安全等价修复后收益仍成立。** 唯一改动因素仍是热路径每行 `auth/user`（`sys_user` 读取）由 2 次降为 1 次，收益来源与原始方案相同（`auth/user` 次数减半），只是把「省下的那次 `sys_user` 回读」并入权限查询联查。
+
+**诚实说明（与原始口径的差异，不掩饰）**：
+
+1. 逐格方向计数弱于第 8 节原始 S1 口径（P50 未达 44/44），但**区间分离**在 20 个被改路径单元上对 P50/P95 **全部成立**（`min POST < max PRE`）；吞吐区间分离仅 6/20，原因是吞吐量化到 1 位小数且 `min(POST)` 会被单个偏低 POST 样本拉低（如 ALL-10 WARM 的 POST 值 10.3/11.3/9.9/10.9，min=9.9 低于 PRE 的 max=11.2），故吞吐以逐格方向（43 升 / 1 降 / 0 持平）与聚合均值为准；S2 与 S1 的 SQL 形状逐条相同（`auth/user` 均为 `1×auth/calls`），逐格计数差异只能来自本机环境漂移与抽样噪声。
+2. 上述全部为本机**代表性测量**（一次性 Testcontainers MySQL `mysql:8.0` + 120 条/组假数据），**不是生产收益**；生产数据规模、容器侧资源、网络层均未测。
+3. 阴性对照（ADMIN/FROZEN/LEAVER）的方向计数与分离比例接近随机（区间分离 P50 5/6、P95 6/6、吞吐 0/6；噪声地板 52 格 P50 28 降 / 24 升、P95 30 降 / 22 升、吞吐 21 降 / 26 升 / 5 持平，绝对量多在毫秒级），反证改动未旁路影响未改路径，且也说明本机噪声地板的存在。
+
+#### 11.6.5 §3.2 P95 汇总的独立重算
+
+用原始四次 run 日志（`%TEMP%\pflhot-pre2.log`、`pflhot-pre-final.log`、`pflhot-post.log`、`pflhot-post2.log`）按第 3 节同一口径（基准 = PRE-final，`d1 = PRE-final → POST-1`、`d2 = PRE-final → POST-2`，仅取 WARM 稳态被改路径条件）逐格重算：
+
+| 指标 | 下降 | 上升 | 持平 | 合计 |
+|---|---|---|---|---|
+| P50 | 44 | 0 | 0 | 44 |
+| P95 | 41 | 3 | 0 | 44 |
+| 吞吐 | 0 | 43 | 1 | 44 |
+
+重算与第 3.2 节表格一致：P95 为 **41 格下降 / 3 格上升 / 0 格持平**（不是 39/5）；P50 **44/44 下降**；吞吐 **43 升 / 1 持平 / 0 降**。区间分离（基准合并 PRE-2 + PRE-final）：P50 20/20（比值 0.574–0.726）、P95 20/20（0.350–0.756）、吞吐 18/20。第 3.2 节的「41 格下降、3 格正抖动」表述与本次独立重算一致；本重算只取 WARM 稳态被改路径条件，**未混入 COLD 行，也未混入 ADMIN/FROZEN/LEAVER 未改路径条件**。
+
+> 汇总日期：2026-09-27。本节所有数字均由本 turn 从上述日志文件逐行解析生成，无手工誊抄。

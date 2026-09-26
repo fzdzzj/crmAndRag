@@ -1,7 +1,9 @@
 package com.slz.crm.quality;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.baomidou.mybatisplus.annotation.DbType;
@@ -11,11 +13,14 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.dockerjava.api.exception.NotFoundException;
+import com.slz.crm.common.enumeration.ModelName;
+import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.AttachmentDownloadTokenUtil;
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.dto.ProjectFileQueryDTO;
 import com.slz.crm.pojo.entity.ProjectFileEntity;
+import com.slz.crm.pojo.entity.UserEntity;
 import com.slz.crm.pojo.vo.ProjectFileVO;
 import com.slz.crm.server.mapper.AssistRequestMapper;
 import com.slz.crm.server.mapper.BusinessActivityMapper;
@@ -53,6 +58,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -138,6 +144,17 @@ class ProjectFileListAuthHotpathBenchmark {
   static final long LEAVER_USER_ID = 52L;
   static final long OTHER_USER_ID = 99L;
   static final long[] UPLOADER_IDS = {60L, 61L, 62L, 63L, 64L};
+
+  // 角色改派交错回归：专用用户/记录与「无维度权限」角色（只改角色，不动在职状态与业务参与关系）
+  static final long REASSIGN_USER_ID = 70L;
+  static final long REASSIGN_ACTIVITY_ID = 611L;
+  static final long REASSIGN_OPPORTUNITY_ID = 511L;
+  static final long REASSIGN_CONTRACT_ID = 711L;
+  static final long REASSIGN_READ_ROLE_ID = SALES_ROLE_ID;
+  static final long REASSIGN_DENY_ROLE_ID = 8L;
+  static final long REASSIGN_EMPTY_ROLE_ID = 9L;
+  static final long REASSIGN_BASE = 5000L;
+  static final String REASSIGN_THEME = "REASSIGN#";
 
   // ---------------------------------------------------------------- 确定性假业务记录
 
@@ -271,6 +288,328 @@ class ProjectFileListAuthHotpathBenchmark {
     }
   }
 
+  // ---------------------------------------------------------------- 角色改派交错回归
+
+  /**
+   * 确定性交错回归（安全等价复核）：在 {@code canReadProjectFile} 首次读取目标用户之后、维度权限判定之前，
+   * 由另一条独立连接把该用户改派为「无维度权限」角色并提交。判定必须使用判定时可取得的当前角色， 而不是首次状态闸读到的旧 roleId。交错点固定，不依赖线程调度。
+   */
+  @Test
+  void runRoleReassignInterleavingRegression() throws Exception {
+    requireOptIn();
+    String image = System.getProperty(MYSQL_IMAGE_PROP, DEFAULT_MYSQL_IMAGE);
+    requireDockerAndLocalImages(List.of(image));
+    MySQLContainer<?> mysql =
+        new MySQLContainer<>(DockerImageName.parse(image))
+            .withDatabaseName("crm_pfl_hotpath")
+            .withUsername("crm")
+            .withPassword("crm_pfl_pwd");
+    mysql.start();
+    try {
+      String jdbcUrl = mysql.getJdbcUrl();
+      String dbUser = mysql.getUsername();
+      String dbPassword = mysql.getPassword();
+      migrateAndSeed(jdbcUrl, dbUser, dbPassword);
+      RoleReassignController controller =
+          new RoleReassignController(
+              jdbcUrl, dbUser, dbPassword, REASSIGN_USER_ID, REASSIGN_DENY_ROLE_ID);
+      Environment env = assemble(jdbcUrl, dbUser, dbPassword, image, controller);
+      printf(
+          "PFLHOT interleave: begin window=after_first_user_read_before_dimension_permission_check");
+
+      verifyReassignBaseline(env);
+      verifyReassignListAndSigning(env, controller);
+      verifyReassignDownloadRecheck(env, controller);
+      verifyReassignDimensions(env, controller);
+      verifyReassignSharedActivityEntry(env, controller);
+      verifyReassignIsolation(env);
+      verifyReassignPermissionSemantics(env);
+      printf("PFLHOT interleave: all role-reassign interleaving assertions passed");
+    } finally {
+      mysql.stop();
+    }
+  }
+
+  /** 改派前基线：旧角色（7）对活动/商机/合同三维度与共享活动附件入口必须放行。 */
+  private void verifyReassignBaseline(Environment env) {
+    reassignIdentityRole(env, REASSIGN_READ_ROLE_ID);
+    for (long fileId = REASSIGN_BASE; fileId <= REASSIGN_BASE + 2; fileId++) {
+      assertTrue(canRead(env, fileId), "改派前三维度文件必须可读，fileId=" + fileId);
+    }
+    assertTrue(
+        env.access()
+            .canReadAttachments(
+                ModelName.BUSINESS_ACTIVITY, REASSIGN_ACTIVITY_ID, REASSIGN_USER_ID),
+        "改派前共享活动附件入口必须放行");
+    printf("PFLHOT interleave: baseline_old_role_readable=true");
+  }
+
+  /** 列表筛选 + 下载链接签发的两次独立鉴权：交错后 records 必须为空，total 仍是数据库条件总数。 */
+  private void verifyReassignListAndSigning(Environment env, RoleReassignController controller) {
+    reassignIdentityRole(env, REASSIGN_READ_ROLE_ID);
+    currentUser(REASSIGN_USER_ID, REASSIGN_READ_ROLE_ID);
+    try {
+      Page<ProjectFileVO> before = queryReassignPage(env);
+      assertEquals(3L, before.getTotal(), "改派前 REASSIGN 条件总数应为 3");
+      assertEquals(
+          List.of(REASSIGN_BASE, REASSIGN_BASE + 1, REASSIGN_BASE + 2),
+          ids(before.getRecords()),
+          "改派前三行必须全部可读且保持 uploadTime DESC");
+      assertNotNull(before.getRecords().get(0).getDownloadUrl(), "改派前必须签发下载链接");
+    } finally {
+      BaseUnit.removeCurrentId();
+    }
+
+    reassignIdentityRole(env, REASSIGN_READ_ROLE_ID);
+    controller.arm();
+    currentUser(REASSIGN_USER_ID, REASSIGN_READ_ROLE_ID);
+    try {
+      Page<ProjectFileVO> after = queryReassignPage(env);
+      assertTrue(controller.fired(), "交错必须真实发生：首次用户读取返回后已由独立连接改派并提交");
+      assertEquals(
+          REASSIGN_READ_ROLE_ID, controller.observedRoleId().longValue(), "控制器必须读到改派前的旧角色快照");
+      assertEquals(3L, after.getTotal(), "total 仍是数据库条件总数，不因撤权变化");
+      assertTrue(
+          after.getRecords().isEmpty(), "改派后 records 必须为空（判定用当前角色），实际=" + ids(after.getRecords()));
+      printf(
+          "PFLHOT interleave: list_after_reassign total=%d records=%s",
+          after.getTotal(), ids(after.getRecords()));
+    } finally {
+      BaseUnit.removeCurrentId();
+    }
+  }
+
+  private static Page<ProjectFileVO> queryReassignPage(Environment env) {
+    ProjectFileQueryDTO query = new ProjectFileQueryDTO();
+    query.setTheme(REASSIGN_THEME);
+    return env.service().queryPage(1, 10, query);
+  }
+
+  /** 已签发令牌的下载复核：令牌绑定不变，但改派后复核必须拒绝（下载端点是独立实时鉴权）。 */
+  private void verifyReassignDownloadRecheck(Environment env, RoleReassignController controller) {
+    reassignIdentityRole(env, REASSIGN_READ_ROLE_ID);
+    currentUser(REASSIGN_USER_ID, REASSIGN_READ_ROLE_ID);
+    String token = null;
+    try {
+      for (ProjectFileVO vo : queryReassignPage(env).getRecords()) {
+        if (vo.getId() == REASSIGN_BASE) {
+          token = tokenOf(vo.getDownloadUrl());
+        }
+      }
+    } finally {
+      BaseUnit.removeCurrentId();
+    }
+    assertNotNull(token, "改派前必须为 REASSIGN 首行签发下载链接");
+    AttachmentDownloadTokenUtil.DownloadToken parsed = env.rawTokenUtil().parseDownloadToken(token);
+    assertEquals(REASSIGN_USER_ID, parsed.getUserId(), "令牌必须绑定签发用户且不随改派改变");
+
+    reassignIdentityRole(env, REASSIGN_READ_ROLE_ID);
+    ProjectFileEntity entity = env.service().getEntityById(REASSIGN_BASE);
+    assertNotNull(entity, "种子文件必须存在");
+    controller.arm();
+    boolean allowed = env.access().canReadProjectFile(entity, REASSIGN_USER_ID);
+    assertTrue(controller.fired(), "下载复核交错必须发生");
+    assertFalse(allowed, "已签发令牌的下载复核在改派后必须拒绝");
+    assertNotNull(env.rawTokenUtil().parseDownloadToken(token), "令牌本身仍可解析（未吊销），拒绝来自实时复核");
+    printf(
+        "PFLHOT interleave: download_recheck_after_reassign denied=true token_binding_unchanged=true");
+  }
+
+  /** 三维度逐文件交错：活动参与 / 商机归属 / 合同归属，改派后各自必须拒绝。 */
+  private void verifyReassignDimensions(Environment env, RoleReassignController controller) {
+    for (long fileId = REASSIGN_BASE; fileId <= REASSIGN_BASE + 2; fileId++) {
+      reassignIdentityRole(env, REASSIGN_READ_ROLE_ID);
+      controller.arm();
+      boolean allowed = canRead(env, fileId);
+      assertTrue(controller.fired(), "交错必须发生，fileId=" + fileId);
+      assertFalse(allowed, "改派后维度判定必须拒绝，fileId=" + fileId);
+    }
+    printf("PFLHOT interleave: dimension_rows_after_reassign all_denied=true");
+  }
+
+  /** 共享活动附件入口（{@code canReadAttachments}）同样必须按判定时的当前角色拒绝。 */
+  private void verifyReassignSharedActivityEntry(
+      Environment env, RoleReassignController controller) {
+    reassignIdentityRole(env, REASSIGN_READ_ROLE_ID);
+    controller.arm();
+    boolean allowed =
+        env.access()
+            .canReadAttachments(
+                ModelName.BUSINESS_ACTIVITY, REASSIGN_ACTIVITY_ID, REASSIGN_USER_ID);
+    assertTrue(controller.fired(), "共享活动附件入口交错必须发生");
+    assertFalse(allowed, "改派后共享活动附件入口必须拒绝");
+    printf("PFLHOT interleave: shared_activity_entry_after_reassign denied=true");
+  }
+
+  /** 单因素归因：交错期间只允许 role_id 变化；在职状态与业务参与关系必须原封不动。 */
+  private void verifyReassignIsolation(Environment env) {
+    assertEquals(
+        REASSIGN_DENY_ROLE_ID,
+        scalarLong(env, "SELECT role_id FROM sys_user WHERE id = 70"),
+        "交错后角色必须已是改派目标");
+    assertEquals(1L, scalarLong(env, "SELECT status FROM sys_user WHERE id = 70"), "交错不得改变在职状态");
+    assertEquals(
+        1L,
+        scalarLong(
+            env,
+            "SELECT COUNT(*) FROM business_activity_user WHERE activity_id = 611 AND user_id = 70"),
+        "交错不得改变业务参与关系");
+    reassignIdentityRole(env, REASSIGN_READ_ROLE_ID);
+    printf("PFLHOT interleave: isolation role_only=true status=1 participation_unchanged=true");
+  }
+
+  /** 判定语义等价：有权限链但缺目标 → false；零权限角色 → 旧实现同款异常；显式撤权 → 维度隔离。 */
+  private void verifyReassignPermissionSemantics(Environment env) {
+    reassignIdentityRole(env, REASSIGN_DENY_ROLE_ID);
+    assertFalse(canRead(env, REASSIGN_BASE), "角色有权限链但不含活动查看权限时必须 false（不抛）");
+
+    reassignIdentityRole(env, REASSIGN_EMPTY_ROLE_ID);
+    BaseException emptyRole =
+        assertThrows(
+            BaseException.class, () -> canRead(env, REASSIGN_BASE), "零权限角色必须抛权限异常（与旧实现一致）");
+    assertTrue(
+        emptyRole.getMessage().contains("没有权限"), "异常文案必须与旧实现一致，实际=" + emptyRole.getMessage());
+
+    reassignIdentityRole(env, REASSIGN_READ_ROLE_ID);
+    assertTrue(canRead(env, REASSIGN_BASE), "撤权前活动维度必须可读");
+    execute(
+        env,
+        "DELETE FROM role_permissions WHERE role_id = "
+            + REASSIGN_READ_ROLE_ID
+            + " AND permissions_id = 225");
+    try {
+      assertFalse(canRead(env, REASSIGN_BASE), "撤权活动查看权限后活动维度必须拒绝");
+      assertTrue(canRead(env, REASSIGN_BASE + 1), "撤权活动查看权限不得影响商机维度（任一维度可读）");
+      assertTrue(canRead(env, REASSIGN_BASE + 2), "撤权活动查看权限不得影响合同维度（任一维度可读）");
+    } finally {
+      execute(
+          env,
+          "INSERT INTO role_permissions (permissions_id, role_id, creator_id, is_deleted) "
+              + "VALUES (225,"
+              + REASSIGN_READ_ROLE_ID
+              + ",NULL,b'0')");
+    }
+    assertTrue(canRead(env, REASSIGN_BASE), "恢复权限后活动维度必须可读");
+    printf("PFLHOT interleave: semantics empty_role_throws=true revoke_dimension_isolated=true");
+  }
+
+  /** 直接走列表/下载共用的记录级入口（不设 BaseUnit，与下载复核一致）。 */
+  private boolean canRead(Environment env, long fileId) {
+    ProjectFileEntity entity = env.service().getEntityById(fileId);
+    assertNotNull(entity, "种子文件必须存在，fileId=" + fileId);
+    return env.access().canReadProjectFile(entity, REASSIGN_USER_ID);
+  }
+
+  /** 只改角色：保持在职状态与业务参与关系不变，隔离「角色变化」这一个因素。 */
+  private static void reassignIdentityRole(Environment env, long roleId) {
+    execute(env, "UPDATE sys_user SET role_id = " + roleId + " WHERE id = " + REASSIGN_USER_ID);
+  }
+
+  private static void currentUser(long userId, long roleId) {
+    RoleAO role = new RoleAO();
+    role.setId(userId);
+    role.setRoleId(roleId);
+    BaseUnit.setCurrentRole(role);
+  }
+
+  private static long scalarLong(Environment env, String sql) {
+    try (Connection connection = env.openConnection();
+        Statement statement = connection.createStatement();
+        java.sql.ResultSet resultSet = statement.executeQuery(sql)) {
+      if (!resultSet.next()) {
+        throw new IllegalStateException("查询无结果：" + sql);
+      }
+      return resultSet.getLong(1);
+    } catch (SQLException exception) {
+      throw new IllegalStateException("查询 SQL 失败：" + sql, exception);
+    }
+  }
+
+  /**
+   * 确定性角色改派控制器：包装 {@link UserMapper} 代理，在目标用户首次 {@code selectById} 返回后， 由另一条独立连接（DriverManager 默认
+   * autocommit）把其 {@code role_id} 改派并提交，再把改派前的旧快照返回给调用方。
+   *
+   * <p>交错点固定在「首次用户读取返回之后、权限判定之前」，不依赖线程调度；只改角色。
+   */
+  static final class RoleReassignController implements InvocationHandler {
+
+    private final String jdbcUrl;
+    private final String jdbcUser;
+    private final String jdbcPassword;
+    private final long targetUserId;
+    private final long newRoleId;
+    private final AtomicBoolean armed = new AtomicBoolean(false);
+    private final AtomicBoolean fired = new AtomicBoolean(false);
+    private volatile Long observedRoleId;
+    private UserMapper delegate;
+
+    RoleReassignController(
+        String jdbcUrl, String jdbcUser, String jdbcPassword, long targetUserId, long newRoleId) {
+      this.jdbcUrl = jdbcUrl;
+      this.jdbcUser = jdbcUser;
+      this.jdbcPassword = jdbcPassword;
+      this.targetUserId = targetUserId;
+      this.newRoleId = newRoleId;
+    }
+
+    void bind(UserMapper delegate) {
+      this.delegate = delegate;
+    }
+
+    UserMapper wrap() {
+      if (delegate == null) {
+        throw new IllegalStateException("角色改派控制器尚未绑定 UserMapper");
+      }
+      return (UserMapper)
+          Proxy.newProxyInstance(
+              UserMapper.class.getClassLoader(), new Class<?>[] {UserMapper.class}, this);
+    }
+
+    /** 进入待触发态：下一次目标用户首次读取返回时改派并提交。 */
+    void arm() {
+      observedRoleId = null;
+      fired.set(false);
+      armed.set(true);
+    }
+
+    boolean fired() {
+      return fired.get();
+    }
+
+    Long observedRoleId() {
+      return observedRoleId;
+    }
+
+    @Override
+    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+      boolean hit = isTargetFirstRead(method, args);
+      Object result = method.invoke(delegate, args);
+      if (hit && result instanceof UserEntity) {
+        observedRoleId = ((UserEntity) result).getRoleId();
+        reassignRole();
+        fired.set(true);
+      }
+      return result;
+    }
+
+    private boolean isTargetFirstRead(Method method, Object[] args) {
+      return armed.get()
+          && !fired.get()
+          && "selectById".equals(method.getName())
+          && args != null
+          && args.length == 1
+          && Objects.equals(args[0], targetUserId);
+    }
+
+    private void reassignRole() throws SQLException {
+      try (Connection connection = DriverManager.getConnection(jdbcUrl, jdbcUser, jdbcPassword);
+          Statement statement = connection.createStatement()) {
+        statement.executeUpdate(
+            "UPDATE sys_user SET role_id = " + newRoleId + " WHERE id = " + targetUserId);
+      }
+    }
+  }
+
   // ---------------------------------------------------------------- 门禁（静态、纯 JVM）
 
   /** 独立 opt-in 校验：缺失即抛错（fail closed），绝不进入容器/装配阶段。 */
@@ -321,6 +660,13 @@ class ProjectFileListAuthHotpathBenchmark {
   // ---------------------------------------------------------------- 装配
 
   private Environment assemble(String jdbcUrl, String user, String password, String image)
+      throws Exception {
+    return assemble(jdbcUrl, user, password, image, null);
+  }
+
+  /** 交错回归专用装配：与度量装配同一接线，仅把 UserMapper 换成带角色改派控制的代理。 */
+  private Environment assemble(
+      String jdbcUrl, String user, String password, String image, RoleReassignController reassign)
       throws Exception {
     DataSource dataSource =
         new PooledDataSource("com.mysql.cj.jdbc.Driver", jdbcUrl, user, password);
@@ -379,6 +725,10 @@ class ProjectFileListAuthHotpathBenchmark {
             + projectFileTable.getTableName());
 
     UserMapper userMapper = dispatch(factory, UserMapper.class);
+    if (reassign != null) {
+      reassign.bind(userMapper);
+      userMapper = reassign.wrap();
+    }
     PermissionsMapper permissionsMapper = dispatch(factory, PermissionsMapper.class);
     ProjectFileMapper projectFileMapper = dispatch(factory, ProjectFileMapper.class);
     BusinessActivityMapper businessActivityMapper = dispatch(factory, BusinessActivityMapper.class);
@@ -548,6 +898,50 @@ class ProjectFileListAuthHotpathBenchmark {
           "INSERT INTO contract_order_item "
               + "(id, contract_id, product_name, quantity, unit_price, amount) VALUES "
               + "(800,700,'pflhot-product-ok',1,100,100),(801,702,'pflhot-product-deny',1,100,100)");
+      // 角色改派交错回归种子：专用角色（有权限链但不含维度权限 / 零权限）与专用在职用户（参与关系固定）
+      run(
+          statement,
+          "INSERT INTO sys_role (id, role_name, role_desc, is_deleted) VALUES "
+              + "(8,'pflhot-reassign-deny','deny',b'0'),(9,'pflhot-reassign-empty','empty',b'0')");
+      run(
+          statement,
+          "INSERT INTO sys_user (id, password, real_name, role_id, status) VALUES "
+              + "(70,'x','改派目标',7,1)");
+      run(
+          statement,
+          "INSERT INTO role_permissions (permissions_id, role_id, creator_id, is_deleted) VALUES "
+              + "(229,8,NULL,b'0')");
+      run(
+          statement,
+          "INSERT INTO business_activity "
+              + "(id, activity_title, activity_type, activity_time, creator_id) VALUES "
+              + "(611,'活动-改派参与','MEETING','2026-01-01 10:00:00',99)");
+      run(
+          statement,
+          "INSERT INTO business_activity_user (activity_id, user_id, user_role, creator_id) "
+              + "VALUES (611,70,'参加人',99)");
+      run(
+          statement,
+          "INSERT INTO sales_opportunity "
+              + "(id, opportunity_name, company_id, stage, owner_id, creator_id, approver_id, "
+              + "is_deleted) VALUES (511,'商机-改派owner',1,1,70,99,99,0)");
+      run(
+          statement,
+          "INSERT INTO contract "
+              + "(id, contract_no, company_id, contract_name, total_amount, sign_date, "
+              + "contract_status, owner_id, creator_id) VALUES "
+              + "(711,'PFLHOT-711',1,'合同-改派owner',1000,'2026-01-01 00:00:00',1,70,99)");
+      run(
+          statement,
+          "INSERT INTO project_file (id, file_name, file_path, file_type, file_size, category, "
+              + "upload_time, uploader_id, theme, activity_id, opportunity_id, contract_id, order_id) "
+              + "VALUES "
+              + "(5000,'f-5000.pdf','/tmp/pflhot/','application/pdf',1024,'PROPOSAL',"
+              + "DATE_ADD('2026-02-01 00:00:00', INTERVAL 2 SECOND),60,'REASSIGN#0',611,NULL,NULL,NULL),"
+              + "(5001,'f-5001.pdf','/tmp/pflhot/','application/pdf',1024,'PROPOSAL',"
+              + "DATE_ADD('2026-02-01 00:00:00', INTERVAL 1 SECOND),61,'REASSIGN#1',NULL,511,NULL,NULL),"
+              + "(5002,'f-5002.pdf','/tmp/pflhot/','application/pdf',1024,'PROPOSAL',"
+              + "DATE_ADD('2026-02-01 00:00:00', INTERVAL 0 SECOND),62,'REASSIGN#2',NULL,NULL,711,NULL)");
       seedProjectFiles(statement);
     } catch (SQLException exception) {
       throw new IllegalStateException("种子数据写入失败", exception);
