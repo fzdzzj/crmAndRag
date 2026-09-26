@@ -19,8 +19,9 @@ public interface DocumentVectorChunkMapper extends BaseMapper<DocumentVectorChun
    * 受限批次写入切片快照行（update-document-chunk-write-batching）。
    *
    * <p>以单条多行 {@code INSERT ... VALUES (...),(...)} 代替逐条写入，用 MyBatis {@code keyProperty}
-   * 按行序把自增主键回填到传入实体（与 {@code ContractOrderItemMapper#insertBatch} 同一机制）：一行数据行的物理写入形状从「一行一次往返/提交」收敛为
-   * 「一批一次」，但仍保持每行一行记录、列语义与原逐条插入等价（未列出的时间列/软删列走数据库默认值）。
+   * 按行序把自增主键回填到传入实体（与 {@code ContractOrderItemMapper#insertBatch} 同一机制）：可确认的形状变化是每批一次 Mapper
+   * 调用与一条多行 INSERT 语句； 物理数据库执行次数、网络往返与 commit 次数在本案未实测（评测报告标 unknown），不得由 Mapper
+   * 调用次数反推；仍保持每行一行记录、列语义与原逐条插入等价（未列出的时间列/软删列走数据库默认值）。
    *
    * <p>批次大小由调用方按固定上限切分（{@code
    * DocumentIngestionSupport.PERSIST_BATCH_SIZE}），本方法不接收无界集合；主键逐行回填的可用性由一次性真库 可行性闸 {@code
