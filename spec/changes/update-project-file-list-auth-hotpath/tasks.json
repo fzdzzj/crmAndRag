@@ -50,8 +50,8 @@
     "steps": [
       {"step": "定向单测/真库 opt-in、默认 merge-gate、git diff --check；明列默认门禁不含 failsafe IT", "completed": true},
       {"step": "新报告保存前后数字/结论与未知；测试基线如需变化只由真实干净运行 --update，保护未跟踪文档", "completed": true},
-      {"step": "仅主验收成立在 codex 分支精确提交并 --no-ff 合 master，核双亲/差异/两树状态；不 push/归档", "completed": false}
+      {"step": "仅主验收成立在 codex 分支精确提交并 --no-ff 合 master，核双亲/差异/两树状态；不 push/归档", "completed": true}
     ],
-    "passes": false
+    "passes": true
   }
 ]
