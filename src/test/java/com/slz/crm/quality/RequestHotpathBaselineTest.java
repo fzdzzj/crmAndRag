@@ -765,7 +765,10 @@ class RequestHotpathBaselineTest {
         return before - rows.size();
       }
 
-      /** QueryWrapper 条目解析：只识别 document_id/chunk_role/chunk_index（邻居查询仅用这三列）。 */
+      /**
+       * QueryWrapper 条目解析：识别 document_id/chunk_role/chunk_index（邻居查询仅用这三列）。 同列多次出现（批读邻居查询按文档分组的 OR
+       * 条件组）按并集合并——返回行是真实 OR 结果的超集， 生产行级过滤兜底保证输出一致；本桩只承担计数与延迟，不承担行数建模。
+       */
       private Map<String, List<Object>> parseCriteria(Object wrapper) {
         Map<String, List<Object>> criteria = new LinkedHashMap<>();
         if (!(wrapper
@@ -795,13 +798,19 @@ class RequestHotpathBaselineTest {
               values.add(value);
             }
           }
-          criteria.put(inMatcher.group(1).toLowerCase(java.util.Locale.ROOT), values);
+          criteria
+              .computeIfAbsent(
+                  inMatcher.group(1).toLowerCase(java.util.Locale.ROOT), key -> new ArrayList<>())
+              .addAll(values);
         }
         Matcher eqMatcher = COL_EQ.matcher(sql);
         while (eqMatcher.find()) {
           Object value = resolveParam(params, eqMatcher.group(3));
           if (value != null) {
-            criteria.put(eqMatcher.group(1).toLowerCase(java.util.Locale.ROOT), List.of(value));
+            criteria
+                .computeIfAbsent(
+                    eqMatcher.group(1).toLowerCase(java.util.Locale.ROOT), key -> new ArrayList<>())
+                .add(value);
           }
         }
         return criteria;

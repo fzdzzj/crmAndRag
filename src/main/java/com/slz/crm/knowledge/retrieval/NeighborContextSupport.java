@@ -5,8 +5,10 @@ import com.slz.crm.knowledge.entity.DocumentVectorChunkEntity;
 import com.slz.crm.platform.contract.VectorSearchHit;
 import com.slz.crm.server.mapper.DocumentVectorChunkMapper;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,8 +71,9 @@ final class NeighborContextSupport {
 
   /**
    * 多命中的邻居行批读（update-context-snapshot-batch-read）：一次查询取回本批全部 {@code (document_id, chunk_index±1)} 的
-   * CHILD 行，行内含跨文档/跨序号行由 {@link #neighborAt} 按命中逐个过滤。 批次大小受 {@link #SNAPSHOT_BATCH_LIMIT}
-   * 约束；批查失败时仅受影响批次按旧路径逐命中回查一次（原异常语义），仍失败按无邻居降级。
+   * CHILD 行，行内多余行由 {@link #neighborAt} 按命中逐个过滤。 查询按文档分组为 OR 条件组（{@code chunk_role=? AND
+   * (document_id=? AND chunk_index IN (…)) OR …}）， 返回行数 = 精确 (文档, 序号) 配对 ≲ 2×命中数，不随文档数×序号数叉积放大。
+   * 批次大小受 {@link #SNAPSHOT_BATCH_LIMIT} 约束；批查失败时仅受影响批次按旧路径逐命中回查一次（原异常语义），仍失败按无邻居降级。
    */
   static List<DocumentVectorChunkEntity> fetchNeighborsBatched(
       List<VectorSearchHit> hits, DocumentVectorChunkMapper chunkMapper) {
@@ -84,24 +87,31 @@ final class NeighborContextSupport {
     return rows;
   }
 
-  /** 单批邻居行查询：批查失败时对受影响批次按旧路径逐命中回查一次（fetchNeighbors 原异常语义），不做无上限重试。 */
+  /**
+   * 单批邻居行查询：按文档分组 OR 条件组，返回行 ≈ 各文档目标序号并集之和（有界），参数数 ≲ 3×命中数； 批查失败时对受影响批次按旧路径逐命中回查一次（fetchNeighbors
+   * 原异常语义），不做无上限重试。
+   */
   @SuppressWarnings("PMD.AvoidCatchingGenericException") // ORM查询边界：chunkMapper批查多源，失败按无邻居降级
   private static List<DocumentVectorChunkEntity> fetchNeighborBatch(
       List<VectorSearchHit> batch, DocumentVectorChunkMapper chunkMapper) {
-    Set<String> documentIds = new LinkedHashSet<>();
-    Set<Integer> indexes = new LinkedHashSet<>();
+    Map<String, Set<Integer>> targetsByDocument = new LinkedHashMap<>();
     for (VectorSearchHit hit : batch) {
-      collectNeighborTargets(hit, documentIds, indexes);
+      collectNeighborTargets(hit, targetsByDocument);
     }
     List<DocumentVectorChunkEntity> result = new ArrayList<>();
-    if (!documentIds.isEmpty() && !indexes.isEmpty()) {
+    if (!targetsByDocument.isEmpty()) {
+      QueryWrapper<DocumentVectorChunkEntity> wrapper =
+          new QueryWrapper<DocumentVectorChunkEntity>().eq("chunk_role", CHUNK_ROLE_CHILD);
+      wrapper.and(
+          group -> {
+            for (Map.Entry<String, Set<Integer>> entry : targetsByDocument.entrySet()) {
+              group.or(
+                  inner ->
+                      inner.eq("document_id", entry.getKey()).in("chunk_index", entry.getValue()));
+            }
+          });
       try {
-        result.addAll(
-            chunkMapper.selectList(
-                new QueryWrapper<DocumentVectorChunkEntity>()
-                    .in("document_id", documentIds)
-                    .eq("chunk_role", CHUNK_ROLE_CHILD)
-                    .in("chunk_index", indexes)));
+        result.addAll(chunkMapper.selectList(wrapper));
       } catch (Exception exception) {
         LOG.warn("邻居切片批查失败，受影响命中按旧路径逐条回查: {}", exception.getMessage());
         for (VectorSearchHit hit : batch) {
@@ -112,15 +122,16 @@ final class NeighborContextSupport {
     return result;
   }
 
-  /** 收集单个命中的邻居查询目标（同文档 + 前后序号）；chunkIndex 缺失或 documentId 空白的命中不产生目标。 */
+  /** 收集单个命中的邻居查询目标到其文档分组（同文档 + 前后序号）；chunkIndex 缺失或 documentId 空白的命中不产生目标。 */
   private static void collectNeighborTargets(
-      VectorSearchHit hit, Set<String> documentIds, Set<Integer> indexes) {
+      VectorSearchHit hit, Map<String, Set<Integer>> targetsByDocument) {
     Integer chunkIndex = chunkIndex(hit);
     if (chunkIndex != null
         && chunkIndex >= 0
         && hit.documentId() != null
         && !hit.documentId().isBlank()) {
-      documentIds.add(hit.documentId());
+      Set<Integer> indexes =
+          targetsByDocument.computeIfAbsent(hit.documentId(), key -> new LinkedHashSet<>());
       if (chunkIndex > 0) {
         indexes.add(chunkIndex - 1);
       }

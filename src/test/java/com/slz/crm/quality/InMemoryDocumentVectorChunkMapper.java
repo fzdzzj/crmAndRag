@@ -247,6 +247,8 @@ final class InMemoryDocumentVectorChunkMapper {
         List<DocumentVectorChunkEntity> rows,
         Map<String, Object> params) {
       List<Criterion> criteria = new ArrayList<>();
+      List<String> orDocuments = new ArrayList<>();
+      List<List<Object>> orIndexGroups = new ArrayList<>();
       Matcher inMatcher = COL_IN.matcher(sql);
       while (inMatcher.find()) {
         List<Object> values = new ArrayList<>();
@@ -264,14 +266,29 @@ final class InMemoryDocumentVectorChunkMapper {
             values.add(value);
           }
         }
+        if ("chunk_index".equalsIgnoreCase(inMatcher.group(1).trim())) {
+          orIndexGroups.add(values);
+        }
         criteria.add(Criterion.of(inMatcher.group(1), values));
       }
       Matcher eqMatcher = COL_EQ.matcher(sql);
       while (eqMatcher.find()) {
         Object value = resolveParam(params, eqMatcher.group(3));
+        if ("document_id".equalsIgnoreCase(eqMatcher.group(1).trim())) {
+          orDocuments.add(value == null ? null : String.valueOf(value));
+        }
         if (value != null) {
           criteria.add(Criterion.of(eqMatcher.group(1), List.of(value)));
         }
+      }
+      // 批读邻居查询按文档分组 OR 条件组：k 个 document_id 等值按出现序配对 k 个 chunk_index IN 组，
+      // 语义 = 各组 (document_id, chunk_index 集合) 的 OR，而非全部条件的 AND——展开为单个 OR 组判据
+      if (orDocuments.size() > 1 && orIndexGroups.size() == orDocuments.size()) {
+        criteria.removeIf(
+            criterion ->
+                "document_id".equalsIgnoreCase(criterion.column())
+                    || "chunk_index".equalsIgnoreCase(criterion.column()));
+        criteria.add(Criterion.orGroups(orDocuments, orIndexGroups));
       }
       List<DocumentVectorChunkEntity> matched = new ArrayList<>();
       for (DocumentVectorChunkEntity entity : rows) {
@@ -345,10 +362,18 @@ final class InMemoryDocumentVectorChunkMapper {
     }
   }
 
-  /** 解析出的单列过滤条件。 */
-  private record Criterion(String column, List<Object> values) {
+  /**
+   * 解析出的单列过滤条件（或文档分组的 OR 组判据）。 {@code or_groups} 形态：第 i 组命中条件 = {@code document_id 等值 docs[i] 且
+   * chunk_index ∈ indexGroups[i]}，整组判据为各组之 OR（其余列条件仍与之 AND）。
+   */
+  private record Criterion(String column, List<Object> values, List<List<Object>> indexGroups) {
+
     static Criterion of(String column, List<Object> values) {
-      return new Criterion(column.trim().toLowerCase(Locale.ROOT), values);
+      return new Criterion(column.trim().toLowerCase(Locale.ROOT), values, List.of());
+    }
+
+    static Criterion orGroups(List<String> documents, List<List<Object>> indexGroups) {
+      return new Criterion("or_groups", List.copyOf(documents), List.copyOf(indexGroups));
     }
 
     boolean matches(DocumentVectorChunkEntity entity) {
@@ -366,10 +391,30 @@ final class InMemoryDocumentVectorChunkMapper {
             }
           }
           return false;
+        case "or_groups":
+          for (int index = 0; index < values.size(); index++) {
+            if (values.get(index).equals(entity.getDocumentId())
+                && containsIndex(indexGroups.get(index), entity.getChunkIndex())) {
+              return true;
+            }
+          }
+          return false;
         default:
-          // 未识别列：宽容放行（基准装配仅用到以上三列）
+          // 未识别列：宽容放行（基准装配仅用到以上几列）
           return true;
       }
+    }
+
+    private static boolean containsIndex(List<Object> values, Integer chunkIndex) {
+      if (chunkIndex == null) {
+        return false;
+      }
+      for (Object value : values) {
+        if (value instanceof Number number && number.intValue() == chunkIndex.intValue()) {
+          return true;
+        }
+      }
+      return false;
     }
   }
 
