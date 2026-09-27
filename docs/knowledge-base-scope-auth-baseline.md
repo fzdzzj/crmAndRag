@@ -241,3 +241,44 @@ KB_SCOPE_AUTH_MEASURE=1 mvn -o -B -ntp -Dtest=KnowledgeBaseScopeAuthBaselineBenc
 
 未设 `KB_SCOPE_AUTH_MEASURE=1`、Docker 不可用或本地镜像缺失时，入口**显式失败并报告"未测"**，
 不自动 pull、不连业务库、不假装成功。
+## 12. 修复索引（fix-knowledge-base-member-visibility-boundary）
+
+> 本节为**追加**内容。§0–§11 的原始数字、裁决措辞与日志一律**原样保留、不予追认**——§0 的「安全裁决：停止性能 GO，单列安全观察」与 §9 的
+> `orphan_included=true` / `member_of_softdeleted_included=true` 是**修前事实快照**，记录的是当时的实现，不代表本报告认可该语义。
+
+- 修复提案：`spec/changes/fix-knowledge-base-member-visibility-boundary/`（proposal.md / tasks.json / specs/knowledge-base-authorization/spec-delta.md）
+- 修复评估：[docs/knowledge-base-member-visibility-security-evaluation.md](knowledge-base-member-visibility-security-evaluation.md)（逐路径红/绿原文、数据残留前提、未知项）
+- 红绿真库 IT：[KnowledgeBaseMemberVisibilityBoundaryIT](../src/test/java/com/slz/crm/integration/knowledge/KnowledgeBaseMemberVisibilityBoundaryIT.java)（默认随 failsafe 运行，7 用例）
+
+### 12.1 对应 §9 三点的处置
+
+| §9 观察 | 本案处置 |
+| --- | --- |
+| 成员分支不 join `knowledge_base`，软删库/孤儿库 ID 进入可见集 | 已修：成员分支改为一次有界 JOIN 查询 `KnowledgeBaseMemberMapper#selectActiveKnowledgeBaseIdsByUserId`（`m.is_deleted=0 AND kb.is_deleted=0`，`ORDER BY m.id`），不再按成员逐库查 |
+| `canRead` 对软删库/孤儿库返回 false，与可见集口径不一致 | 已修：`visibleKnowledgeBaseIds` 与 `canRead`/`canWrite` 口径对齐；另对**显式传入** `isDeleted=true` 的实体一律拒绝 |
+| 下游是否真取回数据取决于用法（原 §9.3 结论未下） | 已由本案真库 IT **分级实测**，区分「实际返回文件/内容」「只搜索了失效 KB」「仅集合多出 ID」三档（见评估报告）；结论不再停留在「上界风险」 |
+
+### 12.2 本入口 §4 快照口径的变化（当前行为断言已更新）
+
+§4/§5 的表格与数字是修前实测，**不改写**。用同一入口在修后重跑，冻结口径变化如下：
+
+```
+scale=4   subject_visible=4    admin_visible=6    subject_visible_ids=[100000, 100005, 100001, 100002]
+scale=128 subject_visible=97   admin_visible=130
+scale=512 subject_visible=385  admin_visible=514
+orphan_included=false  member_of_softdeleted_included=false  softdel_excluded=true
+KBSCOPE done: threadlocal_clean=true failures=0
+```
+
+- 非超管可见数由 `3*(N/4)+3` 变为 `3*(N/4)+1`：被剔除的两项正是 §9 的 MEMBER_OF_SOFTDELETED 与 ORPHAN；`overlap` 去重、
+  超管口径（`N+2`）与 §5 的 scope 语义（empty=全部、duplicate 去重、nonnumeric/overflow 忽略）均不变。
+- 入口当前行为断言已从「记录旧漏洞」改为「要求剔除」（`assertFalse`），`KnowledgeBaseScopeAuthBaselineBenchmark` 的 javadoc 同步标注**历史不可追认**。
+- 复现（修后）：`KB_SCOPE_AUTH_MEASURE=1 mvn -o -B -ntp -Dtest=KnowledgeBaseScopeAuthBaselineBenchmark test`
+  （stdout 检索 `KBSCOPE`），本轮原始输出：`%TEMP%\kbmb-benchmark-green.log`。
+
+### 12.3 边界与未验证项（与 §10 并列，不覆盖 §10）
+
+- **授权后并发软删的竞态未解决**：本案只保证「稳定状态下成员来源为有效库」。若库在授权集合生成**之后**、下游读之前被软删，
+  可见集不会自动收回该 ID。**本案不宣称即时撤权，也不宣称事务级线性一致性**；该竞态单列为后续审计项。
+- **生产环境未知**：生产是否真有软删库/孤儿成员引用及残留数据、真实访问日志**未审计**；本案结论限于本机一次性真库 + 生产代码路径。
+- §10 的未跑项（请求端到端延迟、真实模型、生产库验证）继续有效；本案**不新增任何性能结论**。
