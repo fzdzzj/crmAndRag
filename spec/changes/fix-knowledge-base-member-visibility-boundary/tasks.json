@@ -1,0 +1,57 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：根因与测试前提",
+    "task": "核对成员可见集和下游边界",
+    "steps": [
+      {"step": "实测权威 HEAD/两树状态、Docker/本地镜像、外呼开关，保护既有文件", "completed": true},
+      {"step": "逐层核对成员行、KB 实体、文件列表、稀疏/向量召回的校验位置", "completed": true},
+      {"step": "固定活库/软删库/孤儿引用及残留文件切片向量的隔离种子与验收口径", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：红灯取证",
+    "task": "证明当前授权集合与下游结果",
+    "steps": [
+      {"step": "用生产 mapper 和服务构造真库反例，记录修前集合不一致的确定性红灯", "completed": true},
+      {"step": "分别验证文件列表与检索是否返回残留内容或进入失效 KB 过滤器，不夸大未命中结果", "completed": true},
+      {"step": "检查有效 KB 与权限角色对照、失效实体 canRead/canWrite 及删除后新请求边界", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：根因修复与回归",
+    "task": "有界验证成员引用且保持合法行为",
+    "steps": [
+      {"step": "只把成员分支 ID 限为存在且未软删 KB，顺序去重不变、无 N+1、查询异常不放权", "completed": true},
+      {"step": "修补直接传入软删实体的读写判定并覆盖有效 owner/PUBLIC/member/超管矩阵", "completed": true},
+      {"step": "相同种子重跑文件/稀疏/向量路径，更新旧基线入口当前行为断言不改历史数字", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：证据与门禁",
+    "task": "记录边界并完成真实测试",
+    "steps": [
+      {"step": "报告红绿原文、数据残留条件、并发删除竞态、未跑项和非性能结论", "completed": true},
+      {"step": "定向测试和本轮离线 clean verify 全绿后经脚本更新新增测试基线", "completed": true},
+      {"step": "默认 merge-gate、diff --check、原历史报告及受保护文件核验", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：范围收尾",
+    "task": "条件满足才提交并保留边界",
+    "steps": [
+      {"step": "逐项回读 tasks，仅勾真实完成；暂存清单限本案文件", "completed": true},
+      {"step": "红绿与门禁完整且安全影响可解释才提交、no-ff 合入权威 master", "completed": true},
+      {"step": "核对双亲、第一父文件清单、两树状态；不 push、不归档", "completed": true}
+    ],
+    "passes": true
+  }
+]

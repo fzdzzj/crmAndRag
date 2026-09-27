@@ -1,6 +1,7 @@
 package com.slz.crm.quality;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.baomidou.mybatisplus.core.metadata.TableInfo;
@@ -77,9 +78,15 @@ import org.testcontainers.utility.DockerImageName;
  * #OPT_IN_ENV}（先于一切容器/装配动作），再做 Docker/镜像<b>只读</b>预检（不 pull）。缺开关、Docker 不可用或本地镜像缺失
  * 一律显式失败并报告「未测」，绝不自动拉镜像、不连业务库、不假装成功。
  *
- * <p><b>冻结口径</b>：{@code visibleKnowledgeBaseIds} 非超管按 owner → PUBLIC → member 三段查询并以 {@link
- * LinkedHashSet} 顺序去重；{@code authorizedKnowledgeBaseIds} 空 scope 表示可见全部，否则把请求 scope 用 {@code
- * Long.valueOf} 解析（非数字/溢出直接忽略）后与可见集求交。本案只把这些<b>现行语义</b>记录成等价快照， 不修语义、不加索引、不声明生产或请求端到端收益。
+ * <p><b>语义口径（fix-knowledge-base-member-visibility-boundary 之后）</b>：{@code visibleKnowledgeBaseIds}
+ * 非超管仍按 owner → PUBLIC → member 三段查询并以 {@link LinkedHashSet} 顺序去重；member 段改为一次「成员行未删且目标库存在且未软删」 的
+ * JOIN 查询，软删库的成员引用与孤儿引用不再进入可见集（{@code member_of_softdeleted_included=false} / {@code
+ * orphan_included=false}）。{@code authorizedKnowledgeBaseIds} 空 scope 表示可见全部，否则把请求 scope 用 {@code
+ * Long.valueOf} 解析（非数字/溢出直接忽略）后与可见集求交。本案不声明生产或请求端到端收益。
+ *
+ * <p><b>历史不可追认</b>：{@code docs/knowledge-base-scope-auth-baseline.md} 中 {@code
+ * orphan_included=true} / {@code member_of_softdeleted_included=true}
+ * 的原始数字与日志是修前事实快照，原样保留、不予追认；本入口只把<b>当前语义</b> 锁成断言（用修前代码运行会红，见该报告 §12 修复索引）。
  *
  * <p><b>复现</b>：{@code KB_SCOPE_AUTH_MEASURE=1 mvn -o -B -ntp
  * -Dtest=KnowledgeBaseScopeAuthBaselineBenchmark test}（stdout 搜 {@code KBSCOPE} 行）。至少两条独立命令各跑一遍，
@@ -495,12 +502,12 @@ class KnowledgeBaseScopeAuthBaselineBenchmark {
     UserContext admin = admin();
     List<Long> subjectVisible = env.service().visibleKnowledgeBaseIds(subject);
     List<Long> adminVisible = env.service().visibleKnowledgeBaseIds(admin);
-    int subjectExpected = 3 * (shape.scale / DISTRIBUTION_DIVISOR) + 3;
+    int subjectExpected = 3 * (shape.scale / DISTRIBUTION_DIVISOR) + 1;
     int adminExpected = shape.scale + 2;
     assertEquals(
         subjectExpected,
         subjectVisible.size(),
-        "非超管可见集大小应为 3/4*N+3（owner+PUBLIC+member+重叠/孤儿），scale=" + shape.scale);
+        "非超管可见集大小应为 3/4*N+1（owner+PUBLIC+member+重叠；失效/孤儿来源已剔除），scale=" + shape.scale);
     assertEquals(
         adminExpected,
         adminVisible.size(),
@@ -509,12 +516,11 @@ class KnowledgeBaseScopeAuthBaselineBenchmark {
         shape.overlapId(),
         subjectVisible.get(shape.quarter()),
         "owner 段末位应为 OVERLAP（三重来源去重后只出现一次），scale=" + shape.scale);
-    assertTrue(
+    assertFalse(
         subjectVisible.contains(shape.memberOfSoftDeletedId()),
-        "MEMBER_OF_SOFTDELETED 按现行实现仍出现在非超管可见集（孤儿引用，如实记录不修正），scale=" + shape.scale);
-    assertTrue(
-        subjectVisible.contains(ORPHAN_KB_ID),
-        "ORPHAN 成员引用按现行实现仍出现在非超管可见集（如实记录不修正），scale=" + shape.scale);
+        "MEMBER_OF_SOFTDELETED 必须被剔除（库已软删，成员行存活不足以授权），scale=" + shape.scale);
+    assertFalse(
+        subjectVisible.contains(ORPHAN_KB_ID), "ORPHAN 成员引用必须被剔除（目标库不存在），scale=" + shape.scale);
     assertTrue(
         !subjectVisible.contains(shape.softDeletedOwnedId()),
         "SOFTDEL_OWNED 不得出现在可见集（@TableLogic 过滤），scale=" + shape.scale);
@@ -551,7 +557,7 @@ class KnowledgeBaseScopeAuthBaselineBenchmark {
         adminVisible.size());
     printf(
         "KBSCOPE snapshot: scale=%d subject_visible_ids=%s subject_first_owned=%d overlap_id=%d "
-            + "orphan_included=true member_of_softdeleted_included=true softdel_excluded=true",
+            + "orphan_included=false member_of_softdeleted_included=false softdel_excluded=true",
         shape.scale, subjectVisible, shape.base, shape.overlapId());
   }
 

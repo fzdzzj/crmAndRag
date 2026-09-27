@@ -17,6 +17,9 @@ import org.springframework.stereotype.Service;
  * 知识库授权服务。
  *
  * <p>知识库使用 owner/member/Public 授权，不叠加部门数据范围；身份统一来自 UserContext。
+ *
+ * <p>有效库边界（fix-knowledge-base-member-visibility-boundary）：成员行存活不代表其指向的知识库仍有效——库可能已逻辑删除，
+ * 成员行也可能是孤儿引用。可见集与单库读写判定因此都要求目标库存在且未软删；校验由一次 JOIN 查询完成， 不逐成员查库、不生成无界 IN，查询失败直接向上抛出（不放宽授权）。
  */
 @Service
 public class KnowledgeBaseAuthorizationService {
@@ -29,10 +32,12 @@ public class KnowledgeBaseAuthorizationService {
     this.memberMapper = memberMapper;
   }
 
-  /** 判断当前登录用户是否可读。 */
+  /** 判断当前登录用户是否可读；显式传入已软删实体一律拒绝。 */
   public boolean canRead(KnowledgeBaseEntity knowledgeBase, UserContext user) {
     boolean result = false;
-    if (knowledgeBase != null && user != null) {
+    if (knowledgeBase != null
+        && !Boolean.TRUE.equals(knowledgeBase.getIsDeleted())
+        && user != null) {
       result =
           user.isSuperAdmin()
               || Objects.equals(knowledgeBase.getOwnerUserId(), user.userIdRef())
@@ -46,10 +51,12 @@ public class KnowledgeBaseAuthorizationService {
     return result;
   }
 
-  /** 判断当前登录用户是否可写；PUBLIC 只表示可读，不等于可写。 */
+  /** 判断当前登录用户是否可写；PUBLIC 只表示可读，不等于可写；显式传入已软删实体一律拒绝。 */
   public boolean canWrite(KnowledgeBaseEntity knowledgeBase, UserContext user) {
     boolean result = false;
-    if (knowledgeBase != null && user != null) {
+    if (knowledgeBase != null
+        && !Boolean.TRUE.equals(knowledgeBase.getIsDeleted())
+        && user != null) {
       result =
           user.isSuperAdmin()
               || Objects.equals(knowledgeBase.getOwnerUserId(), user.userIdRef())
@@ -86,12 +93,7 @@ public class KnowledgeBaseAuthorizationService {
             .selectList(
                 new QueryWrapper<KnowledgeBaseEntity>().select("id").eq("visibility", "PUBLIC"))
             .forEach(item -> ids.add(item.getId()));
-        memberMapper
-            .selectList(
-                new QueryWrapper<KnowledgeBaseMemberEntity>()
-                    .select("knowledge_base_id")
-                    .eq("user_id", user.userIdRef()))
-            .forEach(item -> ids.add(item.getKnowledgeBaseId()));
+        memberMapper.selectActiveKnowledgeBaseIdsByUserId(user.userIdRef()).forEach(ids::add);
         result = new ArrayList<>(ids);
       }
     }
