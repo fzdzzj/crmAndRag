@@ -1,0 +1,56 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：前置核对与红灯",
+    "task": "确认触发条件和保护范围",
+    "steps": [
+      {"step": "实测权威 HEAD/status 和生产读取链，保护既有未跟踪文件及原树", "completed": true},
+      {"step": "新增缺失及非数字 chunkIndex 的 ContextBuilder 确定性反例，记录修前失败", "completed": true},
+      {"step": "构造负索引与同文档有效命中混合、索引 0 行反例，锁定不串邻居", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：最小行为修复",
+    "task": "只修无效索引的拼装分支",
+    "steps": [
+      {"step": "appendWithNeighbors 守卫空与负索引；无效项仅拼原命中文本", "completed": true},
+      {"step": "确认有效索引 0/正数、父块优先、邻居开关及原序编号不变", "completed": true},
+      {"step": "确认批查/回查有界 SQL 与降级逻辑、正常查询形状无改动", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：回归和门禁",
+    "task": "验证红绿边界与无回退",
+    "steps": [
+      {"step": "修后定向运行新反例、ContextBuilder 与 ContextBatchReadEquivalence，记录用例数", "completed": true},
+      {"step": "对照生产 diff 只含守卫和必要注释，无检索语义或动态配置改动", "completed": true},
+      {"step": "定向测试通过并确认增量无错误；完整门禁留到文档勘误后执行", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：独立文档勘误",
+    "task": "纠正 A/B 报告摘要反向措辞",
+    "steps": [
+      {"step": "核对 §7.4 与 §8 的吞吐方向及六个比值，仅改首页一处文字", "completed": true},
+      {"step": "确认原始统计表、安全与本机裁决未动，预留单独 docs 提交", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：范围提交与合并",
+    "task": "本案一轮完整收尾",
+    "steps": [
+      {"step": "在所有改动就绪后实跑默认 merge-gate、diff --check 与基线检查", "completed": true},
+      {"step": "核对待暂存清单仅为本案修复、测试、三件套及独立勘误，无其他文件", "completed": true},
+      {"step": "依据本轮输出填写验证和未跑项；合并前再核双亲及文件范围", "completed": true}
+    ],
+    "passes": true
+  }
+]
