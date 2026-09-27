@@ -37,8 +37,8 @@ import org.springframework.beans.factory.ObjectProvider;
  * 条、批查异常只对受影响批次做一次有界逐条回查、 持续故障不产生无上限重试、大候选集合按生产侧 {@code
  * NeighborContextSupport.SNAPSHOT_BATCH_LIMIT} 拆批不生成无界 IN。 计数断言一律取「新路径构建前后差值」，避免参照实现自身的调用混入。
  *
- * <p>缺失 chunkIndex 元数据的命中在旧路径会于 {@code hitChunkIndex - 1} 处拆箱 NPE——该缺陷为独立正确性事项
- * （见提案），本测试不构造该输入、也不在新路径中顺手修复或掩盖。
+ * <p>本等价测试仍不构造缺失 chunkIndex 的命中输入；该边界现由 {@link ContextBuilderTest} 的独立回归覆盖， 生产拼装路径对缺失、非数字与负
+ * chunkIndex 已按无效索引安全降级（fix-neighbor-missing-chunk-index-fallback）。
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
