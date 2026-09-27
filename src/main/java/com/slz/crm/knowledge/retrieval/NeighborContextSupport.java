@@ -53,11 +53,20 @@ final class NeighborContextSupport {
     return builder.toString();
   }
 
-  /** 命中块 + 前/后邻居拼装（邻居行来自批次预取）；邻居缺失（首末块/跨文档/批查降级）时静默跳过对应一侧。 */
+  /**
+   * 命中块 + 前/后邻居拼装（邻居行来自批次预取）；邻居缺失（首末块/跨文档/批查降级）时静默跳过对应一侧。
+   *
+   * <p>无效索引守卫（fix-neighbor-missing-chunk-index-fallback）：metadata 的 chunkIndex 缺失、非 Number 或为负数时，
+   * 只按原文本输出该命中（不拆箱空值、不为负索引取邻居），与 {@link #collectNeighborTargets} 的跳过规则一致； 有效索引 0/正数的邻居拼装不变。
+   */
   static void appendWithNeighbors(
       StringBuilder builder, VectorSearchHit hit, List<DocumentVectorChunkEntity> rows) {
     String hitText = hit.text() == null ? "" : hit.text().strip();
     Integer hitChunkIndex = chunkIndex(hit);
+    if (hitChunkIndex == null || hitChunkIndex < 0) {
+      builder.append(hitText);
+      return;
+    }
     DocumentVectorChunkEntity prev = neighborAt(rows, hitChunkIndex - 1, hit);
     DocumentVectorChunkEntity next = neighborAt(rows, hitChunkIndex + 1, hit);
     if (prev != null && !prev.getChunkText().isBlank()) {

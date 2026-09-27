@@ -2,6 +2,8 @@ package com.slz.crm.unit.knowledge.retrieval;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.slz.crm.knowledge.entity.DocumentVectorChunkEntity;
@@ -12,6 +14,7 @@ import com.slz.crm.knowledge.retrieval.TokenEstimator;
 import com.slz.crm.platform.contract.DynamicConfigService;
 import com.slz.crm.platform.contract.VectorSearchHit;
 import com.slz.crm.server.mapper.DocumentVectorChunkMapper;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -146,6 +149,54 @@ class ContextBuilderTest {
     assertThat(context).isEqualTo("[1] 命中块正文");
   }
 
+  /**
+   * 无效索引守卫（fix-neighbor-missing-chunk-index-fallback，spec-delta 场景一）：metadata 缺失 chunkIndex 时
+   * 不得拆箱空值抛 NPE；该命中保留原 [n] 编号与正文，且不产生邻居查询目标。
+   */
+  @Test
+  void missingChunkIndexMetadataKeepsHitTextWithoutNeighborQuery() {
+    when(chunkMapper.selectList(any())).thenReturn(List.of());
+    ContextBuilder builder =
+        new ContextBuilder(chunkMapper, dynamicConfigProvider, new RuleContextCompressor(), null);
+    RetrievalCandidate candidate = candidateWithMetadata("benchdoc-7", "缺失索引命中", metadataOf(null));
+
+    String context = builder.build(List.of(candidate));
+
+    assertThat(context).isEqualTo("[1] 缺失索引命中");
+    verify(chunkMapper, never()).selectList(any());
+  }
+
+  /** 无效索引守卫（spec-delta 场景一）：chunkIndex 字段为非 Number（此处为字符串）时同样按无效索引降级， 不抛 NPE、不拼邻居。 */
+  @Test
+  void nonNumericChunkIndexMetadataKeepsHitTextWithoutNeighborQuery() {
+    when(chunkMapper.selectList(any())).thenReturn(List.of());
+    ContextBuilder builder =
+        new ContextBuilder(chunkMapper, dynamicConfigProvider, new RuleContextCompressor(), null);
+    RetrievalCandidate candidate = candidateWithMetadata("benchdoc-8", "非数字索引命中", metadataOf("2"));
+
+    String context = builder.build(List.of(candidate));
+
+    assertThat(context).isEqualTo("[1] 非数字索引命中");
+    verify(chunkMapper, never()).selectList(any());
+  }
+
+  /**
+   * 负索引守卫（spec-delta 场景二）：同文档一条负索引命中与一条有效索引命中同批，后者预取行含索引 0； 负索引命中只有自身文本，不得借用索引 0
+   * 作为后置邻居，有效命中的前后邻居不受污染。
+   */
+  @Test
+  void negativeChunkIndexHitMustNotBorrowIndexZeroNeighborFromSameBatch() {
+    stubNeighborRows(row(0, "第零块", 1L), row(2, "第二块", 1L));
+    ContextBuilder builder =
+        new ContextBuilder(chunkMapper, dynamicConfigProvider, new RuleContextCompressor(), null);
+    RetrievalCandidate negativeHit = candidateWithMetadata("benchdoc-neg", "负索引命中", metadataOf(-1));
+    RetrievalCandidate validHit = candidateWithMetadata("benchdoc-pos", "有效命中", metadataOf(1));
+
+    String context = builder.build(List.of(negativeHit, validHit));
+
+    assertThat(context).isEqualTo("[1] 负索引命中\n[2] （前文承接）第零块\n有效命中\n（后文承接）第二块");
+  }
+
   /** 多命中块编号独立：编号只与候选顺序绑定，邻居缺失不影响后续块编号。 */
   @Test
   void multipleHitsKeepIndependentNumbering() {
@@ -182,6 +233,22 @@ class ContextBuilderTest {
 
   private void stubNeighborRows(DocumentVectorChunkEntity... rows) {
     when(chunkMapper.selectList(any())).thenReturn(List.of(rows));
+  }
+
+  /** 构造 metadata：filename/pageNo 固定；chunkIndex 允许缺失（null）、非 Number 或负数。 */
+  private Map<String, Object> metadataOf(Object chunkIndex) {
+    Map<String, Object> metadata = new HashMap<>();
+    metadata.put("filename", "sales.txt");
+    metadata.put("pageNo", 1);
+    if (chunkIndex != null) {
+      metadata.put("chunkIndex", chunkIndex);
+    }
+    return metadata;
+  }
+
+  private RetrievalCandidate candidateWithMetadata(
+      String chunkId, String text, Map<String, Object> metadata) {
+    return new RetrievalCandidate(new VectorSearchHit(chunkId, DOC_ID, 0.8d, text, metadata), 0.8d);
   }
 
   private RetrievalCandidate candidate(String chunkId, int chunkIndex, String text, long pageNo) {
