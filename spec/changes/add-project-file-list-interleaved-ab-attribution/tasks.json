@@ -1,0 +1,57 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：冻结对照和安全入口",
+    "task": "核对两臂与度量字节同构",
+    "steps": [
+      {"step": "实测 HEAD/status、A=31ba8c4/B=d67c7e9 可达性及生产差异，保护既有未跟踪文件", "completed": true},
+      {"step": "让两臂的测试侧度量与种子字节一致，验证 opt-in 缺失、镜像缺失、默认发现均 fail closed", "completed": true},
+      {"step": "运行角色改派与撤权安全反例，两臂全绿方可进入性能测量", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：预注册设计与安慰剂",
+    "task": "锁定顺序和独立实验单元",
+    "steps": [
+      {"step": "冻结主次指标、六对 AB/BA 顺序、整对失败处置和本地容器数据复位规则", "completed": true},
+      {"step": "先行完成至少四次 A 对 A 安慰剂，记录自然漂移及校准而非事后改门槛", "completed": true},
+      {"step": "实测 Docker/镜像 digest、JDK/宿主、连接池及可获得的低干扰资源指标", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：交错真容器测量",
+    "task": "六对 A/B 同负载独立执行",
+    "steps": [
+      {"step": "按 AB/BA 交替的固定六对顺序执行，每臂六次且各 run 两轮完整矩阵", "completed": true},
+      {"step": "每 run 检查页与令牌输出、SQL 形状、失败数和条件行完整性；角色反例在两臂独立实跑", "completed": true},
+      {"step": "保存原始逐条件 stdout、顺序、异常和不计时资源样本，禁止挑选窗口", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：独立分析与裁决",
+    "task": "区分真实差异和时间漂移",
+    "steps": [
+      {"step": "解析原始记录并按六个配对 run 计算主指标与先后次序效应，不把条件格当独立样本", "completed": true},
+      {"step": "并排报告 P50/P95/吞吐/失败、A→A 安慰剂、未改路径阴性对照及未知资源", "completed": true},
+      {"step": "依预注册门槛裁决有条件 GO/未定/no-go，保留安全修复及历史原始表", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：门禁与范围收尾",
+    "task": "测试侧交付和证据级报告",
+    "steps": [
+      {"step": "实跑定向守卫与默认 merge-gate，逐项记录执行和未执行项", "completed": true},
+      {"step": "核对仅本案测试/报告/三件套进入索引，受保护文档及业务源码未动", "completed": true},
+      {"step": "根据实测填写 tasks、提交本案文件，并在合并条件满足时 no-ff 合并；不 push/归档", "completed": true}
+    ],
+    "passes": true
+  }
+]

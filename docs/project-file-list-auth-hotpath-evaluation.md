@@ -665,6 +665,8 @@ PROJECT_FILE_LIST_HOTPATH_MEASURE=1 mvn -B -ntp -Dtest=ProjectFileListAuthHotpat
 
 **本轮只读预检**：本机 Docker 在线（`docker info` 实测 ServerVersion `29.6.2`），钉扎镜像 `mysql:8.0`（`7dcddc01f13b`）本地存在，具备补测条件；但本轮未改代码、也未交替跑新 run，故上述补证**未执行**。本节所有数字均来自既有四个 S2 日志与四个原始日志的**只读复算**；第 11.5 节 SQL 形状结论来自既有日志的 `Interceptor` 计数，非新测量。
 
+> **后续补证（2026-09-27）**：交错 A/B 同机复测已完成，独立报告 `docs/project-file-list-interleaved-ab-evaluation.md`（提案 `add-project-file-list-interleaved-ab-attribution`）：六对交错 P50 配对差全部为负、安慰剂漂移远小于效应、阴性对照无共同改善，本机裁决升为**有条件 GO**。本节原始表不因新结论改写。
+
 #### 11.6.5 §3.2 P95 汇总的独立重算
 
 用原始四次 run 日志（`%TEMP%\pflhot-pre2.log`、`pflhot-pre-final.log`、`pflhot-post.log`、`pflhot-post2.log`）按第 3 节同一口径（基准 = PRE-final，`d1 = PRE-final → POST-1`、`d2 = PRE-final → POST-2`，仅取 WARM 稳态被改路径条件）逐格重算：
