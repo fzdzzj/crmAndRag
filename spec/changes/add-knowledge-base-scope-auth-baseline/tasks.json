@@ -1,0 +1,46 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：现场和安全边界",
+    "task": "核对起点并固定测量前提",
+    "steps": [
+      {"step": "实测 HEAD、两树状态、现行授权代码和关联规格，保护既有未跟踪文件", "completed": true},
+      {"step": "实测 Docker 和本地镜像、外呼开关与密钥隔离，确定失败即停止的入口", "completed": true},
+      {"step": "预登记规模、角色分布、scope 矩阵、采样数、执行次序、报告字段和裁决规则", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：测试侧真库存证",
+    "task": "实现可复现且默认关闭的授权度量",
+    "steps": [
+      {"step": "测试侧 Flyway 真 MySQL 种子和生产 mapper/授权服务装配，不读业务库和模型密钥", "completed": true},
+      {"step": "实现逐样本输出、SQL 调用与返回行数/计划/时延/资源记录，隔离种子与计时窗", "completed": true},
+      {"step": "新增默认门禁守卫与权限边界快照断言，验证开关缺失及镜像缺失 fail closed", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：独立运行与报告",
+    "task": "真容器多规模同条件复测并诚实归因",
+    "steps": [
+      {"step": "至少两次独立命令完成预登记矩阵，保留完整 stdout 和失败样本", "completed": true},
+      {"step": "逐格核对权限结果、SQL 形状、行数、EXPLAIN、P50/P95/P99/吞吐及资源可观测性", "completed": true},
+      {"step": "撰写报告并按闸门判定仅为下一案优先级，不宣称生产或请求端到端加速", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：验证与收尾",
+    "task": "分清测试覆盖并有限范围交付",
+    "steps": [
+      {"step": "实跑定向守卫与默认 merge-gate；新增测试时独立 clean verify 后脚本更新基线", "completed": true},
+      {"step": "核对本案文件、diff --check、tasks 真完成项及保护文件不变", "completed": true},
+      {"step": "证据和门禁全满足才提交并 --no-ff 合并；不 push、不归档", "completed": true}
+    ],
+    "passes": true
+  }
+]
