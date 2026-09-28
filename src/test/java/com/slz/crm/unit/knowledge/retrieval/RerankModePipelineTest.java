@@ -121,7 +121,8 @@ class RerankModePipelineTest {
         new LlmReranker(
             modelProvider,
             new DefaultWeightedReranker(new Bm25Scorer(), dynamicConfigProvider),
-            dynamicConfigProvider));
+            dynamicConfigProvider,
+            AsyncExecutorTestSupport.asyncPerTaskExecutor()));
   }
 
   private void stubCommon(UserContext user) {

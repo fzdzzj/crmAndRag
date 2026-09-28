@@ -37,7 +37,8 @@ class HydeQueryExpanderTest {
     lenient()
         .when(dynamicConfigService.get(eq("rag.query.hyde.enabled"), eq(Boolean.class), eq(false)))
         .thenReturn(enabled);
-    return new HydeQueryExpander(modelProvider, dynamicConfigProvider);
+    return new HydeQueryExpander(
+        modelProvider, dynamicConfigProvider, AsyncExecutorTestSupport.asyncPerTaskExecutor());
   }
 
   /** 任务 2.1：启用且模型返回正文 → 返回净化后的假设答案。 */
@@ -79,7 +80,8 @@ class HydeQueryExpanderTest {
   @Test
   void shouldReturnNullOnTimeout() {
     HydeQueryExpander shortTimeout =
-        new HydeQueryExpander(modelProvider, dynamicConfigProvider) {
+        new HydeQueryExpander(
+            modelProvider, dynamicConfigProvider, AsyncExecutorTestSupport.asyncPerTaskExecutor()) {
           @Override
           protected long resolveTimeoutMs() {
             return 50L;
@@ -99,9 +101,44 @@ class HydeQueryExpanderTest {
   @Test
   void shouldDegradeWhenConfigUnavailable() {
     when(dynamicConfigProvider.getIfAvailable()).thenReturn(null);
-    HydeQueryExpander noConfig = new HydeQueryExpander(modelProvider, dynamicConfigProvider);
+    HydeQueryExpander noConfig =
+        new HydeQueryExpander(
+            modelProvider, dynamicConfigProvider, AsyncExecutorTestSupport.asyncPerTaskExecutor());
 
     assertNull(noConfig.hypotheticalAnswer("查询"));
     verify(modelProvider, never()).chat(any(), any());
+  }
+
+  /** 卡 E：超时放弃的调用会被 cancel——drain 后排队未启动的任务不再执行（Provider 永不被调）。 */
+  @Test
+  void timeoutCancelsAbandonedCallSoQueuedTaskNeverRuns() {
+    AsyncExecutorTestSupport.DeferringExecutor deferring =
+        new AsyncExecutorTestSupport.DeferringExecutor();
+    HydeQueryExpander shortTimeout =
+        new HydeQueryExpander(modelProvider, dynamicConfigProvider, deferring) {
+          @Override
+          protected long resolveTimeoutMs() {
+            return 50L;
+          }
+        };
+    when(modelProvider.chat(any(), any()))
+        .thenReturn(ModelCallResult.ofText("假设答案", "m", null, null, null));
+
+    assertNull(shortTimeout.hypotheticalAnswer("查询"));
+
+    deferring.drain();
+    verify(modelProvider, never()).chat(any(), any());
+  }
+
+  /** 卡 E：池饱和拒绝（abort）走既有降级路径返回 null，不抛不阻塞。 */
+  @Test
+  void rejectionBySaturatedPoolDegradesToNullWithoutThrowing() {
+    HydeQueryExpander rejectingService =
+        new HydeQueryExpander(
+            modelProvider, dynamicConfigProvider, AsyncExecutorTestSupport.rejectingExecutor());
+    when(modelProvider.chat(any(), any()))
+        .thenReturn(ModelCallResult.ofText("假设答案", "m", null, null, null));
+
+    assertNull(rejectingService.hypotheticalAnswer("查询"));
   }
 }
