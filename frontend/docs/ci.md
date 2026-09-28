@@ -6,7 +6,7 @@
 
 | 位置 | 状态 | 说明 |
 |------|------|------|
-| `.github/workflows/ci.yml` 的 `frontend-quality` | 权威定义 | 本仓 `git remote -v` 为空、`master` 无 upstream，**该 job 今天不会被自动触发**；合并前由 `bash scripts/merge-gate.sh` 在本地跑等价序列 |
+| `.github/workflows/ci.yml` 的 `frontend-quality` | 权威定义 | remote 与 upstream 均已配置但从未 push（数量自查：`git rev-list --count origin/master..master`；远端 Actions 能否跑绿属未验证假设，需 push 后首跑才知道），**该 job 至今未被自动触发过**；合并前由 `bash scripts/merge-gate.sh` 在本地跑等价序列 |
 | `frontend/.github/workflows/ci.yml.prev-host-unread` | 已归档（`operationalize-harness-gates` 组 4.3） | 归档原因：宿主不读取嵌套目录下的 `.github/workflows`，且其触发分支写的是 `main`，与本仓默认分支 `master` 不符 |
 | `frontend/.github/workflows/e2e-official.yml.prev-host-unread` | 已归档（同上） | 同上；另依赖私有后端仓检出与 `BACKEND_REPO_TOKEN` |
 

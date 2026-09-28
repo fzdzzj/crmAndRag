@@ -2,11 +2,13 @@
 # CI 门禁（task18：契约/安全/数据权限/韧性/RAG 评估纳入 CI + 回归阈值）
 #
 # ⚠ 触发通道现状（必读，勿按字面理解为"失败会自动拦下合入"）：
-#   本仓 `git remote -v` 为空、master 无 upstream —— 下面声明的 push/PR 触发在**本仓不会执行**，
-#   全部 job 只在定义被镜像到支持 GitHub Actions 的平台后才生效（接入远端需单独授权）。
+#   remote 与 upstream 均已配置（自查：git remote -v、git rev-parse --abbrev-ref master@{upstream}），
+#   但 master 有一批提交从未 push（数量自查：git rev-list --count origin/master..master）——
+#   因此下面声明的 push/PR 触发至今从未执行过一次；远端 GitHub Actions 是否启用、首跑能否全绿
+#   属**未验证假设**，需 owner 授权 push 后看首跑结果才知道。
 #   所以真实的合并前验收边界在本地，一条命令：
 #       bash scripts/merge-gate.sh
-#   它与本文件的 job 同源（跑同一批判定命令），因此在无 CI 触发通道时结论可本地复现。
+#   它与本文件的 job 同源（跑同一批判定命令），因此在 CI 首跑之前结论可本地复现。
 #   合并序列见 openspec/git-workflow.md §3。
 #
 # 门禁语义（仅在有触发通道时成立）：任一阶段失败即阻止合入；
