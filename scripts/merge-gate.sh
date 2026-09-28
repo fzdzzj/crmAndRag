@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # 合并前本地聚合门禁（harness-gates 组 5.2）
 #
-# 为什么需要它：本仓 `git remote -v` 为空、master 无 upstream —— .github/workflows/ci.yml 里声明的
-# push/PR 触发在本仓**不会执行**，所以"任一阶段失败即阻止合入"今天是声明不是机制。真实的验收边界
+# 为什么需要它：remote 与 upstream 均已配置（自查：git remote -v、git rev-parse --abbrev-ref master@{upstream}），
+# 但 master 有一批提交从未 push（数量自查：git rev-list --count origin/master..master）——
+# .github/workflows/ci.yml 里声明的 push/PR 触发至今从未执行过一次（远端 Actions 能否跑绿属未验证假设，需 push 后首跑才知道），所以"任一阶段失败即阻止合入"今天是声明不是机制。真实的验收边界
 # 是"执行者手跑一遍再 --no-ff 合入"，本脚本就是把 openspec/git-workflow.md §3 那段散文收敛成一条命令：
 #     bash scripts/merge-gate.sh
 # 跑不过就不许合。风格照 scripts/fail-fast-gate.sh：自带断言、每个子门禁有具名失败出口，不靠 grep 拼凑。
