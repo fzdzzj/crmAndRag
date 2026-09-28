@@ -6,6 +6,9 @@
 # [pmd] 与 [pmd-baseline]（wire-pmd-ruleset 组 4.3 新增）同样"失败即被指名"，且场景 11 用真实的
 # scripts/tests/pmd-baseline-check.sh + 临时夹具锁住三种态（相等 / 登记偏高 / 实测超登记）与 CRLF 双向，
 # 另加零值路径双向锁（11h：零违规 + 新鲜报告 → 绿；11i：零违规 + 报告过期 → 红）。
+# 场景 12 把真实的 scripts/check-test-baseline.sh 拷进夹具仓根（含夹具 pom / 台账 / 报告），锁住
+# 「残留报告抬高基线计数」缺口修复经 merge-gate 聚合后的四态：干净→绿、口径外残留→红且逐份列名、
+# 清掉那一份→回绿（不必 clean）、pom 不可解析→fail-closed 判红。
 #
 # 无 Docker、无外网、不跑 Maven —— 靠 merge-gate.sh 顶部声明的 MERGE_GATE_* 测试钩子注入桩命令，
 # 口径同 scripts/check-test-baseline.sh 的 BASELINE_* 钩子。真实门禁各自的正确性由自己的
@@ -360,6 +363,76 @@ if [ -f "$repo_root/scripts/tests/pmd-violation-baseline.txt" ]; then
 fi
 expect_eq "11 未污染被跟踪的 pom（正文 cksum 不变）" "$pom_hash_before" "$pom_hash_after"
 expect_eq "11 未污染被跟踪的 PMD 台账（正文 cksum 不变）" "$ledger_hash_before" "$ledger_hash_after"
+
+# ---------------------------------------------------------------- 12. [baseline] 与默认口径真串在一起
+# 场景 2 只锁"失败即被指名"；本场景把**真实的** scripts/check-test-baseline.sh 拷进夹具仓根，
+# 用夹具自己的 pom / 台账 / 报告跑四种态，证明口径外残留经 merge-gate 聚合后确实变红并逐份列名，
+# 清掉那一份就回绿，而 pom 不可解析时 fail-closed 也会透传上来：
+#   12a 干净夹具（报告全命中 pom 默认 includes）→ [baseline] PASS、聚合零退出
+#   12b 丢一份 opt-in 基准残留进 surefire-reports → 聚合红、指名 [baseline]、残留被列名，
+#        且计数仍按默认口径（残留没有顶进 Tests run 合计）
+#   12c 清掉那一份残留 → 回绿（不必 mvn clean）
+#   12d 夹具 pom 不可解析（无插件块）→ 聚合红、拒绝裁决理由可见
+scope_root="$work/scope-fixture"
+mkdir -p "$scope_root/scripts" "$scope_root/target/surefire-reports" "$scope_root/target/failsafe-reports"
+cp "$repo_root/scripts/check-test-baseline.sh" "$scope_root/scripts/check-test-baseline.sh"
+
+# 夹具仓根的 pom：与真实 pom 同形（单行 <include>），surefire = Test/Tests 排除 IT，failsafe = IT/IntegrationTest。
+{
+  printf '<project><build><plugins>\n'
+  printf '<plugin><artifactId>maven-surefire-plugin</artifactId><configuration>\n'
+  printf '<includes><include>**/*Test.java</include><include>**/*Tests.java</include></includes>\n'
+  printf '<excludes><exclude>**/*IT.java</exclude></excludes>\n'
+  printf '</configuration></plugin>\n'
+  printf '<plugin><artifactId>maven-failsafe-plugin</artifactId><configuration>\n'
+  printf '<includes><include>**/*IT.java</include><include>**/*IntegrationTest.java</include></includes>\n'
+  printf '</configuration></plugin>\n'
+  printf '</plugins></build></project>\n'
+} >"$scope_root/pom.xml"
+
+# 夹具台账与报告：surefire 2 份 / 5 条，failsafe 1 份 / 2 条（都命中默认口径）。
+printf '# 临时基线（自测夹具）\nsurefire.reports=2\nsurefire.tests=5\nsurefire.skipped=0\nfailsafe.reports=1\nfailsafe.tests=2\nfailsafe.skipped=0\n' \
+  >"$scope_root/scripts/test-baseline.txt"
+mk_scope_report() { # <path> <tests>
+  printf 'Tests run: %s, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.066 s -- in %s\n' \
+    "$2" "$(basename "$1" .txt)" >"$1"
+}
+mk_scope_report "$scope_root/target/surefire-reports/a.FooTest.txt" 3
+mk_scope_report "$scope_root/target/surefire-reports/b.BarTest.txt" 2
+mk_scope_report "$scope_root/target/failsafe-reports/c.BazIT.txt" 2
+
+scope_case() { # <outfile>
+  run_case "$1" "MERGE_GATE_CMD_BASELINE=bash $scope_root/scripts/check-test-baseline.sh"
+}
+
+# 12a 干净 → 绿
+rc=$(scope_case "$work/scope-clean.out")
+expect_eq "12 干净夹具下聚合零退出" "0" "$rc"
+expect_has "12 [baseline] 真跑并 PASS" "PASS [baseline]" "$work/scope-clean.out"
+
+# 12b 丢一份口径外残留（opt-in 基准）→ 红，指名 [baseline]，残留被列名，计数不被抬高
+mk_scope_report "$scope_root/target/surefire-reports/d.QuxBenchmark.txt" 7
+rc=$(scope_case "$work/scope-foreign.out")
+expect_eq "12 口径外残留经聚合后非零" "1" "$rc"
+expect_has "12 失败被指名到 [baseline]" "FAIL [baseline]" "$work/scope-foreign.out"
+expect_has "12 尾部清单列出 baseline" "未通过的子门禁：baseline" "$work/scope-foreign.out"
+expect_has "12 残留文件被逐份列名" "d.QuxBenchmark.txt" "$work/scope-foreign.out"
+expect_has "12 报告数按默认口径显示" "报告=2（默认口径）" "$work/scope-foreign.out"
+expect_has "12 计数仍按默认口径" "Tests run=5" "$work/scope-foreign.out"
+expect_lacks "12 残留未混进计数" "Tests run=12" "$work/scope-foreign.out"
+
+# 12c 清掉残留 → 回绿（无需 clean）
+rm -f "$scope_root/target/surefire-reports/d.QuxBenchmark.txt"
+rc=$(scope_case "$work/scope-restored.out")
+expect_eq "12 清掉残留后聚合回绿（不必 clean）" "0" "$rc"
+
+# 12d pom 不可解析 → fail-closed 经聚合透传（红，理由可见）
+cp "$scope_root/pom.xml" "$work/scope-pom-ok.xml"
+printf '<project/>\n' >"$scope_root/pom.xml"
+rc=$(scope_case "$work/scope-badpom.out")
+expect_eq "12 pom 无插件块时聚合非零" "1" "$rc"
+expect_has "12 拒绝裁决理由被透传" "拒绝裁决" "$work/scope-badpom.out"
+cp "$work/scope-pom-ok.xml" "$scope_root/pom.xml"
 
 echo
 if [ "$failures" -gt 0 ]; then
