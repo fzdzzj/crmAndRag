@@ -3,6 +3,9 @@ package com.slz.crm.unit.knowledge.retrieval;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.slz.crm.knowledge.retrieval.Bm25Scorer;
@@ -16,6 +19,7 @@ import com.slz.crm.platform.contract.ModelProvider;
 import com.slz.crm.platform.contract.VectorSearchHit;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -35,8 +39,12 @@ class LlmRerankerTest {
   private DefaultWeightedReranker fallback;
 
   private LlmReranker reranker(long timeoutMs) {
+    return reranker(timeoutMs, AsyncExecutorTestSupport.asyncPerTaskExecutor());
+  }
+
+  private LlmReranker reranker(long timeoutMs, Executor executor) {
     fallback = new DefaultWeightedReranker(new Bm25Scorer(), dynamicConfigProvider);
-    return new LlmReranker(modelProvider, fallback, dynamicConfigProvider) {
+    return new LlmReranker(modelProvider, fallback, dynamicConfigProvider, executor) {
       @Override
       protected long resolveTimeoutMs() {
         return timeoutMs;
@@ -121,6 +129,36 @@ class LlmRerankerTest {
     assertEquals("c2", reranked.get(0).hit().chunkId());
     assertEquals("c1", reranked.get(1).hit().chunkId());
     assertEquals("c3", reranked.get(2).hit().chunkId());
+  }
+
+  /** 卡 E：超时放弃的调用会被 cancel——drain 后排队未启动的任务不再执行（Provider 永不被调）。 */
+  @Test
+  void timeoutCancelsAbandonedCallSoQueuedTaskNeverRuns() {
+    AsyncExecutorTestSupport.DeferringExecutor deferring =
+        new AsyncExecutorTestSupport.DeferringExecutor();
+    LlmReranker reranker = reranker(50, deferring);
+    lenient()
+        .when(modelProvider.chat(any(Prompt.class), any(ModelCallOptions.class)))
+        .thenReturn(ModelCallResult.ofText("[1,2]", "qwen-max", 100L, 10L, 110L));
+    List<RetrievalCandidate> candidates = List.of(candidate("c1"), candidate("c2"));
+
+    List<RetrievalCandidate> reranked = reranker.rerank("查询", candidates);
+
+    assertEquals(fallback.rerank("查询", candidates), reranked);
+    deferring.drain();
+    verify(modelProvider, never()).chat(any(Prompt.class), any(ModelCallOptions.class));
+  }
+
+  /** 卡 E：池饱和拒绝（abort）落回默认重排链，不抛不阻塞。 */
+  @Test
+  void rejectionBySaturatedPoolFallsBackToDefaultChainWithoutThrowing() {
+    LlmReranker reranker = reranker(3000, AsyncExecutorTestSupport.rejectingExecutor());
+    List<RetrievalCandidate> candidates = List.of(candidate("c1"), candidate("c2"));
+
+    List<RetrievalCandidate> reranked = reranker.rerank("查询", candidates);
+
+    assertEquals(fallback.rerank("查询", candidates), reranked);
+    verify(modelProvider, never()).chat(any(Prompt.class), any(ModelCallOptions.class));
   }
 
   private RetrievalCandidate candidate(String chunkId) {

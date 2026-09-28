@@ -96,7 +96,8 @@ class QueryTransformationPipelineTest {
         null,
         null,
         new MultiQueryRewriteService(modelProvider, dynamicConfigProvider),
-        new HydeQueryExpander(modelProvider, dynamicConfigProvider),
+        new HydeQueryExpander(
+            modelProvider, dynamicConfigProvider, AsyncExecutorTestSupport.asyncPerTaskExecutor()),
         directExecutor);
   }
 

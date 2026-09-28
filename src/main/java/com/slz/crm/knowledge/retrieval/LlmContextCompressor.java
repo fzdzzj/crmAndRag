@@ -12,6 +12,7 @@ import com.slz.crm.platform.contract.UserContextHolder;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -22,6 +23,7 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 /**
@@ -31,7 +33,8 @@ import org.springframework.stereotype.Service;
  * {@code ModelProvider} + 中立 {@code ModelCallOptions} 调用（未超预算不触发 LLM，零额外开销）。
  *
  * <p>回退语义（任务 2.2 三条路径，全部回退规则压缩链、不向调用方抛错）： 调用失败（异常）/ 输出为空或编号不完整或仍超预算 / 等待超时 （{@code
- * rag.context.compressor.llm.timeout-ms}，默认 3000）。
+ * rag.context.compressor.llm.timeout-ms}，默认 3000）；池饱和（abort 拒绝）同走此路。 已放弃的调用（超时/中断/失败）会对其 future 发起
+ * cancel——发起取消不等于已终止远程请求：CompletableFuture 的取消不中断执行线程，能否停止取决于 Provider 客户端实现。
  *
  * <p>计量（任务 2.3，补盲点）：压缩调用的 token 消耗挂 {@link TokenUsageRecorder}—— 成功按 usage 记 success=true；失败/超时记
  * success=false（契约约定失败调用也要计量）。 计量类型用 {@link TokenUsageType#SUMMARY}：压缩属要点化摘要类旁路调用， {@code
@@ -56,16 +59,19 @@ public class LlmContextCompressor implements Compressor {
   private final RuleContextCompressor fallbackCompressor;
   private final ObjectProvider<DynamicConfigService> dynamicConfigProvider;
   private final ObjectProvider<TokenUsageRecorder> tokenUsageRecorderProvider;
+  private final Executor llmAuxExecutor;
 
   public LlmContextCompressor(
       ModelProvider modelProvider,
       RuleContextCompressor fallbackCompressor,
       ObjectProvider<DynamicConfigService> dynamicConfigProvider,
-      ObjectProvider<TokenUsageRecorder> tokenUsageRecorderProvider) {
+      ObjectProvider<TokenUsageRecorder> tokenUsageRecorderProvider,
+      @Qualifier("llmAuxTaskExecutor") Executor llmAuxExecutor) {
     this.modelProvider = modelProvider;
     this.fallbackCompressor = fallbackCompressor;
     this.dynamicConfigProvider = dynamicConfigProvider;
     this.tokenUsageRecorderProvider = tokenUsageRecorderProvider;
+    this.llmAuxExecutor = llmAuxExecutor;
   }
 
   @Override
@@ -102,7 +108,7 @@ public class LlmContextCompressor implements Compressor {
     return result;
   }
 
-  /** 要点化压缩调用：带超时护栏（超时走 catch 回退）。 */
+  /** 要点化压缩调用：带超时护栏（超时走 catch 回退）；已放弃的调用对其 future 发起 cancel（发起取消不等于已终止远程请求，取决于 Provider 客户端实现）。 */
   private ModelCallResult<String> callModel(String context, int tokenBudget) throws Exception {
     List<Message> messages =
         List.of(
@@ -112,8 +118,14 @@ public class LlmContextCompressor implements Compressor {
         new ModelCallOptions(
             null, false, 0.0d, Math.max(MIN_OUTPUT_TOKENS, tokenBudget), null, null, Map.of());
     CompletableFuture<ModelCallResult<String>> future =
-        CompletableFuture.supplyAsync(() -> modelProvider.chat(new Prompt(messages), options));
-    return future.get(resolveTimeoutMs(), TimeUnit.MILLISECONDS);
+        CompletableFuture.supplyAsync(
+            () -> modelProvider.chat(new Prompt(messages), options), llmAuxExecutor);
+    try {
+      return future.get(resolveTimeoutMs(), TimeUnit.MILLISECONDS);
+    } finally {
+      // 已放弃（超时/中断/失败）的调用发起取消，排队未启动的任务不再执行；已完成时 cancel 是无操作。
+      future.cancel(true);
+    }
   }
 
   /** 输出校验：非空、编号序列与输入完全一致（引用编号完整性，任务 3.1 依赖）、 且压缩后不超过预算——任一不满足即回退规则链。 */

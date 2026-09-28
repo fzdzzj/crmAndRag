@@ -64,7 +64,11 @@ class LlmContextCompressorTest {
     when(tokenUsageRecorderProvider.getIfAvailable()).thenReturn(tokenUsageRecorder);
     compressor =
         new LlmContextCompressor(
-            modelProvider, fallback, dynamicConfigProvider, tokenUsageRecorderProvider) {
+            modelProvider,
+            fallback,
+            dynamicConfigProvider,
+            tokenUsageRecorderProvider,
+            AsyncExecutorTestSupport.asyncPerTaskExecutor()) {
           @Override
           protected long resolveTimeoutMs() {
             return 3000;
@@ -174,7 +178,11 @@ class LlmContextCompressorTest {
   void timeoutShouldFallBackToRuleChain() {
     LlmContextCompressor shortTimeout =
         new LlmContextCompressor(
-            modelProvider, fallback, dynamicConfigProvider, tokenUsageRecorderProvider) {
+            modelProvider,
+            fallback,
+            dynamicConfigProvider,
+            tokenUsageRecorderProvider,
+            AsyncExecutorTestSupport.asyncPerTaskExecutor()) {
           @Override
           protected long resolveTimeoutMs() {
             return 50;
@@ -213,5 +221,49 @@ class LlmContextCompressorTest {
         .thenReturn(ModelCallResult.ofText(skipped, "qwen-max", 10L, 5L, 15L));
     assertThat(compressor.compress(OVER_BUDGET_CONTEXT, budget))
         .isEqualTo(fallback.compress(OVER_BUDGET_CONTEXT, budget));
+  }
+
+  /** 卡 E：超时放弃的调用会被 cancel——drain 后排队未启动的任务不再执行（Provider 零交互）。 */
+  @Test
+  @DisplayName("超时放弃的调用被取消：排队任务不再执行")
+  void timeoutCancelsAbandonedCallSoQueuedTaskNeverRuns() {
+    AsyncExecutorTestSupport.DeferringExecutor deferring =
+        new AsyncExecutorTestSupport.DeferringExecutor();
+    LlmContextCompressor shortTimeout =
+        new LlmContextCompressor(
+            modelProvider, fallback, dynamicConfigProvider, tokenUsageRecorderProvider, deferring) {
+          @Override
+          protected long resolveTimeoutMs() {
+            return 50;
+          }
+        };
+    when(modelProvider.chat(any(Prompt.class), any(ModelCallOptions.class)))
+        .thenReturn(ModelCallResult.ofText(COMPRESSED_OUTPUT, "qwen-max", 100L, 10L, 110L));
+
+    String result = shortTimeout.compress(OVER_BUDGET_CONTEXT, BUDGET);
+
+    assertThat(result).isEqualTo(fallback.compress(OVER_BUDGET_CONTEXT, BUDGET));
+    deferring.drain();
+    verifyNoInteractions(modelProvider);
+  }
+
+  /** 卡 E：池饱和拒绝（abort）回退规则链且计量失败，不抛不阻塞。 */
+  @Test
+  @DisplayName("池饱和拒绝：回退规则链且计量失败")
+  void rejectionBySaturatedPoolFallsBackToRuleChainWithoutThrowing() {
+    LlmContextCompressor rejecting =
+        new LlmContextCompressor(
+            modelProvider,
+            fallback,
+            dynamicConfigProvider,
+            tokenUsageRecorderProvider,
+            AsyncExecutorTestSupport.rejectingExecutor());
+
+    String result = rejecting.compress(OVER_BUDGET_CONTEXT, BUDGET);
+
+    assertThat(result).isEqualTo(fallback.compress(OVER_BUDGET_CONTEXT, BUDGET));
+    ArgumentCaptor<TokenUsageRecord> captor = ArgumentCaptor.forClass(TokenUsageRecord.class);
+    verify(tokenUsageRecorder).record(captor.capture());
+    assertThat(captor.getValue().success()).isFalse();
   }
 }

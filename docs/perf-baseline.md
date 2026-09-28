@@ -41,6 +41,7 @@
 | `platform-document-parsing` | 2 | 4 | 100 | `abort` | 文档解析；满则失败交批量恢复 |
 | `platform-memory-bypass` | 2 | 2 | 64 | `abort` | 记忆旁路底层池（固定 2） |
 | `platform-derived-questions` | 1 | 2 | 64 | `discard-log` | 衍生问题旁路；丢弃=退化为普通块 |
+| `platform-llm-aux` | 2 | 4 | 4 | `abort` | 检索侧 LLM 辅助路（HyDE/重排/压缩，卡 E）；满则快速失败走各自降级，队列刻意浅（调用方 3s 即放弃） |
 
 拒绝统一包装：`async.task.rejected{executor,policy}` Counter，再委托原策略。
 

@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -20,6 +21,7 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 /**
@@ -30,7 +32,8 @@ import org.springframework.stereotype.Service;
  * ModelCallOptions} 调用（默认关闭，启用才产生 LLM 开销）。
  *
  * <p>回退语义（任务 4.2 三条路径，全部回退默认重排链、不向调用方抛错）： 调用失败（异常）/ 输出为空或无法解析 / 等待超时 （{@code
- * rag.retrieval.rerank.llm.timeout-ms}，默认 3000）。
+ * rag.retrieval.rerank.llm.timeout-ms}，默认 3000）；池饱和（abort 拒绝）同走此路。 已放弃的调用（超时/中断/失败）会对其 future 发起
+ * cancel——发起取消不等于已终止远程请求：CompletableFuture 的取消不中断执行线程，能否停止取决于 Provider 客户端实现。
  *
  * <p>分数语义：按 LLM 名次折算单调递减分 {@code (N - 名次) / N}，仅用于排序与引用相关度展示。
  */
@@ -50,14 +53,17 @@ public class LlmReranker implements Reranker {
   private final ModelProvider modelProvider;
   private final DefaultWeightedReranker fallbackReranker;
   private final ObjectProvider<DynamicConfigService> dynamicConfigProvider;
+  private final Executor llmAuxExecutor;
 
   public LlmReranker(
       ModelProvider modelProvider,
       DefaultWeightedReranker fallbackReranker,
-      ObjectProvider<DynamicConfigService> dynamicConfigProvider) {
+      ObjectProvider<DynamicConfigService> dynamicConfigProvider,
+      @Qualifier("llmAuxTaskExecutor") Executor llmAuxExecutor) {
     this.modelProvider = modelProvider;
     this.fallbackReranker = fallbackReranker;
     this.dynamicConfigProvider = dynamicConfigProvider;
+    this.llmAuxExecutor = llmAuxExecutor;
   }
 
   @Override
@@ -98,7 +104,10 @@ public class LlmReranker implements Reranker {
     return result;
   }
 
-  /** listwise 排序调用：带超时护栏（超时走 catch 回退），候选项过多时只精排头部。 */
+  /**
+   * listwise 排序调用：带超时护栏（超时走 catch 回退），候选项过多时只精排头部； 已放弃的调用对其 future 发起 cancel（发起取消不等于已终止远程请求，取决于
+   * Provider 客户端实现）。
+   */
   private String callModel(String query, List<RetrievalCandidate> head) throws Exception {
     StringBuilder userContent = new StringBuilder("查询：").append(query.strip()).append("\n候选片段：\n");
     for (int index = 0; index < head.size(); index++) {
@@ -117,8 +126,14 @@ public class LlmReranker implements Reranker {
             () -> {
               ModelCallResult<String> result = modelProvider.chat(new Prompt(messages), options);
               return result == null ? null : result.content();
-            });
-    return future.get(resolveTimeoutMs(), TimeUnit.MILLISECONDS);
+            },
+            llmAuxExecutor);
+    try {
+      return future.get(resolveTimeoutMs(), TimeUnit.MILLISECONDS);
+    } finally {
+      // 已放弃（超时/中断/失败）的调用发起取消，排队未启动的任务不再执行；已完成时 cancel 是无操作。
+      future.cancel(true);
+    }
   }
 
   /** 解析 "[3,1,2]" 型输出为 0 基下标顺序：非法/越界编号忽略；解析不出任何编号 → null（回退）； 部分缺失的候选按原顺序补在尾部，保证候选全集不丢。 */

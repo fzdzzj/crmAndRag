@@ -200,6 +200,37 @@ public class PlatformAsyncConfig {
         meterRegistry);
   }
 
+  /**
+   * 检索侧 LLM 辅助路线程池（卡 E async-executor-governance）：HyDE 假设答案、LLM 重排、LLM 上下文压缩 三条阻塞式模型外呼专用，脱离 JVM
+   * commonPool（无界、不经 TaskExecutorMetricsBinder、爆炸半径跨模块）。 饱和时快速失败（abort）：提交线程同步收到
+   * RejectedExecutionException，落三类各自的既有降级路径； 禁用 caller-runs（提交线程内联跑完远程调用，future.get(timeout) 超时失效）与
+   * discard-log（任务静默丢弃、future 永不完成，get 白等满超时）。 队列刻意浅（默认 4）：调用方 3s
+   * 即放弃，排队靠后的任务几乎注定超时，深队列只是把快速失败变成必然超时的浪费。
+   *
+   * @param meterRegistry Micrometer 注册表
+   * @param coreSize 核心线程数
+   * @param maxSize 最大线程数
+   * @param queueCapacity 有界队列容量
+   * @param awaitTerminationMillis 优雅关停等待毫秒数
+   * @return LLM 辅助路执行器
+   */
+  @Bean
+  public ThreadPoolTaskExecutor llmAuxTaskExecutor(
+      MeterRegistry meterRegistry,
+      @Value("${platform.async.llm-aux.core-size:2}") int coreSize,
+      @Value("${platform.async.llm-aux.max-size:4}") int maxSize,
+      @Value("${platform.async.llm-aux.queue-capacity:4}") int queueCapacity,
+      @Value("${platform.async.llm-aux.await-termination-ms:10000}") long awaitTerminationMillis) {
+    return buildExecutor(
+        "platform-llm-aux",
+        coreSize,
+        maxSize,
+        queueCapacity,
+        awaitTerminationMillis,
+        "abort",
+        meterRegistry);
+  }
+
   static ThreadPoolTaskExecutor buildExecutor(
       String prefix,
       int coreSize,

@@ -6,6 +6,7 @@ import com.slz.crm.platform.contract.ModelProvider;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +15,7 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 /**
@@ -26,7 +28,8 @@ import org.springframework.stereotype.Service;
  * EmbeddingService}，绝不进入生成上下文、SourceReference 或日志正文。
  *
  * <p>降级语义（任务 2.3）：关闭 / 调用失败 / 空输出 / 等待超时 （{@code rag.query.hyde.timeout-ms}，默认 3000）——一律返回
- * null，调用方跳过 HyDE 路， 不向调用方抛错。
+ * null，调用方跳过 HyDE 路， 不向调用方抛错；池饱和（abort 拒绝）同走此路。已放弃的调用（超时/中断/失败）会对其 future 发起
+ * cancel——发起取消不等于已终止远程请求：CompletableFuture 的取消不中断执行线程，能否停止取决于 Provider 客户端实现。
  */
 @Service
 public class HydeQueryExpander {
@@ -46,11 +49,15 @@ public class HydeQueryExpander {
 
   private final ModelProvider modelProvider;
   private final ObjectProvider<DynamicConfigService> dynamicConfigProvider;
+  private final Executor llmAuxExecutor;
 
   public HydeQueryExpander(
-      ModelProvider modelProvider, ObjectProvider<DynamicConfigService> dynamicConfigProvider) {
+      ModelProvider modelProvider,
+      ObjectProvider<DynamicConfigService> dynamicConfigProvider,
+      @Qualifier("llmAuxTaskExecutor") Executor llmAuxExecutor) {
     this.modelProvider = modelProvider;
     this.dynamicConfigProvider = dynamicConfigProvider;
+    this.llmAuxExecutor = llmAuxExecutor;
   }
 
   /** 生成假设答案文本；关闭/失败/空输出/超时返回 null（调用方跳过 HyDE 路）。 返回值只允许用于嵌入，不得进入生成上下文（隔离硬约束见类注释）。 */
@@ -66,8 +73,14 @@ public class HydeQueryExpander {
             new ModelCallOptions(null, false, 0.3d, 256, null, null, Map.of());
         CompletableFuture<String> future =
             CompletableFuture.supplyAsync(
-                () -> modelProvider.chat(new Prompt(messages), options).content());
-        result = sanitize(future.get(resolveTimeoutMs(), TimeUnit.MILLISECONDS));
+                () -> modelProvider.chat(new Prompt(messages), options).content(), llmAuxExecutor);
+        try {
+          result = sanitize(future.get(resolveTimeoutMs(), TimeUnit.MILLISECONDS));
+        } finally {
+          // 已放弃（超时/中断/失败）的调用发起取消，排队未启动的任务不再执行；已完成时 cancel 是无操作。
+          // 注意：CompletableFuture 取消不中断执行线程，远程请求是否终止取决于 Provider 客户端实现。
+          future.cancel(true);
+        }
       } catch (InterruptedException exception) {
         Thread.currentThread().interrupt();
         LOG.warn("HyDE 假设答案生成被中断，跳过 HyDE 路");
