@@ -52,9 +52,13 @@ jobs:
       #   bash scripts/check-test-baseline.sh
       # 阈值不在 YAML 里，而在 scripts/test-baseline.txt，且只允许由
       #   bash scripts/check-test-baseline.sh --update
-      # 在一次真实 mvn -B -ntp clean verify 之后写入；当前运行含 Failures/Errors 时 --update 直接拒绝。
-      # 脚本同时裁决四项：Failures 与 Errors 必须为 0、Tests run 不低于基线（防丢测试）、
-      # Skipped 不高于基线（防整类被悄悄跳过；旧实现只对 Tests run 求和，看不到这一项）。
+      # 在一次真实 mvn -B -ntp clean verify 之后写入；当前运行含 Failures/Errors 或存在口径外残留时 --update 直接拒绝。
+      # 脚本同时裁决五项：Failures 与 Errors 必须为 0、Tests run 不低于基线（防丢测试）、
+      # Skipped 不高于基线（防整类被悄悄跳过；旧实现只对 Tests run 求和，看不到这一项）、
+      # reports（默认口径内的报告文件数）不低于基线（防丢测试类：类被删/改名，或未被默认 includes 覆盖）。
+      # 基线衡量的是 pom 默认 includes 定义的默认运行；报告目录里不属于该口径的报告（典型：opt-in 基准）
+      # 是「口径外残留」，check 判红并逐份列名、--update 拒绝写入。口径细节见
+      # scripts/check-test-baseline.sh 头部第 9-20 行，此处不复述。
       # 历史阶梯 639/644/645/649/653/657 与 failsafe 13 的来龙去脉见：
       #   git log -p -- scripts/test-baseline.txt .github/workflows/ci.yml
       - name: 回归基线阈值校验（surefire + failsafe 双口径）

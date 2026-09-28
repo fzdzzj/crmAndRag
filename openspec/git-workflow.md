@@ -1,7 +1,7 @@
 # Git 工作流 — 检索链路优化提案执行契约（交接 agent 必读）
 
 > 适用：`openspec/changes/` 下剩余提案（2–5）的执行 agent。本文自包含，与本机环境（旧版 git + PowerShell）已对齐。
-> 当前基线：master @ `e24663a`（提案 1 已 `--no-ff` 合入）；**回归基线阈值只存放在 `scripts/test-baseline.txt`，裁决由 `bash scripts/check-test-baseline.sh` 完成（本地与 CI 同一条命令）**——本文与该文件之外的任何地方都不复制 surefire/failsafe 数字作验收口径，历史口径一律以该文件与 `git log -p -- scripts/test-baseline.txt` 为准；仓库**无 remote，禁止 push**（推送需用户显式授权）。
+> 当前基线自查：`git log --oneline -1 master`（提案 1 已 `--no-ff` 合入）；**回归基线阈值只存放在 `scripts/test-baseline.txt`，裁决由 `bash scripts/check-test-baseline.sh` 完成（本地与 CI 同一条命令）**——本文与该文件之外的任何地方都不复制 surefire/failsafe 数字作验收口径，历史口径一律以该文件与 `git log -p -- scripts/test-baseline.txt` 为准；**push 需用户显式授权，未授权不得 push**（remote 现状与未 push 数自查：`git remote -v`、`git rev-list --count origin/master..master`）。
 
 ## 1. 分支模型
 
@@ -27,7 +27,7 @@
    输出即合入证据：把各子门禁的实测数字抄进汇报，不许引用上一轮数字。
    特别地，PMD 的"基线只许下调"在构建层**没有**自动执行点（`pmd:check` 只在实测严格大于登记值时才红），
    抓"该下调了"的 `[pmd-baseline]` 只有在这条聚合命令里才会被跑到。
-2. 亲验：`git status` 干净（仅允许剩两个已知未跟踪文件，见 §6）。
+2. 亲验：`git status` 干净；若存在非本案产出的未跟踪文件（并发 lane / 他人暂存物），**既不许提交也不许删除**——用显式路径 `git add` 只把本案产出加入暂存（把它们排除在提交外），并在汇报里列出。
 3. 合并：
    ```
    git checkout master
@@ -45,7 +45,7 @@
   bash scripts/check-test-baseline.sh --update
   ```
   **禁止手改该文件的数字**（`scripts/check-test-baseline.sh:13` 与 `scripts/test-baseline.txt` 第 1 行都写着这条，
-  对任何提案生效）；当前运行含 Failures/Errors 时 `--update` 会直接拒绝写入。
+  对任何提案生效）；当前运行含 Failures/Errors 时 `--update` 会直接拒绝写入；遇**口径外残留**（不属于 pom 默认 includes 口径的报告文件，典型是 opt-in 基准留下的）同样拒绝写入——处置：删掉脚本点名的 `.txt`（连同同名 `.xml`）后重跑即可，不必 `clean` 整个 `target/`，判定与名单以脚本输出为准。
 - 分支收尾提交信息口径：`chore(ci): 回归基线由一次真实运行重新写入——锁住提案X新增Y测试（实测见 --update 输出）`；
   failsafe 侧仅在**新增 IT 且本地实测**后才会上调（无 Docker 时哪些跳哪些红，见 `docs/migration-runbook.md` §6.2）。
 - 基线 JSON（`baseline-after-*.json`）**入库**——它们是后续提案"不回退"验收的锚点。

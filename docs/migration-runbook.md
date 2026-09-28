@@ -69,7 +69,7 @@
 ### 6.1 两类测试与命令
 
 - 单元测试：`mvn -B -ntp test`（surefire，`**/*Test.java`，不需要数据库也不需要 Docker）。
-  **基线数字以 `scripts/test-baseline.txt` 为准（阈值不在 YAML 里，`.github/workflows/ci.yml` 阶段3 只调 `bash scripts/check-test-baseline.sh` 裁决；当前 surefire 724 / failsafe 66，截至 2026-09-20 合并树实测 baseline `e2785b2`）**；本文不复制数字，历史快照（如"快照截至 2026-09-11 的 467"、"surefire 657 / failsafe 13"）一律以该文件与 `git log -p -- scripts/test-baseline.txt` 为准，更早的"306 个 CRM 基线测试"口径已作废。
+  **基线数字以 `scripts/test-baseline.txt` 为准（阈值不在 YAML 里，`.github/workflows/ci.yml` 阶段3 只调 `bash scripts/check-test-baseline.sh` 裁决）**；本文不复制数字，历史快照（如"快照截至 2026-09-11 的 467"、"surefire 657 / failsafe 13"）一律以该文件与 `git log -p -- scripts/test-baseline.txt` 为准，更早的"306 个 CRM 基线测试"口径已作废。
   此数不依赖 Docker，CI 与本机同口径。
 - 集成测试：`mvn -B -ntp verify` 追加 failsafe（`**/*IT.java`、`**/*IntegrationTest.java`），报告写入 `target/failsafe-reports`。
   可执行 IT 类共 **19 个**（`src/test/**/*IT.java` 实测 20 个文件，`AbstractMySqlIT` 是抽象基类不产出报告；`**/*IntegrationTest.java` 实测 0 个），声明用例 **66** 个（52 个 `@Test` 方法 + 1 个参数化方法展开为 14 次执行；19 份报告首行合计 `Tests run: 66, Skipped: 6`）；聚合口径与基线同样以 `scripts/test-baseline.txt` 为准。
