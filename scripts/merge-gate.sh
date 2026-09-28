@@ -20,6 +20,9 @@
 #                 而默认序列根本不跑 verify（--with-verify 才有 [it]），挂在 verify 上等于不设门禁。
 #   [it]          mvn -B -ntp verify                  （--with-verify 才跑）failsafe IT；本机无 Docker 时按 §6.2 只跳不证
 #   [baseline]    bash scripts/check-test-baseline.sh 回归基线裁决（阈值唯一读者 scripts/test-baseline.txt）
+#                 计数只认 pom 默认 includes 口径内的报告（词干读自 pom）；口径外残留（典型：opt-in 基准
+#                 KB_SCOPE_AUTH_MEASURE=1 留下的 *Benchmark 报告）存在即判红并逐份列名，--update 也拒绝写入。
+#                 判定与处置提示全在该脚本，本文件只传递失败，不复述口径。
 #   [hook]        生效 hooks 目录内 pre-commit 存在、可追踪到 frontend/.githooks/pre-commit、且被转发目标确实在位
 #   [bijection]   bash scripts/tests/spotbugs-exclude-staleness-check.sh
 #                 SpotBugs 台账双射：<Match> 元素数 == 未过滤 High 数且一一对应，抓"登记了却不再命中"的过期豁免
@@ -111,7 +114,7 @@ if [ "$WITH_VERIFY" -eq 1 ]; then
 else
   echo "── [it] failsafe 集成测试：未执行（默认跳过，加 --with-verify 才跑）"
 fi
-run_gate baseline "回归基线裁决（阈值读者 scripts/test-baseline.txt）" "$cmd_baseline"
+run_gate baseline "回归基线裁决（默认口径计数 + 口径外残留判红；阈值读者 scripts/test-baseline.txt）" "$cmd_baseline"
 
 # [frontend-unit]：spec R3 —— 被跟踪的前端单元用例必须落在某个会自动执行的检查上。
 # 提交期 pre-commit 只跑 lint+type-check，CI 在本仓又无触发通道，所以只有这里能承接它。
@@ -163,7 +166,7 @@ fi
 
 echo "::error::merge-gate 失败，未通过的子门禁：${failed[*]}" >&2
 echo "        逐项排查命令：unit→mvn -B -ntp test｜spotbugs→mvn -B -ntp spotbugs:check｜pmd→mvn -B -ntp pmd:check｜it→mvn -B -ntp verify｜" >&2
-echo "        baseline→bash scripts/check-test-baseline.sh｜hook→见 frontend/AGENTS.md Git Hook Policy｜" >&2
+echo "        baseline→bash scripts/check-test-baseline.sh（口径外残留按输出逐份列名处置）｜hook→见 frontend/AGENTS.md Git Hook Policy｜" >&2
 echo "        frontend-unit→pnpm -C frontend test｜" >&2
 echo "        bijection→bash scripts/tests/spotbugs-exclude-staleness-check.sh｜" >&2
 echo "        pmd-baseline→bash scripts/tests/pmd-baseline-check.sh" >&2
