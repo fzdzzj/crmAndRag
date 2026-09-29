@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.slz.crm.platform.contract.ModelCallOptions;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.slf4j.Logger;
@@ -17,9 +18,12 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
+import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.env.Environment;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.util.StringUtils;
@@ -70,11 +74,36 @@ class CompatibleModeSupport {
             .completionsPath(COMPATIBLE_COMPLETIONS_PATH)
             .restClientBuilder(
                 org.springframework.web.client.RestClient.builder()
+                    .requestFactory(
+                        buildRequestFactory(
+                            properties.getConnectTimeoutSeconds(), properties.getTimeoutSeconds()))
                     .requestInterceptor(thinkingInterceptor))
             .build();
     OpenAiChatOptions defaultOptions =
         OpenAiChatOptions.builder().model(properties.getChatModel()).streamUsage(true).build();
     return OpenAiChatModel.builder().openAiApi(api).defaultOptions(defaultOptions).build();
+  }
+
+  /**
+   * 卡 G 档1：sync 路 HTTP 超时装配。read = {@code platform.ai.model.timeout-seconds}，connect = {@code
+   * platform.ai.model.connect-timeout-seconds}；两者 {@code <= 0} 一律按"不限"处理（不设该超时），与配置项 javadoc 的
+   * {@code 0 = 不限} 语义一致。流式路不在此列（已有反应式 {@code .timeout}）。
+   */
+  static ClientHttpRequestFactory buildRequestFactory(long connectSeconds, long readSeconds) {
+    return ClientHttpRequestFactoryBuilder.detect()
+        .build(requestFactorySettings(connectSeconds, readSeconds));
+  }
+
+  /** 超时设置单独可测：不依赖具体 requestFactory 实现即可断言取值。 */
+  static ClientHttpRequestFactorySettings requestFactorySettings(
+      long connectSeconds, long readSeconds) {
+    return ClientHttpRequestFactorySettings.defaults()
+        .withTimeouts(timeoutOrNull(connectSeconds), timeoutOrNull(readSeconds));
+  }
+
+  /** 秒转 Duration；{@code <= 0} 返回 null = 不设该超时（不限）。 */
+  private static Duration timeoutOrNull(long seconds) {
+    return seconds > 0 ? Duration.ofSeconds(seconds) : null;
   }
 
   /** thinking=true 流式：手工 JSON + WebClient SSE。 */

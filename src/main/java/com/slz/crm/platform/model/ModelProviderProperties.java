@@ -37,6 +37,9 @@ public class ModelProviderProperties {
   /** 单次调用超时（秒）；0 表示不限（不建议，容易拖死 SSE 线程） */
   private long timeoutSeconds = 60;
 
+  /** 建立连接超时（秒）；0 表示不限 */
+  private long connectTimeoutSeconds = 10;
+
   public String getProvider() {
     return provider;
   }
@@ -91,5 +94,13 @@ public class ModelProviderProperties {
 
   public void setTimeoutSeconds(long timeoutSeconds) {
     this.timeoutSeconds = timeoutSeconds;
+  }
+
+  public long getConnectTimeoutSeconds() {
+    return connectTimeoutSeconds;
+  }
+
+  public void setConnectTimeoutSeconds(long connectTimeoutSeconds) {
+    this.connectTimeoutSeconds = connectTimeoutSeconds;
   }
 }
