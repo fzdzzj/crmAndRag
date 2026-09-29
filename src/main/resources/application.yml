@@ -80,7 +80,7 @@ crm:
     pending-expire-minutes: 30      # 确认卡片超时时间（分钟）
     rate-limit-per-minute: 10       # 每用户每分钟 AI 请求上限
     entity-query-page-size: 1000    # 实体解析查询页大小（合同/商机候选列表全量返回）
-    llm-timeout-seconds: 60         # 默认：60 秒；建议范围：30~120；LLM 调用超时，超过则降级或重试
+    llm-timeout-seconds: 60         # 默认：60 秒；建议范围：30~120；LLM 调用超时，超过则降级或重试；0/负数无效，回落默认 60
     max-fix-rounds: 2               # 工具调用失败修复重试上限（有限次修复）
     fallback-model: qwen-turbo      # 降级备用模型（主模型失败时切换，留空则不降级）
     static-fallback-message: AI 服务暂时不可用，请稍后再试
@@ -120,8 +120,10 @@ platform:
       chat-model: ${SLZ_AI_CHAT_MODEL:qwen-plus}
       vision-model: ${SLZ_AI_VISION_MODEL:qwen-vl-plus}
       embedding-model: ${SLZ_AI_EMBEDDING_MODEL:text-embedding-v3}
-      # 单次调用超时（秒）；0 表示不限（不建议）
-      timeout-seconds: 60         # 默认：60 秒；建议范围：30~120；AI 模型单次调用超时阈值
+      # 单次调用超时（秒）；0 表示不限（不建议）；只管同步路（RestClient），流式另有反应式超时
+      timeout-seconds: 60         # 默认：60 秒；建议范围：30~120；同步 AI 模型调用读取超时；0 表示不限
+      # 建立连接超时（秒）；0 表示不限
+      connect-timeout-seconds: 10 # 默认：10 秒；建议范围：5~30；同步 AI 模型调用建连超时；0 表示不限
   # ---------------- Actuator 端点保护开关（ActuatorProtectionFilter 读取） ----------------
   actuator:
     # 总开关：为 false 时 /actuator/** 全放行——仅允许本地/测试显式关闭，生产 profile 强制 true

@@ -139,10 +139,23 @@ public class AiChatStreamLifecycle {
     heartbeat.start(activeStream, () -> finalizer.sendHeartbeat(activeStream));
   }
 
-  /** 解析 LLM 流式超时秒数（配置缺省 60s）。 */
-  private Duration resolveLlmTimeout() {
+  /**
+   * 解析 LLM 流式超时秒数：缺省 / 无效（{@code null} 或 {@code <=0}）一律回落默认 60s。注意 {@code <=0} 不是「不限」——反应式 {@code
+   * .timeout} 是流式路唯一超时保护，配 0 会让每条流刚订阅即超时。
+   */
+  Duration resolveLlmTimeout() {
     Integer timeoutSeconds = aiProperties.getLlmTimeoutSeconds();
-    return Duration.ofSeconds(timeoutSeconds == null ? 60 : timeoutSeconds);
+    Duration result;
+    if (timeoutSeconds == null || timeoutSeconds <= 0) {
+      log.warn(
+          "crm.ai.llm-timeout-seconds 配置无效（实际值={}）：<=0 不是「不限」而是会让反应式超时立刻触发；" + "已回落默认 {} 秒",
+          timeoutSeconds,
+          60);
+      result = Duration.ofSeconds(60);
+    } else {
+      result = Duration.ofSeconds(timeoutSeconds);
+    }
+    return result;
   }
 
   /**
