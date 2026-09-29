@@ -57,28 +57,39 @@ class AiChatStreamErrorRecovery {
         handled = tryFallbackModel(activeStream, fallbackModel);
       }
       if (!handled) {
-        if (activeStream.tryMarkFinished()) {
-          metrics.recordFailed(activeStream, effectiveModel, activeStream.getContext().fallback());
-          String answer = activeStream.getPartialAnswer().toString();
-          if (!answer.isBlank()) {
-            finalizer.persistInterrupted(activeStream, answer);
-            finalizer.sendBufferedEvent(
-                activeStream, "done", eventWriter().toDoneJson(String.valueOf(sessionId), null));
-          } else {
-            String staticMessage =
-                aiProperties.getStaticFallbackMessage() == null
-                    ? "AI 服务暂时不可用，请稍后再试"
-                    : aiProperties.getStaticFallbackMessage();
-            finalizer.persistFallbackMessage(activeStream, staticMessage);
-            if (finalizer.sendBufferedEvent(
-                activeStream, "delta", eventWriter().toDeltaJson(staticMessage))) {
-              finalizer.sendBufferedEvent(
-                  activeStream, "done", eventWriter().toDoneJson(String.valueOf(sessionId), null));
+        try {
+          if (activeStream.tryMarkFinished()) {
+            metrics.recordFailed(
+                activeStream, effectiveModel, activeStream.getContext().fallback());
+            try {
+              String answer = activeStream.getPartialAnswer().toString();
+              if (!answer.isBlank()) {
+                finalizer.persistInterrupted(activeStream, answer);
+                finalizer.sendBufferedEvent(
+                    activeStream,
+                    "done",
+                    eventWriter().toDoneJson(String.valueOf(sessionId), null));
+              } else {
+                String staticMessage =
+                    aiProperties.getStaticFallbackMessage() == null
+                        ? "AI 服务暂时不可用，请稍后再试"
+                        : aiProperties.getStaticFallbackMessage();
+                finalizer.persistFallbackMessage(activeStream, staticMessage);
+                if (finalizer.sendBufferedEvent(
+                    activeStream, "delta", eventWriter().toDeltaJson(staticMessage))) {
+                  finalizer.sendBufferedEvent(
+                      activeStream,
+                      "done",
+                      eventWriter().toDoneJson(String.valueOf(sessionId), null));
+                }
+              }
+            } finally {
+              finalizer.completeEmitter(activeStream);
             }
           }
-          finalizer.completeEmitter(activeStream);
+        } finally {
+          aiStreamRegistry.remove(sessionId, activeStream);
         }
-        aiStreamRegistry.remove(sessionId, activeStream);
       }
     }
   }
@@ -175,14 +186,17 @@ class AiChatStreamErrorRecovery {
 
   /** 流被取消（客户端断开）时的收尾：标记结束后按中断口径落库并清理注册表。 */
   void handleStreamCancelled(AiStreamRegistry.ActiveStream activeStream, Long sessionId) {
-    if (activeStream.tryMarkFinished()) {
-      metrics.recordCancelled(
-          activeStream,
-          finalizer.streamModel(activeStream),
-          finalizer.streamFallback(activeStream));
-      finalizer.persistInterrupted(activeStream, activeStream.getPartialAnswer().toString());
+    try {
+      if (activeStream.tryMarkFinished()) {
+        metrics.recordCancelled(
+            activeStream,
+            finalizer.streamModel(activeStream),
+            finalizer.streamFallback(activeStream));
+        finalizer.persistInterrupted(activeStream, activeStream.getPartialAnswer().toString());
+      }
+    } finally {
+      aiStreamRegistry.remove(sessionId, activeStream);
     }
-    aiStreamRegistry.remove(sessionId, activeStream);
   }
 
   /**
@@ -195,20 +209,26 @@ class AiChatStreamErrorRecovery {
     if (activeStream == null || activeStream.isFinished()) {
       result = false;
     } else {
-      if (activeStream.tryMarkFinished()) {
-        metrics.recordCancelled(
-            activeStream,
-            finalizer.streamModel(activeStream),
-            finalizer.streamFallback(activeStream));
-        String partial = activeStream.getPartialAnswer().toString();
-        finalizer.persistInterrupted(activeStream, partial);
+      try {
+        if (activeStream.tryMarkFinished()) {
+          metrics.recordCancelled(
+              activeStream,
+              finalizer.streamModel(activeStream),
+              finalizer.streamFallback(activeStream));
+          String partial = activeStream.getPartialAnswer().toString();
+          finalizer.persistInterrupted(activeStream, partial);
+        }
+        finalizer.disposeSubscription(activeStream);
+        try {
+          // 终态 CAS 已占位，dispose 触发的 doOnCancel 不会重复保存。
+          finalizer.sendBufferedEvent(
+              activeStream, "stopped", finalizer.eventWriter().toStoppedJson("CANCELLED"));
+        } finally {
+          finalizer.completeEmitter(activeStream);
+        }
+      } finally {
+        aiStreamRegistry.remove(sessionId, activeStream);
       }
-      finalizer.disposeSubscription(activeStream);
-      // 终态 CAS 已占位，dispose 触发的 doOnCancel 不会重复保存。
-      finalizer.sendBufferedEvent(
-          activeStream, "stopped", finalizer.eventWriter().toStoppedJson("CANCELLED"));
-      finalizer.completeEmitter(activeStream);
-      aiStreamRegistry.remove(sessionId, activeStream);
       result = true;
     }
     return result;
@@ -216,16 +236,19 @@ class AiChatStreamErrorRecovery {
 
   /** 客户端断开或超时兜底清理。 */
   void cleanup(AiStreamRegistry.ActiveStream activeStream, String reason) {
-    finalizer.disposeSubscription(activeStream);
-    if (activeStream.tryMarkFinished()) {
-      metrics.recordCancelled(
-          activeStream,
-          finalizer.streamModel(activeStream),
-          finalizer.streamFallback(activeStream));
-      String partial = activeStream.getPartialAnswer().toString();
-      finalizer.persistInterrupted(activeStream, partial);
-      log.info("SSE 连接断开兜底清理, sessionId={}, reason={}", activeStream.getSessionId(), reason);
+    try {
+      finalizer.disposeSubscription(activeStream);
+      if (activeStream.tryMarkFinished()) {
+        metrics.recordCancelled(
+            activeStream,
+            finalizer.streamModel(activeStream),
+            finalizer.streamFallback(activeStream));
+        String partial = activeStream.getPartialAnswer().toString();
+        finalizer.persistInterrupted(activeStream, partial);
+        log.info("SSE 连接断开兜底清理, sessionId={}, reason={}", activeStream.getSessionId(), reason);
+      }
+    } finally {
+      aiStreamRegistry.remove(activeStream.getSessionId(), activeStream);
     }
-    aiStreamRegistry.remove(activeStream.getSessionId(), activeStream);
   }
 }
