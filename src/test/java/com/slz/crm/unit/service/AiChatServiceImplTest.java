@@ -36,6 +36,7 @@ import com.slz.crm.server.ai.AiRateLimiter;
 import com.slz.crm.server.ai.AiShortQuestionRewriter;
 import com.slz.crm.server.ai.AiStreamRegistry;
 import com.slz.crm.server.ai.AiToolRegistry;
+import com.slz.crm.server.ai.ReactorOnErrorDroppedExtension;
 import com.slz.crm.server.properties.AiProperties;
 import com.slz.crm.server.service.AiMessageService;
 import com.slz.crm.server.service.AiSessionService;
@@ -75,7 +76,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, ReactorOnErrorDroppedExtension.class})
 @DisplayName("AI 对话服务上下文与生命周期")
 class AiChatServiceImplTest {
 
@@ -447,6 +448,8 @@ class AiChatServiceImplTest {
     when(promptSpec.options(any())).thenReturn(promptSpec);
     when(promptSpec.stream()).thenReturn(streamSpec);
     when(streamSpec.chatResponse()).thenReturn(Flux.error(new IllegalStateException("主模型失败")));
+    // 档 3 未改造裸 .subscribe() 前，模型流上游发出的错误在经 handleStreamError 处理后仍会因裸订阅被 Reactor 抛至 onErrorDropped
+    ReactorOnErrorDroppedExtension.expectDropped(IllegalStateException.class);
     when(aiProperties.getFallbackModel()).thenReturn("qwen-turbo");
     when(aiProperties.getLlmTimeoutSeconds()).thenReturn(1);
     when(aiProperties.getStaticFallbackMessage()).thenReturn("AI 服务暂时不可用");
@@ -944,6 +947,10 @@ class AiChatServiceImplTest {
               saved.countDown();
               return true;
             });
+
+    // 档 3 未改造裸 .subscribe() 前，模型流连接错误在经 scheduleConnectionRetry 处理后仍会因裸订阅被 Reactor 抛至
+    // onErrorDropped
+    ReactorOnErrorDroppedExtension.expectDropped(IOException.class);
 
     // 首次订阅以连接错误同步结束、终态由 1ms 延迟的重试任务异步交付：不能用
     // subscribeAwaitTerminal（此时 isFinished 仍为 false），终态等待 = 下方 retried/saved 两个

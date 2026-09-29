@@ -98,17 +98,23 @@ class AiChatStreamFinalizer {
   }
 
   void finishSuperseded(AiStreamRegistry.ActiveStream activeStream) {
-    if (activeStream.tryMarkFinished()) {
-      metrics.recordCancelled(
-          activeStream, streamModel(activeStream), streamFallback(activeStream));
-      String partial = activeStream.getPartialAnswer().toString();
-      persistAssistantMessage(activeStream, partial, "{\"interrupted\":true}", null, true);
-      disposeSubscription(activeStream);
-      sendBufferedEvent(
-          activeStream, "stopped", eventWriter.toStoppedJson("SUPERSEDED_BY_NEW_REQUEST"));
-      completeEmitter(activeStream);
+    try {
+      if (activeStream.tryMarkFinished()) {
+        metrics.recordCancelled(
+            activeStream, streamModel(activeStream), streamFallback(activeStream));
+        String partial = activeStream.getPartialAnswer().toString();
+        persistAssistantMessage(activeStream, partial, "{\"interrupted\":true}", null, true);
+        disposeSubscription(activeStream);
+        try {
+          sendBufferedEvent(
+              activeStream, "stopped", eventWriter.toStoppedJson("SUPERSEDED_BY_NEW_REQUEST"));
+        } finally {
+          completeEmitter(activeStream);
+        }
+      }
+    } finally {
+      aiStreamRegistry.remove(activeStream.getSessionId(), activeStream);
     }
-    aiStreamRegistry.remove(activeStream.getSessionId(), activeStream);
   }
 
   /** 安全释放模型流订阅（终止处置协作类亦复用）。 */
@@ -119,6 +125,7 @@ class AiChatStreamFinalizer {
     }
   }
 
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 存储异常降级：落库异常不阻断后续流终态处理
   private void persistAssistantMessage(
       AiStreamRegistry.ActiveStream activeStream,
       String content,
@@ -126,21 +133,27 @@ class AiChatStreamFinalizer {
       Usage usage,
       boolean deleteIfEmpty) {
     Long messageId = activeStream.getAssistantMessageId();
-    boolean updated =
-        assistantMessageStore.complete(
-            messageId,
-            content,
-            payload,
-            usage == null || usage.getTotalTokens() == null ? 0 : usage.getTotalTokens());
-    if (!updated) {
+    try {
+      boolean updated =
+          assistantMessageStore.complete(
+              messageId,
+              content,
+              payload,
+              usage == null || usage.getTotalTokens() == null ? 0 : usage.getTotalTokens());
+      if (!updated) {
+        log.error(
+            "AI assistant message save failed, sessionId={}, messageId={}",
+            activeStream.getSessionId(),
+            messageId);
+      } else if (deleteIfEmpty && (content == null || content.isBlank())) {
+        assistantMessageStore.deleteIfEmpty(messageId);
+      }
+    } catch (RuntimeException exception) {
       log.error(
-          "AI assistant message save failed, sessionId={}, messageId={}",
+          "AI assistant message save exception, sessionId={}, messageId={}",
           activeStream.getSessionId(),
-          messageId);
-      return;
-    }
-    if (deleteIfEmpty && (content == null || content.isBlank())) {
-      assistantMessageStore.deleteIfEmpty(messageId);
+          messageId,
+          exception);
     }
   }
 
