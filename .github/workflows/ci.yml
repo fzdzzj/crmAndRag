@@ -3,12 +3,14 @@
 #
 # ⚠ 触发通道现状（必读，勿按字面理解为"失败会自动拦下合入"）：
 #   remote 与 upstream 均已配置（自查：git remote -v、git rev-parse --abbrev-ref master@{upstream}），
-#   但 master 有一批提交从未 push（数量自查：git rev-list --count origin/master..master）——
-#   因此下面声明的 push/PR 触发至今从未执行过一次；远端 GitHub Actions 是否启用、首跑能否全绿
-#   属**未验证假设**，需 owner 授权 push 后看首跑结果才知道。
-#   所以真实的合并前验收边界在本地，一条命令：
+#   push/PR 触发已真实执行——截至 2026-09-29 共两次且均 failure（36229004762@2026-09-26、
+#   36522264015@2026-09-29，根因与处置见 docs/main-agent-execution.md §18 与卡 H；
+#   运行清单自查：gh run list --limit 10）。Actions 已启用，但 CI 首绿尚未发生，且两次运行中
+#   被 needs 链跳过的阶段（静态分析/线程池指标/fail-fast）在远端从未执行过，修完已知根因后
+#   哪些 job 能绿、是否暴露下一层问题，仍以下一次远端运行为准。
+#   因此真实的合并前验收边界仍在本地，一条命令：
 #       bash scripts/merge-gate.sh
-#   它与本文件的 job 同源（跑同一批判定命令），因此在 CI 首跑之前结论可本地复现。
+#   它与本文件的 job 同源（跑同一批判定命令），结论可本地复现；远端 CI 全绿可复核之前，该边界不因触发通道已接通而改变。
 #   合并序列见 openspec/git-workflow.md §3。
 #
 # 门禁语义（仅在有触发通道时成立）：任一阶段失败即阻止合入；
@@ -237,6 +239,12 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+          # cache-dependency-path 按 GITHUB_WORKSPACE（仓库根）解析，不受 defaults.run.working-directory
+          # 影响；缺它时按仓库根找 pnpm-lock.yaml 而实际在 frontend/ 下，Setup Node.js 即报
+          # "Dependencies lock file is not found in /home/runner/work/crmAndRag/crmAndRag" 而失败
+          # （job 实测仅 8s@09-26 / 6s@09-29），本 job 后续七步（Install/Gen/Lint/Type-check/Vitest/
+          # 构建/体积预算）全部 skipped、从未执行（卡 H CI-1）。
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
