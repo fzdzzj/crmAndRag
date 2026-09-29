@@ -138,6 +138,15 @@ class AiChatServiceImplTest {
         .when(environment.getProperty("spring.ai.chat.options.model", "qwen-plus"))
         .thenReturn("qwen-plus");
     ReflectionTestUtils.setField(service, "environment", environment);
+    // CI-2 竞态教训（2026-09-26/2026-09-29 两次 CI 红，本地难复现）：aiProperties 是 mock，
+    // Mockito 对未打桩的包装类型返回默认值 0 而非 null，getLlmTimeoutSeconds() 得 0 →
+    // 链上 .timeout(0ms) 的定时器挂在 Schedulers.parallel() 上，与 main 线程的同步发射竞速；
+    // CI 慢机器上定时器先触发 TimeoutException，错误处置链抢走 tryMarkFinished 终态 CAS，
+    // interrupted 口径落库替代正常完成，严格桩与 verify 全部落空。桩到测试窗口之外，
+    // 使"subscribe() 返回即终态已在本线程交付"成为不变量（配套断言见 subscribeAwaitTerminal）。
+    // 用 lenient 是共享 setUp 桩的既有形态（同上述 createPlaceholder/environment 两处）：26 个用例
+    // 仅 14 个走到订阅会消耗该桩，严格桩会在其余用例报 UnnecessaryStubbingException（实测 12 例）。
+    lenient().when(aiProperties.getLlmTimeoutSeconds()).thenReturn(60);
     promptService = new AiChatPromptService();
     eventWriter = spy(new AiChatSseEventWriter());
     // 测试中关闭心跳，避免定时任务影响生命周期断言
@@ -205,6 +214,37 @@ class AiChatServiceImplTest {
             null,
             List.of());
     ReflectionTestUtils.invokeMethod(service, "doStreamChat", currentUser, request, emitter, null);
+  }
+
+  /**
+   * 终止型源的统一订阅入口（永久锁，卡 H CI-2）：订阅后断言终态已在本线程交付。
+   *
+   * <p>背景：2026-09-26 / 2026-09-29 两次 CI 红、本地 7 连绿——mock 的 {@code getLlmTimeoutSeconds()} 未打桩时
+   * Mockito 对包装类型返回 0，{@code .timeout(0ms)} 的定时器挂在 {@code Schedulers.parallel()} 上与 main
+   * 线程的同步发射竞速，慢机器上 TimeoutException 抢走终态 CAS，流走 interrupted 落库路径，正常完成路径的桩与 verify 全部落空（09-29 失败栈：
+   * MonoDelay → FluxTimeout → doOnError → handleStreamError:64 → persistInterrupted）。
+   *
+   * <p>本类约定：setUp 已把超时桩到测试窗口之外（60s），终止型源（Flux.just/empty/error）的 终态必然在 {@code subscribe()}
+   * 返回前于调用线程交付完毕，因此返回后直接断言 {@code isFinished}。新增用例<b>禁止"裸 verify 紧跟 subscribe"</b>：终止型源一律走本方法；
+   * 不终止的源（如 Flux.never）必须显式 dispose 并在用例内注明理由（参照 {@code
+   * subscribe_withAnonymousUserBuildsNullSafeToolContext}）。能逮住：入口检查拦"删掉超时桩/把桩改回 0ms"（0ms
+   * 定时器复活的第一道闸，确定性红）；订阅后检查拦"不等终态就断言"在慢机器上的退化（终态未交付即抛错）。逮不住：其他类 新引入的
+   * 异步源，以及不走本方法的订阅点（那需要各测试类自己的终态等待）。
+   */
+  private void subscribeAwaitTerminal(
+      AiStreamRegistry.ActiveStream activeStream, AiChatStreamContext context) {
+    Integer timeoutSeconds = aiProperties.getLlmTimeoutSeconds();
+    if (timeoutSeconds != null && timeoutSeconds <= 0) {
+      throw new IllegalStateException(
+          "超时桩失效（getLlmTimeoutSeconds()="
+              + timeoutSeconds
+              + "）：0ms 定时器会与同步发射竞速，终态可能不在本线程交付（CI-2 教训见方法注释），禁止在此状态下断言");
+    }
+    streamLifecycle.subscribe(activeStream, context);
+    if (!activeStream.isFinished()) {
+      throw new IllegalStateException(
+          "subscribe() 返回后流仍未到达终态：同步交付不变量被破坏（CI-2 教训见方法注释），" + "禁止在此状态下直接断言");
+    }
   }
 
   @AfterEach
@@ -394,7 +434,7 @@ class AiChatServiceImplTest {
         AiChatStreamContext.initial(
             9L, emitter, List.of(), List.of(), System.currentTimeMillis(), null));
 
-    streamLifecycle.subscribe(activeStream, activeStream.getContext());
+    subscribeAwaitTerminal(activeStream, activeStream.getContext());
 
     verify(chatClientBuilder, never()).build();
   }
@@ -493,7 +533,7 @@ class AiChatServiceImplTest {
         .when(eventWriter)
         .sendBufferedEvent(activeStream, "delta", "{\"content\":\"chunk\"}");
 
-    streamLifecycle.subscribe(activeStream, activeStream.getContext());
+    subscribeAwaitTerminal(activeStream, activeStream.getContext());
 
     assertThat(activeStream.getPartialAnswer().toString()).isEqualTo("chunk");
     assertThat(activeStream.isFinished()).isTrue();
@@ -552,6 +592,8 @@ class AiChatServiceImplTest {
     when(promptSpec.stream()).thenReturn(streamSpec);
     when(streamSpec.chatResponse()).thenReturn(Flux.never());
 
+    // Flux.never 不终止：订阅只为捕获 toolContext，断言后显式 dispose，不走 subscribeAwaitTerminal
+    // （CI-2 教训见该方法的注释；超时桩 60s 保证定时器在测试窗口内不触发）。
     streamLifecycle.subscribe(activeStream, activeStream.getContext());
 
     Map<String, Object> toolContext = toolContextCaptor.getValue();
@@ -601,7 +643,7 @@ class AiChatServiceImplTest {
     when(streamSpec.chatResponse()).thenReturn(Flux.empty());
     when(assistantMessageStore.complete(eq(88L), eq(""), any(), eq(0))).thenReturn(false);
 
-    streamLifecycle.subscribe(activeStream, activeStream.getContext());
+    subscribeAwaitTerminal(activeStream, activeStream.getContext());
 
     assertThat(activeStream.isFinished()).isTrue();
     assertThat(registry.get(9L)).isNull();
@@ -655,7 +697,7 @@ class AiChatServiceImplTest {
     when(streamSpec.chatResponse()).thenReturn(Flux.just(chatResponse));
     when(assistantMessageStore.complete(eq(88L), eq("回答"), any(), eq(128))).thenReturn(true);
 
-    streamLifecycle.subscribe(activeStream, activeStream.getContext());
+    subscribeAwaitTerminal(activeStream, activeStream.getContext());
 
     verify(assistantMessageStore).complete(eq(88L), eq("回答"), any(), eq(128));
   }
@@ -680,7 +722,7 @@ class AiChatServiceImplTest {
     when(streamSpec.chatResponse()).thenReturn(Flux.just(thinkingResponse));
     when(assistantMessageStore.complete(eq(88L), eq("回答"), any(), eq(0))).thenReturn(true);
 
-    streamLifecycle.subscribe(activeStream, activeStream.getContext());
+    subscribeAwaitTerminal(activeStream, activeStream.getContext());
 
     verify(eventWriter)
         .sendBufferedEvent(activeStream, "thinking", "{\"text\":\"推理\",\"finished\":false}");
@@ -707,9 +749,11 @@ class AiChatServiceImplTest {
     ChatResponse firstTagChunk = buildChatResponseWithUsage("<thi", null, null);
     ChatResponse secondTagChunk = buildChatResponseWithUsage("nk>推理</think>答案", null, null);
     when(streamSpec.chatResponse()).thenReturn(Flux.just(firstTagChunk, secondTagChunk));
-    when(assistantMessageStore.complete(eq(88L), eq("答案"), any(), eq(123))).thenReturn(true);
+    // 思考标签响应无 usage（getMetadata() 未桩 → null）→ 落库 tokens=0；旧值 eq(123) 是永不匹配
+    // 的死桩，会在正常完成路径触发 PotentialStubbingProblem（卡 H CI-2 顺带修）。
+    when(assistantMessageStore.complete(eq(88L), eq("答案"), any(), eq(0))).thenReturn(true);
 
-    streamLifecycle.subscribe(activeStream, activeStream.getContext());
+    subscribeAwaitTerminal(activeStream, activeStream.getContext());
 
     verify(eventWriter, never())
         .sendBufferedEvent(
@@ -745,7 +789,7 @@ class AiChatServiceImplTest {
     registry.register(9L, activeStream);
     when(assistantMessageStore.complete(eq(88L), eq("答案"), any(), eq(123))).thenReturn(true);
 
-    streamLifecycle.subscribe(activeStream, activeStream.getContext());
+    subscribeAwaitTerminal(activeStream, activeStream.getContext());
 
     verify(modelProvider).streamChat(any(Prompt.class), any(ModelCallOptions.class));
     verify(chatClientBuilder, never()).build();
@@ -790,7 +834,7 @@ class AiChatServiceImplTest {
     registry.register(9L, activeStream);
     when(assistantMessageStore.complete(eq(88L), eq("依据[2]结论"), any(), eq(123))).thenReturn(true);
 
-    streamLifecycle.subscribe(activeStream, activeStream.getContext());
+    subscribeAwaitTerminal(activeStream, activeStream.getContext());
 
     org.mockito.ArgumentCaptor<String> payloadCaptor =
         org.mockito.ArgumentCaptor.forClass(String.class);
@@ -834,7 +878,7 @@ class AiChatServiceImplTest {
     registry.register(9L, activeStream);
     when(assistantMessageStore.complete(eq(88L), eq("答案"), any(), eq(123))).thenReturn(true);
 
-    streamLifecycle.subscribe(activeStream, activeStream.getContext());
+    subscribeAwaitTerminal(activeStream, activeStream.getContext());
 
     org.mockito.ArgumentCaptor<ModelCallOptions> optionsCaptor =
         org.mockito.ArgumentCaptor.forClass(ModelCallOptions.class);
@@ -901,6 +945,9 @@ class AiChatServiceImplTest {
               return true;
             });
 
+    // 首次订阅以连接错误同步结束、终态由 1ms 延迟的重试任务异步交付：不能用
+    // subscribeAwaitTerminal（此时 isFinished 仍为 false），终态等待 = 下方 retried/saved 两个
+    // CountDownLatch（CI-2 教训见该方法的注释）。
     streamLifecycle.subscribe(activeStream, activeStream.getContext());
 
     assertThat(retried.await(1, TimeUnit.SECONDS)).isTrue();
