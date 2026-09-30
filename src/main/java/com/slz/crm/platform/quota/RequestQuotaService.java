@@ -3,6 +3,7 @@ package com.slz.crm.platform.quota;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.binder.cache.CaffeineCacheMetrics;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
@@ -29,11 +30,20 @@ public class RequestQuotaService {
   public RequestQuotaService(QuotaProperties properties, MeterRegistry meterRegistry) {
     this.properties = properties;
     this.meterRegistry = meterRegistry;
-    this.windows =
+    Cache<QuotaDimension, Cache<String, FixedWindow>> rawWindows =
         Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofMinutes(10))
             .recordStats() // test-hygiene 任务 1.2：开统计供 Micrometer 采集窗口缓存命中
             .build();
+    this.windows =
+        CaffeineCacheMetrics.monitor(
+            meterRegistry,
+            rawWindows,
+            "quota.windows",
+            "cacheManager",
+            "requestQuotaService",
+            "name",
+            "quota.windows");
   }
 
   /**
@@ -80,11 +90,22 @@ public class RequestQuotaService {
   private Cache<String, FixedWindow> cache(QuotaDimension dimension) {
     return windows.get(
         dimension,
-        ignored ->
-            Caffeine.newBuilder()
-                .expireAfterAccess(Duration.ofMinutes(10))
-                .recordStats() // test-hygiene 任务 1.2：开统计供 Micrometer 采集每维度窗口命中
-                .build());
+        dim -> {
+          String cacheName = "quota." + dim.name().toLowerCase();
+          Cache<String, FixedWindow> dimCache =
+              Caffeine.newBuilder()
+                  .expireAfterAccess(Duration.ofMinutes(10))
+                  .recordStats() // test-hygiene 任务 1.2：开统计供 Micrometer 采集每维度窗口命中
+                  .build();
+          return CaffeineCacheMetrics.monitor(
+              meterRegistry,
+              dimCache,
+              cacheName,
+              "cacheManager",
+              "requestQuotaService",
+              "name",
+              cacheName);
+        });
   }
 
   /** 单 key 固定窗口计数器；并发访问由调用方同步。 */
