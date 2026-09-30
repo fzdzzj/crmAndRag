@@ -620,6 +620,65 @@ bash "$e2e_root/scripts/check-test-baseline.sh" >/dev/null 2>&1 || crlf_rc=$?
 expect_eq "e2e: a CRLF pom parses the same (autocrlf regression lock)" "0" "$crlf_rc"
 
 # ---------------------------------------------------------------------------
+# 4b) source-revision dirty detection: 5 states (F-G2 / L-10)
+# ---------------------------------------------------------------------------
+# 场景 1：非 Git 目录执行 --update，断言台账中包含 # source-revision=unknown
+bash "$e2e_root/scripts/check-test-baseline.sh" --update >/dev/null 2>&1
+case "$(cat "$e2e_root/scripts/test-baseline.txt")" in
+  *"# source-revision=unknown"*) pass "revision state 1: non-git repo writes unknown source-revision" ;;
+  *) die_case "revision state 1: non-git repo missing unknown source-revision in: $(cat "$e2e_root/scripts/test-baseline.txt")" ;;
+esac
+
+# 虚拟 Git 仓库夹具
+git_fixture_root="$tmp_root/e2e-git"
+mkdir -p "$git_fixture_root/scripts" "$git_fixture_root/target/surefire-reports" "$git_fixture_root/target/failsafe-reports"
+cp "$sf_dir"/*.txt "$git_fixture_root/target/surefire-reports/"
+cp "$fa_dir"/*.txt "$git_fixture_root/target/failsafe-reports/"
+cp "$gate_path" "$git_fixture_root/scripts/check-test-baseline.sh"
+mk_scope_pom "$git_fixture_root/pom.xml"
+echo "tracked fixture content" > "$git_fixture_root/tracked-file.txt"
+
+git -C "$git_fixture_root" init -q
+git -C "$git_fixture_root" config user.name "Test Runner"
+git -C "$git_fixture_root" config user.email "test@example.com"
+git -C "$git_fixture_root" config core.autocrlf false
+git -C "$git_fixture_root" add pom.xml scripts/ target/ tracked-file.txt
+git -C "$git_fixture_root" commit -q -m "initial fixture commit"
+expected_clean_hash=$(git -C "$git_fixture_root" rev-parse --short HEAD)
+
+# 场景 2：纯净 Git 仓库执行，断言输出精确等于短哈希，不含 -dirty
+bash "$git_fixture_root/scripts/check-test-baseline.sh" --update >/dev/null 2>&1
+clean_rev=$(sed -n 's/^# source-revision=//p' "$git_fixture_root/scripts/test-baseline.txt" | tr -d '[:space:]')
+expect_eq "revision state 2: clean git repo revision equals short hash" "$expected_clean_hash" "$clean_rev"
+case "$clean_rev" in
+  *-dirty*) die_case "revision state 2: clean repo revision must not contain -dirty" ;;
+  *) pass "revision state 2: clean repo revision does not contain -dirty" ;;
+esac
+
+# 场景 3：工作区脏树（修改已跟踪文件）执行，断言输出末尾精确追加 -dirty
+echo "dirty worktree change" >> "$git_fixture_root/tracked-file.txt"
+bash "$git_fixture_root/scripts/check-test-baseline.sh" --update >/dev/null 2>&1
+worktree_dirty_rev=$(sed -n 's/^# source-revision=//p' "$git_fixture_root/scripts/test-baseline.txt" | tr -d '[:space:]')
+expect_eq "revision state 3: modified worktree revision appends -dirty" "${expected_clean_hash}-dirty" "$worktree_dirty_rev"
+
+# 场景 4：暂存区脏树（git add 修改）执行，断言输出末尾精确追加 -dirty
+git -C "$git_fixture_root" add "$git_fixture_root/tracked-file.txt"
+bash "$git_fixture_root/scripts/check-test-baseline.sh" --update >/dev/null 2>&1
+staged_dirty_rev=$(sed -n 's/^# source-revision=//p' "$git_fixture_root/scripts/test-baseline.txt" | tr -d '[:space:]')
+expect_eq "revision state 4: staged modification revision appends -dirty" "${expected_clean_hash}-dirty" "$staged_dirty_rev"
+
+# 场景 5：纯未跟踪文件对照组（新增 untracked 文件）执行，断言输出不含 -dirty（与 Git 官方规范一致）
+git -C "$git_fixture_root" reset --hard HEAD >/dev/null 2>&1
+touch "$git_fixture_root/untracked.txt"
+bash "$git_fixture_root/scripts/check-test-baseline.sh" --update >/dev/null 2>&1
+untracked_rev=$(sed -n 's/^# source-revision=//p' "$git_fixture_root/scripts/test-baseline.txt" | tr -d '[:space:]')
+expect_eq "revision state 5: untracked file alone does not append -dirty" "$expected_clean_hash" "$untracked_rev"
+case "$untracked_rev" in
+  *-dirty*) die_case "revision state 5: untracked file must not cause -dirty tag" ;;
+  *) pass "revision state 5: untracked file does not contain -dirty" ;;
+esac
+
+# ---------------------------------------------------------------------------
 # 5) Sourcing the gate must not write anything into the repository.
 # ---------------------------------------------------------------------------
 if [ -e "$scripts_dir/tests/test-baseline.txt" ]; then

@@ -385,9 +385,22 @@ read_baseline() {
   printf '%s' "$value"
 }
 
+get_source_revision() {
+  local target_root="${1:-$repo_root}"
+  local rev
+  if rev=$(git -C "$target_root" rev-parse --short HEAD 2>/dev/null); then
+    if ! git -C "$target_root" diff-index --quiet HEAD -- 2>/dev/null; then
+      rev="${rev}-dirty"
+    fi
+  else
+    rev="unknown"
+  fi
+  printf '%s' "$rev"
+}
+
 write_baseline() {
   local revision measured_at
-  revision=$(git -C "$repo_root" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+  revision=$(get_source_revision)
   measured_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   {
     echo "# 回归基线：由 scripts/check-test-baseline.sh --update 从一次真实运行写入，禁止手改。"
