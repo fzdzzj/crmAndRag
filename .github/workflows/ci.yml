@@ -49,6 +49,9 @@ jobs:
       #   - RagRealRetrievalBenchmarkIT：真检索质量基准（add-rag-quality-baseline），env 门控——
       #     仅当 RAG_BENCHMARK_REAL=1 且有 DASHSCOPE_API_KEY 才执行；默认 CI 恒按假设 skip、不发外网请求，
       #     启用后把含全部指标的 JSON 报告落盘 docs/rag-quality/baseline-v1.json（提案 2–5 的不回退锚点）
+      - name: 预拉取 Qdrant 集成测试镜像
+        run: docker pull qdrant/qdrant:v1.18.3
+
       - name: 集成测试门禁（failsafe + Testcontainers MySQL）
         run: mvn -B -ntp verify
 
