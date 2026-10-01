@@ -58,6 +58,20 @@
 - 库结构唯一真相源 = `src/main/resources/db/migration`；**禁改已合入脚本**（Flyway 校 checksum），改错出 `V(n+1)__fix_xxx.sql`。
 - 回退：**不提供 DROP 回滚**，回退 = 恢复迁移前的数据库快照（runbook 第 4.1 步的 dump）。
 
+### 工作树拓扑与同步纪律（权威树 vs 协作树）
+
+- **权威工作树**（`crmAndRag-merge-add-knowledge-admin-api`）：
+  - 角色：主干所在，代码实现、分支检出、所有门禁运行（Maven / Docker / 门禁脚本）、合并与 push 唯一法定工作树。
+  - 判别命令：`git branch --show-current` 为 `master`，且 `git remote -v` 存在 `origin`。
+- **主协作树 / 观察树**（`crmAndRag`）：
+  - 角色：承载 `docs/main-agent-execution.md`（权威流水账）与 `work/`（任务卡与交接快照），严禁在此直接修改 `src/` 或执行代码合并。`frontend/typed-router.d.ts` 为他人改动，严禁碰触。
+- **分支与合并纪律**：
+  - 子 agent 实现代码一律从权威树 `master` 检出 `feature/<card-name>` 分支；
+  - 验证全绿后以 `git merge --no-ff` 合入 master，保留分支；
+  - 严禁未经 owner 显式授权执行 `git push`！
+- **草稿层与交接规约**：
+  - `work/` 仅用于承载任务卡（`work/task-card-*.md`）与跨会话交接快照（`work/handoff-*.md`），临时产物受 `.gitignore` 规则收敛，禁止以未跟踪状态散落污染工作树。
+
 ### 前端与在途变更规格
 
 - 前端（`frontend/`）的 pnpm 命令、pre-commit 钩子与代码约定见 `frontend/AGENTS.md`；CI 里 `frontend-quality` job 跑 `pnpm lint:check` + `pnpm type-check:check`。
