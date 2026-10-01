@@ -71,6 +71,7 @@ public class AiSessionServiceImpl extends ServiceImpl<AiSessionMapper, AiSession
     LambdaQueryWrapper<AiSessionEntity> wrapper =
         new LambdaQueryWrapper<AiSessionEntity>()
             .eq(AiSessionEntity::getUserId, userId)
+            .eq(AiSessionEntity::getStatus, 1)
             .orderByDesc(AiSessionEntity::getUpdatedTime)
             .orderByDesc(AiSessionEntity::getId)
             .last("LIMIT " + limit);

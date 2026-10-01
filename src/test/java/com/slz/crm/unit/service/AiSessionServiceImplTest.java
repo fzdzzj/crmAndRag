@@ -10,18 +10,26 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.slz.crm.pojo.entity.AiSessionEntity;
+import com.slz.crm.pojo.vo.AiSessionVO;
 import com.slz.crm.server.ai.AiChatImageContextCache;
 import com.slz.crm.server.service.PendingActionService;
 import com.slz.crm.server.service.impl.AiSessionServiceImpl;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -32,6 +40,12 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @ExtendWith(MockitoExtension.class)
 @DisplayName("会话归档释放图片上下文缓存")
 class AiSessionServiceImplTest {
+
+  @BeforeAll
+  static void initializeAiSessionTableInfo() {
+    TableInfoHelper.initTableInfo(
+        new MapperBuilderAssistant(new MybatisConfiguration(), ""), AiSessionEntity.class);
+  }
 
   @Mock private PendingActionService pendingActionService;
 
@@ -171,6 +185,46 @@ class AiSessionServiceImplTest {
 
     assertThat(TransactionSynchronizationManager.getSynchronizations()).isEmpty();
     assertThat(cache.get(9L, "hash1", "问题1")).isPresent();
+  }
+
+  @Test
+  @DisplayName("滚动会话仅返回活跃会话（status=1），归档会话被过滤")
+  void scrollSessions_activeOnly_excludesArchivedSessions() {
+    AiSessionEntity active = activeSession(1L);
+    doReturn(List.of(active)).when(service).list(any(LambdaQueryWrapper.class));
+
+    List<AiSessionVO> result = service.scrollSessions(7L, null, null, 20);
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<LambdaQueryWrapper<AiSessionEntity>> captor =
+        ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+    verify(service).list(captor.capture());
+    String sql = captor.getValue().getSqlSegment();
+    assertThat(sql).contains("user_id");
+    assertThat(sql).contains("status");
+    assertThat(captor.getValue().getParamNameValuePairs().values()).contains(1);
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).getId()).isEqualTo(1L);
+  }
+
+  @Test
+  @DisplayName("滚动会话带游标时叠加 (updated_time,id) 复合条件并保持 status=1")
+  void scrollSessions_withCursor_appliesCursorCondition() {
+    doReturn(List.of()).when(service).list(any(LambdaQueryWrapper.class));
+    LocalDateTime cursorTime = LocalDateTime.of(2026, 1, 1, 10, 0);
+
+    service.scrollSessions(7L, cursorTime, 5L, 10);
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<LambdaQueryWrapper<AiSessionEntity>> captor =
+        ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+    verify(service).list(captor.capture());
+    String sql = captor.getValue().getSqlSegment();
+    assertThat(sql).contains("user_id");
+    assertThat(sql).contains("status");
+    assertThat(sql).contains("updated_time");
+    assertThat(sql).contains("id");
+    assertThat(sql).contains("LIMIT 10");
   }
 
   private AiSessionEntity activeSession(Long id) {
