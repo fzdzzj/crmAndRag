@@ -4,11 +4,14 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.slz.crm.common.enumeration.DataScopeLevel;
 import com.slz.crm.knowledge.auth.KnowledgeBaseAuthorizationService;
 import com.slz.crm.knowledge.document.DocumentIngestionResult;
 import com.slz.crm.knowledge.document.DocumentIngestionService;
 import com.slz.crm.knowledge.entity.KnowledgeBaseEntity;
+import com.slz.crm.knowledge.entity.UploadedFileEntity;
 import com.slz.crm.knowledge.retrieval.KnowledgeRetrievalServiceImpl;
 import com.slz.crm.knowledge.retrieval.RetrievalCandidate;
 import com.slz.crm.knowledge.retrieval.SparseRecallService;
@@ -23,6 +26,7 @@ import com.slz.crm.platform.quota.RequestQuotaService;
 import com.slz.crm.pojo.dto.KnowledgeAdminRetrievalRequest;
 import com.slz.crm.pojo.vo.KnowledgeAdminRetrievalResponse;
 import com.slz.crm.pojo.vo.KnowledgeBaseVO;
+import com.slz.crm.pojo.vo.KnowledgeFileVO;
 import com.slz.crm.server.ai.port.KnowledgeRetrievalPort;
 import com.slz.crm.server.mapper.KnowledgeBaseMapper;
 import com.slz.crm.server.mapper.UploadedFileMapper;
@@ -91,6 +95,106 @@ class KnowledgeAdminServiceTest {
 
       assertNotNull(result);
       verify(ingestionService).ingest(any());
+    }
+  }
+
+  @Test
+  void listFiles_defaultParams_shouldCallSelectListAndReturnVisible() {
+    try (MockedStatic<UserContextHolder> holder = mockStatic(UserContextHolder.class)) {
+      holder.when(UserContextHolder::current).thenReturn(testUser);
+      when(authorizationService.visibleKnowledgeBaseIds(testUser)).thenReturn(List.of(1L));
+      when(uploadedFileMapper.selectList(any()))
+          .thenReturn(List.of(uploadedFile(1L, "doc-1", "1")));
+
+      List<KnowledgeFileVO> result = knowledgeAdminService.listFiles(null);
+
+      assertEquals(1, result.size());
+      assertEquals("doc-1", result.get(0).getDocumentId());
+      @SuppressWarnings("unchecked")
+      ArgumentCaptor<QueryWrapper<UploadedFileEntity>> captor =
+          ArgumentCaptor.forClass(QueryWrapper.class);
+      verify(uploadedFileMapper).selectList(captor.capture());
+      String sql = captor.getValue().getSqlSegment();
+      assertTrue(sql.contains("create_time"));
+      assertTrue(sql.contains("DESC"));
+      verify(uploadedFileMapper, never()).selectPage(any(), any());
+    }
+  }
+
+  @Test
+  void listFiles_withPagination_shouldCallSelectPageAndReturnPagedList() {
+    try (MockedStatic<UserContextHolder> holder = mockStatic(UserContextHolder.class)) {
+      holder.when(UserContextHolder::current).thenReturn(testUser);
+      when(authorizationService.visibleKnowledgeBaseIds(testUser)).thenReturn(List.of(1L));
+      Page<UploadedFileEntity> pageResult = new Page<>(1, 10, 1);
+      pageResult.setRecords(List.of(uploadedFile(1L, "doc-1", "1")));
+      doReturn(pageResult)
+          .when(uploadedFileMapper)
+          .selectPage(any(Page.class), any(QueryWrapper.class));
+
+      List<KnowledgeFileVO> result = knowledgeAdminService.listFiles(null, 1, 10, "desc");
+
+      assertEquals(1, result.size());
+      assertEquals("doc-1", result.get(0).getDocumentId());
+      @SuppressWarnings("unchecked")
+      ArgumentCaptor<Page<UploadedFileEntity>> pageCaptor = ArgumentCaptor.forClass(Page.class);
+      verify(uploadedFileMapper).selectPage(pageCaptor.capture(), any(QueryWrapper.class));
+      assertEquals(1L, pageCaptor.getValue().getCurrent());
+      assertEquals(10L, pageCaptor.getValue().getSize());
+      verify(uploadedFileMapper, never()).selectList(any());
+    }
+  }
+
+  @Test
+  void listFiles_pageSizeExceedsMax_shouldThrowException() {
+    try (MockedStatic<UserContextHolder> holder = mockStatic(UserContextHolder.class)) {
+      holder.when(UserContextHolder::current).thenReturn(testUser);
+      when(authorizationService.visibleKnowledgeBaseIds(testUser)).thenReturn(List.of(1L));
+
+      var ex =
+          assertThrows(
+              com.slz.crm.common.exiception.BaseException.class,
+              () -> knowledgeAdminService.listFiles(null, 1, 101, "desc"));
+
+      assertEquals(
+          com.slz.crm.common.enumeration.ErrorCode.PARAM_FORMAT_ERROR.getCode(), ex.getCode());
+      verifyNoInteractions(uploadedFileMapper);
+    }
+  }
+
+  @Test
+  void listFiles_withAscSortOrder_shouldOrderAsc() {
+    try (MockedStatic<UserContextHolder> holder = mockStatic(UserContextHolder.class)) {
+      holder.when(UserContextHolder::current).thenReturn(testUser);
+      when(authorizationService.visibleKnowledgeBaseIds(testUser)).thenReturn(List.of(1L));
+      when(uploadedFileMapper.selectList(any()))
+          .thenReturn(List.of(uploadedFile(1L, "doc-1", "1")));
+
+      List<KnowledgeFileVO> result = knowledgeAdminService.listFiles(null, null, null, "asc");
+
+      assertEquals(1, result.size());
+      @SuppressWarnings("unchecked")
+      ArgumentCaptor<QueryWrapper<UploadedFileEntity>> captor =
+          ArgumentCaptor.forClass(QueryWrapper.class);
+      verify(uploadedFileMapper).selectList(captor.capture());
+      String sql = captor.getValue().getSqlSegment();
+      assertTrue(sql.contains("create_time"));
+      assertTrue(sql.contains("ASC"));
+      assertFalse(sql.contains("DESC"));
+    }
+  }
+
+  @Test
+  void listFiles_unauthorizedKb_shouldReturnEmptyList() {
+    try (MockedStatic<UserContextHolder> holder = mockStatic(UserContextHolder.class)) {
+      holder.when(UserContextHolder::current).thenReturn(testUser);
+      when(authorizationService.authorizedKnowledgeBaseIds(testUser, List.of("99")))
+          .thenReturn(List.of());
+
+      List<KnowledgeFileVO> result = knowledgeAdminService.listFiles(99L);
+
+      assertTrue(result.isEmpty());
+      verifyNoInteractions(uploadedFileMapper);
     }
   }
 
@@ -315,6 +419,15 @@ class KnowledgeAdminServiceTest {
       verifyNoInteractions(sparseRecallService);
       verify(requestQuotaService).tryAcquire(QuotaDimension.ADMIN_VECTOR_USER, "1");
     }
+  }
+
+  private UploadedFileEntity uploadedFile(Long id, String documentId, String kbId) {
+    UploadedFileEntity file = new UploadedFileEntity();
+    file.setId(id);
+    file.setDocumentId(documentId);
+    file.setKnowledgeBase(kbId);
+    file.setOriginalFilename(documentId + ".pdf");
+    return file;
   }
 
   private KnowledgeAdminRetrievalRequest vectorRequest(Long kbId, int topK) {
