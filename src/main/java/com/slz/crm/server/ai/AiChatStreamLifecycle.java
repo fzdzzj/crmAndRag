@@ -131,9 +131,15 @@ public class AiChatStreamLifecycle {
                 () ->
                     finalizer.finishStreamNormally(
                         activeStream, context, effectiveModel, usageHolder, thinkingFinished))
-            .doOnError(
-                error -> errorRecovery.handleStreamError(activeStream, effectiveModel, error))
             .doOnCancel(() -> errorRecovery.handleStreamCancelled(activeStream, sessionId))
+            // 卡 P-e：错误必须经 onErrorResume 在流内吸收（以 Flux.empty() 正常收束），
+            // 不得回退 doOnError+裸 subscribe——逃逸错误会落入 Hooks.onErrorDropped 静默丢失；
+            // doOnComplete 保持在 onErrorResume 上游，错误路径不会误触发正常完成收尾。
+            .onErrorResume(
+                error -> {
+                  errorRecovery.handleStreamError(activeStream, effectiveModel, error);
+                  return Flux.empty();
+                })
             .subscribe();
     activeStream.setSubscription(subscription);
     heartbeat.start(activeStream, () -> finalizer.sendHeartbeat(activeStream));

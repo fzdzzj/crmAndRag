@@ -1,6 +1,5 @@
 package com.slz.crm.server.ai;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -11,57 +10,38 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import reactor.core.publisher.Hooks;
 
 /**
- * Reactor {@code onErrorDropped} 错误捕获与测试断言扩展（永久锁，卡 I）。
+ * Reactor {@code onErrorDropped} 错误捕获与 fail-fast 断言扩展（永久锁，卡 I 建、卡 P-e 收紧为零豁免）。
  *
- * <p>背景与原理：在响应式流式链（如 {@code .doOnError(...).subscribe()}）中，若错误处理逻辑内部自身抛出异常， 且终态订阅者未指定 error
- * consumer，Reactor 会将未处理的异常交由 {@link Hooks#onErrorDropped(java.util.function.Consumer)}
- * 静默丢弃仅打日志。这会导致测试静默全绿而业务链路早已断裂（丢弃终态帧、SSE挂起、注册表残留僵尸流）。
+ * <p>背景与原理：响应式链中任何未被流内操作符吸收的错误（如裸 {@code .subscribe()} 未指定 error consumer，或错误处理逻辑自身抛出异常），Reactor
+ * 会将其交由 {@link Hooks#onErrorDropped(java.util.function.Consumer)}
+ * 静默丢弃仅打日志。这会导致测试静默全绿而业务链路早已断裂（丢弃终态帧、SSE 挂起、注册表残留僵尸流）。
  *
- * <p>本扩展在 {@code @BeforeEach} 安装 hook 捕获所有被丢弃的异常，在 {@code @AfterEach} 断言列表为空并逐条打印详情， 最后在 {@code
+ * <p>本扩展在 {@code @BeforeEach} 安装 hook 捕获所有被丢弃的异常，在 {@code @AfterEach} 无条件断言列表为空并逐条打印详情——自卡 P-e
+ * 起流末端已由 {@code onErrorResume} 在流内吸收错误，因此不存在任何需要豁免的合法丢弃：只要捕获到任何一个被丢弃的异常即判败，零白名单、零死角。 最后在 {@code
  * finally} 块中必定执行 {@link Hooks#resetOnErrorDropped()} 复位全局钩子，防止污染后续测试。
  */
 public class ReactorOnErrorDroppedExtension implements BeforeEachCallback, AfterEachCallback {
 
   private static final ThreadLocal<List<Throwable>> CURRENT_ERRORS = new ThreadLocal<>();
-  private static final ThreadLocal<List<Class<? extends Throwable>>> EXPECTED_TYPES =
-      new ThreadLocal<>();
   private final List<Throwable> droppedErrors = new CopyOnWriteArrayList<>();
-  private final List<Class<? extends Throwable>> expectedTypes = new CopyOnWriteArrayList<>();
 
   @Override
   public void beforeEach(ExtensionContext context) {
     droppedErrors.clear();
-    expectedTypes.clear();
     CURRENT_ERRORS.set(droppedErrors);
-    EXPECTED_TYPES.set(expectedTypes);
     Hooks.onErrorDropped(droppedErrors::add);
   }
 
   @Override
   public void afterEach(ExtensionContext context) {
     try {
-      List<Throwable> unhandledErrors = new ArrayList<>();
-      for (Throwable t : droppedErrors) {
-        Throwable rootOrCause = unwrap(t);
-        boolean expected = false;
-        for (Class<? extends Throwable> expectedType : expectedTypes) {
-          if (expectedType.isInstance(t) || expectedType.isInstance(rootOrCause)) {
-            expected = true;
-            break;
-          }
-        }
-        if (!expected) {
-          unhandledErrors.add(t);
-        }
-      }
-
-      if (!unhandledErrors.isEmpty()) {
+      if (!droppedErrors.isEmpty()) {
         StringBuilder sb = new StringBuilder();
-        sb.append("流内错误处理器抛出的异常会被 reactor 丢弃，本锁让它变红。检测到 ")
-            .append(unhandledErrors.size())
+        sb.append("Reactor 丢弃了未处理的异常（流末端必须在响应式链内吸收错误，零豁免，卡 P-e）。检测到 ")
+            .append(droppedErrors.size())
             .append(" 个被丢弃的异常:\n");
-        for (int i = 0; i < unhandledErrors.size(); i++) {
-          Throwable t = unhandledErrors.get(i);
+        for (int i = 0; i < droppedErrors.size(); i++) {
+          Throwable t = droppedErrors.get(i);
           sb.append("[")
               .append(i + 1)
               .append("] ")
@@ -70,31 +50,11 @@ public class ReactorOnErrorDroppedExtension implements BeforeEachCallback, After
               .append(t.getMessage())
               .append("\n");
         }
-        Assertions.fail(sb.toString(), unhandledErrors.get(0));
+        Assertions.fail(sb.toString(), droppedErrors.get(0));
       }
     } finally {
       CURRENT_ERRORS.remove();
-      EXPECTED_TYPES.remove();
       Hooks.resetOnErrorDropped();
-    }
-  }
-
-  private static Throwable unwrap(Throwable t) {
-    Throwable current = t;
-    while (current.getCause() != null && current.getCause() != current) {
-      current = current.getCause();
-    }
-    return current;
-  }
-
-  /**
-   * 登记当前用例中由测试主动构造且已知会被裸 subscribe 丢弃的模型上游异常类型。 仅用于既有用例中显式构造 Flux.error 的场景（档 3 未改动裸 subscribe
-   * 时的过渡支持）， 其它未登记异常（尤其是处理器内部抛出的异常）仍必定让测试变红。
-   */
-  public static void expectDropped(Class<? extends Throwable> type) {
-    List<Class<? extends Throwable>> list = EXPECTED_TYPES.get();
-    if (list != null) {
-      list.add(type);
     }
   }
 
