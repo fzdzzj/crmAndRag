@@ -2,3 +2,5 @@
 # shell 脚本与 git 钩子必须保持 LF，否则 bash 会以 $'\r' 语法错误直接失败。
 *.sh text eol=lf
 .githooks/* text eol=lf
+# Java 源码跨平台统一纯 LF，消除 Windows 平台 Spotless 差异与 stat 缓存摩擦
+*.java text eol=lf
