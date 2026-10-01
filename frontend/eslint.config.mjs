@@ -66,6 +66,12 @@ export default defineConfigWithVueTs(
         ],
       },
     },
+    {
+      files: ['src/**/__tests__/**', 'src/**/*.{spec,test}.ts'],
+      rules: {
+        'vue/one-component-per-file': 'off',
+      },
+    },
   ],
   vueTsConfigs.recommendedTypeChecked,
 );
