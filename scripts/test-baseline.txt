@@ -1,9 +1,9 @@
 # 回归基线：由 scripts/check-test-baseline.sh --update 从一次真实运行写入，禁止手改。
-# source-revision=4d256b5-dirty
-# measured-at=2026-10-01T04:33:23Z
+# source-revision=44a2d94-dirty
+# measured-at=2026-10-01T05:30:04Z
 # reports=默认口径（pom 默认 includes）内的报告文件数，tests=Tests run 合计，skipped=Skipped 合计（上限，不是下限）
-surefire.reports=162
-surefire.tests=902
+surefire.reports=163
+surefire.tests=905
 surefire.skipped=0
 failsafe.reports=23
 failsafe.tests=83
