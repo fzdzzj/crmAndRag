@@ -70,6 +70,10 @@ public class ProductionConfigurationGuard implements InitializingBean {
     if (DEFAULT_ADMIN_PASSWORD.equals(adminPassword)) {
       fail("生产 profile 必须通过 SLZ_ADMIN_PASSWORD 覆盖默认管理员口令");
     }
+    // 8) 部署架构假设：单副本（卡 P-d）——本地 Caffeine、内存状态机、线程池均为单机设计
+    if (!"true".equalsIgnoreCase(environment.getProperty("platform.architecture.single-replica"))) {
+      fail("生产 profile 必须 platform.architecture.single-replica=true，系统设计基于单副本单体架构");
+    }
   }
 
   /**
