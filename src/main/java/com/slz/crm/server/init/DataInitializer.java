@@ -1,6 +1,7 @@
 package com.slz.crm.server.init;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.slz.crm.common.untils.PasswordHashUtil;
 import com.slz.crm.pojo.entity.PermissionsEntity;
 import com.slz.crm.pojo.entity.RoleEntity;
 import com.slz.crm.pojo.entity.SysDeptEntity;
@@ -19,7 +20,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.DigestUtils;
 
 /**
  * 数据初始化启动器 在权限同步完成后，自动初始化： 1. 管理员角色（拥有所有权限） 2. 管理员用户 3. 角色-权限绑定关系
@@ -198,7 +198,7 @@ public class DataInitializer {
       adminUser = new UserEntity();
       adminUser.setEmail(adminEmail);
       adminUser.setRealName("系统管理员");
-      adminUser.setPassword(DigestUtils.md5DigestAsHex(adminPassword.getBytes()));
+      adminUser.setPassword(PasswordHashUtil.hash(adminPassword));
       adminUser.setRoleId(roleId);
       adminUser.setStatus(1); // 正常状态
       adminUser.setPhone("13800000000");

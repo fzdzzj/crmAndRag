@@ -29,7 +29,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.DigestUtils;
 
 @Service
 public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> implements UserService {
@@ -47,18 +46,22 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
   @Override
   public String login(UserDTO userDTO) {
     // 先将 Base64 加密的密码解密为明文
-    String decryptedPassword = BaseUnit.decryptBase64(userDTO.getPassword());
-    // 再对明文密码进行 MD5 加密
-    userDTO.setPassword(DigestUtils.md5DigestAsHex(decryptedPassword.getBytes()));
+    String rawPassword = BaseUnit.decryptBase64(userDTO.getPassword());
 
     UserEntity user =
         userMapper.selectOne(
-            new LambdaQueryWrapper<UserEntity>()
-                .eq(UserEntity::getEmail, userDTO.getEmail())
-                .eq(UserEntity::getPassword, userDTO.getPassword()));
+            new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getEmail, userDTO.getEmail()));
 
-    if (user == null) {
+    if (user == null || !PasswordHashUtil.matches(rawPassword, user.getPassword())) {
       throw new BaseException(ErrorCode.PASSWORD_OR_EMAIL_ERROR);
+    }
+
+    // 惰性透明升级：存量 MD5 密文在首次成功登录后改写为 BCrypt
+    if (PasswordHashUtil.isMd5(user.getPassword())) {
+      UserEntity upgrade = new UserEntity();
+      upgrade.setId(user.getId());
+      upgrade.setPassword(PasswordHashUtil.hash(rawPassword));
+      userMapper.updateById(upgrade);
     }
 
     // 检查用户角色是否被删除
@@ -108,7 +111,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
 
     userEntity.setCreatorId(BaseUnit.getCurrentId());
 
-    userEntity.setPassword(DigestUtils.md5DigestAsHex(password.getBytes()));
+    userEntity.setPassword(PasswordHashUtil.hash(password));
     // 默认状态
     if (userDTO.getStatus() != null) {
       userEntity.setStatus(userDTO.getStatus());
@@ -167,10 +170,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     Long currentId = BaseUnit.getCurrentId();
     // 先将 Base64 加密的密码解密为明文
     String decryptedPassword = BaseUnit.decryptBase64(password);
-    // 再对明文密码进行 MD5 加密
     UserEntity userEntity = new UserEntity();
     userEntity.setId(currentId);
-    userEntity.setPassword(DigestUtils.md5DigestAsHex(decryptedPassword.getBytes()));
+    userEntity.setPassword(PasswordHashUtil.hash(decryptedPassword));
     int i = userMapper.updateById(userEntity);
     if (i == 0) {
       throw new ServiceException(ErrorCode.UPDATE_FAILED.getMessage());
@@ -194,7 +196,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     // 更新密码
     UserEntity userEntity = new UserEntity();
     userEntity.setId(userId);
-    userEntity.setPassword(DigestUtils.md5DigestAsHex(newPassword.getBytes()));
+    userEntity.setPassword(PasswordHashUtil.hash(newPassword));
     int i = userMapper.updateById(userEntity);
     if (i == 0) {
       throw new ServiceException(ErrorCode.UPDATE_FAILED.getMessage());
