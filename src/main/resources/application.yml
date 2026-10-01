@@ -138,6 +138,10 @@ platform:
       - /actuator/prometheus
       - /actuator/loggers
       - /actuator/info
+  # ---------------- 部署架构假设（卡 P-d；ProductionConfigurationGuard 第 8 项校验） ----------------
+  architecture:
+    # 部署架构假设：单副本（Single Replica）。本地 Caffeine、内存状态机、线程池均为单机设计，生产环境严禁多副本水平扩展
+    single-replica: true
 
 # ---------------- 知识库 / 向量检索域（D7/D9；实现属 Lane B，键由基座预留） ----------------
 rag:

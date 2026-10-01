@@ -14,6 +14,9 @@ platform:
   actuator:
     # 生产必须保护 /actuator/**（仅探针放行，其余需超管）
     protected-enabled: true
+  architecture:
+    # 部署架构假设：单副本（Single Replica）。本地 Caffeine、内存状态机、线程池均为单机设计，生产环境严禁多副本水平扩展
+    single-replica: true
 
 # 生产关闭 swagger 匿名暴露（WebMvcConfiguration 依 profile 判断 dev/local 才放行 OpenAPI 路径）
 springdoc:
