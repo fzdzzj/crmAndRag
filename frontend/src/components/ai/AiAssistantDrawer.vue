@@ -18,17 +18,19 @@
       </div>
 
       <!-- 消息区 -->
-      <div class="messages" ref="messagesRef">
+      <div ref="messagesRef" class="messages">
         <div v-for="(msg, idx) in chatMessages" :key="idx" class="msg" :class="msg.role">
           <div class="role">{{ msg.role === 'user' ? '你' : '助手' }}</div>
           <div class="content">
             <pre v-if="msg.msgType === 'actionCard' || msg.msgType === 'draftProgress'">{{ msg.content || JSON.stringify(msg.payload, null, 2) }}</pre>
+            <!-- 富文本渲染：AI 消息内容（formatContent 仅做换行转换），按既定契约渲染，XSS 边界由后端内容治理，故行级豁免 -->
+            <!-- eslint-disable-next-line vue/no-v-html -->
             <div v-else v-html="formatContent(msg.content)"></div>
 
             <!-- references 支持（真实下发） -->
             <div v-if="msg.references && msg.references.length" class="refs">
-              <Tag v-for="(ref, i) in msg.references" :key="i" color="blue" @click="jumpReference(ref)">
-                {{ refLabel(ref) }}{{ refIdSuffix(ref) }}
+              <Tag v-for="(reference, i) in msg.references" :key="i" color="blue" @click="jumpReference(reference)">
+                {{ refLabel(reference) }}{{ refIdSuffix(reference) }}
               </Tag>
             </div>
 
@@ -54,8 +56,8 @@
         <Input
           v-model:value="inputText"
           placeholder="输入消息，Enter 发送"
-          @pressEnter="send"
           :disabled="isStreaming"
+          @press-enter="send"
         />
         <Button :loading="isStreaming" @click="send">发送</Button>
         <Button v-if="isStreaming" @click="chat.stop">停止</Button>

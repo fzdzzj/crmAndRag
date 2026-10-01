@@ -136,13 +136,13 @@ watch(selectedKbId, () => {
         <button
           v-for="b in bases"
           :key="b.id"
-          @click="selectedKbId = b.id"
           class="px-3 py-1 text-sm rounded border"
           :class="selectedKbId === b.id ? 'bg-blue-600 text-white border-blue-600' : 'hover:bg-gray-50'"
+          @click="selectedKbId = b.id"
         >
           {{ b.displayName || b.name }}
         </button>
-        <button @click="selectedKbId = null" class="px-3 py-1 text-sm rounded border hover:bg-gray-50" :class="!selectedKbId ? 'bg-gray-100' : ''">全部可见</button>
+        <button class="px-3 py-1 text-sm rounded border hover:bg-gray-50" :class="!selectedKbId ? 'bg-gray-100' : ''" @click="selectedKbId = null">全部可见</button>
       </div>
       <div v-if="selectedBase" class="mt-1 text-xs text-gray-500">{{ selectedBase.name }} · {{ selectedBase.visibility }}</div>
     </div>
@@ -151,7 +151,7 @@ watch(selectedKbId, () => {
     <div class="border rounded-lg overflow-hidden">
       <div class="px-4 py-3 bg-gray-50 flex items-center justify-between border-b">
         <div class="font-medium">文档列表</div>
-        <button @click="filesQuery.refetch()" class="text-sm px-3 py-1 border rounded hover:bg-white">刷新</button>
+        <button class="text-sm px-3 py-1 border rounded hover:bg-white" @click="filesQuery.refetch()">刷新</button>
       </div>
       <table class="w-full text-sm">
         <thead class="bg-gray-50">
@@ -168,18 +168,21 @@ watch(selectedKbId, () => {
           <tr v-for="f in files" :key="f.id" class="border-t hover:bg-gray-50">
             <td class="p-3 font-mono text-xs truncate max-w-[280px]">{{ f.originalFilename }}</td>
             <td class="p-3">
-              <span class="px-2 py-0.5 text-xs rounded" :class="{
-                'bg-green-100 text-green-700': f.status === 'COMPLETED',
-                'bg-yellow-100 text-yellow-700': f.status === 'INGESTING' || f.status === 'PENDING',
-                'bg-red-100 text-red-700': f.status === 'FAILED'
-              }">{{ f.status }}</span>
+              <span
+                class="px-2 py-0.5 text-xs rounded"
+                :class="{
+                  'bg-green-100 text-green-700': f.status === 'COMPLETED',
+                  'bg-yellow-100 text-yellow-700': f.status === 'INGESTING' || f.status === 'PENDING',
+                  'bg-red-100 text-red-700': f.status === 'FAILED'
+                }"
+              >{{ f.status }}</span>
             </td>
             <td class="p-3 text-right font-mono">{{ f.segmentCount ?? 0 }}</td>
             <td class="p-3 text-right font-mono">{{ f.vectorCount ?? 0 }}</td>
             <td class="p-3 text-gray-500 text-xs">{{ f.createTime }}</td>
             <td class="p-3 text-right space-x-2">
-              <button @click="confirmReingest(f)" class="text-blue-600 hover:underline text-xs">重建</button>
-              <button @click="confirmDelete(f)" class="text-red-600 hover:underline text-xs">删除</button>
+              <button class="text-blue-600 hover:underline text-xs" @click="confirmReingest(f)">重建</button>
+              <button class="text-red-600 hover:underline text-xs" @click="confirmDelete(f)">删除</button>
             </td>
           </tr>
           <tr v-if="!files.length && !filesQuery.isLoading.value">
@@ -200,10 +203,10 @@ watch(selectedKbId, () => {
         </select>
 
         <div
+          class="border-2 border-dashed rounded p-6 text-center cursor-pointer hover:border-blue-400"
           @drop="onDrop"
           @dragover.prevent
           @dragenter.prevent
-          class="border-2 border-dashed rounded p-6 text-center cursor-pointer hover:border-blue-400"
           @click="triggerFilePick"
         >
           <div class="text-gray-500">拖拽文件到此处，或点击选择</div>
@@ -213,9 +216,9 @@ watch(selectedKbId, () => {
       </div>
       <div class="flex items-end">
         <button
-          @click="doUpload"
           :disabled="uploadMutation.isPending.value || !selectedFile || !uploadKbId"
           class="px-6 py-2 bg-blue-600 text-white rounded disabled:bg-gray-300"
+          @click="doUpload"
         >
           {{ uploadMutation.isPending.value ? '上传中...' : '上传并摄取' }}
         </button>
@@ -232,12 +235,12 @@ watch(selectedKbId, () => {
         <input v-model="query" placeholder="输入查询文本..." class="border rounded px-3 py-1 flex-1 min-w-[200px]" />
         <input v-model.number="topK" type="number" class="border rounded px-2 py-1 w-20" />
         <label class="flex items-center gap-1 text-sm">
-          <input type="checkbox" v-model="useVector" /> useVector
+          <input v-model="useVector" type="checkbox" /> useVector
         </label>
-        <button @click="doRetrievalTest" :disabled="retrievalMutation.isPending.value" class="px-4 py-1 bg-emerald-600 text-white rounded text-sm">
+        <button :disabled="retrievalMutation.isPending.value" class="px-4 py-1 bg-emerald-600 text-white rounded text-sm" @click="doRetrievalTest">
           {{ retrievalMutation.isPending.value ? '测试中...' : '测试检索' }}
         </button>
-        <button @click="resetRetrieval" class="px-3 py-1 text-sm border rounded">清空</button>
+        <button class="px-3 py-1 text-sm border rounded" @click="resetRetrieval">清空</button>
       </div>
 
       <div class="text-xs text-gray-500 mb-2">{{ retrievalHint }}</div>
