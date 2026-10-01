@@ -1,10 +1,12 @@
 package com.slz.crm.server.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.slz.crm.common.enumeration.DataScopeLevel;
 import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.BaseUnit;
+import com.slz.crm.common.untils.PageValidationUtils;
 import com.slz.crm.knowledge.auth.KnowledgeBaseAuthorizationService;
 import com.slz.crm.knowledge.document.DocumentIngestionCommand;
 import com.slz.crm.knowledge.document.DocumentIngestionResult;
@@ -101,34 +103,52 @@ public class KnowledgeAdminService {
     return result;
   }
 
+  /** 缺省文件查询（无分页、倒序）：委托多参重载，保持既有调用方行为与返回值完全一致。 */
   public List<KnowledgeFileVO> listFiles(Long kbId) {
+    return listFiles(kbId, null, null, null);
+  }
+
+  /**
+   * 知识库文件查询：数据库级有界分页 + 安全排序。
+   *
+   * @param kbId 指定知识库；为空时查询全部可见知识库
+   * @param pageNum 页码；与 pageSize 同时缺省时执行全量查询以保持向后兼容
+   * @param pageSize 页大小；超过 PageValidationUtils.MAX_PAGE_SIZE 时抛出参数格式异常
+   * @param sortOrder 排序方向，仅接受 asc/desc（忽略大小写），非法值按 desc 处理
+   * @return 当页（或全量）文件视图列表
+   */
+  public List<KnowledgeFileVO> listFiles(
+      Long kbId, Integer pageNum, Integer pageSize, String sortOrder) {
     UserContext user = currentUser();
-    QueryWrapper<UploadedFileEntity> qw = new QueryWrapper<>();
-    boolean authorized = true;
-    if (kbId != null) {
-      List<Long> auth =
-          authorizationService.authorizedKnowledgeBaseIds(user, List.of(String.valueOf(kbId)));
-      if (auth.isEmpty()) {
-        authorized = false;
+    List<Long> scope =
+        kbId == null
+            ? authorizationService.visibleKnowledgeBaseIds(user)
+            : authorizationService.authorizedKnowledgeBaseIds(user, List.of(String.valueOf(kbId)));
+    List<KnowledgeFileVO> result = List.of();
+    if (!scope.isEmpty()) {
+      QueryWrapper<UploadedFileEntity> qw = new QueryWrapper<>();
+      if (kbId == null) {
+        qw.in("knowledge_base", scope);
       } else {
         qw.eq("knowledge_base", kbId);
       }
-    } else {
-      List<Long> visible = authorizationService.visibleKnowledgeBaseIds(user);
-      if (visible.isEmpty()) {
-        authorized = false;
+      qw.eq("is_deleted", false).orderBy(true, "asc".equalsIgnoreCase(sortOrder), "create_time");
+      if (pageNum == null && pageSize == null) {
+        // 缺省全量查询（100% 保持向后兼容）
+        result = toFileVOs(uploadedFileMapper.selectList(qw));
       } else {
-        qw.in("knowledge_base", visible);
+        // 有界分页查询，利用 PageValidationUtils 强约束页大小上限
+        int[] pageParams = PageValidationUtils.validateAndFix(pageNum, pageSize);
+        Page<UploadedFileEntity> filePage =
+            uploadedFileMapper.selectPage(new Page<>(pageParams[0], pageParams[1]), qw);
+        result = toFileVOs(filePage.getRecords());
       }
     }
-    List<KnowledgeFileVO> result = List.of();
-    if (authorized) {
-      qw.eq("is_deleted", false).orderByDesc("create_time");
-      List<UploadedFileEntity> files = uploadedFileMapper.selectList(qw);
-      result =
-          files.stream().map(KnowledgeAdminResponseMapper::toFileVO).collect(Collectors.toList());
-    }
     return result;
+  }
+
+  private static List<KnowledgeFileVO> toFileVOs(List<UploadedFileEntity> files) {
+    return files.stream().map(KnowledgeAdminResponseMapper::toFileVO).collect(Collectors.toList());
   }
 
   @SuppressWarnings("PMD.AvoidCatchingGenericException") // 文件读入+摄取service多源，失败包装为业务异常

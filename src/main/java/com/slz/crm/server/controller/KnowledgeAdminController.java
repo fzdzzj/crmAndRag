@@ -33,8 +33,12 @@ public class KnowledgeAdminController {
   @GetMapping("/files")
   @RequirePermission(PermissionOperates.KNOWLEDGE_ADMIN_MANAGE)
   public Result<List<KnowledgeFileVO>> listFiles(
-      @RequestParam(value = "kbId", required = false) Long kbId) {
-    return Result.success(knowledgeAdminService.listFiles(kbId));
+      @RequestParam(value = "kbId", required = false) Long kbId,
+      @RequestParam(value = "pageNum", required = false) Integer pageNum,
+      @RequestParam(value = "pageSize", required = false) Integer pageSize,
+      @RequestParam(value = "sortOrder", required = false, defaultValue = "desc")
+          String sortOrder) {
+    return Result.success(knowledgeAdminService.listFiles(kbId, pageNum, pageSize, sortOrder));
   }
 
   @PostMapping("/files")
