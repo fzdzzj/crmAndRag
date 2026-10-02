@@ -70,6 +70,74 @@ public class KnowledgeBaseAuthorizationService {
     return result;
   }
 
+  /**
+   * 批量解析指定知识库集合中当前登录用户具备写权限（超管 / 负责人 / OWNER、EDITOR 成员）且未软删的知识库 ID 集合。
+   *
+   * <p>optimize-knowledge-base-write-auth-batching：超管与负责人走内存短路（零成员表查询），其余候选库以一次 {@code IN}
+   * 批量查询收敛，替代逐行 {@link #canWrite(KnowledgeBaseEntity, UserContext)} 的 N 次 {@code selectCount}
+   * 往返；判定结论与原单实体 {@code canWrite} 严格等价（显式软删实体一律排除）。
+   *
+   * @param user 当前登录用户上下文，为空时返回空集合
+   * @param bases 候选知识库实体列表，为空或 null 时返回空集合
+   * @return 可写知识库 ID 集合（{@link LinkedHashSet} 去重并保持插入顺序）
+   */
+  public Set<Long> resolveWritableKnowledgeBaseIds(
+      UserContext user, List<KnowledgeBaseEntity> bases) {
+    Set<Long> writableIds = new LinkedHashSet<>();
+    if (user != null && bases != null && !bases.isEmpty()) {
+      if (user.isSuperAdmin()) {
+        addActiveIds(bases, writableIds);
+      } else {
+        addOwnedAndMemberIds(user, bases, writableIds);
+      }
+    }
+    return writableIds;
+  }
+
+  /** 超管内存短路：直接收录全部未软删且 ID 非空的库，不触达成员表。 */
+  private void addActiveIds(List<KnowledgeBaseEntity> bases, Set<Long> writableIds) {
+    bases.stream()
+        .filter(b -> b != null && !Boolean.TRUE.equals(b.getIsDeleted()) && b.getId() != null)
+        .map(KnowledgeBaseEntity::getId)
+        .forEach(writableIds::add);
+  }
+
+  /** 收录负责人自有库，其余候选库收集后交给成员批量查询收敛，避免逐库查权。 */
+  private void addOwnedAndMemberIds(
+      UserContext user, List<KnowledgeBaseEntity> bases, Set<Long> writableIds) {
+    List<Long> needCheckIds = new ArrayList<>();
+    for (KnowledgeBaseEntity b : bases) {
+      if (b == null || Boolean.TRUE.equals(b.getIsDeleted()) || b.getId() == null) {
+        continue;
+      }
+      if (Objects.equals(b.getOwnerUserId(), user.userIdRef())) {
+        writableIds.add(b.getId());
+      } else {
+        needCheckIds.add(b.getId());
+      }
+    }
+    if (!needCheckIds.isEmpty()) {
+      addMemberIds(user, needCheckIds, writableIds);
+    }
+  }
+
+  /** 一次 IN 批量查询收敛协作库写权限：仅收录 OWNER / EDITOR 命中的知识库 ID。 */
+  private void addMemberIds(UserContext user, List<Long> ids, Set<Long> writableIds) {
+    List<KnowledgeBaseMemberEntity> members =
+        memberMapper.selectList(
+            new QueryWrapper<KnowledgeBaseMemberEntity>()
+                .in("knowledge_base_id", ids)
+                .eq("user_id", user.userIdRef())
+                .in("member_role", "OWNER", "EDITOR")
+                .select("knowledge_base_id"));
+    if (members != null) {
+      members.stream()
+          .map(KnowledgeBaseMemberEntity::getKnowledgeBaseId)
+          .filter(Objects::nonNull)
+          .forEach(writableIds::add);
+    }
+  }
+
   /** 计算当前用户可见知识库 ID；所有查询只取 id，避免加载实体和文档全表扫描。 */
   public List<Long> visibleKnowledgeBaseIds(UserContext user) {
     List<Long> result = List.of();
