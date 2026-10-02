@@ -168,21 +168,88 @@ public class KnowledgeBaseAuthorizationService {
     return result;
   }
 
-  /** 将请求范围收敛到授权集合内；空 scope 表示用户可见全部知识库。 */
+  /**
+   * 将请求范围收敛到授权集合内；空 scope 表示用户可见全部知识库。
+   *
+   * <p>optimize-kb-scope-auth-fast-resolve 任务 3.1：requestedScopes 非空且解析出有效 id 时走定向分支 （{@link
+   * #resolveDirectedKnowledgeBaseIds(UserContext, Set)}），不再全量枚举可见库——普通用户 2 条 IN 定向 （成员表 + 知识库表）、超管
+   * 1 条存在性收敛；空/null scope 原样走 {@link #visibleKnowledgeBaseIds(UserContext)}
+   * 全量路径，解析集为空直接返回空表（与原交集语义等价且免查库）。返回集合语义恒为 requested ∩ visible， 顺序为 requested 序（三处消费方均无顺序依赖：单值判空 +
+   * eq、多值 IN 无序）。
+   */
   public List<Long> authorizedKnowledgeBaseIds(UserContext user, List<String> requestedScopes) {
-    List<Long> visible = visibleKnowledgeBaseIds(user);
-    List<Long> result = visible;
-    if (requestedScopes != null && !requestedScopes.isEmpty()) {
-      Set<Long> requested = new LinkedHashSet<>();
-      for (String scope : requestedScopes) {
-        try {
-          requested.add(Long.valueOf(scope));
-        } catch (NumberFormatException ignored) {
-          // 非数字 scope 不放大授权；由调用方决定是否记录日志。
-        }
-      }
-      result = visible.stream().filter(requested::contains).toList();
+    List<Long> result;
+    if (requestedScopes == null || requestedScopes.isEmpty()) {
+      result = visibleKnowledgeBaseIds(user);
+    } else {
+      Set<Long> requested = parseRequestedIds(requestedScopes);
+      result = requested.isEmpty() ? List.of() : resolveDirectedKnowledgeBaseIds(user, requested);
     }
     return result;
+  }
+
+  /** 解析 requestedScopes 为去重保序的 kbId 集合；非数字项容错丢弃，不放大授权。 */
+  private Set<Long> parseRequestedIds(List<String> requestedScopes) {
+    Set<Long> requested = new LinkedHashSet<>();
+    for (String scope : requestedScopes) {
+      try {
+        requested.add(Long.valueOf(scope));
+      } catch (NumberFormatException ignored) {
+        // 非数字 scope 不放大授权；由调用方决定是否记录日志。
+      }
+    }
+    return requested;
+  }
+
+  /**
+   * optimize-kb-scope-auth-fast-resolve 任务 3：指定 scope 定向收敛（成员定向查询的 active 语义与 {@code
+   * KnowledgeBaseMemberMapper#selectActiveKnowledgeBaseIdsByUserId} 逐条等价）。
+   *
+   * <p>逐条等价登记：① {@code m.is_deleted = 0} 与 JOIN 半边 {@code kb.is_deleted = 0} 由两实体
+   * {@code @TableLogic} 在 QueryWrapper selectList 上自动追加承接；② {@code m.user_id = #{userId}} 显式 {@code
+   * eq} 复刻；③ 成员命中 id 并入知识库定向查询的 OR 分支，配合该查询自身自动追加的 {@code kb.is_deleted = 0} 完整复刻 JOIN 的库存活语义。超管走一条
+   * {@code id IN} 存在性收敛。 返回集合恒为 requested ∩ visible，顺序改 requested 序（消费方无顺序依赖，卡面留证）。
+   */
+  private List<Long> resolveDirectedKnowledgeBaseIds(UserContext user, Set<Long> requestedIds) {
+    Set<Long> authorized = new LinkedHashSet<>();
+    if (user != null) {
+      if (user.isSuperAdmin()) {
+        collectKnowledgeBaseIds(
+            new QueryWrapper<KnowledgeBaseEntity>().select("id").in("id", requestedIds),
+            authorized);
+      } else {
+        List<Long> memberHits =
+            memberMapper
+                .selectList(
+                    new QueryWrapper<KnowledgeBaseMemberEntity>()
+                        .select("knowledge_base_id")
+                        .eq("user_id", user.userIdRef())
+                        .in("knowledge_base_id", requestedIds))
+                .stream()
+                .map(KnowledgeBaseMemberEntity::getKnowledgeBaseId)
+                .filter(Objects::nonNull)
+                .toList();
+        QueryWrapper<KnowledgeBaseEntity> wrapper =
+            new QueryWrapper<KnowledgeBaseEntity>().select("id").in("id", requestedIds);
+        wrapper.and(
+            w -> {
+              w.eq("owner_user_id", user.userIdRef()).or().eq("visibility", "PUBLIC");
+              if (!memberHits.isEmpty()) {
+                w.or().in("id", memberHits);
+              }
+            });
+        collectKnowledgeBaseIds(wrapper, authorized);
+      }
+    }
+    return requestedIds.stream().filter(authorized::contains).toList();
+  }
+
+  /** 执行知识库定向查询并收录 id 列；查询自动追加 is_deleted=0（@TableLogic），保证不放大授权。 */
+  private void collectKnowledgeBaseIds(QueryWrapper<KnowledgeBaseEntity> wrapper, Set<Long> sink) {
+    for (KnowledgeBaseEntity entity : knowledgeBaseMapper.selectList(wrapper)) {
+      if (entity.getId() != null) {
+        sink.add(entity.getId());
+      }
+    }
   }
 }
