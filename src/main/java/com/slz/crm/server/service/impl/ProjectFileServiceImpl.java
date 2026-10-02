@@ -27,7 +27,6 @@ import java.io.File;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -242,12 +241,8 @@ public class ProjectFileServiceImpl extends ServiceImpl<ProjectFileMapper, Proje
     Page<ProjectFileEntity> entityPage = baseMapper.selectPage(page, wrapper);
 
     // 记录级数据范围：仅返回当前用户可读的文件；total 保留库内总数仅用于分页控件，越权行不返回
-    List<ProjectFileEntity> readable = filterReadable(entityPage.getRecords());
-
     Page<ProjectFileVO> voPage = new Page<>(pageNum, pageSize, entityPage.getTotal());
-    List<ProjectFileVO> voList =
-        readable.stream().map(this::entityToVO).collect(Collectors.toList());
-    voPage.setRecords(voList);
+    voPage.setRecords(toReadableVOs(entityPage.getRecords()));
     return voPage;
   }
 
@@ -258,7 +253,7 @@ public class ProjectFileServiceImpl extends ServiceImpl<ProjectFileMapper, Proje
             new LambdaQueryWrapper<ProjectFileEntity>()
                 .eq(ProjectFileEntity::getActivityId, activityId)
                 .orderByDesc(ProjectFileEntity::getUploadTime));
-    return filterReadable(entities).stream().map(this::entityToVO).collect(Collectors.toList());
+    return toReadableVOs(entities);
   }
 
   @Override
@@ -268,7 +263,7 @@ public class ProjectFileServiceImpl extends ServiceImpl<ProjectFileMapper, Proje
             new LambdaQueryWrapper<ProjectFileEntity>()
                 .eq(ProjectFileEntity::getOrderId, orderId)
                 .orderByDesc(ProjectFileEntity::getUploadTime));
-    return filterReadable(entities).stream().map(this::entityToVO).collect(Collectors.toList());
+    return toReadableVOs(entities);
   }
 
   @Override
@@ -278,7 +273,7 @@ public class ProjectFileServiceImpl extends ServiceImpl<ProjectFileMapper, Proje
             new LambdaQueryWrapper<ProjectFileEntity>()
                 .eq(ProjectFileEntity::getContractId, contractId)
                 .orderByDesc(ProjectFileEntity::getUploadTime));
-    return filterReadable(entities).stream().map(this::entityToVO).collect(Collectors.toList());
+    return toReadableVOs(entities);
   }
 
   @Override
@@ -288,7 +283,7 @@ public class ProjectFileServiceImpl extends ServiceImpl<ProjectFileMapper, Proje
             new LambdaQueryWrapper<ProjectFileEntity>()
                 .eq(ProjectFileEntity::getOpportunityId, opportunityId)
                 .orderByDesc(ProjectFileEntity::getUploadTime));
-    return filterReadable(entities).stream().map(this::entityToVO).collect(Collectors.toList());
+    return toReadableVOs(entities);
   }
 
   @Override
@@ -314,16 +309,26 @@ public class ProjectFileServiceImpl extends ServiceImpl<ProjectFileMapper, Proje
     return result;
   }
 
-  /** 记录级数据范围过滤：仅保留当前用户可读的项目文件（统一走附件授权入口）。 */
-  private List<ProjectFileEntity> filterReadable(List<ProjectFileEntity> entities) {
+  /**
+   * optimize-project-file-list-auth-reuse 任务 3.1：列表链路统一「判定一次 + 已知可读转换」私有链。
+   *
+   * <p>每行 {@code canReadProjectFile} 在同一请求内恰好判定 1 次完成过滤（过滤语义与原 filterReadable
+   * 一致：不可读行被丢弃），保留行以已知可读前提转换 VO 并直接签发下载令牌， 不再对同一行二次调用授权服务，单请求判定调用 N+k → N。下载令牌只是便利性输出，真实下载 由
+   * PublicAttachmentController 逐次独立复核，本复用严格限于单请求内、零跨请求角色/权限缓存。
+   */
+  private List<ProjectFileVO> toReadableVOs(List<ProjectFileEntity> entities) {
     Long currentUserId = BaseUnit.getCurrentId();
-    return entities.stream()
-        .filter(e -> attachmentAccessService.canReadProjectFile(e, currentUserId))
-        .collect(Collectors.toList());
+    List<ProjectFileVO> voList = new ArrayList<>(entities.size());
+    for (ProjectFileEntity entity : entities) {
+      if (attachmentAccessService.canReadProjectFile(entity, currentUserId)) {
+        voList.add(toKnownReadableVO(entity, currentUserId));
+      }
+    }
+    return voList;
   }
 
-  /** Entity转VO */
-  private ProjectFileVO entityToVO(ProjectFileEntity entity) {
+  /** 已知可读行的 VO 转换：上传人姓名转换照旧；下载令牌直接签发（可读性判定已由调用方完成）。 */
+  private ProjectFileVO toKnownReadableVO(ProjectFileEntity entity, Long currentUserId) {
     ProjectFileVO vo = new ProjectFileVO();
     BeanUtils.copyProperties(entity, vo);
 
@@ -332,17 +337,10 @@ public class ProjectFileServiceImpl extends ServiceImpl<ProjectFileMapper, Proje
       vo.setUploaderName(dataConvertService.getUserName(entity.getUploaderId()));
     }
 
-    // 生成下载URL：无权读取该文件的行不签发令牌（downloadUrl 置空）
-    if (attachmentAccessService.canReadProjectFile(entity, BaseUnit.getCurrentId())) {
-      String baseUrl = ProjectFileStorageSupport.getBaseUrl(request);
-      Long currentUserId = BaseUnit.getCurrentId();
-      String token =
-          downloadTokenUtil.generateDownloadToken(entity.getId(), currentUserId, "project_file");
-      vo.setDownloadUrl(baseUrl + "/public/attachment/download?token=" + token);
-    } else {
-      log.warn("拦截越权项目文件下载链接签发：fileId={}, requester={}", entity.getId(), BaseUnit.getCurrentId());
-    }
-
+    String baseUrl = ProjectFileStorageSupport.getBaseUrl(request);
+    String token =
+        downloadTokenUtil.generateDownloadToken(entity.getId(), currentUserId, "project_file");
+    vo.setDownloadUrl(baseUrl + "/public/attachment/download?token=" + token);
     return vo;
   }
 }
