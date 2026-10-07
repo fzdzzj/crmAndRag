@@ -3,8 +3,16 @@ package com.slz.crm.platform.model;
 import com.slz.crm.platform.contract.ModelCallOptions;
 import com.slz.crm.platform.contract.ModelCallResult;
 import com.slz.crm.platform.contract.ModelProvider;
+import jakarta.annotation.PreDestroy;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -42,6 +50,9 @@ import reactor.core.publisher.Flux;
  *
  * <p>tighten-pmd-residual-325 任务 6.4 批A：compatible-mode 协议细节（模型装配 / thinking JSON / SSE chunk 解析）拆至
  * {@link CompatibleModeSupport}，本类只保留路由与结果转换，行为等价。
+ *
+ * <p>wire-llm-call-timeout 任务 3：非流式 chat / vision / embed 四处同步 call 点经 {@link #callWithTimeout} 接线
+ * {@code platform.ai.model.timeout-seconds}——超时快速失败并真中断底层调用，0 保持不限时；流式路不在此列。
  */
 @Component
 public class ModelProviderImpl implements ModelProvider {
@@ -54,6 +65,15 @@ public class ModelProviderImpl implements ModelProvider {
   private final OpenAiChatModel compatibleChatModel;
   private final CompatibleModeSupport compatibleMode;
 
+  /**
+   * wire-llm-call-timeout 任务 3：非流式模型调用专用虚拟线程执行器。线程名前缀 {@code platform-model-call-}
+   * 便于线程转储定位；每调用一线程，并发量天然受调用方约束，无队列饱和与拒绝放大， 阻塞 socket 读对 {@code Thread#interrupt()} 真实响应。刻意不复用
+   * {@code llmAuxTaskExecutor}：检索三消费方已在该池外层提交 {@code chat()}，同池嵌套提交会自我争用。
+   */
+  private final ExecutorService modelCallExecutor =
+      Executors.newThreadPerTaskExecutor(
+          Thread.ofVirtual().name("platform-model-call-", 0).factory());
+
   public ModelProviderImpl(
       ObjectProvider<ChatModel> dashScopeChatModel,
       ObjectProvider<EmbeddingModel> dashScopeEmbeddingModel,
@@ -64,6 +84,12 @@ public class ModelProviderImpl implements ModelProvider {
     this.properties = properties;
     this.compatibleMode = new CompatibleModeSupport(properties, environment);
     this.compatibleChatModel = compatibleMode.buildCompatibleChatModel();
+  }
+
+  /** 关停时中断在途非流式模型调用，避免拖慢上下文关闭。 */
+  @PreDestroy
+  void shutdownModelCallExecutor() {
+    modelCallExecutor.shutdownNow();
   }
 
   @Override
@@ -78,7 +104,8 @@ public class ModelProviderImpl implements ModelProvider {
     if (LOG.isDebugEnabled()) {
       LOG.debug("chat() 使用 {} 协议", nativeModel != null ? "dashscope" : "compatible-mode");
     }
-    return toTextResult(model.call(prompt), properties.getChatModel());
+    ChatResponse response = callWithTimeout(() -> model.call(prompt), "chat");
+    return toTextResult(response, properties.getChatModel());
   }
 
   @Override
@@ -94,7 +121,7 @@ public class ModelProviderImpl implements ModelProvider {
       throw new IllegalStateException(
           "DashScope EmbeddingModel 未装配（请检查 spring.ai.dashscope.api-key 与 starter 依赖）");
     }
-    EmbeddingResponse response = model.call(request);
+    EmbeddingResponse response = callWithTimeout(() -> model.call(request), "embed");
     float[] vector =
         response.getResult() != null && response.getResult().getOutput() != null
             ? response.getResult().getOutput()
@@ -110,7 +137,8 @@ public class ModelProviderImpl implements ModelProvider {
   @Override
   public ModelCallResult<String> vision(Prompt prompt) {
     Prompt forced = withModel(prompt, properties.getVisionModel());
-    return toTextResult(compatibleChatModel.call(forced), properties.getVisionModel());
+    ChatResponse response = callWithTimeout(() -> compatibleChatModel.call(forced), "vision");
+    return toTextResult(response, properties.getVisionModel());
   }
 
   // ==================== 修正轮2 ====================
@@ -147,7 +175,11 @@ public class ModelProviderImpl implements ModelProvider {
       Prompt translated = applyOptions(prompt, options);
       String model =
           StringUtils.hasText(options.model()) ? options.model() : properties.getVisionModel();
-      result = toTextResult(compatibleChatModel.call(withModel(translated, model)), model);
+      result =
+          toTextResult(
+              callWithTimeout(
+                  () -> compatibleChatModel.call(withModel(translated, model)), "vision"),
+              model);
     }
     return result;
   }
@@ -237,5 +269,59 @@ public class ModelProviderImpl implements ModelProvider {
 
   private Long toLong(Integer value) {
     return value == null ? null : value.longValue();
+  }
+
+  // ==================== wire-llm-call-timeout 任务 3 ====================
+
+  /**
+   * 调用方侧护栏在配置超时值之后的宽限秒数。护栏是"背锅层"，必须让同旋钮值的 HTTP 读超时（卡 G 接线）先失效并 保留其精确断口（{@code
+   * HttpTimeoutException}）；宽限只需盖过 HTTP 客户端自身的触发开销（实测锚点 ≤0.3s）。
+   */
+  private static final long CALLER_GRACE_SECONDS = 5L;
+
+  /**
+   * 非流式模型调用的调用方侧超时护栏（wire-llm-call-timeout 任务 3）。
+   *
+   * <p>卡 G 已把 {@code platform.ai.model.timeout-seconds} 接到 HTTP 层（{@code ClientHttpRequestFactory}
+   * 读超时）， 但读超时可被"慢滴"响应逐字节 重置而失效，SDK 内非 HTTP 环节也不受其约束。本护栏作背锅层兜住这些盲区： 预算 = 配置值 + {@link
+   * #CALLER_GRACE_SECONDS}（刻意落在 HTTP 层之后，不抢它的断口）；到点经 {@link Future#cancel(boolean)}
+   * 真中断底层调用线程（虚拟线程的阻塞 socket 读对中断真实响应）， 以 {@link IllegalStateException}（cause={@link
+   * TimeoutException}）快速失败上抛。零重试：失败即失败，绝不放大调用量； 正常调用与异常穿透路径逐字段等价于直调。
+   *
+   * <p>{@code timeoutSeconds <= 0} 按配置语义"0 = 不限时"直调，不包裹不换线程，行为与历史版本一致。
+   *
+   * <p>实现刻意保持最小形态：任务不经 MDC/UserContext 装饰器——虚拟线程每任务一线程、任务间零复用，不存在串号或
+   * 泄漏；调用方线程上的治理池装饰器（MdcTaskDecorator）已保证外层日志带 trace 身份，仅模型客户端内部日志短暂缺 MDC， 该可观测性损耗换来护栏语句数不超 PMD 类
+   * NCSS 预算（pmd-rules.xml 150）。
+   */
+  private <T> T callWithTimeout(Supplier<T> call, String scene) {
+    long timeoutSeconds = properties.getTimeoutSeconds();
+    T result;
+    if (timeoutSeconds <= 0) {
+      result = call.get();
+    } else {
+      long boundSeconds = timeoutSeconds + CALLER_GRACE_SECONDS;
+      Future<T> future = modelCallExecutor.submit(call::get);
+      try {
+        result = future.get(boundSeconds, TimeUnit.SECONDS);
+      } catch (TimeoutException exception) {
+        // FutureTask 语义：cancel(true) 真中断执行线程；CompletableFuture.cancel 的中断参数是无效的，故不用它。
+        future.cancel(true);
+        LOG.warn("{} 模型调用等待 {}s 未返回，已中断底层调用", scene, boundSeconds);
+        throw new IllegalStateException(
+            scene + " 模型调用等待 " + boundSeconds + "s 超时（配置 " + timeoutSeconds + "s + 宽限），已中断底层调用",
+            exception);
+      } catch (ExecutionException exception) {
+        Throwable cause = exception.getCause();
+        if (cause instanceof RuntimeException runtime) {
+          throw runtime;
+        }
+        throw new IllegalStateException(scene + " 模型调用失败", cause);
+      } catch (InterruptedException exception) {
+        Thread.currentThread().interrupt();
+        throw new IllegalStateException(scene + " 模型调用等待被中断", exception);
+      }
+    }
+    return result;
   }
 }
