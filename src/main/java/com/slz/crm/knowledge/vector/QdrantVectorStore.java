@@ -6,6 +6,10 @@ import com.slz.crm.platform.contract.CrmVectorStoreHealth;
 import com.slz.crm.platform.contract.VectorRecord;
 import com.slz.crm.platform.contract.VectorSearchHit;
 import com.slz.crm.platform.contract.VectorSearchRequest;
+import com.slz.crm.platform.resilience.DependencyFailureType;
+import com.slz.crm.platform.resilience.DependencyResilienceExecutor;
+import com.slz.crm.platform.resilience.DependencyUnavailableException;
+import io.micrometer.core.instrument.Metrics;
 import io.qdrant.client.QdrantClient;
 import io.qdrant.client.QdrantGrpcClient;
 import jakarta.annotation.PostConstruct;
@@ -25,6 +29,9 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
   private static final Duration INITIAL_RETRY_DELAY = Duration.ofSeconds(1);
   private static final Duration MAX_RETRY_DELAY = Duration.ofSeconds(10);
 
+  /** wire-dependency-circuit-breaker 任务 4：三操作共用的依赖名（熔断状态与指标按此隔离）。 */
+  private static final String DEPENDENCY = "vector-qdrant";
+
   private static final Class<?> SEARCH_POINTS_CLASS =
       classFor("io.qdrant.client.grpc.Points$SearchPoints");
   private static final Class<?> WITH_PAYLOAD_CLASS =
@@ -40,12 +47,26 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
 
   private final QdrantProperties properties;
   private final QdrantClient client;
+  private final DependencyResilienceExecutor resilience;
   private final Object collectionLock = new Object();
   private volatile boolean collectionChecked;
 
   /** 构造 gRPC 客户端；连接错误延迟到实际请求时暴露。 */
   public QdrantVectorStore(QdrantProperties properties) {
+    this(properties, new DependencyResilienceExecutor(Metrics.globalRegistry));
+  }
+
+  /**
+   * 构造 gRPC 客户端并接入依赖熔断执行器（wire-dependency-circuit-breaker 任务 4）。
+   *
+   * <p>熔断层只计数与 OPEN 快速拒绝，零自动重试：内建 {@link #executeWithRetry} 的三次指数退避原样保留在熔断器内侧， 每请求物理外呼次数与接线前逐路等价。
+   *
+   * @param properties Qdrant 连接与集合配置
+   * @param resilience 依赖韧性执行器（依赖名 {@code vector-qdrant}）
+   */
+  public QdrantVectorStore(QdrantProperties properties, DependencyResilienceExecutor resilience) {
     this.properties = properties;
+    this.resilience = resilience;
     Duration timeout = Duration.ofMillis(properties.getTimeoutMs());
     QdrantGrpcClient.Builder builder =
         QdrantGrpcClient.newBuilder(
@@ -76,12 +97,26 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
   }
 
   @Override
-  @SuppressWarnings(
-      "PMD.AvoidCatchingGenericException") // 反射+Qdrant外呼混抛（NoSuchMethod/InvocationTarget/超时等），统一包装上抛
   public void upsertAll(List<VectorRecord> records) {
     if (records == null || records.isEmpty()) {
       return;
     }
+    try {
+      resilience.executeNoRetry(
+          DEPENDENCY,
+          () -> {
+            upsertInternal(records);
+            return null;
+          });
+    } catch (DependencyUnavailableException exception) {
+      throw toFacadeFailure(exception);
+    }
+  }
+
+  /** 内建三次指数退避与既有异常包装零改动：熔断层不叠加自动重试（wire-dependency-circuit-breaker 行为红线）。 */
+  @SuppressWarnings(
+      "PMD.AvoidCatchingGenericException") // 反射+Qdrant外呼混抛（NoSuchMethod/InvocationTarget/超时等），统一包装上抛
+  private void upsertInternal(List<VectorRecord> records) {
     try {
       ensureCollection();
       executeWithRetry(
@@ -104,9 +139,9 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
   }
 
   @Override
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射+Qdrant外呼混抛，统一包装上抛
   public List<VectorSearchHit> search(VectorSearchRequest request) {
     if (request.queryVector().length != properties.getDimensions()) {
+      // 维度校验刻意留在熔断器之外：参数错误属调用方缺陷，不得计入依赖失败
       throw new IllegalArgumentException(
           "查询向量维度 "
               + request.queryVector().length
@@ -114,6 +149,16 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
               + properties.getDimensions()
               + " 不一致");
     }
+    try {
+      return resilience.executeNoRetry(DEPENDENCY, () -> searchInternal(request));
+    } catch (DependencyUnavailableException exception) {
+      throw toFacadeFailure(exception);
+    }
+  }
+
+  /** 内建三次指数退避与既有异常包装零改动：熔断层不叠加自动重试。 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射+Qdrant外呼混抛，统一包装上抛
+  private List<VectorSearchHit> searchInternal(VectorSearchRequest request) {
     try {
       ensureCollection();
       return executeWithRetry(
@@ -187,8 +232,22 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
   }
 
   @Override
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射+Qdrant外呼混抛，统一包装上抛
   public void deleteByDocumentId(String documentId) {
+    try {
+      resilience.executeNoRetry(
+          DEPENDENCY,
+          () -> {
+            deleteInternal(documentId);
+            return null;
+          });
+    } catch (DependencyUnavailableException exception) {
+      throw toFacadeFailure(exception);
+    }
+  }
+
+  /** 内建三次指数退避与既有异常包装零改动：熔断层不叠加自动重试。 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射+Qdrant外呼混抛，统一包装上抛
+  private void deleteInternal(String documentId) {
     try {
       ensureCollection();
       executeWithRetry(
@@ -309,6 +368,27 @@ public class QdrantVectorStore implements CrmVectorStore, CrmVectorStoreHealth {
     } catch (ClassNotFoundException exception) {
       throw new IllegalStateException("Qdrant gRPC 类缺失: " + className, exception);
     }
+  }
+
+  /**
+   * 熔断层异常转回门面既有异常类型（wire-dependency-circuit-breaker 任务 4）。
+   *
+   * <p>真实调用失败原样透传内层已包装的 {@link IllegalStateException}（消息与 cause 链零变化）；OPEN 快速拒绝转成 {@link
+   * IllegalStateException}，cause 为 {@link
+   * DependencyUnavailableException.CircuitOpenException}——{@link DependencyUnavailableException}
+   * 本身不出现在门面链上。
+   */
+  private static RuntimeException toFacadeFailure(DependencyUnavailableException exception) {
+    Throwable cause = exception.getCause();
+    RuntimeException failure;
+    if (exception.failureType() == DependencyFailureType.CIRCUIT_OPEN) {
+      failure = new IllegalStateException("Qdrant 调用被熔断快速拒绝: " + DEPENDENCY, cause);
+    } else if (cause instanceof RuntimeException runtimeException) {
+      failure = runtimeException;
+    } else {
+      failure = new IllegalStateException("Qdrant 调用失败", cause);
+    }
+    return failure;
   }
 
   /** 应用关闭时释放 gRPC 连接。 */
