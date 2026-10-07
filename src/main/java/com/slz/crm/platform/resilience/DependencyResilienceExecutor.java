@@ -97,25 +97,17 @@ public class DependencyResilienceExecutor {
    */
   @SuppressWarnings("PMD.AvoidCatchingGenericException") // 容错执行器：operation.call()任意抛，计数重试/熔断/上抛
   public <T> T execute(String dependency, Callable<T> operation, Predicate<Throwable> retryable) {
-    CircuitState circuitState =
-        circuitStates.computeIfAbsent(dependency, name -> new CircuitState(name, meterRegistry));
-    if (circuitState.isOpen()) {
-      counter("dependency.circuit.rejected", dependency).increment();
-      throw DependencyUnavailableException.circuitOpen(dependency);
-    }
+    CircuitState circuitState = requireCircuit(dependency);
 
     Throwable lastError = null;
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         T result = operation.call();
-        circuitState.recordSuccess();
-        counter("dependency.call", dependency, "success").increment();
+        markSuccess(dependency, circuitState);
         return result;
       } catch (Exception exception) {
         lastError = exception;
-        counter("dependency.call", dependency, "failure").increment();
-        if (circuitState.recordFailure(failureThreshold, openDurationMillis)) {
-          counter("dependency.circuit.opened", dependency).increment();
+        if (markFailure(dependency, circuitState)) {
           throw new DependencyUnavailableException(
               "依赖连续失败已熔断: " + dependency, exception, DependencyFailureType.CALL_FAILED);
         }
@@ -133,6 +125,59 @@ public class DependencyResilienceExecutor {
 
     throw new DependencyUnavailableException(
         "依赖调用失败: " + dependency, lastError, DependencyFailureType.CALL_FAILED);
+  }
+
+  /**
+   * 单次执行依赖调用，仅做失败计数与熔断检查，不重试不退避。
+   *
+   * <p>wire-dependency-circuit-breaker 任务 2：面向自带重试语义的外部门面（如 Qdrant 内建重试）， 避免熔断器叠加自动重试放大物理调用次数；OPEN
+   * 时直接拒绝，失败按 {@link DependencyFailureType#CALL_FAILED} 上抛。
+   *
+   * @param dependency 依赖名称
+   * @param operation 依赖调用
+   * @param <T> 返回类型
+   * @return 调用结果
+   * @throws DependencyUnavailableException 依赖失败或熔断拒绝
+   */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 容错执行器：operation.call()任意抛，计数熔断/上抛
+  public <T> T executeNoRetry(String dependency, Callable<T> operation) {
+    CircuitState circuitState = requireCircuit(dependency);
+    try {
+      T result = operation.call();
+      markSuccess(dependency, circuitState);
+      return result;
+    } catch (Exception exception) {
+      if (markFailure(dependency, circuitState)) {
+        throw new DependencyUnavailableException(
+            "依赖连续失败已熔断: " + dependency, exception, DependencyFailureType.CALL_FAILED);
+      }
+      throw new DependencyUnavailableException(
+          "依赖调用失败: " + dependency, exception, DependencyFailureType.CALL_FAILED);
+    }
+  }
+
+  private CircuitState requireCircuit(String dependency) {
+    CircuitState circuitState =
+        circuitStates.computeIfAbsent(dependency, name -> new CircuitState(name, meterRegistry));
+    if (circuitState.isOpen()) {
+      counter("dependency.circuit.rejected", dependency).increment();
+      throw DependencyUnavailableException.circuitOpen(dependency);
+    }
+    return circuitState;
+  }
+
+  private void markSuccess(String dependency, CircuitState circuitState) {
+    circuitState.recordSuccess();
+    counter("dependency.call", dependency, "success").increment();
+  }
+
+  private boolean markFailure(String dependency, CircuitState circuitState) {
+    counter("dependency.call", dependency, "failure").increment();
+    boolean opened = circuitState.recordFailure(failureThreshold, openDurationMillis);
+    if (opened) {
+      counter("dependency.circuit.opened", dependency).increment();
+    }
+    return opened;
   }
 
   private void sleep(String dependency, long initialBackoffMillis, double multiplier, int attempt) {
