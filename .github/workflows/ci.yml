@@ -27,13 +27,13 @@ on:
 
 jobs:
   build-and-gate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: 检出
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 装配 JDK 21 + Maven 缓存
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
@@ -73,7 +73,7 @@ jobs:
 
       - name: 上传覆盖率与测试报告
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: reports
           path: |
@@ -88,13 +88,13 @@ jobs:
   # 故意与 build-and-gate 并行：等 Docker 集成测试跑完再报契约漂移只会拖慢反馈，不会增加信号。
   openapi-consistency-gate:
     name: OpenAPI Contract Consistency
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: 检出
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 装配 JDK 21 + Maven 缓存
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
@@ -105,7 +105,7 @@ jobs:
 
       - name: 上传后端当前导出
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: openapi-export
           path: target/openapi/openapi.yaml
@@ -114,13 +114,13 @@ jobs:
   # TASK-02：静态检查门禁（checkstyle / spotbugs / spotless）
   static-analysis-gate:
     needs: build-and-gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: 检出
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 装配 JDK 21 + Maven 缓存
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
@@ -175,7 +175,7 @@ jobs:
   #   （qdrant/minio 场景的探测排在 MySQL 之后，库不可达会先于被测组件失败），故挂 service container。
   fail-fast-gate:
     needs: build-and-gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       mysql:
         image: mysql:8.0
@@ -202,10 +202,10 @@ jobs:
       DASHSCOPE_API_KEY: sk-ci-placeholder-not-used
     steps:
       - name: 检出
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 装配 JDK 21 + Maven 缓存
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
@@ -216,7 +216,7 @@ jobs:
 
       - name: 上传启动失败日志
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fail-fast-gate-logs
           path: target/fail-fast-gate/*.log
@@ -224,21 +224,21 @@ jobs:
 
   frontend-quality:
     name: Frontend Test / Lint / Type-check / Build Budget
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: frontend
     steps:
       - name: 检出
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 10
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -286,13 +286,13 @@ jobs:
   # TASK-04：线程池拒绝指标门禁（高负载测试验证指标上报）
   thread-pool-metrics-gate:
     needs: [build-and-gate, static-analysis-gate]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: 检出
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 装配 JDK 21 + Maven 缓存
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
@@ -320,7 +320,7 @@ jobs:
 
       - name: 上传指标报告
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: thread-pool-metrics-report
           path: target/surefire-reports/*.txt
