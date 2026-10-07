@@ -1,6 +1,10 @@
 package com.slz.crm.knowledge.storage;
 
 import com.slz.crm.knowledge.storage.properties.MinioProperties;
+import com.slz.crm.platform.resilience.DependencyFailureType;
+import com.slz.crm.platform.resilience.DependencyResilienceExecutor;
+import com.slz.crm.platform.resilience.DependencyUnavailableException;
+import io.micrometer.core.instrument.Metrics;
 import io.minio.GetObjectArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
@@ -19,16 +23,71 @@ public class MinioFileStorageService implements FileStorageService {
   private final MinioClient minioClient;
   private final MinioProperties properties;
 
-  /** 注入已构建的 MinIO 客户端，避免服务类绑定配置细节。 */
+  /** wire-dependency-circuit-breaker 任务 4：三方法共用的依赖名（熔断状态与指标按此隔离）。 */
+  private static final String DEPENDENCY = "storage-minio";
+
+  private final DependencyResilienceExecutor resilience;
+
+  /** 手工装配入口：自带独立熔断执行器（Micrometer 全局注册表），熔断状态不与其它实例共享。 */
   public MinioFileStorageService(MinioClient minioClient, MinioProperties properties) {
+    this(minioClient, properties, new DependencyResilienceExecutor(Metrics.globalRegistry));
+  }
+
+  /**
+   * 注入已构建的 MinIO 客户端与依赖韧性执行器（wire-dependency-circuit-breaker 任务 4）。
+   *
+   * <p>熔断层只计数与 OPEN 快速拒绝，零自动重试；{@code exists()} 属不接线面，其失败既不抛也不计入依赖。
+   *
+   * @param minioClient MinIO 客户端
+   * @param properties 桶与端点配置
+   * @param resilience 依赖韧性执行器
+   */
+  public MinioFileStorageService(
+      MinioClient minioClient,
+      MinioProperties properties,
+      DependencyResilienceExecutor resilience) {
     this.minioClient = minioClient;
     this.properties = properties;
+    this.resilience = resilience;
   }
 
   @Override
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // MinIO SDK 外呼多源抛出，统一包装为 StorageException
   public String store(InputStream content, String filename, String contentType) {
     String storageKey = buildStorageKey(filename);
+    try {
+      return resilience.executeNoRetry(
+          DEPENDENCY, () -> putObject(storageKey, content, contentType));
+    } catch (DependencyUnavailableException exception) {
+      throw toFacadeFailure(exception);
+    }
+  }
+
+  @Override
+  public InputStream open(String storageKey) {
+    try {
+      return resilience.executeNoRetry(DEPENDENCY, () -> getObject(storageKey));
+    } catch (DependencyUnavailableException exception) {
+      throw toFacadeFailure(exception);
+    }
+  }
+
+  @Override
+  public void delete(String storageKey) {
+    try {
+      resilience.executeNoRetry(
+          DEPENDENCY,
+          () -> {
+            removeObject(storageKey);
+            return null;
+          });
+    } catch (DependencyUnavailableException exception) {
+      throw toFacadeFailure(exception);
+    }
+  }
+
+  /** 既有异常消息格式零改动：真实外呼失败仍包成 StorageException。 */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // MinIO SDK 外呼多源抛出，统一包装为 StorageException
+  private String putObject(String storageKey, InputStream content, String contentType) {
     try {
       minioClient.putObject(
           PutObjectArgs.builder()
@@ -43,9 +102,9 @@ public class MinioFileStorageService implements FileStorageService {
     }
   }
 
-  @Override
+  /** 既有异常消息格式零改动：真实外呼失败仍包成 StorageException。 */
   @SuppressWarnings("PMD.AvoidCatchingGenericException") // MinIO SDK 外呼多源抛出，统一包装为 StorageException
-  public InputStream open(String storageKey) {
+  private InputStream getObject(String storageKey) {
     try {
       return minioClient.getObject(
           GetObjectArgs.builder().bucket(properties.getBucket()).object(storageKey).build());
@@ -54,9 +113,9 @@ public class MinioFileStorageService implements FileStorageService {
     }
   }
 
-  @Override
+  /** 既有异常消息格式零改动：真实外呼失败仍包成 StorageException。 */
   @SuppressWarnings("PMD.AvoidCatchingGenericException") // MinIO SDK 外呼多源抛出，统一包装为 StorageException
-  public void delete(String storageKey) {
+  private void removeObject(String storageKey) {
     try {
       minioClient.removeObject(
           RemoveObjectArgs.builder().bucket(properties.getBucket()).object(storageKey).build());
@@ -84,5 +143,25 @@ public class MinioFileStorageService implements FileStorageService {
     String safeName = filename == null ? "file" : filename.replaceAll("[\\\\/:*?\"<>|]", "_");
     String date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
     return "knowledge/" + date + "/" + UUID.randomUUID() + "-" + safeName;
+  }
+
+  /**
+   * 熔断层异常转回门面既有异常类型（wire-dependency-circuit-breaker 任务 4）。
+   *
+   * <p>真实调用失败原样透传内层已包装的 {@link StorageException}（消息与 cause 链零变化）；OPEN 快速拒绝转成 {@link
+   * StorageException}，cause 为 {@link DependencyUnavailableException.CircuitOpenException}——{@link
+   * DependencyUnavailableException} 本身不出现在门面链上。
+   */
+  private static RuntimeException toFacadeFailure(DependencyUnavailableException exception) {
+    Throwable cause = exception.getCause();
+    RuntimeException failure;
+    if (exception.failureType() == DependencyFailureType.CIRCUIT_OPEN) {
+      failure = new StorageException("MinIO 调用被熔断快速拒绝: " + DEPENDENCY, cause);
+    } else if (cause instanceof RuntimeException runtimeException) {
+      failure = runtimeException;
+    } else {
+      failure = new StorageException("MinIO 调用失败", cause);
+    }
+    return failure;
   }
 }

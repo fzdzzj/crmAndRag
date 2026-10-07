@@ -1,6 +1,7 @@
 package com.slz.crm.knowledge.storage;
 
 import com.slz.crm.knowledge.storage.properties.MinioProperties;
+import com.slz.crm.platform.resilience.DependencyResilienceExecutor;
 import io.minio.MinioClient;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -31,15 +32,17 @@ public class FileStorageConfiguration {
         .build();
   }
 
-  /** 默认使用 MinIO。 */
+  /** 默认使用 MinIO；wire-dependency-circuit-breaker 任务 4：注入共享的依赖韧性执行器（依赖名 storage-minio）。 */
   @Bean
   @ConditionalOnProperty(
       name = "knowledge.storage.provider",
       havingValue = "minio",
       matchIfMissing = true)
   public FileStorageService minioFileStorageService(
-      MinioClient minioClient, MinioProperties properties) {
-    return new MinioFileStorageService(minioClient, properties);
+      MinioClient minioClient,
+      MinioProperties properties,
+      DependencyResilienceExecutor resilience) {
+    return new MinioFileStorageService(minioClient, properties, resilience);
   }
 
   /** 本地或测试可用 in-memory 覆盖，禁止生产使用。 */

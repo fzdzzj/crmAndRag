@@ -28,6 +28,7 @@ import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -65,6 +66,9 @@ public class ModelProviderImpl implements ModelProvider {
   private final OpenAiChatModel compatibleChatModel;
   private final CompatibleModeSupport compatibleMode;
 
+  /** wire-dependency-circuit-breaker 任务 3：模型外呼的熔断护栏（依赖名按 chat / embed / vision 分路）。 */
+  private final ModelCallGuard guard;
+
   /**
    * wire-llm-call-timeout 任务 3：非流式模型调用专用虚拟线程执行器。线程名前缀 {@code platform-model-call-}
    * 便于线程转储定位；每调用一线程，并发量天然受调用方约束，无队列饱和与拒绝放大， 阻塞 socket 读对 {@code Thread#interrupt()} 真实响应。刻意不复用
@@ -74,14 +78,45 @@ public class ModelProviderImpl implements ModelProvider {
       Executors.newThreadPerTaskExecutor(
           Thread.ofVirtual().name("platform-model-call-", 0).factory());
 
+  /**
+   * 手工装配入口：自带独立熔断护栏（{@link ModelCallGuard#standalone()}）。
+   *
+   * <p>wire-dependency-circuit-breaker 任务 3：与下方 5 参 {@code @Autowired} 版并存——既有测试与基准共 9 处以本签名
+   * 构造，保留它可让这些用例零改动继续锁定超时与路由行为；Spring 装配走 5 参版，共享进程内熔断状态。
+   */
   public ModelProviderImpl(
       ObjectProvider<ChatModel> dashScopeChatModel,
       ObjectProvider<EmbeddingModel> dashScopeEmbeddingModel,
       ModelProviderProperties properties,
       Environment environment) {
+    this(
+        dashScopeChatModel,
+        dashScopeEmbeddingModel,
+        properties,
+        environment,
+        ModelCallGuard.standalone());
+  }
+
+  /**
+   * Spring 装配入口（多构造器需显式 {@code @Autowired}，否则回退找无参构造器致上下文加载失败）。
+   *
+   * @param dashScopeChatModel DashScope 原生 chat 模型提供者
+   * @param dashScopeEmbeddingModel DashScope 嵌入模型提供者
+   * @param properties 模型配置
+   * @param environment 环境（compatible-mode 协议细节取值）
+   * @param guard 依赖熔断护栏
+   */
+  @Autowired
+  public ModelProviderImpl(
+      ObjectProvider<ChatModel> dashScopeChatModel,
+      ObjectProvider<EmbeddingModel> dashScopeEmbeddingModel,
+      ModelProviderProperties properties,
+      Environment environment,
+      ModelCallGuard guard) {
     this.dashScopeChatModel = dashScopeChatModel;
     this.dashScopeEmbeddingModel = dashScopeEmbeddingModel;
     this.properties = properties;
+    this.guard = guard;
     this.compatibleMode = new CompatibleModeSupport(properties, environment);
     this.compatibleChatModel = compatibleMode.buildCompatibleChatModel();
   }
@@ -104,7 +139,8 @@ public class ModelProviderImpl implements ModelProvider {
     if (LOG.isDebugEnabled()) {
       LOG.debug("chat() 使用 {} 协议", nativeModel != null ? "dashscope" : "compatible-mode");
     }
-    ChatResponse response = callWithTimeout(() -> model.call(prompt), "chat");
+    ChatResponse response =
+        guard.call("model-chat", () -> callWithTimeout(() -> model.call(prompt), "chat"));
     return toTextResult(response, properties.getChatModel());
   }
 
@@ -121,7 +157,8 @@ public class ModelProviderImpl implements ModelProvider {
       throw new IllegalStateException(
           "DashScope EmbeddingModel 未装配（请检查 spring.ai.dashscope.api-key 与 starter 依赖）");
     }
-    EmbeddingResponse response = callWithTimeout(() -> model.call(request), "embed");
+    EmbeddingResponse response =
+        guard.call("model-embed", () -> callWithTimeout(() -> model.call(request), "embed"));
     float[] vector =
         response.getResult() != null && response.getResult().getOutput() != null
             ? response.getResult().getOutput()
@@ -137,7 +174,10 @@ public class ModelProviderImpl implements ModelProvider {
   @Override
   public ModelCallResult<String> vision(Prompt prompt) {
     Prompt forced = withModel(prompt, properties.getVisionModel());
-    ChatResponse response = callWithTimeout(() -> compatibleChatModel.call(forced), "vision");
+    ChatResponse response =
+        guard.call(
+            "model-vision",
+            () -> callWithTimeout(() -> compatibleChatModel.call(forced), "vision"));
     return toTextResult(response, properties.getVisionModel());
   }
 
@@ -177,8 +217,11 @@ public class ModelProviderImpl implements ModelProvider {
           StringUtils.hasText(options.model()) ? options.model() : properties.getVisionModel();
       result =
           toTextResult(
-              callWithTimeout(
-                  () -> compatibleChatModel.call(withModel(translated, model)), "vision"),
+              guard.call(
+                  "model-vision",
+                  () ->
+                      callWithTimeout(
+                          () -> compatibleChatModel.call(withModel(translated, model)), "vision")),
               model);
     }
     return result;
