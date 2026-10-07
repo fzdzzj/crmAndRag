@@ -2,6 +2,7 @@ package com.slz.crm.server.service;
 
 import com.slz.crm.pojo.entity.ApprovalAttachmentEntity;
 import com.slz.crm.pojo.entity.ProjectFileEntity;
+import java.util.List;
 
 /**
  * 附件下载前的记录级授权。
@@ -40,4 +41,19 @@ public interface AttachmentAccessService {
    * <p>按文件的归属维度（业务活动/销售机会/合同/订单）做记录级读取授权； 不含任何归属维度的独立上传文件仅上传人本人与超管可见。
    */
   boolean canReadProjectFile(ProjectFileEntity file, Long userId);
+
+  /**
+   * 批量过滤当前用户可读的项目文件行子集（列表链路专用，batch-project-file-list-auth-reads）。
+   *
+   * <p>可读判定与 {@link #canReadProjectFile} 逐行等价且保持入参原顺序：超管整组直通、 用户缺失/冻结/离职整组不可读、非超管按
+   * 活动→商机→合同（订单反查）→独立上传→预留通道 的矩阵逐行判定，任一维度命中即读。
+   *
+   * <p>批量化只作用于 SQL 形状：{@code sys_user} 整组 1 次、维度实体/订单项按 ID 去重后 {@code selectBatchIds}、活动参与人 1 次 IN
+   * 查询；权限链判定保持逐行实时调用（次数不因 批量化减少），不引入任何请求级权限快照。
+   *
+   * @param files 待过滤的项目文件行
+   * @param userId 当前登录用户 ID
+   * @return 按入参顺序排列的可读行子集
+   */
+  List<ProjectFileEntity> filterReadableProjectFiles(List<ProjectFileEntity> files, Long userId);
 }

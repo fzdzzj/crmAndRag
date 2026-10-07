@@ -1,10 +1,12 @@
 package com.slz.crm.unit.service;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -30,6 +32,7 @@ import com.slz.crm.server.mapper.SalesStageApprovalMapper;
 import com.slz.crm.server.mapper.UserMapper;
 import com.slz.crm.server.service.PermissionService;
 import com.slz.crm.server.service.impl.AttachmentAccessServiceImpl;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -437,6 +440,197 @@ class AttachmentAccessServiceTest {
     file.setContractId(contractId);
     file.setOrderId(orderId);
     return file;
+  }
+
+  // ----------------------------------------------------------------
+  // batch-project-file-list-auth-reads
+
+  @Test
+  @DisplayName("批量过滤：判定矩阵与单行入口逐行等价且保持原顺序")
+  void batchFilterVerdictMatrixMatchesSingleRowEntry() {
+    when(userMapper.selectById(2L)).thenReturn(user(2L, 2L));
+    when(permissionService.hasPermission(2L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY))
+        .thenReturn(true);
+    when(permissionService.hasPermission(2L, PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY))
+        .thenReturn(true);
+    when(permissionService.hasPermission(2L, PermissionOperates.SALES_VIEW_CONTRACT))
+        .thenReturn(true);
+    BusinessActivityEntity creatorActivity = new BusinessActivityEntity();
+    creatorActivity.setId(100L);
+    creatorActivity.setCreatorId(2L);
+    BusinessActivityEntity participantActivity = new BusinessActivityEntity();
+    participantActivity.setId(101L);
+    participantActivity.setCreatorId(8L);
+    BusinessActivityEntity unrelatedActivity = new BusinessActivityEntity();
+    unrelatedActivity.setId(102L);
+    unrelatedActivity.setCreatorId(8L);
+    when(businessActivityMapper.selectBatchIds(any()))
+        .thenReturn(List.of(creatorActivity, participantActivity, unrelatedActivity));
+    com.slz.crm.pojo.entity.BusinessActivityUserEntity participant =
+        new com.slz.crm.pojo.entity.BusinessActivityUserEntity();
+    participant.setActivityId(101L);
+    participant.setUserId(2L);
+    when(businessActivityUserMapper.selectByActivityIds(any())).thenReturn(List.of(participant));
+    SalesOpportunityEntity opportunity = new SalesOpportunityEntity();
+    opportunity.setId(200L);
+    opportunity.setOwnerId(2L);
+    when(salesOpportunityMapper.selectBatchIds(any())).thenReturn(List.of(opportunity));
+    ContractEntity contract = new ContractEntity();
+    contract.setId(300L);
+    contract.setOwnerId(2L);
+    when(contractMapper.selectBatchIds(any())).thenReturn(List.of(contract));
+    ContractOrderItemEntity orderItem = new ContractOrderItemEntity();
+    orderItem.setId(800L);
+    orderItem.setContractId(300L);
+    when(contractOrderItemMapper.selectBatchIds(any())).thenReturn(List.of(orderItem));
+
+    List<ProjectFileEntity> files =
+        List.of(
+            projectFile(1L, 100L, null, null, null), // 活动 creator 命中
+            projectFile(2L, 101L, null, null, null), // 活动参与人命中
+            projectFile(3L, null, 200L, null, null), // 商机 owner 命中
+            projectFile(4L, null, null, 300L, null), // 合同 owner 命中
+            projectFile(5L, null, null, null, 800L), // 订单反查合同命中
+            projectFile(6L, null, null, null, null), // 独立上传仅本人
+            projectFile(7L, 102L, 200L, null, null), // 多归属：活动不命中 → 商机命中（任一维度命中即读）
+            projectFile(8L, 101L, null, null, null) // 活动参与人命中
+            );
+    files.get(5).setUploaderId(2L);
+    List<ProjectFileEntity> unrelated =
+        List.of(projectFile(9L, 102L, null, null, null)); // 全维度不命中且非本人上传
+    unrelated.get(0).setUploaderId(9L);
+
+    java.util.List<ProjectFileEntity> readable =
+        service.filterReadableProjectFiles(concat(files, unrelated), 2L);
+
+    assertEquals(
+        List.of(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L),
+        readable.stream().map(ProjectFileEntity::getId).toList(),
+        "命中行全保留且保持原顺序");
+    assertTrue(!readable.stream().anyMatch(f -> f.getId() == 9L), "全不命中行必须被剔除");
+  }
+
+  @Test
+  @DisplayName("批量过滤：超管整组直通（零维度查询），冻结/离职整组空（零维度查询）")
+  void batchFilterWholeGroupShortcuts() {
+    when(userMapper.selectById(1L)).thenReturn(user(1L, 1L));
+    List<ProjectFileEntity> files =
+        List.of(
+            projectFile(1L, 100L, null, null, null),
+            projectFile(2L, null, 200L, null, null),
+            projectFile(3L, null, null, null, null));
+    files.get(2).setUploaderId(9L);
+
+    assertEquals(3, service.filterReadableProjectFiles(files, 1L).size(), "超管整组直通且保持原顺序");
+    verify(businessActivityMapper, never()).selectBatchIds(any());
+    verify(salesOpportunityMapper, never()).selectBatchIds(any());
+    verify(permissionService, never()).hasPermission(anyLong(), any(PermissionOperates.class));
+
+    UserEntity frozen = user(51L, 2L);
+    frozen.setStatus(0);
+    when(userMapper.selectById(51L)).thenReturn(frozen);
+    assertTrue(service.filterReadableProjectFiles(files, 51L).isEmpty(), "冻结用户整组空");
+    verify(businessActivityMapper, never()).selectBatchIds(any());
+  }
+
+  @Test
+  @DisplayName("批量过滤：权限链逐行实时（每行恰调 1 次不减），user 读恰 1 次，预取各恰 1 次")
+  void batchFilterPermissionChainStaysPerRowRealtime() {
+    when(userMapper.selectById(2L)).thenReturn(user(2L, 2L));
+    when(permissionService.hasPermission(2L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY))
+        .thenReturn(true);
+    BusinessActivityEntity creatorActivity = new BusinessActivityEntity();
+    creatorActivity.setId(100L);
+    creatorActivity.setCreatorId(2L);
+    when(businessActivityMapper.selectBatchIds(any())).thenReturn(List.of(creatorActivity));
+    when(businessActivityUserMapper.selectByActivityIds(any())).thenReturn(List.of());
+
+    List<ProjectFileEntity> files =
+        List.of(
+            projectFile(1L, 100L, null, null, null),
+            projectFile(2L, 100L, null, null, null),
+            projectFile(3L, 100L, null, null, null));
+
+    assertEquals(3, service.filterReadableProjectFiles(files, 2L).size(), "3 行全部命中");
+    verify(userMapper, times(1)).selectById(2L);
+    verify(permissionService, times(3))
+        .hasPermission(2L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY);
+    verify(businessActivityMapper, times(1)).selectBatchIds(any());
+    verify(businessActivityUserMapper, times(1)).selectByActivityIds(any());
+  }
+
+  @Test
+  @DisplayName("批量过滤：权限链逐行实时——列表中途回收权限按行生效，不跨行快照")
+  void batchFilterPermissionChangeMidListIsHonoredPerRow() {
+    when(userMapper.selectById(2L)).thenReturn(user(2L, 2L));
+    when(permissionService.hasPermission(2L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY))
+        .thenReturn(true, false);
+    BusinessActivityEntity creatorActivity = new BusinessActivityEntity();
+    creatorActivity.setId(100L);
+    creatorActivity.setCreatorId(2L);
+    when(businessActivityMapper.selectBatchIds(any())).thenReturn(List.of(creatorActivity));
+    when(businessActivityUserMapper.selectByActivityIds(any())).thenReturn(List.of());
+
+    List<ProjectFileEntity> files =
+        List.of(projectFile(1L, 100L, null, null, null), projectFile(2L, 100L, null, null, null));
+
+    List<ProjectFileEntity> readable = service.filterReadableProjectFiles(files, 2L);
+    assertEquals(
+        List.of(1L),
+        readable.stream().map(ProjectFileEntity::getId).toList(),
+        "第 1 行判定时权限在 → 保留；第 2 行判定时权限已回收 → 剔除（逐行实时，不快照）");
+  }
+
+  @Test
+  @DisplayName("批量过滤：零权限角色抛 BaseException（与单行入口语义一致）")
+  void batchFilterEmptyPermissionChainThrows() {
+    when(userMapper.selectById(2L)).thenReturn(user(2L, 2L));
+    when(permissionService.hasPermission(2L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY))
+        .thenThrow(new BaseException("该用户没有权限"));
+
+    BaseException thrown =
+        assertThrows(
+            BaseException.class,
+            () ->
+                service.filterReadableProjectFiles(
+                    List.of(projectFile(1L, 100L, null, null, null)), 2L));
+    assertTrue(thrown.getMessage().contains("没有权限"), "异常文案与单行入口一致");
+  }
+
+  @Test
+  @DisplayName("批量过滤：订单反查失败回落 file.contractId（单行 resolveContractId 语义等价）")
+  void batchFilterOrderFallbackToContractId() {
+    when(userMapper.selectById(2L)).thenReturn(user(2L, 2L));
+    when(permissionService.hasPermission(2L, PermissionOperates.SALES_VIEW_CONTRACT))
+        .thenReturn(true);
+    ContractEntity contract = new ContractEntity();
+    contract.setId(300L);
+    contract.setOwnerId(2L);
+    when(contractMapper.selectBatchIds(any())).thenReturn(List.of(contract));
+    when(contractOrderItemMapper.selectBatchIds(any())).thenReturn(List.of());
+
+    // orderId=800 的订单项缺失 → 回落 file.contractId=300 → 合同 owner 命中
+    ProjectFileEntity file = projectFile(1L, null, null, 300L, 800L);
+    assertEquals(
+        List.of(1L),
+        service.filterReadableProjectFiles(List.of(file), 2L).stream()
+            .map(ProjectFileEntity::getId)
+            .toList(),
+        "订单项缺失回落 file.contractId 后命中");
+  }
+
+  @Test
+  @DisplayName("批量过滤：空列表零 SQL")
+  void batchFilterEmptyInputZeroSql() {
+    assertTrue(service.filterReadableProjectFiles(List.of(), 2L).isEmpty());
+    verifyNoInteractions(userMapper, permissionService, businessActivityMapper);
+  }
+
+  private static List<ProjectFileEntity> concat(
+      List<ProjectFileEntity> left, List<ProjectFileEntity> right) {
+    List<ProjectFileEntity> all = new java.util.ArrayList<>(left);
+    all.addAll(right);
+    return all;
   }
 
   private UserEntity user(Long id, Long roleId) {
