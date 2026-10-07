@@ -312,15 +312,18 @@ public class ProjectFileServiceImpl extends ServiceImpl<ProjectFileMapper, Proje
   /**
    * optimize-project-file-list-auth-reuse 任务 3.1：列表链路统一「判定一次 + 已知可读转换」私有链。
    *
-   * <p>每行 {@code canReadProjectFile} 在同一请求内恰好判定 1 次完成过滤（过滤语义与原 filterReadable
-   * 一致：不可读行被丢弃），保留行以已知可读前提转换 VO 并直接签发下载令牌， 不再对同一行二次调用授权服务，单请求判定调用 N+k → N。下载令牌只是便利性输出，真实下载 由
+   * <p>batch-project-file-list-auth-reads 任务 3.2：判定改走批量过滤入口 {@code filterReadableProjectFiles}
+   * （同一请求恰好调用 1 次），批量内部整组 1 次 {@code sys_user} 读 + 维度实体/参与人预取 + 与单行入口
+   * 逐字一致的逐行判定矩阵；权限链逐行实时语义不变。过滤语义不变（不可读行被丢弃、保持原顺序）， 保留行以已知可读前提转换 VO 并直接签发下载令牌。下载令牌只是便利性输出，真实下载 由
    * PublicAttachmentController 逐次独立复核，本复用严格限于单请求内、零跨请求角色/权限缓存。
    */
   private List<ProjectFileVO> toReadableVOs(List<ProjectFileEntity> entities) {
-    Long currentUserId = BaseUnit.getCurrentId();
-    List<ProjectFileVO> voList = new ArrayList<>(entities.size());
-    for (ProjectFileEntity entity : entities) {
-      if (attachmentAccessService.canReadProjectFile(entity, currentUserId)) {
+    List<ProjectFileVO> voList = new ArrayList<>();
+    if (!entities.isEmpty()) {
+      Long currentUserId = BaseUnit.getCurrentId();
+      List<ProjectFileEntity> readable =
+          attachmentAccessService.filterReadableProjectFiles(entities, currentUserId);
+      for (ProjectFileEntity entity : readable) {
         voList.add(toKnownReadableVO(entity, currentUserId));
       }
     }

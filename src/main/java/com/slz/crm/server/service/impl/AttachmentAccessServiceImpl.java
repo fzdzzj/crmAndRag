@@ -20,6 +20,8 @@ import com.slz.crm.server.mapper.SalesStageApprovalMapper;
 import com.slz.crm.server.mapper.UserMapper;
 import com.slz.crm.server.service.AttachmentAccessService;
 import com.slz.crm.server.service.PermissionService;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import org.springframework.stereotype.Service;
 
@@ -250,6 +252,34 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
         result = true;
       } else {
         result = projectFileReader.canReadByDimension(file, userId);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * batch-project-file-list-auth-reads 任务 3.2：列表链路批量过滤（B1 保守批量化）。
+   *
+   * <p>整组只做 1 次 {@code sys_user} 读完成状态/超管闸门：用户缺失或非在职整组不可读（与单行 逐行 {@code false} 等价）、超管整组直通（与单行逐行
+   * {@code true} 等价）；非超管委托 {@link ProjectFileAttachmentReader#filterReadableByDimension} 做维度预取 +
+   * 逐行判定矩阵。 权限链判定保持逐行实时调用，次数不因批量化减少。
+   */
+  @Override
+  public List<ProjectFileEntity> filterReadableProjectFiles(
+      List<ProjectFileEntity> files, Long userId) {
+    List<ProjectFileEntity> result = new ArrayList<>();
+    if (files != null && !files.isEmpty() && userId != null) {
+      UserEntity user = userMapper.selectById(userId);
+      if (user != null && Objects.equals(user.getStatus(), 1)) {
+        if (Objects.equals(user.getRoleId(), 1L)) {
+          for (ProjectFileEntity file : files) {
+            if (file != null && file.getId() != null) {
+              result.add(file);
+            }
+          }
+        } else {
+          result = projectFileReader.filterReadableByDimension(files, userId);
+        }
       }
     }
     return result;
