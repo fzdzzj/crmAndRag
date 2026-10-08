@@ -12,6 +12,8 @@ import com.slz.crm.platform.audit.GovernanceAuditRecorder;
 import com.slz.crm.platform.audit.GovernanceAuditResult;
 import com.slz.crm.platform.contract.CrmVectorStore;
 import com.slz.crm.platform.contract.UserContext;
+import com.slz.crm.platform.resilience.DependencyRecoveryPolicy;
+import com.slz.crm.platform.resilience.DependencyUnavailableException;
 import com.slz.crm.server.mapper.DocumentVectorChunkMapper;
 import com.slz.crm.server.mapper.KnowledgeBaseMapper;
 import com.slz.crm.server.mapper.UploadedFileMapper;
@@ -29,6 +31,9 @@ import org.springframework.stereotype.Service;
 
 /**
  * 文档入库编排：存储 → 解析分块 → 嵌入 → DB 快照 → 向量库。
+ *
+ * <p>wire-ingestion-recovery-replay 任务 2：接入 {@link DependencyRecoveryPolicy} 失败分类， 熔断开闸深扫进 PENDING
+ * 待重放，其余失败进 FAILED 终态（既有断言零破坏）。
  *
  * <p>提案4 扩展：摄取侧块头注入（任务 2.1）、语义切分父块行落库（任务 3.2）、 按文档幂等重建 {@link #reingest}（任务 4.1，失败复用 markFailed
  * 清理语义并落平台审计）。
@@ -57,6 +62,9 @@ public class DocumentIngestionService {
   /** 衍生问题旁路（提案5 任务 3.1，默认关闭）；null = 兼容构造下旁路缺席。 */
   private final DerivedQuestionService derivedQuestionService;
 
+  /** 依赖恢复策略（wire-ingestion-recovery-replay 任务 2）：熔断开闸进 PENDING，其余进 FAILED。 */
+  private final DependencyRecoveryPolicy<UploadedFileEntity, UploadedFileEntity> recoveryPolicy;
+
   @Autowired
   public DocumentIngestionService(
       KnowledgeBaseMapper knowledgeBaseMapper,
@@ -68,7 +76,8 @@ public class DocumentIngestionService {
       EmbeddingService embeddingService,
       CrmVectorStore vectorStore,
       GovernanceAuditRecorder auditRecorder,
-      DerivedQuestionService derivedQuestionService) {
+      DerivedQuestionService derivedQuestionService,
+      DependencyRecoveryPolicy<UploadedFileEntity, UploadedFileEntity> recoveryPolicy) {
     this.knowledgeBaseMapper = knowledgeBaseMapper;
     this.uploadedFileMapper = uploadedFileMapper;
     this.chunkMapper = chunkMapper;
@@ -79,9 +88,39 @@ public class DocumentIngestionService {
     this.vectorStore = vectorStore;
     this.auditRecorder = auditRecorder;
     this.derivedQuestionService = derivedQuestionService;
+    this.recoveryPolicy =
+        recoveryPolicy != null
+            ? recoveryPolicy
+            : new IngestionRecoveryPolicy(vectorStore, chunkMapper, uploadedFileMapper);
   }
 
-  /** 兼容构造（提案4 九参）：不接衍生问题旁路。 */
+  /** 兼容构造（十参）：自动装配默认恢复策略。 */
+  public DocumentIngestionService(
+      KnowledgeBaseMapper knowledgeBaseMapper,
+      UploadedFileMapper uploadedFileMapper,
+      DocumentVectorChunkMapper chunkMapper,
+      KnowledgeBaseAuthorizationService authorizationService,
+      FileStorageService fileStorageService,
+      DocumentService documentService,
+      EmbeddingService embeddingService,
+      CrmVectorStore vectorStore,
+      GovernanceAuditRecorder auditRecorder,
+      DerivedQuestionService derivedQuestionService) {
+    this(
+        knowledgeBaseMapper,
+        uploadedFileMapper,
+        chunkMapper,
+        authorizationService,
+        fileStorageService,
+        documentService,
+        embeddingService,
+        vectorStore,
+        auditRecorder,
+        derivedQuestionService,
+        null);
+  }
+
+  /** 兼容构造（提案4 九参）：不接衍生问题旁路，自动装配默认恢复策略。 */
   public DocumentIngestionService(
       KnowledgeBaseMapper knowledgeBaseMapper,
       UploadedFileMapper uploadedFileMapper,
@@ -102,6 +141,7 @@ public class DocumentIngestionService {
         embeddingService,
         vectorStore,
         auditRecorder,
+        null,
         null);
   }
 
@@ -144,11 +184,11 @@ public class DocumentIngestionService {
       return new DocumentIngestionResult(
           file.getId(), documentId, savedChunks.size(), savedChunks.size());
     } catch (RuntimeException exception) {
-      markFailed(file, documentId, exception);
+      markFailed(file, exception);
       throw exception;
     } catch (Exception exception) {
       RuntimeException wrapped = new IllegalStateException("文档入库失败", exception);
-      markFailed(file, documentId, wrapped);
+      markFailed(file, wrapped);
       throw wrapped;
     }
   }
@@ -200,7 +240,7 @@ public class DocumentIngestionService {
       return new DocumentIngestionResult(
           file.getId(), documentId, children.size(), children.size());
     } catch (RuntimeException exception) {
-      markFailed(file, documentId, exception);
+      markFailed(file, exception);
       auditReingest(
           documentId,
           user,
@@ -209,7 +249,7 @@ public class DocumentIngestionService {
       throw exception;
     } catch (Exception exception) {
       RuntimeException wrapped = new IllegalStateException("文档重建入库失败", exception);
-      markFailed(file, documentId, wrapped);
+      markFailed(file, wrapped);
       auditReingest(
           documentId,
           user,
@@ -254,22 +294,18 @@ public class DocumentIngestionService {
             detail));
   }
 
-  /** 失败时保留原始文件和 DB 记录，清理向量与切片（物理删，保证重建可重试不留半量）。 */
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 清理边界：向量/切片清理各自单独吞异常，不阻断失败标记
-  private void markFailed(UploadedFileEntity file, String documentId, Exception exception) {
-    try {
-      vectorStore.deleteByDocumentId(documentId);
-    } catch (Exception cleanupException) {
-      LOG.warn("入库失败后清理向量失败 documentId={}", documentId, cleanupException);
+  /**
+   * 失败时委托恢复策略分类落地（wire-ingestion-recovery-replay 任务 2）： cause 链含 CircuitOpenException 标 PENDING
+   * 待重放；其他异常标 FAILED 终态。
+   */
+  private void markFailed(UploadedFileEntity file, Exception exception) {
+    DependencyUnavailableException circuitError =
+        IngestionRecoveryPolicy.extractCircuitOpen(exception);
+    if (circuitError != null) {
+      recoveryPolicy.onRecoverableFailure(file, circuitError);
+    } else {
+      recoveryPolicy.onPermanentFailure(file, exception);
     }
-    try {
-      chunkMapper.deletePhysicallyByDocumentId(documentId);
-    } catch (Exception cleanupException) {
-      LOG.warn("入库失败后清理切片失败 documentId={}", documentId, cleanupException);
-    }
-    file.setStatus("FAILED");
-    file.setErrorMessage(DocumentIngestionSupport.shortMessage(exception));
-    uploadedFileMapper.updateById(file);
   }
 
   @SuppressWarnings("PMD.AvoidCatchingGenericException") // 流边界+摘要多源，失败返回null不抛

@@ -84,7 +84,7 @@ class DynamicConfigKeyRegistryTest {
   }
 
   @Test
-  @DisplayName("九个官方命名空间齐全，键名与命名空间自洽")
+  @DisplayName("十个官方命名空间齐全，键名与命名空间自洽")
   void namespacesComplete() {
     assertThat(DynamicConfigKeyRegistry.NAMESPACES)
         .containsExactlyInAnyOrder(
@@ -96,7 +96,8 @@ class DynamicConfigKeyRegistryTest {
             "rag.query",
             "rag.intent",
             "business",
-            "platform.resilience");
+            "platform.resilience",
+            "rag.ingest");
     var defs = registry.definitions();
     assertThat(defs).isNotEmpty();
     // 键必须以命名空间开头；同一命名空间下键前缀一致（V6 脚本分组约定）
@@ -106,8 +107,9 @@ class DynamicConfigKeyRegistryTest {
     assertThat(registry.byNamespace("rag.intent")).allMatch(d -> d.key().startsWith("rag.intent."));
     assertThat(registry.byNamespace("platform.resilience"))
         .allMatch(d -> d.key().startsWith("platform.resilience."));
+    assertThat(registry.byNamespace("rag.ingest")).allMatch(d -> d.key().startsWith("rag.ingest."));
     assertThat(registry.byNamespace(null)).hasSameSizeAs(defs);
-    // 覆盖 spec 优先项：提示词/模型/检索/strict-KB/意图类目/图片缓存上限/熔断治理
+    // 覆盖 spec 优先项：提示词/模型/检索/strict-KB/意图类目/图片缓存上限/熔断治理/摄取恢复
     assertThat(registry.definitionOf("ai.prompt.system")).isPresent();
     assertThat(registry.definitionOf("rag.retrieval.strictKb")).isPresent();
     assertThat(registry.definitionOf("rag.retrieval.admin-vector.enabled")).isPresent();
@@ -115,6 +117,8 @@ class DynamicConfigKeyRegistryTest {
     assertThat(registry.definitionOf("business.assistant.imageCacheMaxEntries")).isPresent();
     assertThat(registry.definitionOf("platform.resilience.failure-threshold")).isPresent();
     assertThat(registry.definitionOf("platform.resilience.open-duration-ms")).isPresent();
+    assertThat(registry.definitionOf("rag.ingest.replay-enabled")).isPresent();
+    assertThat(registry.definitionOf("rag.ingest.replay-batch-size")).isPresent();
   }
 
   @Test

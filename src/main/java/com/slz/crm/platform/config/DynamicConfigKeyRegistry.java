@@ -18,9 +18,11 @@ import org.springframework.stereotype.Component;
  * register-rag-context-query-dynamic-keys（2026-09-25）扩 {@code rag.context}/{@code rag.chunking}/
  * {@code rag.query} 三命名空间并登记 13 个检索周边键（默认值 = 各消费点代码内联缺省）。
  *
- * <p>命名空间约定（任务 16 起五命名空间，2026-09-25 扩为八个，wire-circuit-dynamic-config 扩为九个）：{@code ai.prompt}/{@code
- * ai.model}/{@code rag.retrieval}/{@code rag.context}/{@code rag.chunking}/{@code rag.query}/{@code
- * rag.intent}/{@code business}/{@code platform.resilience}；每个键 = 命名空间 + '.' + 键名。
+ * <p>命名空间约定（任务 16 起五命名空间，2026-09-25 扩为八个，wire-circuit-dynamic-config
+ * 扩为九个，wire-ingestion-recovery-replay 扩为十个）：{@code ai.prompt}/{@code ai.model}/{@code
+ * rag.retrieval}/{@code rag.context}/{@code rag.chunking}/{@code rag.query}/{@code
+ * rag.intent}/{@code business}/{@code platform.resilience}/{@code rag.ingest}；每个键 = 命名空间 + '.' +
+ * 键名。
  *
  * <p>敏感值说明：密钥/凭据按 D10 边界仍走环境变量（静态），本域原则上不注册敏感键； {@code sensitive} 标记与掩码逻辑完整保留，供将来确需运行期调整的半敏感参数使用。
  *
@@ -32,7 +34,7 @@ public class DynamicConfigKeyRegistry {
   /** 键 → 定义，保序（管理端列表按注册顺序展示） */
   private final Map<String, ConfigKeyDefinition> definitions = new LinkedHashMap<>();
 
-  /** 官方命名空间白名单（wire-circuit-dynamic-config 任务 3：扩为九个） */
+  /** 官方命名空间白名单（wire-ingestion-recovery-replay 任务 3：扩为十个） */
   public static final Set<String> NAMESPACES =
       Set.of(
           "ai.prompt",
@@ -43,7 +45,8 @@ public class DynamicConfigKeyRegistry {
           "rag.query",
           "rag.intent",
           "business",
-          "platform.resilience");
+          "platform.resilience",
+          "rag.ingest");
 
   public DynamicConfigKeyRegistry(ObjectMapper objectMapper) {
     register(catalog(objectMapper));
@@ -793,6 +796,34 @@ public class DynamicConfigKeyRegistry {
             "依赖熔断开闸保持时长（毫秒）：开闸达到该时长后进入 HALF_OPEN 单探测状态。范围 0~86400000，非法/越界回落 30000。",
             "0",
             "86400000",
+            Set.of(),
+            false,
+            100),
+
+        // ---------------- rag.ingest.*：摄取恢复重放（wire-ingestion-recovery-replay 任务 3）
+        // ----------------
+        def(
+            objectMapper,
+            "rag.ingest.replay-enabled",
+            "rag.ingest",
+            ConfigValueType.BOOLEAN,
+            "false",
+            "摄取恢复自动重放总开关（wire-ingestion-recovery-replay 任务 3）：默认关闭（费用红线：重放=真实嵌入调用，必须显式开启）。"
+                + "开启时定时扫描 PENDING 状态文档以原上传者身份自动重放，关闭或异常时空转跳过。",
+            null,
+            null,
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "rag.ingest.replay-batch-size",
+            "rag.ingest",
+            ConfigValueType.INTEGER,
+            "5",
+            "摄取恢复自动重放单批最大处理文档数，范围 1~50（默认 5）。非法或越界回落默认值 5。",
+            "1",
+            "50",
             Set.of(),
             false,
             100));
