@@ -323,8 +323,9 @@ class DependencyResilienceExecutorTest {
   @Test
   void halfOpenShouldRejectNonProbeCallsWhileProbeInFlight() throws Exception {
     SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    AtomicLong nanoTime = new AtomicLong();
     DependencyResilienceExecutor executor =
-        new DependencyResilienceExecutor(registry, 1, 0, 2.0, 1, 1);
+        new DependencyResilienceExecutor(registry, 1, 0, 2.0, 1, 1, nanoTime::get);
     AtomicInteger probeExecutions = new AtomicInteger();
     AtomicInteger secondExecutions = new AtomicInteger();
 
@@ -337,7 +338,7 @@ class DependencyResilienceExecutorTest {
                       throw new IOException("qdrant down");
                     }))
         .isInstanceOf(DependencyUnavailableException.class);
-    TimeUnit.MILLISECONDS.sleep(5);
+    nanoTime.set(TimeUnit.MILLISECONDS.toNanos(1));
 
     DependencyUnavailableException[] secondError = new DependencyUnavailableException[1];
     executor.executeNoRetry(
@@ -380,8 +381,9 @@ class DependencyResilienceExecutorTest {
   @Test
   void halfOpenProbeFailureShouldReopenImmediatelyWithoutThreshold() throws Exception {
     SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    AtomicLong nanoTime = new AtomicLong();
     DependencyResilienceExecutor executor =
-        new DependencyResilienceExecutor(registry, 1, 0, 2.0, 2, 1);
+        new DependencyResilienceExecutor(registry, 1, 0, 2.0, 2, 1, nanoTime::get);
 
     for (int index = 0; index < 2; index++) {
       assertThatThrownBy(
@@ -400,7 +402,7 @@ class DependencyResilienceExecutorTest {
                 .counter()
                 .count())
         .isEqualTo(1.0);
-    TimeUnit.MILLISECONDS.sleep(5);
+    nanoTime.set(TimeUnit.MILLISECONDS.toNanos(1));
 
     assertThatThrownBy(
             () ->
@@ -435,8 +437,9 @@ class DependencyResilienceExecutorTest {
   @Test
   void halfOpenProbeSuccessShouldRecoverClosedAndClearFailureCount() throws Exception {
     SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    AtomicLong nanoTime = new AtomicLong();
     DependencyResilienceExecutor executor =
-        new DependencyResilienceExecutor(registry, 1, 0, 2.0, 2, 1);
+        new DependencyResilienceExecutor(registry, 1, 0, 2.0, 2, 1, nanoTime::get);
 
     for (int index = 0; index < 2; index++) {
       assertThatThrownBy(
@@ -448,7 +451,7 @@ class DependencyResilienceExecutorTest {
                       }))
           .isInstanceOf(DependencyUnavailableException.class);
     }
-    TimeUnit.MILLISECONDS.sleep(5);
+    nanoTime.set(TimeUnit.MILLISECONDS.toNanos(1));
 
     assertThat(executor.executeNoRetry("model-embed", () -> "recovered")).isEqualTo("recovered");
     assertThat(
@@ -491,8 +494,9 @@ class DependencyResilienceExecutorTest {
   @Test
   void halfOpenShouldExecuteExactlyOneProbeUnderConcurrentCalls() throws Exception {
     SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    AtomicLong nanoTime = new AtomicLong();
     DependencyResilienceExecutor executor =
-        new DependencyResilienceExecutor(registry, 1, 0, 2.0, 1, 1);
+        new DependencyResilienceExecutor(registry, 1, 0, 2.0, 1, 1, nanoTime::get);
     int callers = 16;
     AtomicInteger executions = new AtomicInteger();
     AtomicInteger rejected = new AtomicInteger();
@@ -508,7 +512,7 @@ class DependencyResilienceExecutorTest {
                       throw new IOException("qdrant down");
                     }))
         .isInstanceOf(DependencyUnavailableException.class);
-    TimeUnit.MILLISECONDS.sleep(5);
+    nanoTime.set(TimeUnit.MILLISECONDS.toNanos(1));
 
     List<Future<String>> futures = new ArrayList<>();
     for (int index = 0; index < callers; index++) {
@@ -653,6 +657,268 @@ class DependencyResilienceExecutorTest {
                 .count())
         .isEqualTo(1.0);
     assertThat(executor.executeNoRetry("model-chat", () -> "normal call")).isEqualTo("normal call");
+  }
+
+  /**
+   * F-1 交错硬化（卡 P-v）：CLOSED 期拿到许可的陈旧调用在探测飞行期间凑满阈值失败时， 不得打断在飞探测——探测成功必须回 CLOSED（gauge 归
+   * 0、后续普通调用放行、陈旧窗口残值在 CLOSED 下无副作用）。
+   *
+   * <p>红测试（237ff31 基线）：陈旧开闸用无条件 {@code phase.set(OPEN)} 把飞行中的 PROBING 打成 OPEN， 探测成功的 {@code
+   * CAS(PROBING→CLOSED)} 落空，gauge 仍为 1、要等陈旧窗口到期（2×window）才自愈。
+   */
+  @Test
+  void staleCallTripDuringProbeFlightShouldNotBuryProbeSuccess() throws Exception {
+    SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    AtomicLong nanoTime = new AtomicLong();
+    DependencyResilienceExecutor executor =
+        new DependencyResilienceExecutor(registry, 1, 0, 2.0, 2, 1, nanoTime::get);
+    long openWindowNanos = TimeUnit.MILLISECONDS.toNanos(1);
+    ExecutorService pool = Executors.newFixedThreadPool(3);
+    CountDownLatch staleAcquired = new CountDownLatch(2);
+    CountDownLatch staleProceed = new CountDownLatch(1);
+    CountDownLatch probeStarted = new CountDownLatch(1);
+    CountDownLatch probeProceed = new CountDownLatch(1);
+    try {
+      Future<DependencyUnavailableException> staleOne =
+          pool.submit(
+              () -> {
+                return gatedFailure(executor, "qdrant", staleAcquired, staleProceed, "stale-1");
+              });
+      Future<DependencyUnavailableException> staleTwo =
+          pool.submit(
+              () -> {
+                return gatedFailure(executor, "qdrant", staleAcquired, staleProceed, "stale-2");
+              });
+      assertThat(staleAcquired.await(5, TimeUnit.SECONDS)).isTrue();
+
+      assertThatThrownBy(
+              () ->
+                  executor.executeNoRetry(
+                      "qdrant",
+                      () -> {
+                        throw new IOException("threshold-1");
+                      }))
+          .isInstanceOf(DependencyUnavailableException.class);
+      assertThatThrownBy(
+              () ->
+                  executor.executeNoRetry(
+                      "qdrant",
+                      () -> {
+                        throw new IOException("threshold-2");
+                      }))
+          .isInstanceOf(DependencyUnavailableException.class);
+      assertThat(circuitOpenGauge(registry, "qdrant")).isEqualTo(1.0);
+
+      nanoTime.set(openWindowNanos);
+      Future<String> probe =
+          pool.submit(
+              () -> {
+                return executor.executeNoRetry(
+                    "qdrant",
+                    (Callable<String>)
+                        () -> {
+                          probeStarted.countDown();
+                          probeProceed.await(5, TimeUnit.SECONDS);
+                          return "probe-ok";
+                        });
+              });
+      assertThat(probeStarted.await(5, TimeUnit.SECONDS)).isTrue();
+      assertThat(circuitOpenGauge(registry, "qdrant")).isEqualTo(1.0);
+
+      staleProceed.countDown();
+      DependencyUnavailableException staleOneError = staleOne.get(5, TimeUnit.SECONDS);
+      DependencyUnavailableException staleTwoError = staleTwo.get(5, TimeUnit.SECONDS);
+      assertThat(staleOneError).isNotNull();
+      assertThat(staleTwoError).isNotNull();
+      assertThat(List.of(staleOneError.getMessage(), staleTwoError.getMessage()))
+          .containsExactlyInAnyOrder("依赖调用失败: qdrant", "依赖连续失败已熔断: qdrant");
+      assertThat(
+              registry
+                  .get("dependency.circuit.opened")
+                  .tag("dependency", "qdrant")
+                  .counter()
+                  .count())
+          .isEqualTo(2.0);
+      assertThat(circuitOpenGauge(registry, "qdrant")).isEqualTo(1.0);
+
+      probeProceed.countDown();
+      assertThat(probe.get(5, TimeUnit.SECONDS)).isEqualTo("probe-ok");
+      assertThat(
+              registry
+                  .get("dependency.circuit.probe")
+                  .tag("dependency", "qdrant")
+                  .tag("result", "success")
+                  .counter()
+                  .count())
+          .isEqualTo(1.0);
+      assertThat(circuitOpenGauge(registry, "qdrant")).isEqualTo(0.0);
+      assertThat(executor.executeNoRetry("qdrant", () -> "normal call")).isEqualTo("normal call");
+
+      nanoTime.set(2L * openWindowNanos);
+      assertThat(executor.executeNoRetry("qdrant", () -> "after residue window"))
+          .isEqualTo("after residue window");
+      assertThat(circuitOpenGauge(registry, "qdrant")).isEqualTo(0.0);
+    } finally {
+      pool.shutdownNow();
+    }
+  }
+
+  /**
+   * F-1 交错硬化（卡 P-v）：陈旧调用凑满阈值的开闸决定不得打断在飞探测——探测飞行期间窗口到期（陈旧开闸写入的窗口） 不得放行第二个探测；探测失败必须经 {@code
+   * CAS(PROBING→OPEN)} 权威回 OPEN 并重置完整窗口（覆盖陈旧调用留下的状态）。
+   *
+   * <p>红测试（237ff31 基线）：陈旧开闸把 PROBING 打成 OPEN 后其窗口到期会让第二个探测真实执行 （单探测不变量被破坏， 本用例在 t=2×window
+   * 处直接抓到第二次外呼后返回）。
+   */
+  @Test
+  void staleCallTripDuringProbeFlightShouldKeepProbeFailureAuthoritative() throws Exception {
+    SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    AtomicLong nanoTime = new AtomicLong();
+    DependencyResilienceExecutor executor =
+        new DependencyResilienceExecutor(registry, 1, 0, 2.0, 2, 1, nanoTime::get);
+    long openWindowNanos = TimeUnit.MILLISECONDS.toNanos(1);
+    ExecutorService pool = Executors.newFixedThreadPool(3);
+    CountDownLatch staleAcquired = new CountDownLatch(2);
+    CountDownLatch staleProceed = new CountDownLatch(1);
+    CountDownLatch probeStarted = new CountDownLatch(1);
+    CountDownLatch probeProceed = new CountDownLatch(1);
+    AtomicInteger strayProbeExecutions = new AtomicInteger();
+    try {
+      Future<DependencyUnavailableException> staleOne =
+          pool.submit(
+              () -> {
+                return gatedFailure(executor, "model-chat", staleAcquired, staleProceed, "stale-1");
+              });
+      Future<DependencyUnavailableException> staleTwo =
+          pool.submit(
+              () -> {
+                return gatedFailure(executor, "model-chat", staleAcquired, staleProceed, "stale-2");
+              });
+      assertThat(staleAcquired.await(5, TimeUnit.SECONDS)).isTrue();
+
+      assertThatThrownBy(
+              () ->
+                  executor.executeNoRetry(
+                      "model-chat",
+                      () -> {
+                        throw new IOException("threshold-1");
+                      }))
+          .isInstanceOf(DependencyUnavailableException.class);
+      assertThatThrownBy(
+              () ->
+                  executor.executeNoRetry(
+                      "model-chat",
+                      () -> {
+                        throw new IOException("threshold-2");
+                      }))
+          .isInstanceOf(DependencyUnavailableException.class);
+
+      nanoTime.set(openWindowNanos);
+      Future<DependencyUnavailableException> probe =
+          pool.submit(
+              () -> {
+                return gatedFailure(
+                    executor, "model-chat", probeStarted, probeProceed, "probe failed");
+              });
+      assertThat(probeStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+      staleProceed.countDown();
+      assertThat(staleOne.get(5, TimeUnit.SECONDS)).isNotNull();
+      assertThat(staleTwo.get(5, TimeUnit.SECONDS)).isNotNull();
+      assertThat(circuitOpenGauge(registry, "model-chat")).isEqualTo(1.0);
+      assertThatThrownBy(
+              () ->
+                  executor.executeNoRetry(
+                      "model-chat",
+                      () -> {
+                        throw new IllegalStateException("must-not-run-in-flight");
+                      }))
+          .isInstanceOfSatisfying(
+              DependencyUnavailableException.class,
+              error ->
+                  assertThat(error.failureType()).isEqualTo(DependencyFailureType.CIRCUIT_OPEN));
+
+      nanoTime.set(2L * openWindowNanos);
+      String strayOutcome;
+      try {
+        strayOutcome =
+            executor.executeNoRetry(
+                "model-chat",
+                () -> {
+                  strayProbeExecutions.incrementAndGet();
+                  return "stray-probe-ran";
+                });
+      } catch (DependencyUnavailableException exception) {
+        strayOutcome = "rejected:" + exception.failureType();
+      }
+      assertThat(strayOutcome).isEqualTo("rejected:CIRCUIT_OPEN");
+      assertThat(strayProbeExecutions.get()).isZero();
+
+      probeProceed.countDown();
+      DependencyUnavailableException probeFailure = probe.get(5, TimeUnit.SECONDS);
+      assertThat(probeFailure).isNotNull();
+      assertThat(probeFailure).hasMessage("依赖连续失败已熔断: model-chat");
+      assertThat(
+              registry
+                  .get("dependency.circuit.probe")
+                  .tag("dependency", "model-chat")
+                  .tag("result", "failure")
+                  .counter()
+                  .count())
+          .isEqualTo(1.0);
+      assertThat(
+              registry
+                  .get("dependency.circuit.opened")
+                  .tag("dependency", "model-chat")
+                  .counter()
+                  .count())
+          .isEqualTo(3.0);
+      assertThat(circuitOpenGauge(registry, "model-chat")).isEqualTo(1.0);
+
+      nanoTime.set(2L * openWindowNanos + 1);
+      assertThatThrownBy(
+              () ->
+                  executor.executeNoRetry(
+                      "model-chat",
+                      () -> {
+                        throw new IllegalStateException("must-not-run-after-reopen");
+                      }))
+          .isInstanceOfSatisfying(
+              DependencyUnavailableException.class,
+              error ->
+                  assertThat(error.failureType()).isEqualTo(DependencyFailureType.CIRCUIT_OPEN));
+
+      nanoTime.set(3L * openWindowNanos);
+      assertThat(executor.executeNoRetry("model-chat", () -> "recovered")).isEqualTo("recovered");
+      assertThat(circuitOpenGauge(registry, "model-chat")).isEqualTo(0.0);
+    } finally {
+      pool.shutdownNow();
+    }
+  }
+
+  /**
+   * F-1 交错用例的受闸调用：许可获取后进入操作体、报“已进入外呼”（acquired）， 等 proceed 放行后必定失败并返回捕获的异常； 若操作意外成功返回 null（由调用方断言）。
+   */
+  private static DependencyUnavailableException gatedFailure(
+      DependencyResilienceExecutor executor,
+      String dependency,
+      CountDownLatch acquired,
+      CountDownLatch proceed,
+      String message)
+      throws InterruptedException {
+    try {
+      executor.executeNoRetry(
+          dependency,
+          (Callable<String>)
+              () -> {
+                acquired.countDown();
+                proceed.await(5, TimeUnit.SECONDS);
+                throw new IOException(message);
+              });
+    } catch (DependencyUnavailableException exception) {
+      return exception;
+    }
+    return null;
   }
 
   private static double circuitOpenGauge(SimpleMeterRegistry registry, String dependency) {

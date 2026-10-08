@@ -25,7 +25,8 @@
 
 ## 5. 阶段五：提交与合并
 - [x] 5.1 本文件勾选与执行留痕（NCSS 实测前后、并发用例选型、红测试输出位置、门禁数字、git 拓扑、未跑项）
-- [ ] 5.2 2 笔提交（feat 实现+测试 / chore 基线+docs）→ 切回 master 真 `--no-ff` 合并（禁 push，分支保留）→ 严格停步回报
+- [x] 5.2 2 笔提交（feat 实现+测试 / chore 基线+docs）→ 切回 master 真 `--no-ff` 合并（禁 push，分支保留）→ 严格停步回报
+      → **补勾依据（2026-10-08 卡 P-v 硬化笔）**：`git log --oneline` 实测 feat=`565b5db`、chore=`53ca2c5`、merge=`237ff31`（`git log -1 --format="%H %P" master` 实测 = `237ff31… 858d554… 53ca2c5…`）；`git status -sb` 实测 `## master...origin/master [ahead 3]`、origin 仍在 858d554 → **未 push**；`git log --oneline -5 feature/wire-circuit-half-open` 实测分支 tip 仍为 `53ca2c5`（分支保留）。
 
 ## 0. 执行记录（子 agent 填写）
 
@@ -63,3 +64,19 @@
   - 假设二：`PROBING` 作为 HALF_OPEN 的内部飞行子态，对外只表现为"半开拒绝"，契约意义上的三态（CLOSED/OPEN/HALF_OPEN）未被破坏；用它在一次 CAS 里同时表达"已到期"和"探测已被占用"，避免 phase + 独立布尔标志之间的竞态。
   - 遗留一：探测调用若在 `finally` 之前被中断/抛 Error 或走 NON_RETRYABLE 分支，靠 `releaseProbe()`（PROBING→HALF_OPEN 的 CAS）归还资格，避免半开锁死；该路径无独立用例覆盖（写用例需注入会抛 Error 的操作，收益低于噪音），已由变异验证间接说明状态机迁移被新用例覆盖。
   - 遗留二：本卡未动熔断参数（`failureThreshold`/`openDuration`）的动态配置化，按提案留给 P-w。
+- **F-1 交错硬化笔（2026-10-08，直落 master 前向提交，父提交 = `237ff31`，不开新分支；P-t 整改 `af99e41` 同模式）**：
+  - **F-1 复现（237ff31 基线）**：旧 `openCircuit()` 为无条件 `phase.set(OPEN)`。CLOSED 期拿到许可的陈旧调用若在探测飞行期间凑满阈值失败，会把在飞 `PROBING` 打成 `OPEN`；探测成功的 `CAS(PROBING→CLOSED)` 落空 → gauge 仍 1、要等陈旧开闸写入的完整窗口（2×window）才自愈。基线红测试①实测判别式 `expected: 0.0 but was: 1.0`（探测成功后 gauge 不归零）。
+  - **硬化设计（双路径拆分旧 `openCircuit()`，旧方法已删）**：
+    - 探测失败路径 `reopenByProbeFailure()`：`CAS(PROBING→OPEN)` —— 探测结论权威，写满窗口 + 清零计数。基线红测试②实测判别式 `expected: "rejected:CIRCUIT_OPEN" but was: "stray-probe-ran"`（陈旧开闸把窗口续命后到期又放真实外呼，单探测不变量被破坏）。
+    - 陈旧调用路径 `openByStaleCall()`：`updateAndGet(p -> p == PROBING ? p : OPEN)` —— 不打断在飞探测，只写窗口与清零计数。
+    - **openUntilNanos 残留无害亲读确认**：`openUntilNanos` 仅在 `phase == OPEN` 分支被 `advanceIfExpired()` / `isRejecting()` 读取；探测成功回 CLOSED 后陈旧路径写入的未来值不会被任何判定读到。已在用例中钉死：测试① :757-760（`nanoTime.set(2L * openWindowNanos)` 后普通调用仍放行、gauge 仍 0.0）。
+  - **F-1 红/绿/变异证据（全部实测）**：
+    - 红（未改主代码 237ff31 基线）：`work/_pv-f1-red.log` —— `Tests run: 15, Failures: 2, Errors: 0`，判别式 :750（gauge 不归零）/ :850（stray 外呼；行号为该日志当时文件），既有 13 条保持绿。
+    - 绿：`work/_pv-f1-green.log` —— 15/15。
+    - 变异：`work/_pv-f1-mutation.log` —— M1 陈旧路径改回无条件 `set(OPEN)` → 2F（:754 / :854）；M2 探测失败 CAS 期望 HALF_OPEN 而非 PROBING → 2F（:631 injectedClock / :889）；M3 `advanceIfExpired` 不进行半开迁移（guard 置 PROBING） → 5F + 2E。三轮变异均已完整还原，还原后全量重跑通过。
+  - **F-2 时钟化（测试硬化）**：4 条 `MILLISECONDS.sleep(5)` + 1ms 真实窗口用例改为注入时钟显式推进（`AtomicLong nanoTime` + 7 参构造器 `nanoTime::get` + `nanoTime.set(TimeUnit.MILLISECONDS.toNanos(1))`），仅控时方式变、断言语义不变。用例：`halfOpenShouldRejectNonProbeCallsWhileProbeInFlight` / `halfOpenProbeFailureShouldReopenImmediatelyWithoutThreshold` / `halfOpenProbeSuccessShouldRecoverClosedAndClearFailureCount` / `halfOpenShouldExecuteExactlyOneProbeUnderConcurrentCalls`（实测测试文件 0 处 `MILLISECONDS.sleep`）。
+  - **硬化笔门禁实测数字（本轮自跑）**：全量 `mvn -B -ntp test` = `Tests run: 984, Failures: 0, Errors: 0, Skipped: 0`（`work/_pv-f1-fulltest.log`），基线 982 → 984（+2 恰为 F-1 两条新用例，只增不减）；四静态（pmd / spotbugs / checkstyle / spotless）0 违规（`work/_pv-f1-static4.log`）；`pmd-baseline-check` → `PMD_BASELINE_OK`、`spotbugs-exclude-staleness-check` → `BIJECTION_OK`；三守卫 `check-line-endings lf` / `check-write-set 858d554`（6 文件显式清单）/ `check-dirty` 全绿；三套自测 agent-helper 35 / check-test-baseline 101 / merge-gate 87 全绿（日志 `work/_pv-f1-agent-helper-selftest.log`、`work/_pv-f1-check-test-baseline-selftest.log`、`work/_pv-f1-merge-gate-selftest.log`）。跑测全程 `DASHSCOPE_API_KEY` 置空。
+  - **F-4 文档账**：本笔将 `proposal.md` 与 `specs/dependency-circuit/spec-delta.md` 纳入 tracked（向 `add-knowledge-admin-api` 先例回归）；**P-u 三件套现状不动**，两卡在"三件套是否 tracked"上的差异留待候选池重盘统一。硬化笔写集 = 6 tracked（executor / executor 测试 / `scripts/test-baseline.txt` / 本文件 / proposal.md / spec-delta.md）；三门面 + `ModelCallGuard` + 两装配类仍零改动。
+  - **F-5 基线账**：`scripts/test-baseline.txt` 由 `--update` 真实写回 `surefire.tests=984`、`source-revision=237ff31-dirty`（diff 恰 3 行）；5.2 已勾并附补勾依据（见 §5）。
+  - **硬化提交 hash**：以停步回报为准（本文件随该笔入库，无法自记）。原卡基线：feat = `565b5db`、chore = `53ca2c5`、merge = `237ff31`（parents = `858d554` + `53ca2c5`）。
+  - **F-3 挂 P-w 前置（留痕）**：P-u 遗留 —— `markFailure` 先于 `retryable` 判定计数，`IllegalArgumentException` 落在探测/凑阈值调用上会记 `CALL_FAILED`（按可恢复处理）而非 `NON_RETRYABLE`（永久失败），恢复映射走 PENDING 而非永久失败。归入 P-w（熔断参数动态配置卡）决策前置：「是否让 retryable 判定先于开闸计数」。本卡未动该逻辑。

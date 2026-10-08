@@ -387,15 +387,18 @@ final class CircuitState {
   }
 
   /**
-   * 记录调用失败：探测失败立即回 OPEN 并重置完整窗口，不等 failureThreshold 次。
+   * 记录调用失败：探测失败立即回 OPEN 并重置完整窗口，不等 failureThreshold 次； 陈旧调用凑满阈值时若探测在飞行中，开闸决定让位给探测结论。
    *
    * @param probing 本次调用是否为抢占到的单探测
    * @return 是否触发（或恢复）开闸
    */
   boolean recordFailure(boolean probing) {
     boolean opened;
-    if (probing || consecutiveFailures.incrementAndGet() >= failureThreshold) {
-      openCircuit();
+    if (probing) {
+      reopenByProbeFailure();
+      opened = true;
+    } else if (consecutiveFailures.incrementAndGet() >= failureThreshold) {
+      openByStaleCall();
       opened = true;
     } else {
       opened = false;
@@ -403,11 +406,22 @@ final class CircuitState {
     return opened;
   }
 
-  /** 开闸或重开：写入完整窗口并清零连续失败计数。 */
-  private void openCircuit() {
+  /**
+   * 探测失败：探测结论权威，写入完整窗口并清零计数，CAS 把在飞探测的 PROBING 翻为 OPEN。
+   *
+   * <p>F-1（卡 P-v 硬化）：旧实现无条件 {@code phase.set(OPEN)} 会把在飞探测成功后的 CAS(PROBING→CLOSED) 打断， 状态被多锁一个完整窗口。
+   */
+  private void reopenByProbeFailure() {
     openUntilNanos.set(nanoClock.getAsLong() + openDurationNanos);
     consecutiveFailures.set(0);
-    phase.set(Phase.OPEN);
+    phase.compareAndSet(Phase.PROBING, Phase.OPEN);
+  }
+
+  /** 陈旧调用凑满阈值：非探测在飞行时照常开闸；探测在飞行中（PROBING）时不得打断—— 否则探测成功的 CAS 落空、状态被陈旧窗口多锁一个完整窗口（F-1 交错缺口）。 */
+  private void openByStaleCall() {
+    openUntilNanos.set(nanoClock.getAsLong() + openDurationNanos);
+    consecutiveFailures.set(0);
+    phase.updateAndGet(current -> current == Phase.PROBING ? current : Phase.OPEN);
   }
 
   /** 探测未产出结论就退出时归还探测资格，让后续调用可以重新抢占。 */
