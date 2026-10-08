@@ -29,4 +29,4 @@
 
 ### 契约 6：指标与时钟（Metrics and Clock）
 - **GIVEN** 半开状态机生效；
-- **THEN** 新增 `dependency.circuit.probe{dependency, result=success|failure}` counter；`dependency.circuit.open` gauge 在 OPEN 与 HALF_OPEN 期间均为 1、CLOSED 为 0；时钟经 package-private 构造器链可注入（测试控时），默认 `System::nanoTime`，不新增配置键。
+- **THEN** 新增 `dependency.circuit.probe{dependency, result=success|failure}` counter；`dependency.circuit.open` gauge 在未到期 OPEN 与 HALF_OPEN 期间均为 1、CLOSED 为 0；时钟经 package-private 构造器链可注入（测试控时），默认 `System::nanoTime`，不新增配置键。

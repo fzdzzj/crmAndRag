@@ -25,6 +25,9 @@
 > `rag.query.derived-questions.max-per-chunk`。
 > HyDE / 多查询 / 衍生问题 / LLM 压缩默认关，开启会产生模型调用费用（登记描述已写明，是否开启由 owner 拍板）；
 > 切分策略只影响新摄取/重建，不自动重嵌。
+> 注册状态（wire-circuit-dynamic-config，2026-10-08）：命名空间白名单扩为九个（新增
+> `platform.resilience`），登记 2 个依赖熔断治理全局键，新调用实时读取生效、在飞 OPEN 不追溯、非法/缺失 fail-safe 回落——
+> `platform.resilience.failure-threshold`（默认 5）与 `platform.resilience.open-duration-ms`（默认 30000）。
 
 ## rag.retrieval.* —— 检索管线（Lane B）
 
@@ -121,3 +124,13 @@
 | `rag.query.derived-questions.max-per-chunk` | Integer | 2 | 每块反向问题上限，钳位 1~5 |
 
 > 衍生问题旁路线程池不走 DynamicConfig，是 Spring 配置：`platform.async.derived-questions.queue-capacity`（默认 64）/`platform.async.derived-questions.await-termination-ms`（默认 10000）；队列饱和丢弃（discard-log）=该文档退化为无衍生向量，不阻塞入库主链。
+
+## platform.resilience.* —— 依赖熔断治理（wire-circuit-dynamic-config）
+
+| 键 | 类型 | 默认值 | 语义与回退 |
+|---|---|---|---|
+| `platform.resilience.failure-threshold` | Integer | 5 | 依赖熔断连续失败阈值：连续失败达到此次数后熔断器进入 OPEN 状态。范围 1~1000；非法/越界/缺失回落 5 |
+| `platform.resilience.open-duration-ms` | Long | 30000 | 依赖熔断开闸保持时长（毫秒）：开闸达到该时长后进入 HALF_OPEN 单探测状态。范围 0~86400000；非法/越界/缺失回落 30000 |
+
+> 实时生效与回退：每次调用实时读取；已写入 openUntilNanos 的在飞 OPEN 窗口不被追溯调整；键缺失、删除或写入非法值时 fail-safe 回落默认（5 / 30000），绝不抛出配置异常打断业务调用。仅暴露全局两键，maxAttempts/backoff 不暴露（零自动重试）；走既有通用管理员动态配置权限。
+
