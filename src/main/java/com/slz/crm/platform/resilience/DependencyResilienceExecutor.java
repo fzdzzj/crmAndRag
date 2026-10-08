@@ -10,6 +10,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.IntSupplier;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +25,9 @@ import org.springframework.stereotype.Component;
  * <p>wire-circuit-half-open 任务 3：熔断为 CLOSED → OPEN → HALF_OPEN 三态，OPEN 到期后不再全量放行， 而是由 HALF_OPEN
  * 内的单探测 CAS 抢占一个调用真实试水，其余调用按 {@link DependencyFailureType#CIRCUIT_OPEN} 拒绝；探测成功回 CLOSED
  * 清零计数，探测失败立即回 OPEN 重置完整窗口。
+ *
+ * <p>wire-circuit-dynamic-config 任务 3：熔断阈值与开闸保持时长经 {@link ResilienceConfigResolver} 动态配置化，
+ * 每次调用实时读取；F-3 次序修复：execute 循环不可重试异常判定提前于熔断计数，不可重试异常不消耗熔断预算、上抛 NON_RETRYABLE。
  */
 @Component
 public class DependencyResilienceExecutor {
@@ -36,25 +40,46 @@ public class DependencyResilienceExecutor {
   private final int maxAttempts;
   private final long initialBackoffMillis;
   private final double backoffMultiplier;
-  private final int failureThreshold;
-  private final long openDurationMillis;
+  private final IntSupplier failureThresholdSupplier;
+  private final LongSupplier openDurationMillisSupplier;
   private final LongSupplier nanoClock;
 
   /**
-   * 使用默认治理参数构造执行器。
-   *
-   * <p>集成修正：本类有两个构造器（此 public + 下方 package-private 可调参版）； Spring 面对多构造器需显式 {@code @Autowired}
-   * 指定注入入口，否则回退去找无参构造器， 报 "No default constructor found" 致上下文加载失败（D 单测用 new 构造，未暴露此问题）。
+   * 使用默认治理参数构造执行器（门面层兼容兜底入口）。
    *
    * @param meterRegistry Micrometer 注册表
    */
-  @Autowired
   public DependencyResilienceExecutor(MeterRegistry meterRegistry) {
-    this(meterRegistry, 3, 200, 2.0, 5, 30000);
+    this(
+        meterRegistry,
+        new ResilienceConfigResolver((com.slz.crm.platform.contract.DynamicConfigService) null));
   }
 
   /**
-   * 构造可调参执行器，主要供测试与后续动态配置接入。
+   * 生产装配构造器：通过 {@link ResilienceConfigResolver} 实时读取动态配置（wire-circuit-dynamic-config 任务 3）。
+   *
+   * @param meterRegistry Micrometer 注册表
+   * @param resilienceConfigResolver 熔断韧性配置解析器
+   */
+  @Autowired
+  public DependencyResilienceExecutor(
+      MeterRegistry meterRegistry, ResilienceConfigResolver resilienceConfigResolver) {
+    this(
+        meterRegistry,
+        3,
+        200,
+        2.0,
+        resilienceConfigResolver != null
+            ? resilienceConfigResolver::resolveFailureThreshold
+            : () -> 5,
+        resilienceConfigResolver != null
+            ? resilienceConfigResolver::resolveOpenDurationMillis
+            : () -> 30000L,
+        SYSTEM_NANO_CLOCK);
+  }
+
+  /**
+   * 构造可调参执行器，供测试与固定参数场景使用。
    *
    * @param meterRegistry Micrometer 注册表
    * @param maxAttempts 最大调用次数，必须大于 0
@@ -81,7 +106,7 @@ public class DependencyResilienceExecutor {
   }
 
   /**
-   * 构造可注入 nano 时钟来源的执行器，供半开状态机在测试中控时（wire-circuit-half-open 任务 3）。
+   * 构造固定参数且可注入 nano 时钟来源的执行器（测试固定参数路径保持）。
    *
    * @param meterRegistry Micrometer 注册表
    * @param maxAttempts 最大调用次数，必须大于 0
@@ -99,6 +124,24 @@ public class DependencyResilienceExecutor {
       int failureThreshold,
       long openDurationMillis,
       LongSupplier nanoClock) {
+    this(
+        meterRegistry,
+        maxAttempts,
+        initialBackoffMillis,
+        backoffMultiplier,
+        () -> failureThreshold,
+        () -> openDurationMillis,
+        nanoClock);
+  }
+
+  DependencyResilienceExecutor(
+      MeterRegistry meterRegistry,
+      int maxAttempts,
+      long initialBackoffMillis,
+      double backoffMultiplier,
+      IntSupplier failureThresholdSupplier,
+      LongSupplier openDurationMillisSupplier,
+      LongSupplier nanoClock) {
     if (maxAttempts <= 0) {
       throw new IllegalArgumentException("maxAttempts 必须大于 0");
     }
@@ -106,8 +149,8 @@ public class DependencyResilienceExecutor {
     this.maxAttempts = maxAttempts;
     this.initialBackoffMillis = initialBackoffMillis;
     this.backoffMultiplier = backoffMultiplier;
-    this.failureThreshold = failureThreshold;
-    this.openDurationMillis = openDurationMillis;
+    this.failureThresholdSupplier = failureThresholdSupplier;
+    this.openDurationMillisSupplier = openDurationMillisSupplier;
     this.nanoClock = nanoClock;
   }
 
@@ -148,16 +191,17 @@ public class DependencyResilienceExecutor {
           return result;
         } catch (Exception exception) {
           lastError = exception;
+          if (!retryable.test(exception)) {
+            counter("dependency.call", dependency, "failure").increment();
+            throw new DependencyUnavailableException(
+                "依赖调用不可重试: " + dependency, exception, DependencyFailureType.NON_RETRYABLE);
+          }
           if (markFailure(dependency, circuitState, permit)) {
             throw new DependencyUnavailableException(
                 "依赖连续失败已熔断: " + dependency, exception, DependencyFailureType.CALL_FAILED);
           }
           if (attempt >= maxAttempts) {
             break;
-          }
-          if (!retryable.test(exception)) {
-            throw new DependencyUnavailableException(
-                "依赖调用不可重试: " + dependency, exception, DependencyFailureType.NON_RETRYABLE);
           }
           counter("dependency.retry", dependency).increment();
           sleep(dependency, initialBackoffMillis, backoffMultiplier, attempt);
@@ -211,7 +255,12 @@ public class DependencyResilienceExecutor {
     return circuitStates.computeIfAbsent(
         dependency,
         name ->
-            new CircuitState(name, meterRegistry, failureThreshold, openDurationMillis, nanoClock));
+            new CircuitState(
+                name,
+                meterRegistry,
+                failureThresholdSupplier,
+                openDurationMillisSupplier,
+                nanoClock));
   }
 
   /**
@@ -324,8 +373,8 @@ final class CircuitState {
     DENIED
   }
 
-  private final int failureThreshold;
-  private final long openDurationNanos;
+  private final IntSupplier failureThresholdSupplier;
+  private final LongSupplier openDurationMillisSupplier;
   private final LongSupplier nanoClock;
   private final AtomicInteger consecutiveFailures = new AtomicInteger();
   private final AtomicReference<Phase> phase = new AtomicReference<>(Phase.CLOSED);
@@ -334,11 +383,11 @@ final class CircuitState {
   CircuitState(
       String dependency,
       MeterRegistry meterRegistry,
-      int failureThreshold,
-      long openDurationMillis,
+      IntSupplier failureThresholdSupplier,
+      LongSupplier openDurationMillisSupplier,
       LongSupplier nanoClock) {
-    this.failureThreshold = failureThreshold;
-    this.openDurationNanos = TimeUnit.MILLISECONDS.toNanos(openDurationMillis);
+    this.failureThresholdSupplier = failureThresholdSupplier;
+    this.openDurationMillisSupplier = openDurationMillisSupplier;
     this.nanoClock = nanoClock;
     Gauge.builder("dependency.circuit.open", this, state -> state.isRejecting() ? 1 : 0)
         .tag("dependency", dependency)
@@ -397,7 +446,7 @@ final class CircuitState {
     if (probing) {
       reopenByProbeFailure();
       opened = true;
-    } else if (consecutiveFailures.incrementAndGet() >= failureThreshold) {
+    } else if (consecutiveFailures.incrementAndGet() >= failureThresholdSupplier.getAsInt()) {
       openByStaleCall();
       opened = true;
     } else {
@@ -412,14 +461,16 @@ final class CircuitState {
    * <p>F-1（卡 P-v 硬化）：旧实现无条件 {@code phase.set(OPEN)} 会把在飞探测成功后的 CAS(PROBING→CLOSED) 打断， 状态被多锁一个完整窗口。
    */
   private void reopenByProbeFailure() {
-    openUntilNanos.set(nanoClock.getAsLong() + openDurationNanos);
+    long durationNanos = TimeUnit.MILLISECONDS.toNanos(openDurationMillisSupplier.getAsLong());
+    openUntilNanos.set(nanoClock.getAsLong() + durationNanos);
     consecutiveFailures.set(0);
     phase.compareAndSet(Phase.PROBING, Phase.OPEN);
   }
 
   /** 陈旧调用凑满阈值：非探测在飞行时照常开闸；探测在飞行中（PROBING）时不得打断—— 否则探测成功的 CAS 落空、状态被陈旧窗口多锁一个完整窗口（F-1 交错缺口）。 */
   private void openByStaleCall() {
-    openUntilNanos.set(nanoClock.getAsLong() + openDurationNanos);
+    long durationNanos = TimeUnit.MILLISECONDS.toNanos(openDurationMillisSupplier.getAsLong());
+    openUntilNanos.set(nanoClock.getAsLong() + durationNanos);
     consecutiveFailures.set(0);
     phase.updateAndGet(current -> current == Phase.PROBING ? current : Phase.OPEN);
   }
