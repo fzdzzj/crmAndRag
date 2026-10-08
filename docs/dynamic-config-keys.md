@@ -28,6 +28,8 @@
 > 注册状态（wire-circuit-dynamic-config，2026-10-08）：命名空间白名单扩为九个（新增
 > `platform.resilience`），登记 2 个依赖熔断治理全局键，新调用实时读取生效、在飞 OPEN 不追溯、非法/缺失 fail-safe 回落——
 > `platform.resilience.failure-threshold`（默认 5）与 `platform.resilience.open-duration-ms`（默认 30000）。
+> 注册状态（wire-circuit-per-dependency-override，2026-10-08）：在 `platform.resilience` 命名空间下追加 10 个
+> 按依赖名覆盖键（五依赖 × 2 参数，默认值=全局默认 5/30000 展示），逐级回落覆盖键 → 全局键 → 默认值。
 > 注册状态（wire-ingestion-recovery-replay，2026-10-08）：命名空间白名单扩为十个（新增
 > `rag.ingest`），登记 2 个摄取恢复重放配置键，新调用实时读取生效、非法/缺失 fail-safe 回落——
 > `rag.ingest.replay-enabled`（默认 false，费用红线：重放=真实嵌入调用，必须显式开启）与
@@ -129,14 +131,24 @@
 
 > 衍生问题旁路线程池不走 DynamicConfig，是 Spring 配置：`platform.async.derived-questions.queue-capacity`（默认 64）/`platform.async.derived-questions.await-termination-ms`（默认 10000）；队列饱和丢弃（discard-log）=该文档退化为无衍生向量，不阻塞入库主链。
 
-## platform.resilience.* —— 依赖熔断治理（wire-circuit-dynamic-config）
+## platform.resilience.* —— 依赖熔断治理（wire-circuit-dynamic-config / wire-circuit-per-dependency-override）
 
 | 键 | 类型 | 默认值 | 语义与回退 |
 |---|---|---|---|
 | `platform.resilience.failure-threshold` | Integer | 5 | 依赖熔断连续失败阈值：连续失败达到此次数后熔断器进入 OPEN 状态。范围 1~1000；非法/越界/缺失回落 5 |
 | `platform.resilience.open-duration-ms` | Long | 30000 | 依赖熔断开闸保持时长（毫秒）：开闸达到该时长后进入 HALF_OPEN 单探测状态。范围 0~86400000；非法/越界/缺失回落 30000 |
+| `platform.resilience.failure-threshold.model-chat` | Integer | 5 | 依赖 model-chat 的熔断阈值覆盖。范围 1~1000；未配置/非法/越界时逐级回落全局键与默认 5 |
+| `platform.resilience.open-duration-ms.model-chat` | Long | 30000 | 依赖 model-chat 的熔断开闸时长（毫秒）覆盖。范围 0~86400000；未配置/非法/越界时逐级回落全局键与默认 30000 |
+| `platform.resilience.failure-threshold.model-embed` | Integer | 5 | 依赖 model-embed 的熔断阈值覆盖。范围 1~1000；未配置/非法/越界时逐级回落全局键与默认 5 |
+| `platform.resilience.open-duration-ms.model-embed` | Long | 30000 | 依赖 model-embed 的熔断开闸时长（毫秒）覆盖。范围 0~86400000；未配置/非法/越界时逐级回落全局键与默认 30000 |
+| `platform.resilience.failure-threshold.model-vision` | Integer | 5 | 依赖 model-vision 的熔断阈值覆盖。范围 1~1000；未配置/非法/越界时逐级回落全局键与默认 5 |
+| `platform.resilience.open-duration-ms.model-vision` | Long | 30000 | 依赖 model-vision 的熔断开闸时长（毫秒）覆盖。范围 0~86400000；未配置/非法/越界时逐级回落全局键与默认 30000 |
+| `platform.resilience.failure-threshold.vector-qdrant` | Integer | 5 | 依赖 vector-qdrant 的熔断阈值覆盖。范围 1~1000；未配置/非法/越界时逐级回落全局键与默认 5 |
+| `platform.resilience.open-duration-ms.vector-qdrant` | Long | 30000 | 依赖 vector-qdrant 的熔断开闸时长（毫秒）覆盖。范围 0~86400000；未配置/非法/越界时逐级回落全局键与默认 30000 |
+| `platform.resilience.failure-threshold.storage-minio` | Integer | 5 | 依赖 storage-minio 的熔断阈值覆盖。范围 1~1000；未配置/非法/越界时逐级回落全局键与默认 5 |
+| `platform.resilience.open-duration-ms.storage-minio` | Long | 30000 | 依赖 storage-minio 的熔断开闸时长（毫秒）覆盖。范围 0~86400000；未配置/非法/越界时逐级回落全局键与默认 30000 |
 
-> 实时生效与回退：每次调用实时读取；已写入 openUntilNanos 的在飞 OPEN 窗口不被追溯调整；键缺失、删除或写入非法值时 fail-safe 回落默认（5 / 30000），绝不抛出配置异常打断业务调用。仅暴露全局两键，maxAttempts/backoff 不暴露（零自动重试）；走既有通用管理员动态配置权限。
+> 实时生效与回退：每次调用按依赖名实时读取——覆盖键 → 全局键 → 默认值，逐级回落（覆盖键越界回全局，全局也越界回默认 5/30000；拼错依赖名自然回落全局）。已写入 openUntilNanos 的在飞 OPEN 窗口不被追溯调整；键缺失、删除或写入非法值时 fail-safe 回落，绝不抛出配置异常打断业务调用。maxAttempts/backoff 不暴露（零自动重试）；走既有通用管理员动态配置权限。
 
 ## rag.ingest.* —— 摄取恢复重放（wire-ingestion-recovery-replay）
 
