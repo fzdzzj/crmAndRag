@@ -1136,6 +1136,181 @@ class DependencyResilienceExecutorTest {
     assertThat(resolver.resolveOpenDurationMillis()).isEqualTo(30000L);
   }
 
+  @Test
+  void perDependencyOverrideThresholdShouldIsolateAcrossDependencies() {
+    SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    MutableDynamicConfigService configService = new MutableDynamicConfigService();
+    // 全局阈值 10（乙走全局）；甲依 model-chat 覆盖为 2
+    configService.put(ResilienceConfigResolver.KEY_FAILURE_THRESHOLD, 10);
+    configService.put(ResilienceConfigResolver.KEY_FAILURE_THRESHOLD + ".model-chat", 2);
+    ResilienceConfigResolver resolver = new ResilienceConfigResolver(configService);
+    DependencyResilienceExecutor executor = new DependencyResilienceExecutor(registry, resolver);
+
+    // 甲：按覆盖 2 开闸——两次失败即 CIRCUIT_OPEN
+    assertThatThrownBy(
+            () ->
+                executor.executeNoRetry(
+                    "model-chat",
+                    () -> {
+                      throw new IOException("甲 fail 1");
+                    }))
+        .isInstanceOf(DependencyUnavailableException.class);
+    assertThatThrownBy(
+            () ->
+                executor.executeNoRetry(
+                    "model-chat",
+                    () -> {
+                      throw new IOException("甲 fail 2");
+                    }))
+        .isInstanceOf(DependencyUnavailableException.class);
+    assertThatThrownBy(() -> executor.executeNoRetry("model-chat", () -> "甲 blocked"))
+        .isInstanceOfSatisfying(
+            DependencyUnavailableException.class,
+            error -> assertThat(error.failureType()).isEqualTo(DependencyFailureType.CIRCUIT_OPEN));
+    assertThat(circuitOpenGauge(registry, "model-chat")).isEqualTo(1.0);
+
+    // 乙：仍按全局 10，前 9 次失败都不开闸，第 10 次才开闸
+    for (int i = 1; i <= 9; i++) {
+      final int attempt = i;
+      assertThatThrownBy(
+              () ->
+                  executor.executeNoRetry(
+                      "model-embed",
+                      () -> {
+                        throw new IOException("乙 fail " + attempt);
+                      }))
+          .isInstanceOf(DependencyUnavailableException.class);
+      assertThat(circuitOpenGauge(registry, "model-embed")).isEqualTo(0.0);
+    }
+    assertThatThrownBy(
+            () ->
+                executor.executeNoRetry(
+                    "model-embed",
+                    () -> {
+                      throw new IOException("乙 fail 10");
+                    }))
+        .isInstanceOf(DependencyUnavailableException.class);
+    assertThat(circuitOpenGauge(registry, "model-embed")).isEqualTo(1.0);
+  }
+
+  @Test
+  void deletingPerDependencyOverrideShouldRestoreGlobalSemantics() {
+    SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    MutableDynamicConfigService configService = new MutableDynamicConfigService();
+    configService.put(ResilienceConfigResolver.KEY_FAILURE_THRESHOLD, 5);
+    configService.put(ResilienceConfigResolver.KEY_FAILURE_THRESHOLD + ".model-vision", 2);
+    ResilienceConfigResolver resolver = new ResilienceConfigResolver(configService);
+    DependencyResilienceExecutor executor = new DependencyResilienceExecutor(registry, resolver);
+    String overrideKey = ResilienceConfigResolver.KEY_FAILURE_THRESHOLD + ".model-vision";
+
+    // 删覆盖键
+    configService.remove(overrideKey);
+
+    // 前 4 次失败均不开闸（回落到全局 5）
+    for (int i = 1; i <= 4; i++) {
+      final int attempt = i;
+      assertThatThrownBy(
+              () ->
+                  executor.executeNoRetry(
+                      "model-vision",
+                      () -> {
+                        throw new IOException("fail " + attempt);
+                      }))
+          .isInstanceOf(DependencyUnavailableException.class);
+      assertThat(circuitOpenGauge(registry, "model-vision")).isEqualTo(0.0);
+    }
+    assertThatThrownBy(
+            () ->
+                executor.executeNoRetry(
+                    "model-vision",
+                    () -> {
+                      throw new IOException("fail 5");
+                    }))
+        .isInstanceOf(DependencyUnavailableException.class);
+    assertThat(circuitOpenGauge(registry, "model-vision")).isEqualTo(1.0);
+  }
+
+  @Test
+  void rewritingPerDependencyOverrideShouldTakeEffectOnSubsequentCalls() {
+    SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    MutableDynamicConfigService configService = new MutableDynamicConfigService();
+    configService.put(ResilienceConfigResolver.KEY_FAILURE_THRESHOLD, 100);
+    configService.put(ResilienceConfigResolver.KEY_FAILURE_THRESHOLD + ".storage-minio", 5);
+    ResilienceConfigResolver resolver = new ResilienceConfigResolver(configService);
+    DependencyResilienceExecutor executor = new DependencyResilienceExecutor(registry, resolver);
+    String overrideKey = ResilienceConfigResolver.KEY_FAILURE_THRESHOLD + ".storage-minio";
+
+    // 运行中把覆盖阈值调低为 2
+    configService.put(overrideKey, 2);
+
+    assertThatThrownBy(
+            () ->
+                executor.executeNoRetry(
+                    "storage-minio",
+                    () -> {
+                      throw new IOException("fail 1");
+                    }))
+        .isInstanceOf(DependencyUnavailableException.class);
+    assertThatThrownBy(
+            () ->
+                executor.executeNoRetry(
+                    "storage-minio",
+                    () -> {
+                      throw new IOException("fail 2");
+                    }))
+        .isInstanceOf(DependencyUnavailableException.class);
+    // 新覆盖 2 即刻生效：下一条调用被开闸拒绝
+    assertThatThrownBy(() -> executor.executeNoRetry("storage-minio", () -> "healthy"))
+        .isInstanceOfSatisfying(
+            DependencyUnavailableException.class,
+            error -> assertThat(error.failureType()).isEqualTo(DependencyFailureType.CIRCUIT_OPEN));
+  }
+
+  @Test
+  void inFlightOpenWindowShouldNotBeRetroactivelyAdjustedPerDependency() {
+    SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    MutableDynamicConfigService configService = new MutableDynamicConfigService();
+    configService.put(ResilienceConfigResolver.KEY_FAILURE_THRESHOLD + ".model-chat", 1);
+    configService.put(ResilienceConfigResolver.KEY_OPEN_DURATION_MS + ".model-chat", 10000L);
+
+    AtomicLong nanoTime = new AtomicLong(1_000_000_000L);
+    ResilienceConfigResolver resolver = new ResilienceConfigResolver(configService);
+    DependencyResilienceExecutor executor =
+        new DependencyResilienceExecutor(
+            registry,
+            1,
+            0,
+            2.0,
+            name -> resolver.resolveFailureThreshold(name),
+            name -> resolver.resolveOpenDurationMillis(name),
+            nanoTime::get);
+
+    // 触发失败立即开闸（覆盖 threshold=1）
+    assertThatThrownBy(
+            () ->
+                executor.executeNoRetry(
+                    "model-chat",
+                    () -> {
+                      throw new IOException("trip");
+                    }))
+        .isInstanceOf(DependencyUnavailableException.class);
+    assertThat(circuitOpenGauge(registry, "model-chat")).isEqualTo(1.0);
+
+    // 在飞 OPEN 期间把覆盖保持时长缩短为 100ms
+    configService.put(ResilienceConfigResolver.KEY_OPEN_DURATION_MS + ".model-chat", 100L);
+    nanoTime.addAndGet(TimeUnit.MILLISECONDS.toNanos(500));
+
+    // 在飞窗口不得被追溯缩短
+    assertThatThrownBy(() -> executor.executeNoRetry("model-chat", () -> "healthy"))
+        .isInstanceOfSatisfying(
+            DependencyUnavailableException.class,
+            error -> assertThat(error.failureType()).isEqualTo(DependencyFailureType.CIRCUIT_OPEN));
+
+    nanoTime.addAndGet(TimeUnit.MILLISECONDS.toNanos(10000));
+    assertThat(executor.executeNoRetry("model-chat", () -> "recovered")).isEqualTo("recovered");
+    assertThat(circuitOpenGauge(registry, "model-chat")).isEqualTo(0.0);
+  }
+
   static final class MutableDynamicConfigService implements DynamicConfigService {
     private final Map<String, Object> values = new ConcurrentHashMap<>();
 

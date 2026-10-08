@@ -16,7 +16,9 @@ import org.springframework.stereotype.Component;
  * topK/阈值/分块参数、strict-KB 空匹配兜底开关（D16）、 意图类目与关键词 / intent-filter-enabled（D17）、图片缓存上限（D13）、业务功能开关；
  * register-rag-retrieval-dynamic-keys（2026-09-25）补登记 11 个检索管线键；
  * register-rag-context-query-dynamic-keys（2026-09-25）扩 {@code rag.context}/{@code rag.chunking}/
- * {@code rag.query} 三命名空间并登记 13 个检索周边键（默认值 = 各消费点代码内联缺省）。
+ * {@code rag.query} 三命名空间并登记 13 个检索周边键（默认值 = 各消费点代码内联缺省）。 wire-circuit-per-dependency-override 任务
+ * 2：在 {@code platform.resilience} 命名空间下为五依赖
+ * （model-chat/model-embed/model-vision/vector-qdrant/storage-minio）追加 10 个按依赖名覆盖熔断参数键。
  *
  * <p>命名空间约定（任务 16 起五命名空间，2026-09-25 扩为八个，wire-circuit-dynamic-config
  * 扩为九个，wire-ingestion-recovery-replay 扩为十个）：{@code ai.prompt}/{@code ai.model}/{@code
@@ -794,6 +796,139 @@ public class DynamicConfigKeyRegistry {
             ConfigValueType.LONG,
             "30000",
             "依赖熔断开闸保持时长（毫秒）：开闸达到该时长后进入 HALF_OPEN 单探测状态。范围 0~86400000，非法/越界回落 30000。",
+            "0",
+            "86400000",
+            Set.of(),
+            false,
+            100),
+        // wire-circuit-per-dependency-override 任务 2：按依赖名覆盖熔断参数，五依赖 × 2 参数 = 10 平键。
+        // 范围与全局键一致（threshold 1~1000 / open-duration-ms 0~86400000）；注册默认值 = 全局默认（5/30000，
+        // 仅管理与展示用）；未配置/非法/越界时逐级回落全局键与默认值（见 ResilienceConfigResolver 解析链）。
+        def(
+            objectMapper,
+            "platform.resilience.failure-threshold.model-chat",
+            "platform.resilience",
+            ConfigValueType.INTEGER,
+            "5",
+            "依赖 model-chat 的熔断连续失败阈值覆盖：连续失败达到此次数后熔断器进入 OPEN 状态。范围 1~1000，"
+                + "未配置/非法/越界时逐级回落全局键 platform.resilience.failure-threshold 与默认 5。",
+            "1",
+            "1000",
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "platform.resilience.open-duration-ms.model-chat",
+            "platform.resilience",
+            ConfigValueType.LONG,
+            "30000",
+            "依赖 model-chat 的熔断开闸保持时长（毫秒）覆盖：范围 0~86400000，未配置/非法/越界时逐级回落全局键 "
+                + "platform.resilience.open-duration-ms 与默认 30000。",
+            "0",
+            "86400000",
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "platform.resilience.failure-threshold.model-embed",
+            "platform.resilience",
+            ConfigValueType.INTEGER,
+            "5",
+            "依赖 model-embed 的熔断连续失败阈值覆盖：连续失败达到此次数后熔断器进入 OPEN 状态。范围 1~1000，"
+                + "未配置/非法/越界时逐级回落全局键 platform.resilience.failure-threshold 与默认 5。",
+            "1",
+            "1000",
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "platform.resilience.open-duration-ms.model-embed",
+            "platform.resilience",
+            ConfigValueType.LONG,
+            "30000",
+            "依赖 model-embed 的熔断开闸保持时长（毫秒）覆盖：范围 0~86400000，未配置/非法/越界时逐级回落全局键 "
+                + "platform.resilience.open-duration-ms 与默认 30000。",
+            "0",
+            "86400000",
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "platform.resilience.failure-threshold.model-vision",
+            "platform.resilience",
+            ConfigValueType.INTEGER,
+            "5",
+            "依赖 model-vision 的熔断连续失败阈值覆盖：连续失败达到此次数后熔断器进入 OPEN 状态。范围 1~1000，"
+                + "未配置/非法/越界时逐级回落全局键 platform.resilience.failure-threshold 与默认 5。",
+            "1",
+            "1000",
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "platform.resilience.open-duration-ms.model-vision",
+            "platform.resilience",
+            ConfigValueType.LONG,
+            "30000",
+            "依赖 model-vision 的熔断开闸保持时长（毫秒）覆盖：范围 0~86400000，未配置/非法/越界时逐级回落全局键 "
+                + "platform.resilience.open-duration-ms 与默认 30000。",
+            "0",
+            "86400000",
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "platform.resilience.failure-threshold.vector-qdrant",
+            "platform.resilience",
+            ConfigValueType.INTEGER,
+            "5",
+            "依赖 vector-qdrant 的熔断连续失败阈值覆盖：连续失败达到此次数后熔断器进入 OPEN 状态。范围 1~1000，"
+                + "未配置/非法/越界时逐级回落全局键 platform.resilience.failure-threshold 与默认 5。",
+            "1",
+            "1000",
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "platform.resilience.open-duration-ms.vector-qdrant",
+            "platform.resilience",
+            ConfigValueType.LONG,
+            "30000",
+            "依赖 vector-qdrant 的熔断开闸保持时长（毫秒）覆盖：范围 0~86400000，未配置/非法/越界时逐级回落全局键 "
+                + "platform.resilience.open-duration-ms 与默认 30000。",
+            "0",
+            "86400000",
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "platform.resilience.failure-threshold.storage-minio",
+            "platform.resilience",
+            ConfigValueType.INTEGER,
+            "5",
+            "依赖 storage-minio 的熔断连续失败阈值覆盖：连续失败达到此次数后熔断器进入 OPEN 状态。范围 1~1000，"
+                + "未配置/非法/越界时逐级回落全局键 platform.resilience.failure-threshold 与默认 5。",
+            "1",
+            "1000",
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "platform.resilience.open-duration-ms.storage-minio",
+            "platform.resilience",
+            ConfigValueType.LONG,
+            "30000",
+            "依赖 storage-minio 的熔断开闸保持时长（毫秒）覆盖：范围 0~86400000，未配置/非法/越界时逐级回落全局键 "
+                + "platform.resilience.open-duration-ms 与默认 30000。",
             "0",
             "86400000",
             Set.of(),
