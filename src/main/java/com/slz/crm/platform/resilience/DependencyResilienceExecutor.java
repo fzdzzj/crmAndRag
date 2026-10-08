@@ -10,6 +10,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.function.IntSupplier;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
@@ -28,6 +29,11 @@ import org.springframework.stereotype.Component;
  *
  * <p>wire-circuit-dynamic-config 任务 3：熔断阈值与开闸保持时长经 {@link ResilienceConfigResolver} 动态配置化，
  * 每次调用实时读取；F-3 次序修复：execute 循环不可重试异常判定提前于熔断计数，不可重试异常不消耗熔断预算、上抛 NON_RETRYABLE。
+ *
+ * <p>wire-circuit-per-dependency-override 任务 3：阈值/时长 supplier 字段泛化为按依赖名解析的 {@link Function}{@code
+ * <String, Integer>}/{@code <String, Long>}，生产装配构造器传 {@code name ->
+ * resolver.resolveXxx(name)}；出厂两个测试构造器（固定参数版 / 7 参时钟版）签名不变、内部包装恒定函数，
+ * 既有断言零破坏。每次失败判定经函数实时读依赖名对应值，覆盖值新写即刻生效；在飞 OPEN 窗口不追溯。
  */
 @Component
 public class DependencyResilienceExecutor {
@@ -40,8 +46,8 @@ public class DependencyResilienceExecutor {
   private final int maxAttempts;
   private final long initialBackoffMillis;
   private final double backoffMultiplier;
-  private final IntSupplier failureThresholdSupplier;
-  private final LongSupplier openDurationMillisSupplier;
+  private final Function<String, Integer> failureThresholdResolver;
+  private final Function<String, Long> openDurationMillisResolver;
   private final LongSupplier nanoClock;
 
   /**
@@ -56,7 +62,8 @@ public class DependencyResilienceExecutor {
   }
 
   /**
-   * 生产装配构造器：通过 {@link ResilienceConfigResolver} 实时读取动态配置（wire-circuit-dynamic-config 任务 3）。
+   * 生产装配构造器：通过 {@link ResilienceConfigResolver} 实时读取动态配置（wire-circuit-dynamic-config 任务 3；
+   * wire-circuit-per-dependency-override 任务 3 改为按依赖名解析覆盖值并逐级回落全局）。
    *
    * @param meterRegistry Micrometer 注册表
    * @param resilienceConfigResolver 熔断韧性配置解析器
@@ -70,16 +77,17 @@ public class DependencyResilienceExecutor {
         200,
         2.0,
         resilienceConfigResolver != null
-            ? resilienceConfigResolver::resolveFailureThreshold
-            : () -> 5,
+            ? name -> resilienceConfigResolver.resolveFailureThreshold(name)
+            : name -> 5,
         resilienceConfigResolver != null
-            ? resilienceConfigResolver::resolveOpenDurationMillis
-            : () -> 30000L,
+            ? name -> resilienceConfigResolver.resolveOpenDurationMillis(name)
+            : name -> 30000L,
         SYSTEM_NANO_CLOCK);
   }
 
   /**
-   * 构造可调参执行器，供测试与固定参数场景使用。
+   * 构造可调参执行器，供测试与固定参数场景使用（签名不变，wire-circuit-per-dependency-override 任务 3： 内部包装恒定函数 {@code name ->
+   * failureThreshold}）。
    *
    * @param meterRegistry Micrometer 注册表
    * @param maxAttempts 最大调用次数，必须大于 0
@@ -106,7 +114,8 @@ public class DependencyResilienceExecutor {
   }
 
   /**
-   * 构造固定参数且可注入 nano 时钟来源的执行器（测试固定参数路径保持）。
+   * 构造固定参数且可注入 nano 时钟来源的执行器（测试固定参数路径保持；签名不变，wire-circuit-per-dependency-override 任务 3：内部包装恒定函数
+   * {@code name -> failureThreshold}）。
    *
    * @param meterRegistry Micrometer 注册表
    * @param maxAttempts 最大调用次数，必须大于 0
@@ -129,18 +138,29 @@ public class DependencyResilienceExecutor {
         maxAttempts,
         initialBackoffMillis,
         backoffMultiplier,
-        () -> failureThreshold,
-        () -> openDurationMillis,
+        (Function<String, Integer>) name -> failureThreshold,
+        (Function<String, Long>) name -> openDurationMillis,
         nanoClock);
   }
 
+  /**
+   * 构造以按依赖名函数解析阈值/时长的执行器（wire-circuit-per-dependency-override 任务 3 生产装配路径）。
+   *
+   * @param meterRegistry Micrometer 注册表
+   * @param maxAttempts 最大调用次数，必须大于 0
+   * @param initialBackoffMillis 首次退避毫秒数
+   * @param backoffMultiplier 退避倍数
+   * @param failureThresholdResolver 按依赖名解析连续失败熔断阈值
+   * @param openDurationMillisResolver 按依赖名解析熔断开启时长毫秒数
+   * @param nanoClock nano 时间来源，生产默认 {@code System::nanoTime}
+   */
   DependencyResilienceExecutor(
       MeterRegistry meterRegistry,
       int maxAttempts,
       long initialBackoffMillis,
       double backoffMultiplier,
-      IntSupplier failureThresholdSupplier,
-      LongSupplier openDurationMillisSupplier,
+      Function<String, Integer> failureThresholdResolver,
+      Function<String, Long> openDurationMillisResolver,
       LongSupplier nanoClock) {
     if (maxAttempts <= 0) {
       throw new IllegalArgumentException("maxAttempts 必须大于 0");
@@ -149,8 +169,8 @@ public class DependencyResilienceExecutor {
     this.maxAttempts = maxAttempts;
     this.initialBackoffMillis = initialBackoffMillis;
     this.backoffMultiplier = backoffMultiplier;
-    this.failureThresholdSupplier = failureThresholdSupplier;
-    this.openDurationMillisSupplier = openDurationMillisSupplier;
+    this.failureThresholdResolver = failureThresholdResolver;
+    this.openDurationMillisResolver = openDurationMillisResolver;
     this.nanoClock = nanoClock;
   }
 
@@ -258,8 +278,8 @@ public class DependencyResilienceExecutor {
             new CircuitState(
                 name,
                 meterRegistry,
-                failureThresholdSupplier,
-                openDurationMillisSupplier,
+                () -> failureThresholdResolver.apply(name),
+                () -> openDurationMillisResolver.apply(name),
                 nanoClock));
   }
 

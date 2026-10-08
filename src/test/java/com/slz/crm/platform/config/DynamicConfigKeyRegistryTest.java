@@ -297,6 +297,41 @@ class DynamicConfigKeyRegistryTest {
     assertRejected("platform.resilience.open-duration-ms", "abc");
   }
 
+  @Test
+  @DisplayName("wire-circuit-per-dependency-override 任务 2：五依赖 × 2 参数的 10 个覆盖键已登记，范围同全局，默认=全局展示值")
+  void perDependencyOverrideKeysRegisteredAndValidated() {
+    String[] deps = {"model-chat", "model-embed", "model-vision", "vector-qdrant", "storage-minio"};
+    for (String dep : deps) {
+      String thresholdKey = "platform.resilience.failure-threshold." + dep;
+      String durationKey = "platform.resilience.open-duration-ms." + dep;
+
+      var thresholdDef = registry.definitionOf(thresholdKey);
+      assertThat(thresholdDef).as("键 %s 必须已登记", thresholdKey).isPresent();
+      assertThat(thresholdDef.orElseThrow().defaultValue()).isEqualTo("5");
+      assertThat(thresholdDef.orElseThrow().namespace()).isEqualTo("platform.resilience");
+
+      var durationDef = registry.definitionOf(durationKey);
+      assertThat(durationDef).as("键 %s 必须已登记", durationKey).isPresent();
+      assertThat(durationDef.orElseThrow().defaultValue()).isEqualTo("30000");
+      assertThat(durationDef.orElseThrow().namespace()).isEqualTo("platform.resilience");
+
+      // 覆盖键合法值放行（边界 1/1000 与 0/86400000）
+      assertThat(registry.validate(thresholdKey, "2").typed()).isEqualTo(2);
+      assertThat(registry.validate(thresholdKey, "1").typed()).isEqualTo(1);
+      assertThat(registry.validate(thresholdKey, "1000").typed()).isEqualTo(1000);
+      assertThat(registry.validate(durationKey, "60000").typed()).isEqualTo(60000L);
+      assertThat(registry.validate(durationKey, "0").typed()).isEqualTo(0L);
+
+      // 覆盖键越界/非法拒绝
+      assertRejected(thresholdKey, "0");
+      assertRejected(thresholdKey, "-1");
+      assertRejected(thresholdKey, "1001");
+      assertRejected(thresholdKey, "abc");
+      assertRejected(durationKey, "-1");
+      assertRejected(durationKey, "abc");
+    }
+  }
+
   private void assertRejected(String key, String raw) {
     ConfigValueType.Parsed parsed = registry.validate(key, raw);
     assertThat(parsed.valid()).as("%s = [%s] 应被拒绝", key, raw).isFalse();
