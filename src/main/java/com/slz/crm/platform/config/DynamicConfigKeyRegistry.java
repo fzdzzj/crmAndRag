@@ -18,9 +18,9 @@ import org.springframework.stereotype.Component;
  * register-rag-context-query-dynamic-keys（2026-09-25）扩 {@code rag.context}/{@code rag.chunking}/
  * {@code rag.query} 三命名空间并登记 13 个检索周边键（默认值 = 各消费点代码内联缺省）。
  *
- * <p>命名空间约定（任务 16 起五命名空间，2026-09-25 扩为八个）：{@code ai.prompt}/{@code ai.model}/{@code
- * rag.retrieval}/{@code rag.context}/{@code rag.chunking}/{@code rag.query}/{@code
- * rag.intent}/{@code business}；每个键 = 命名空间 + '.' + 键名。
+ * <p>命名空间约定（任务 16 起五命名空间，2026-09-25 扩为八个，wire-circuit-dynamic-config 扩为九个）：{@code ai.prompt}/{@code
+ * ai.model}/{@code rag.retrieval}/{@code rag.context}/{@code rag.chunking}/{@code rag.query}/{@code
+ * rag.intent}/{@code business}/{@code platform.resilience}；每个键 = 命名空间 + '.' + 键名。
  *
  * <p>敏感值说明：密钥/凭据按 D10 边界仍走环境变量（静态），本域原则上不注册敏感键； {@code sensitive} 标记与掩码逻辑完整保留，供将来确需运行期调整的半敏感参数使用。
  *
@@ -32,7 +32,7 @@ public class DynamicConfigKeyRegistry {
   /** 键 → 定义，保序（管理端列表按注册顺序展示） */
   private final Map<String, ConfigKeyDefinition> definitions = new LinkedHashMap<>();
 
-  /** 官方命名空间白名单（任务 16 五命名空间；register-rag-context-query-dynamic-keys 扩为八个） */
+  /** 官方命名空间白名单（wire-circuit-dynamic-config 任务 3：扩为九个） */
   public static final Set<String> NAMESPACES =
       Set.of(
           "ai.prompt",
@@ -42,7 +42,8 @@ public class DynamicConfigKeyRegistry {
           "rag.chunking",
           "rag.query",
           "rag.intent",
-          "business");
+          "business",
+          "platform.resilience");
 
   public DynamicConfigKeyRegistry(ObjectMapper objectMapper) {
     register(catalog(objectMapper));
@@ -765,6 +766,33 @@ public class DynamicConfigKeyRegistry {
             "每会话图片理解缓存（L1/L2）上限，范围 1~1000（D13）。影响面：图片场景内存占用与命中率。",
             "1",
             "1000",
+            Set.of(),
+            false,
+            100),
+
+        // ---------------- platform.resilience.*：依赖熔断治理（wire-circuit-dynamic-config 任务 3）
+        // ----------------
+        def(
+            objectMapper,
+            "platform.resilience.failure-threshold",
+            "platform.resilience",
+            ConfigValueType.INTEGER,
+            "5",
+            "依赖熔断连续失败阈值：连续失败达到此次数后熔断器进入 OPEN 状态。范围 1~1000，非法/越界回落 5。",
+            "1",
+            "1000",
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "platform.resilience.open-duration-ms",
+            "platform.resilience",
+            ConfigValueType.LONG,
+            "30000",
+            "依赖熔断开闸保持时长（毫秒）：开闸达到该时长后进入 HALF_OPEN 单探测状态。范围 0~86400000，非法/越界回落 30000。",
+            "0",
+            "86400000",
             Set.of(),
             false,
             100));

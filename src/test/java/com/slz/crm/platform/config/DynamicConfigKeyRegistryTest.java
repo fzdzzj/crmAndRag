@@ -84,7 +84,7 @@ class DynamicConfigKeyRegistryTest {
   }
 
   @Test
-  @DisplayName("八个官方命名空间齐全，键名与命名空间自洽")
+  @DisplayName("九个官方命名空间齐全，键名与命名空间自洽")
   void namespacesComplete() {
     assertThat(DynamicConfigKeyRegistry.NAMESPACES)
         .containsExactlyInAnyOrder(
@@ -95,7 +95,8 @@ class DynamicConfigKeyRegistryTest {
             "rag.chunking",
             "rag.query",
             "rag.intent",
-            "business");
+            "business",
+            "platform.resilience");
     var defs = registry.definitions();
     assertThat(defs).isNotEmpty();
     // 键必须以命名空间开头；同一命名空间下键前缀一致（V6 脚本分组约定）
@@ -103,13 +104,17 @@ class DynamicConfigKeyRegistryTest {
       assertThat(def.key()).startsWith(def.namespace() + ".");
     }
     assertThat(registry.byNamespace("rag.intent")).allMatch(d -> d.key().startsWith("rag.intent."));
+    assertThat(registry.byNamespace("platform.resilience"))
+        .allMatch(d -> d.key().startsWith("platform.resilience."));
     assertThat(registry.byNamespace(null)).hasSameSizeAs(defs);
-    // 覆盖 spec 优先项：提示词/模型/检索/strict-KB/意图类目/图片缓存上限
+    // 覆盖 spec 优先项：提示词/模型/检索/strict-KB/意图类目/图片缓存上限/熔断治理
     assertThat(registry.definitionOf("ai.prompt.system")).isPresent();
     assertThat(registry.definitionOf("rag.retrieval.strictKb")).isPresent();
     assertThat(registry.definitionOf("rag.retrieval.admin-vector.enabled")).isPresent();
     assertThat(registry.definitionOf("rag.intent.categories")).isPresent();
     assertThat(registry.definitionOf("business.assistant.imageCacheMaxEntries")).isPresent();
+    assertThat(registry.definitionOf("platform.resilience.failure-threshold")).isPresent();
+    assertThat(registry.definitionOf("platform.resilience.open-duration-ms")).isPresent();
   }
 
   @Test
@@ -250,6 +255,42 @@ class DynamicConfigKeyRegistryTest {
     ConfigValueType.Parsed unknown = registry.validate("rag.reingest.trigger", "all");
     assertThat(unknown.valid()).isFalse();
     assertThat(unknown.errorMessage()).contains("未知配置键");
+  }
+
+  @Test
+  @DisplayName("wire-circuit-dynamic-config：两个熔断治理键已登记，默认值=消费点代码缺省且非法值拒绝")
+  void resilienceCircuitKeysRegisteredAndValidated() {
+    var thresholdDef = registry.definitionOf("platform.resilience.failure-threshold");
+    assertThat(thresholdDef).isPresent();
+    assertThat(thresholdDef.orElseThrow().defaultValue()).isEqualTo("5");
+    assertThat(thresholdDef.orElseThrow().namespace()).isEqualTo("platform.resilience");
+
+    var durationDef = registry.definitionOf("platform.resilience.open-duration-ms");
+    assertThat(durationDef).isPresent();
+    assertThat(durationDef.orElseThrow().defaultValue()).isEqualTo("30000");
+    assertThat(durationDef.orElseThrow().namespace()).isEqualTo("platform.resilience");
+
+    // 合法值放行
+    assertThat(registry.validate("platform.resilience.failure-threshold", "2").typed())
+        .isEqualTo(2);
+    assertThat(registry.validate("platform.resilience.failure-threshold", "1").typed())
+        .isEqualTo(1);
+    assertThat(registry.validate("platform.resilience.failure-threshold", "1000").typed())
+        .isEqualTo(1000);
+
+    assertThat(registry.validate("platform.resilience.open-duration-ms", "60000").typed())
+        .isEqualTo(60000L);
+    assertThat(registry.validate("platform.resilience.open-duration-ms", "0").typed())
+        .isEqualTo(0L);
+
+    // 越界与非法值拒绝
+    assertRejected("platform.resilience.failure-threshold", "0");
+    assertRejected("platform.resilience.failure-threshold", "-1");
+    assertRejected("platform.resilience.failure-threshold", "1001");
+    assertRejected("platform.resilience.failure-threshold", "abc");
+
+    assertRejected("platform.resilience.open-duration-ms", "-1");
+    assertRejected("platform.resilience.open-duration-ms", "abc");
   }
 
   private void assertRejected(String key, String raw) {
