@@ -3,11 +3,14 @@ package com.slz.crm.platform.resilience;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.slz.crm.platform.contract.DynamicConfigService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -945,5 +948,217 @@ class DependencyResilienceExecutorTest {
     assertThat(policy.onRecoverableFailure("file-1", recoverable)).isEqualTo("PENDING");
     assertThat(policy.onPermanentFailure("file-1", new IllegalStateException("bad file")))
         .isEqualTo("FAILED");
+  }
+
+  @Test
+  void f3NonRetryableAtThresholdShouldNotTripCircuitOrConsumeBudget() {
+    SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    DependencyResilienceExecutor executor =
+        new DependencyResilienceExecutor(registry, 1, 0, 2.0, 2, 60000);
+
+    // 第 1 次：可恢复失败，连续失败计 1
+    assertThatThrownBy(
+            () ->
+                executor.execute(
+                    "qdrant",
+                    () -> {
+                      throw new IOException("network error");
+                    }))
+        .isInstanceOfSatisfying(
+            DependencyUnavailableException.class,
+            error -> {
+              assertThat(error.failureType()).isEqualTo(DependencyFailureType.CALL_FAILED);
+            });
+
+    // 第 2 次（凑阈值那次）：抛不可重试异常（IllegalArgumentException，默认谓词判定不可重试）
+    // F-3 修复后期望：NON_RETRYABLE 且不熔断开闸
+    // 现状缺陷：执行 markFailure 凑满 threshold=2，直接开闸并报 CALL_FAILED "依赖连续失败已熔断: qdrant"
+    assertThatThrownBy(
+            () ->
+                executor.execute(
+                    "qdrant",
+                    () -> {
+                      throw new IllegalArgumentException("invalid argument");
+                    }))
+        .isInstanceOfSatisfying(
+            DependencyUnavailableException.class,
+            error -> {
+              assertThat(error.failureType()).isEqualTo(DependencyFailureType.NON_RETRYABLE);
+              assertThat(error.getMessage()).contains("依赖调用不可重试");
+            });
+
+    // 熔断器必须未开闸：第 3 次调用仍可正常放行（证明未开闸）
+    assertThat(executor.execute("qdrant", () -> "healthy")).isEqualTo("healthy");
+    assertThat(circuitOpenGauge(registry, "qdrant")).isEqualTo(0.0);
+
+    // 指标 counter 校验：不可重试与可恢复失败均记 dependency.call{result=failure}
+    assertThat(
+            registry
+                .get("dependency.call")
+                .tag("dependency", "qdrant")
+                .tag("result", "failure")
+                .counter()
+                .count())
+        .isEqualTo(2.0);
+    // 熔断器未开闸
+    assertThat(registry.find("dependency.circuit.opened").tag("dependency", "qdrant").counter())
+        .isNull();
+  }
+
+  @Test
+  void dynamicFailureThresholdShouldTakeEffectOnSubsequentCalls() {
+    SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    MutableDynamicConfigService configService = new MutableDynamicConfigService();
+    ResilienceConfigResolver resolver = new ResilienceConfigResolver(configService);
+    DependencyResilienceExecutor executor = new DependencyResilienceExecutor(registry, resolver);
+
+    // 运行时调低阈值为 2：写入 platform.resilience.failure-threshold = 2
+    configService.put(ResilienceConfigResolver.KEY_FAILURE_THRESHOLD, 2);
+
+    // 第 1 次单次失败
+    assertThatThrownBy(
+            () ->
+                executor.executeNoRetry(
+                    "model-chat",
+                    () -> {
+                      throw new IOException("fail 1");
+                    }))
+        .isInstanceOf(DependencyUnavailableException.class);
+
+    // 第 2 次单次失败（在新阈值 2 下应触发开闸）
+    assertThatThrownBy(
+            () ->
+                executor.executeNoRetry(
+                    "model-chat",
+                    () -> {
+                      throw new IOException("fail 2");
+                    }))
+        .isInstanceOf(DependencyUnavailableException.class);
+
+    // 新调用按新阈值 2 开闸拒绝
+    assertThatThrownBy(() -> executor.executeNoRetry("model-chat", () -> "healthy"))
+        .isInstanceOfSatisfying(
+            DependencyUnavailableException.class,
+            error -> {
+              assertThat(error.failureType()).isEqualTo(DependencyFailureType.CIRCUIT_OPEN);
+            });
+  }
+
+  @Test
+  void inFlightOpenWindowShouldNotBeRetroactivelyAdjusted() {
+    SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    MutableDynamicConfigService configService = new MutableDynamicConfigService();
+    configService.put(ResilienceConfigResolver.KEY_FAILURE_THRESHOLD, 1);
+    configService.put(ResilienceConfigResolver.KEY_OPEN_DURATION_MS, 10000L); // 10秒
+
+    AtomicLong nanoTime = new AtomicLong(1_000_000_000L);
+    ResilienceConfigResolver resolver = new ResilienceConfigResolver(configService);
+    DependencyResilienceExecutor executor =
+        new DependencyResilienceExecutor(
+            registry,
+            1,
+            0,
+            2.0,
+            resolver::resolveFailureThreshold,
+            resolver::resolveOpenDurationMillis,
+            nanoTime::get);
+
+    // 触发失败立即开闸（threshold=1）
+    assertThatThrownBy(
+            () ->
+                executor.executeNoRetry(
+                    "model-chat",
+                    () -> {
+                      throw new IOException("trip");
+                    }))
+        .isInstanceOf(DependencyUnavailableException.class);
+    assertThat(circuitOpenGauge(registry, "model-chat")).isEqualTo(1.0);
+
+    // 在飞 OPEN 期间试图将保持时长缩短为 100ms
+    configService.put(ResilienceConfigResolver.KEY_OPEN_DURATION_MS, 100L);
+
+    // 推进 500ms（大于 100ms 但小于 10000ms）
+    nanoTime.addAndGet(TimeUnit.MILLISECONDS.toNanos(500));
+
+    // 在飞窗口不得被追溯缩短，依然被拒绝
+    assertThatThrownBy(() -> executor.executeNoRetry("model-chat", () -> "healthy"))
+        .isInstanceOfSatisfying(
+            DependencyUnavailableException.class,
+            error -> {
+              assertThat(error.failureType()).isEqualTo(DependencyFailureType.CIRCUIT_OPEN);
+            });
+
+    // 推进到 10000ms 之后，单探测放行
+    nanoTime.addAndGet(TimeUnit.MILLISECONDS.toNanos(10000));
+    assertThat(executor.executeNoRetry("model-chat", () -> "recovered")).isEqualTo("recovered");
+    assertThat(circuitOpenGauge(registry, "model-chat")).isEqualTo(0.0);
+  }
+
+  @Test
+  void deletedOrInvalidConfigKeysShouldFallbackToDefaultsFailSafe() {
+    SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    MutableDynamicConfigService configService = new MutableDynamicConfigService();
+    // 非法值：threshold=-2, duration=-500
+    configService.put(ResilienceConfigResolver.KEY_FAILURE_THRESHOLD, -2);
+    configService.put(ResilienceConfigResolver.KEY_OPEN_DURATION_MS, -500L);
+
+    ResilienceConfigResolver resolver = new ResilienceConfigResolver(configService);
+    DependencyResilienceExecutor executor = new DependencyResilienceExecutor(registry, resolver);
+
+    // 回落默认阈值 5：前 4 次失败均不开闸
+    for (int i = 1; i <= 4; i++) {
+      assertThatThrownBy(
+              () ->
+                  executor.executeNoRetry(
+                      "qdrant",
+                      () -> {
+                        throw new IOException("fail");
+                      }))
+          .isInstanceOf(DependencyUnavailableException.class);
+      assertThat(circuitOpenGauge(registry, "qdrant")).isEqualTo(0.0);
+    }
+
+    // 第 5 次失败触发开闸（默认阈值为 5）
+    assertThatThrownBy(
+            () ->
+                executor.executeNoRetry(
+                    "qdrant",
+                    () -> {
+                      throw new IOException("fail 5");
+                    }))
+        .isInstanceOf(DependencyUnavailableException.class);
+    assertThat(circuitOpenGauge(registry, "qdrant")).isEqualTo(1.0);
+
+    // 删键后回落默认
+    configService.remove(ResilienceConfigResolver.KEY_FAILURE_THRESHOLD);
+    configService.remove(ResilienceConfigResolver.KEY_OPEN_DURATION_MS);
+    assertThat(resolver.resolveFailureThreshold()).isEqualTo(5);
+    assertThat(resolver.resolveOpenDurationMillis()).isEqualTo(30000L);
+  }
+
+  static final class MutableDynamicConfigService implements DynamicConfigService {
+    private final Map<String, Object> values = new ConcurrentHashMap<>();
+
+    void put(String key, Object value) {
+      if (value == null) {
+        values.remove(key);
+      } else {
+        values.put(key, value);
+      }
+    }
+
+    void remove(String key) {
+      values.remove(key);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> T get(String key, Class<T> type, T defaultValue) {
+      Object val = values.get(key);
+      if (val != null && type.isInstance(val)) {
+        return (T) val;
+      }
+      return defaultValue;
+    }
   }
 }
