@@ -30,9 +30,15 @@
 
 ## 4. 复核（复核 agent，只读）
 
-- [ ] 4.1 拓扑：合并节点双亲 = bacd842 + feature 顶端；真 --no-ff（≠ feature 顶端、diff 为空）；分支保留
-- [ ] 4.2 写集恰 32 文件（28 历史 + 1 候选池 + 3 本卡三件套）逐文件比对；src/ 与 frontend/ diff 为空；work/ 仍 untracked
-- [ ] 4.3 28 历史文件与 sha256 留证逐文件一致（纯 add 零改动）
-- [ ] 4.4 候选池与附录 A 文稿逐字一致（§1 方法论原文 + §2 归档表 + §3 挂账 + §4 待取证方向）
-- [ ] 4.5 门禁 raw 复核：1019 逐字 + 四静态 0 + 守卫 CLEAN + 台账零变动
-- [ ] 4.6 openspec/changes/ 下零 untracked spec 文件（git status 终态核验）
+- [x] 4.1 拓扑：合并节点双亲 = bacd842 + feature 顶端；真 --no-ff（≠ feature 顶端、diff 为空）；分支保留
+      补勾依据（2026-10-08 P-ab 逐格核验）：复核实测 PASS——git rev-parse 579ba09^1 579ba09^2 = bacd84293fa2d05bd81aaaeff8fe2287cf9ff027 + aa2ade79e10773f6bdced4428e4d7962675e3cf8、真二父；git branch --list feature/intake-openspec-proposal-specs 在册（复核七项落盘执行文档 §65）。
+- [x] 4.2 写集恰 32 文件（28 历史 + 1 候选池 + 3 本卡三件套）逐文件比对；src/ 与 frontend/ diff 为空；work/ 仍 untracked
+      补勾依据（2026-10-08 P-ab 逐格核验）：复核实测 PASS——写集 32 逐文件、src/ 与 frontend/ 零触碰（复核七项落盘执行文档 §65）。
+- [x] 4.3 28 历史文件与 sha256 留证逐文件一致（纯 add 零改动）
+      补勾依据（2026-10-08 P-ab 逐格核验）：复核实测 PASS——sha256 复算 28/28、28 文件纯 A 状态（复核七项落盘执行文档 §65）。
+- [x] 4.4 候选池与附录 A 文稿逐字一致（§1 方法论原文 + §2 归档表 + §3 挂账 + §4 待取证方向）
+      补勾依据（2026-10-08 P-ab 逐格核验）：复核实测 PASS——UTF-8 字节级 -ceq 比对 VERBATIM MATCH（6226 B = 6226 B，复核七项落盘执行文档 §65）。
+- [x] 4.5 门禁 raw 复核：1019 逐字 + 四静态 0 + 守卫 CLEAN + 台账零变动
+      补勾依据（2026-10-08 P-ab 逐格核验）：复核实测 PASS——门禁 raw 逐字（1019 / 四静态 0 / CLEAN / 台账不在 diff 内，复核七项落盘执行文档 §65）。
+- [x] 4.6 openspec/changes/ 下零 untracked spec 文件（git status 终态核验）
+      补勾依据（2026-10-08 P-ab 逐格核验）：复核实测 PASS——P-z 合并终态 openspec/changes/ 零 untracked spec 文件（复核七项落盘执行文档 §65）；注：P-ab 在途三件套由本卡笔 1 入库后该不变量继续成立。
