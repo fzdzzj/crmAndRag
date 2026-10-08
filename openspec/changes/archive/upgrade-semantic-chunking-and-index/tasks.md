@@ -36,6 +36,7 @@
 - [x] 4.2 幂等单测：同一文档连续 reingest 两次，chunk 集合（文本+锚点+父子关系）一致
 - [x] 4.3 超管触发入口（管理端点或运维 runner，二选一在实现时定），挂平台审计（单测断言审计记录产生）
 - [ ] 4.4 存量迁移方案：跑批复用 batch_task 状态机或独立 runner——实现时按耦合度定，写入验证记录；全量 reingest 前向用户确认 API 成本
+      维持未勾核验（2026-10-08 P-ab 逐格核验）：存量全量 reingest 受费用红线约束需 owner 成本授权，授权未发生、存量迁移未执行（候选池 §4 ingest-gap-map 延伸项同属 owner 拍板），维持未勾。
   - 选型已定（本次实现）：**独立运维 runner**（`KnowledgeReingestRunner`，env `RAG_REINGEST_TRIGGER=all|<docId,...>` + `RAG_REINGEST_OPERATOR_ID`），不走 batch_task——batch_task 与上传批次耦合（total_files/success_count 语义），reingest 是按文档的维护动作；单文档失败不中断、幂等可重跑，天然支持分批。**待勾项=全量重嵌入执行（成本闸门）**。
 
 ## 5. 基线验收（对照最新基线）

@@ -27,7 +27,8 @@
 
 ## 5. 阶段五：提交与合并
 - [x] 5.1 本文件勾选与执行留痕（消费 API 取证结论、Registry 测试影响、红测试输出位置、门禁数字、git 拓扑、未跑项）
-- [ ] 5.2 2-3 笔提交按任务组 → 切回 master 真 `--no-ff` 合并（禁 push，分支保留）→ 严格停步回报
+- [x] 5.2 2-3 笔提交按任务组 → 切回 master 真 `--no-ff` 合并（禁 push，分支保留）→ 严格停步回报
+      补勾依据（2026-10-08 P-ab 逐格核验）：git rev-parse e5451ab^1 e5451ab^2 = cd02c2c1aab10fbbaa4e296c4de44a1a2cce7f6e + 61393e2d22e4be4975e96ea33d41d8e497904c43（真 --no-ff 双亲）；git branch --list feature/wire-circuit-dynamic-config 在册保留；停步回报后 owner 授权推送 cd02c2c..e5451ab、远端 CI 第 18 轮全绿（执行文档 §62）。
 
 ## 0. 执行记录（子 agent 填写）
 - 分支与基线：`feature/wire-circuit-dynamic-config`，起点 `master@cd02c2c`（984 单测全绿基线）

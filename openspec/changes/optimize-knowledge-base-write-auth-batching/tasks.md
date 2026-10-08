@@ -46,4 +46,5 @@
 ### 阶段 5：分支合并与终审准备
 - [x] 5.1 特性分支提交代码
 - [x] 5.2 切换回 `master` 执行真 `--no-ff` 合并（卡 P-n 终审按方案 B 闭环）
-- [ ] 5.3 严格停步，等待主 agent 亲跑终审与 owner 推送授权（绝对禁止 git push）
+- [x] 5.3 严格停步，等待主 agent 亲跑终审与 owner 推送授权（绝对禁止 git push）
+      补勾依据（2026-10-08 P-ab 逐格核验）：停步回报、主 agent 终审、owner 授权推送均已发生；git rev-parse 7d64b69^1 7d64b69^2 = a018ecd10e574b4247f1ed321657e7510b6d3651 + 2d007b8689e2aa4dd007de05955bfe94399045f6（真 --no-ff 合并节点）；git branch --list feature/optimize-knowledge-base-write-auth-batching 在册保留。

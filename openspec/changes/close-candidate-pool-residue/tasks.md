@@ -28,12 +28,18 @@
 - [x] 3.1 笔 2 docs(openspec) 提交：tasks.md 1.x/2.x/3.1-3.2 勾选 + §0 执行记录填齐（raw 位置、门禁数字、blob hash）
 - [x] 3.2 切 master → merge --no-ff（分支保留）→ git status 双确认 CLEAN
 - [x] 3.3 master 收口笔（合并后允许的一笔，承 P-z 教训）：§0 回填合并节点 hash + 3.2/3.3 勾选
-- [ ] 3.4 严格停步回报（绝对禁止 git push）
+- [x] 3.4 严格停步回报（绝对禁止 git push）
+      补勾依据（2026-10-08 P-ab 逐格核验）：执行侧停步回报已发出且停步时未 push（P-aa 主 agent 亲验记录，执行文档 §66.2）；其后推送为 owner 单独授权（3c8a8b5..191d56f，CI Run 37787353522 六绿第 22 轮），停步承诺自始成立。
 
 ## 4. 复核（复核 agent，只读）
 
-- [ ] 4.1 拓扑：合并节点双亲 = 3c8a8b5 + feature 顶端；真 --no-ff（≠ feature 顶端、diff 为空）；分支保留
-- [ ] 4.2 写集恰 4 文件（1 候选池 + 3 本卡三件套）逐文件比对；src/ 与 frontend/ diff 为空；work/ 仍 untracked
-- [ ] 4.3 候选池提交内容与底稿三处 sha256 一致；相对 3c8a8b5 恰改两处（头部注记 + §4 三段证据结论，含命令与节点 hash）
-- [ ] 4.4 门禁 raw 复核：1019 逐字 + 四静态 0 + 守卫 CLEAN + 台账零变动
-- [ ] 4.5 §0 执行记录填齐（合并节点 hash、门禁数字、拓扑）且收口笔仅改本卡 tasks.md
+- [x] 4.1 拓扑：合并节点双亲 = 3c8a8b5 + feature 顶端；真 --no-ff（≠ feature 顶端、diff 为空）；分支保留
+      补勾依据（2026-10-08 P-ab 逐格核验）：复核实测 PASS——git rev-parse 71975ff^1 71975ff^2 = 3c8a8b5 + f96cb6b、真二父；git branch --list feature/close-candidate-pool-residue 在册（复核结论落盘执行文档 §66.3）。
+- [x] 4.2 写集恰 4 文件（1 候选池 + 3 本卡三件套）逐文件比对；src/ 与 frontend/ diff 为空；work/ 仍 untracked
+      补勾依据（2026-10-08 P-ab 逐格核验）：复核实测 PASS——git diff --name-only 3c8a8b5..191d56f 恰 4 文件、src/ 与 frontend/ 零 diff、终态仅 ?? work/（执行文档 §66.2/§66.3）。
+- [x] 4.3 候选池提交内容与底稿三处 sha256 一致；相对 3c8a8b5 恰改两处（头部注记 + §4 三段证据结论，含命令与节点 hash）
+      补勾依据（2026-10-08 P-ab 逐格核验）：复核实测 PASS——主树底稿 = 权威树文件 sha256 C805F6…、git blob fac3b96…、恰改两处且含命令与节点 hash（执行文档 §66.2/§66.3）。
+- [x] 4.4 门禁 raw 复核：1019 逐字 + 四静态 0 + 守卫 CLEAN + 台账零变动
+      补勾依据（2026-10-08 P-ab 逐格核验）：复核实测全绿（1019 逐字 / 四静态 0 违规 / 守卫 CLEAN / 台账零变动）；唯一格式争议经终审定责为复核提示词锚点缺陷（tracked 断言「四静态 0」逐字满足），改判 GO（执行文档 §66.3）；远端 CI static-analysis-gate 第三跑 PASS 复证（Run 37787353522）。
+- [x] 4.5 §0 执行记录填齐（合并节点 hash、门禁数字、拓扑）且收口笔仅改本卡 tasks.md
+      补勾依据（2026-10-08 P-ab 逐格核验）：复核实测 PASS——§0 已填合并节点 71975ff 与 blob fac3b96…；git show --stat 191d56f = 1 file +2/-2 仅本卡 tasks.md（执行文档 §66.3）。

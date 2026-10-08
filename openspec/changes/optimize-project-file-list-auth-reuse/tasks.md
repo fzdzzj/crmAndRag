@@ -43,3 +43,4 @@
 
 ### 阶段 6（可选）：请求级基准前后对照
 - [ ] 6.1 本地 Docker 可用时，经 opt-in 开关 `PROJECT_FILE_LIST_HOTPATH_MEASURE=1` 运行 `ProjectFileListAuthHotpathBenchmark` 前后对照（钉扎 `mysql:8.0`，零外呼零真实模型）并回报数字；Docker 不可用或未跑时必须在「未跑项」中明列，不得留空、不得以代码推导冒充实测
+      维持未勾核验（2026-10-08 P-ab 逐格核验）：opt-in 请求级基准属可选阶段 6，未跑已在本卡 §0「未跑项」明列（failsafe IT / opt-in 基准 / 真实模型外部调用 / 生产验证四项）；触发条件未再行使，维持未勾。

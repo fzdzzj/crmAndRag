@@ -36,9 +36,11 @@
 - [x] 5.1 HANDOFF 更新（权限码 900、7 端点、surefire 657、registry 已登记）（含权限码数值、端点清单、surefire 新基线）
 - [x] 5.2 按 git-workflow 合入 master（--no-ff）
 
-## 6. 真摄取/真检索试点（授权节点，非合入前置） (pending - 停下等授权)
-- [ ] 6.1 停下报授权：真 embedding 摄取 1 个小文档 + 1 次真向量检索的成本口径
-- [ ] 6.2 （授权后）真摄取 1 文档，记录 chunk 数与 token 计量；检索 dry-run 对照稀疏/真向量差异
+## 6. 真摄取/真检索试点（授权节点，非合入前置） (completed - 授权后由卡 P-j 执行，2026-10-08 P-ab 逐格核验回补)
+- [x] 6.1 停下报授权：真 embedding 摄取 1 个小文档 + 1 次真向量检索的成本口径
+      补勾依据（2026-10-08 P-ab 逐格核验）：owner 指令「A」正式授权任务组 6（执行文档 §24145），成本口径按 DashScope text-embedding-v3 核算（执行文档 P-j 段「成本口径核算」）；git rev-parse b0b24a2^1 b0b24a2^2 = a72f84cebe51e25c63b68fd43b69dbfaeecb6d5b + 0c16104159c8fcabde7337234163d62fc364a23f（试点已由卡 P-j 合入 master）。
+- [x] 6.2 （授权后）真摄取 1 文档，记录 chunk 数与 token 计量；检索 dry-run 对照稀疏/真向量差异
+      补勾依据（2026-10-08 P-ab 逐格核验）：git show 0c16104 --stat = KnowledgeAdminRealPilotIT.java（484 行真外呼试点 IT）+ scripts/test-baseline.txt；git branch --list feature/knowledge-admin-real-pilot 在册保留；试点计量与对照结论记录于卡 P-j 执行留痕（执行文档 P-j 段）。
 
 ## Plan Update (update_plan) - FINAL
 **Current status (2026-09-17)**: 
