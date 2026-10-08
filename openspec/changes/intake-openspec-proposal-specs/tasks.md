@@ -2,7 +2,7 @@
 
 ## 0. 执行记录（执行 agent 填，复核 agent 核）
 
-- 分支 / 基线 / 合并节点：feature/intake-openspec-proposal-specs / 基线 master@bacd842 / 合并节点（merge 后填）
+- 分支 / 基线 / 合并节点：feature/intake-openspec-proposal-specs / 基线 master@bacd842 / 合并节点 579ba09255b10a39532fc6f05306910efa6e3c1d（双亲 = bacd842 + feature 顶端 aa2ade7）
 - 28 文件 add 前 sha256 留证位置：work/_pz-intake-hashes.txt（28 行，add 前落盘，复核复算一致）
 - 门禁 raw 留证位置：work/_pz-gate-raw/（mvn-test.raw / four-static.raw / check-dirty.raw / check-line-endings.raw / check-test-baseline.raw / selftest-agent-helper.raw / selftest-check-test-baseline.raw / selftest-merge-gate.raw / merge-gate.raw）
 - 未跑项明列：无（mvn test 1019 逐字；四静态 0；check-dirty CLEAN；check-line-endings lf 32/32；三套自测 + merge-gate 全过；台账零变动；未 push）
@@ -25,7 +25,7 @@
 
 ## 3. 合并与停步
 
-- [ ] 3.1 切 master → merge --no-ff（分支保留）→ git status 双确认 CLEAN → 停步回报禁 push
+- [x] 3.1 切 master → merge --no-ff（分支保留）→ git status 双确认 CLEAN → 停步回报禁 push
 - [x] 3.2 §0 执行记录填齐（合并节点 hash、门禁数字、拓扑）
 
 ## 4. 复核（复核 agent，只读）
