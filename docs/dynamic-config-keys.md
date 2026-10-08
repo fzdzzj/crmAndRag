@@ -28,6 +28,10 @@
 > 注册状态（wire-circuit-dynamic-config，2026-10-08）：命名空间白名单扩为九个（新增
 > `platform.resilience`），登记 2 个依赖熔断治理全局键，新调用实时读取生效、在飞 OPEN 不追溯、非法/缺失 fail-safe 回落——
 > `platform.resilience.failure-threshold`（默认 5）与 `platform.resilience.open-duration-ms`（默认 30000）。
+> 注册状态（wire-ingestion-recovery-replay，2026-10-08）：命名空间白名单扩为十个（新增
+> `rag.ingest`），登记 2 个摄取恢复重放配置键，新调用实时读取生效、非法/缺失 fail-safe 回落——
+> `rag.ingest.replay-enabled`（默认 false，费用红线：重放=真实嵌入调用，必须显式开启）与
+> `rag.ingest.replay-batch-size`（默认 5，范围 1~50）。
 
 ## rag.retrieval.* —— 检索管线（Lane B）
 
@@ -133,4 +137,14 @@
 | `platform.resilience.open-duration-ms` | Long | 30000 | 依赖熔断开闸保持时长（毫秒）：开闸达到该时长后进入 HALF_OPEN 单探测状态。范围 0~86400000；非法/越界/缺失回落 30000 |
 
 > 实时生效与回退：每次调用实时读取；已写入 openUntilNanos 的在飞 OPEN 窗口不被追溯调整；键缺失、删除或写入非法值时 fail-safe 回落默认（5 / 30000），绝不抛出配置异常打断业务调用。仅暴露全局两键，maxAttempts/backoff 不暴露（零自动重试）；走既有通用管理员动态配置权限。
+
+## rag.ingest.* —— 摄取恢复重放（wire-ingestion-recovery-replay）
+
+| 键 | 类型 | 默认值 | 语义与回退 |
+|---|---|---|---|
+| `rag.ingest.replay-enabled` | Boolean | **false** | 摄取恢复自动重放总开关：默认关闭（费用红线：重放=真实嵌入调用，必须显式开启）。开启时定时扫描 PENDING 状态文档以原上传者身份自动重放；关闭、缺失或读取异常时空转跳过 |
+| `rag.ingest.replay-batch-size` | Integer | 5 | 摄取恢复自动重放单批最大处理文档数，范围 1~50；非法、越界或缺失时 fail-safe 回落默认值 5 |
+
+> 调度与身份：由 IngestionReplayScheduler 固定 tick 调度（默认 60s），以 uploaded_file.userId 加载真实用户构造 UserContext 调用既有 reingest 入口，走既有 canWrite 授权与平台治理审计；上传者不存在、离职、冻结或无权限时转 FAILED 终态并记录审计，熔断仍开快速拒绝时保持 PENDING 下轮再试。
+
 
