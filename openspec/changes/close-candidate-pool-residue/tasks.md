@@ -2,7 +2,7 @@
 
 ## 0. 执行记录（执行 agent 填，复核 agent 核）
 
-- 分支 / 基线 / 合并节点：feature/close-candidate-pool-residue / 基线 master@3c8a8b5 / 合并节点 ________（双亲 = 3c8a8b5 + feature 顶端）
+- 分支 / 基线 / 合并节点：feature/close-candidate-pool-residue / 基线 master@3c8a8b5 / 合并节点 71975ff200ad80a2f35d1fd583420867bc520065（双亲 = 3c8a8b5 + feature 顶端）
 - 候选池底稿三处 sha256 一致：主树底稿 work/_paa-candidates-pool.md = 权威树覆盖后 docs/backend-optimization-candidates.md = 提交后 git blob（fac3b964254f8006461dfa8ffb5949b4f9c18f16）
 - 门禁 raw 留证位置：work/_paa-gate-raw/（mvn-test.raw / four-static.raw / check-dirty.raw / check-line-endings.raw / check-write-set.raw / check-test-baseline.raw / selftest-agent-helper.raw / selftest-check-test-baseline.raw / selftest-merge-gate.raw / merge-gate.raw）
 - 未跑项明列：无（mvn test 1019 逐字；四静态 0；check-dirty CLEAN；check-line-endings lf 4/4；check-write-set 恰 4 文件；三套自测 + merge-gate 全过；台账零变动；未 push）
@@ -27,7 +27,7 @@
 
 - [x] 3.1 笔 2 docs(openspec) 提交：tasks.md 1.x/2.x/3.1-3.2 勾选 + §0 执行记录填齐（raw 位置、门禁数字、blob hash）
 - [x] 3.2 切 master → merge --no-ff（分支保留）→ git status 双确认 CLEAN
-- [ ] 3.3 master 收口笔（合并后允许的一笔，承 P-z 教训）：§0 回填合并节点 hash + 3.2/3.3 勾选
+- [x] 3.3 master 收口笔（合并后允许的一笔，承 P-z 教训）：§0 回填合并节点 hash + 3.2/3.3 勾选
 - [ ] 3.4 严格停步回报（绝对禁止 git push）
 
 ## 4. 复核（复核 agent，只读）
