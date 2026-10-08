@@ -2,7 +2,7 @@
 
 ## 0. 执行记录（执行 agent 填，复核 agent 核）
 
-- 分支 / 基线 / 合并节点：feature/close-openspec-task-residue / 基线 master@191d56f / 合并节点 ________（双亲 = 191d56f + feature 顶端）
+- 分支 / 基线 / 合并节点：feature/close-openspec-task-residue / 基线 master@191d56f / 合并节点 8f79caa（双亲 = 191d56f + b77c6d9）
 - 19 格编辑落位：16 补勾 + 2 维持未勾注记 + 1 不动（run-baseline-ladder 6.2 自带定夺）
 - 证据 raw 留证位置：work/_pab-evidence-raw/；门禁 raw 留证位置：work/_pab-gate-raw/
 - 未跑项明列：无（surefire 1019 / 四静态 0 / 三守卫 / 基线零变动 / 三自测 / merge-gate 全绿，raw 见 work/_pab-gate-raw/）
@@ -27,7 +27,7 @@
 
 - [x] 3.1 笔 1 docs(openspec) 提交：7 历史卡文件回补 + 本卡三件套（tasks.md 此刻 1.x-3.x 未勾如实入库）
 - [x] 3.2 笔 2 docs(openspec) 提交：tasks.md 1.x/2.x/3.1-3.2 勾选 + §0 执行记录填齐
-- [ ] 3.3 切 master → merge --no-ff（分支保留）→ git status 双确认 CLEAN
+- [x] 3.3 切 master → merge --no-ff（分支保留）→ git status 双确认 CLEAN
 - [ ] 3.4 master 收口笔（合并后允许的一笔）：§0 回填合并节点 hash + 3.3 勾选
 - [ ] 3.5 严格停步回报（绝对禁止 git push）
       预注册（本卡 spec-delta 契约 5）：本格与 §4 复核区为终态未勾，回补载体为 owner 指定的后续 master 前向提交，带此注记的未勾格不构成悬空。
