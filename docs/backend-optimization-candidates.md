@@ -1,6 +1,6 @@
 # 后端优化候选与证据边界
 
-> 首版 2026-09-26（master@24efb19 只读审查记录）；2026-10-08 候选池重盘归档（owner 拍板，随 intake-openspec-proposal-specs 入库）。首版 7 项候选已全部闭环，本文从「待验证候选清单」转为「闭环归档 + 现行挂账 + 后续方向」。首版声明继续有效：本文不是实施提案、收益承诺或生产开关授权。
+> 首版 2026-09-26（master@24efb19 只读审查记录）；2026-10-08 候选池重盘归档（owner 拍板，随 intake-openspec-proposal-specs 入库）；同日 §4 待取证方向收口复查（close-candidate-pool-residue，主 agent 亲测）。首版 7 项候选已全部闭环，本文从「待验证候选清单」转为「闭环归档 + 现行挂账 + 后续方向」。首版声明继续有效：本文不是实施提案、收益承诺或生产开关授权。
 
 ## 1. 证据等级与共通验收（方法论，首版原文保留）
 
@@ -33,9 +33,9 @@
 - **执行侧留痕习惯（P-y 复核建议）**：后续卡三套自测（agent-helper / check-test-baseline / merge-gate）的独立 raw 一并归档；raw 日志编码拉平 UTF-8。
 - **openspec 三件套口径**：自 intake-openspec-proposal-specs 起全量入库（proposal.md / tasks.md / specs/*/spec-delta.md），work/ 执行留痕保持 untracked 惯例。
 
-## 4. 后续候选方向（待取证，非实施授权）
+## 4. 后续候选方向（2026-10-08 收口复查，主 agent 亲测；仍非实施授权）
 
-- 重放运行配套：PENDING 积压监控指标/告警（依赖 rag.ingest 重放启用后的运行数据）。
-- docs/ingest-gap-map.md 遗留项重盘（摄取缺口地图未在 2026-10-08 重盘范围）。
-- 前端质量残留复查（frontend-quality 历史黄色注解是否清零）。
+- **前端质量残留复查 → 已清零关闭**：权威树 `pnpm lint:check`（`eslint --ext .js,.vue src`）@master 3c8a8b5 实测零输出（0 警告 0 错误），P-i 的 22 处警告消解未被回退。注：`lint:check` 无 `--max-warnings 0`，警告本不拦 CI 绿，故以本日实测为准而非 CI 颜色。
+- **docs/ingest-gap-map.md 遗留项重盘 → 主切口已落地**：gap-map 唯一推荐切口「图像 PDF 检测 + 单页 VLM 转写试点（默认关，质量闸门失败回退文本层）」已随 add-vision-pdf-ingest-pilot 合入（`PdfVisionTranscriber` 入 src/main，`rag.retrieval.vision-pdf.enabled/min-text-chars/max-pages` 已注册 DynamicConfigKeyRegistry，enabled 默认 false）。剩余差距项（检测阈值从试点泛化、PPTX 接入、扫描件 OCR、PDF 内表格结构还原、VLM 生产化推广与配额/审计）均为需 owner 成本拍板的功能延伸，未立项。
+- **重放运行配套 → 维持待取证**：PENDING 积压监控指标/告警仍依赖 `rag.ingest.replay-enabled` 生产启用（owner 授权，费用红线）后的运行数据；启用前建面存在阈值设计盲区，不立项。
 - 以上均未立项、未测负载、未授权任何代码改动或真实外呼。
