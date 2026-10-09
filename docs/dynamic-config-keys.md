@@ -204,3 +204,27 @@
 **OPERATIONAL 34 键全清单**：`ai.prompt.system`、`ai.model.temperature`、`ai.model.maxTokens`、`rag.retrieval.topK`、`rag.retrieval.minScore`、`rag.retrieval.strictKb`、`rag.retrieval.query-rewrite.enabled`、`rag.retrieval.fusion.mode`、`rag.retrieval.fusion.rrf-k`、`rag.retrieval.rerank.vector-weight`、`rag.retrieval.rerank.bm25-weight`、`rag.retrieval.rerank.candidate-multiplier`、`rag.retrieval.image-text-route-weight`、`rag.retrieval.image-vector-route-weight`、`rag.context.neighbors`、`rag.context.parent-expand`、`rag.intent.filterEnabled`、`rag.intent.categories`、`rag.intent.keywords`、`business.assist.reminderEnabled`、`business.feature.aiAssistantEnabled`、`business.assistant.imageCacheMaxEntries`、`platform.resilience.failure-threshold`、`platform.resilience.open-duration-ms`、`platform.resilience.failure-threshold.model-chat`、`platform.resilience.open-duration-ms.model-chat`、`platform.resilience.failure-threshold.model-embed`、`platform.resilience.open-duration-ms.model-embed`、`platform.resilience.failure-threshold.model-vision`、`platform.resilience.open-duration-ms.model-vision`、`platform.resilience.failure-threshold.vector-qdrant`、`platform.resilience.open-duration-ms.vector-qdrant`、`platform.resilience.failure-threshold.storage-minio`、`platform.resilience.open-duration-ms.storage-minio`。
 
 **新增键定级维护约定**：新键注册进 `DynamicConfigKeyRegistry` 时必须同步在 `ConfigKeyTierPolicy` 显式登记档位——未登记键 census 防呆测试即红（解析顺序：sensitive=true 防御性映射 COST → 显式登记表 → 默认 OPERATIONAL，但封闭集校验要求登记齐全）。档位升降（尤其 OPERATIONAL ↔ COST/STRUCTURAL）需 owner 拍板，同步改 `ConfigKeyTierPolicy`、`ConfigKeyTierPolicyTest` 与本清单各表「权限档位」列及本节。
+
+### 成本键申请-审批流（add-cost-key-approval-workflow，卡 P-ae）
+
+为解决运营侧热调 COST 档键（费用红线族，超管专写）零申请留痕、零审批链的问题，系统化落地申请-审批流：
+
+1. **端点与权限**：5 个 REST 端点（`/platform/config/cost-requests` 系列）全部挂载方法级 `@RequirePermission(PLATFORM_DYNAMIC_CONFIG_MANAGE(608))`：
+   - `POST /platform/config/cost-requests`：提交申请（608 持有者；值预校验同写路径但未通过审批前不写入）；
+   - `GET /platform/config/cost-requests`：清单分页查询（608 持有者；超管看全部、普通业务用户只看本人申请单，实时角色判定）；
+   - `POST /platform/config/cost-requests/{id}/withdraw`：撤回申请（仅申请人本人且处于 PENDING 态）；
+   - `POST /platform/config/cost-requests/{id}/approve`：审批通过（服务层超管闸 `roleId=1`，非超管 96005）；
+   - `POST /platform/config/cost-requests/{id}/reject`：驳回申请（服务层超管闸 `roleId=1`，非超管 96005；需记录驳回理由）。
+2. **四态封闭状态机**：
+   - 转移路径：`PENDING → APPROVED | REJECTED | WITHDRAWN`；
+   - 终态不可逆：一旦进入 `APPROVED`、`REJECTED` 或 `WITHDRAWN`，不可再次转移；
+   - 无过期（EXPIRED）态：审批通过即写入生效。
+3. **COST 白名单封闭**：
+   - 严格引用 `ConfigKeyTierPolicy.costKeys()`（22 键封闭集），零新增白名单常量；
+   - 白名单外键（OPERATIONAL 34 / STRUCTURAL 7 / 未注册未知键）提交申请一律拒绝（96007 语义）。
+4. **一键一单在途约束**：
+   - 同一 `config_key` 在存在 `PENDING` 态申请单时，禁止提交新申请单，避免同键并发审批歧义；终态完结后可再次申请。
+5. **通过即写入原子语义与审计锚**：
+   - 审批通过时，以**审批人（超管）身份**直接调用既有 `DynamicConfigAdminService.updateValue` 写路径（过写路径键级 ACL、值校验、乐观锁版本+1、history 留痕与审计事件、缓存热失效）；
+   - 若写路径发生异常，申请单**保持 PENDING 状态**，绝不落 APPROVED 半状态，异常向上抛出审批人可见可重试；
+   - 写入成功后回填 `applied_config_version`（配置写入后的新版本号），与 `dynamic_config_history` 形成审计闭环关联。

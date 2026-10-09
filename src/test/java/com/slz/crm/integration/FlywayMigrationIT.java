@@ -43,7 +43,7 @@ class FlywayMigrationIT {
       new TreeSet<>(
           List.of(
               "1", "3", "4", "4.1", "5", "6", "21", "22", "23", "24", "25", "26", "27", "28", "29",
-              "30"));
+              "30", "31"));
 
   /** 跨 lane 关键表抽样：确认各号段 DDL 真的建出了表（V1/V3/V4/V5/V6）。 */
   private static final List<String> SPOT_CHECK_TABLES =
@@ -191,6 +191,31 @@ class FlywayMigrationIT {
       assertTrue(
           ddl.contains("`chunk_role` varchar(16) NOT NULL DEFAULT 'CHILD'"),
           "V23 应增出 chunk_role 列且存量行默认 CHILD，实际 DDL：" + ddl);
+    }
+  }
+
+  /**
+   * V31 断言（add-cost-key-approval-workflow 任务 1.4）： cost_key_change_request 表建出且包含
+   * idx_status_created 与 idx_config_key 索引。
+   */
+  @Test
+  @Order(5)
+  void costKeyChangeRequestTableAndIndexesExist() throws Exception {
+    assumeTrue(mysql != null, "Docker 不可用时本用例随类跳过");
+    try (Connection connection =
+            DriverManager.getConnection(
+                mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
+        Statement statement = connection.createStatement();
+        ResultSet rs = statement.executeQuery("SHOW CREATE TABLE cost_key_change_request")) {
+      assertTrue(rs.next(), "cost_key_change_request 表应存在");
+      String ddl = rs.getString(2);
+      assertTrue(
+          ddl.contains("KEY `idx_status_created` (`status`,`created_at`)")
+              || ddl.contains("KEY `idx_status_created` (`status`, `created_at`)"),
+          "V31 应建出 idx_status_created 索引，实际 DDL：" + ddl);
+      assertTrue(
+          ddl.contains("KEY `idx_config_key` (`config_key`)"),
+          "V31 应建出 idx_config_key 索引，实际 DDL：" + ddl);
     }
   }
 
