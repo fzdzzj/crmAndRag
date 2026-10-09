@@ -4,7 +4,7 @@
 
 ## 0. 执行记录（执行 agent 填，复核 agent 核）
 
-- 分支 / 基线 / 合并节点：feature/add-cost-key-approval-workflow / 基线 master@7069b83 / 合并节点 ________（双亲 = 7069b83 + 9c8c0e2，master 收口笔回填）
+- 分支 / 基线 / 合并节点：feature/add-cost-key-approval-workflow / 基线 master@7069b83 / 合并节点 7def7b0（双亲 = 7069b83 + d4dcbea，master 收口笔回填）
 - 红测试先行：实施前在基线 master@7069b83 实跑本卡新测试贴红（红输出归档 work/_pae-red-first/）：V31 表缺失（迁移红）/ Controller 端点缺失（注解扫描红）/ 状态机行为红（申请-审批链路现基线不存在）/ 矩阵登记红（CONTROLLER_REGISTRY 未登记）——**注：本格因先前执行已提交任务组 1-4 实现，后端存留 work/_pae-red-first/ 四件 raw 非真红（内容为静态 clean），无法在不 reset 下追溯产出真红证据，owner 2026-10-09 裁决「resume 先有实现」并按可接受如实记缺失披露**
 - 门禁 raw 留证位置：work/_pae-gate-raw/（一律显式 UTF-8 无 BOM 写出）
 - surefire 基线变化：1058 → 1075（只增不减，全绿 0 失败 0 跳过）
@@ -48,8 +48,8 @@
 
 - [x] 6.1 提交按任务组分组（feat 6 笔：V31+实体 / 服务层状态机+单测 / 控制器+矩阵+IT / 文档 / SchemaDrift 登记 / PMD 修复 + test-baseline），中文提交信息，新代码中文 Javadoc 标注「add-cost-key-approval-workflow 任务 x.x」
 - [ ] 6.2 笔 N docs(openspec)：本卡三件套入库 + tasks.md 1.x-5.x / 6.1-6.3 勾选 + §0 填齐
-- [ ] 6.3 切 master → merge --no-ff（分支保留）→ git status 双确认 CLEAN
-- [ ] 6.4 master 收口笔：§0 回填合并节点 hash + 6.3 勾选
+- [x] 6.3 切 master → merge --no-ff（7def7b0，分支保留）→ git status 双确认 CLEAN
+- [x] 6.4 master 收口笔：§0 回填合并节点 hash 7def7b0 + 6.3 勾选
 - [ ] 6.5 严格停步回报（绝对禁止 git push）
       预注册（本卡 spec-delta 契约 7）：本格与 §7 复核区为终态未勾，回补载体为 owner 指定的后续 master 前向提交，带此注记的未勾格不构成悬空。
 
