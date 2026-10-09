@@ -31,13 +31,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 动态配置管理服务（写操作 + 版本历史/回滚 + 审计；仅超级管理员可用）。
+ * 动态配置管理服务（写操作 + 版本历史/回滚 + 审计；键级三档 ACL——add-dynamic-config-key-tier-acl）。
  *
- * <p>职责与护栏（spec-delta「仅超级管理员可写」「配置校验与安全护栏」「配置版本与回滚」）：
+ * <p>职责与护栏（spec-delta「配置校验与安全护栏」「配置版本与回滚」+ 本卡键级分层）：
  *
  * <ul>
- *   <li><b>越权拒绝</b>：所有管理接口先 {@link #requireSuperAdmin()}——非超管抛 FORBIDDEN(96005)、 未登录抛
- *       UNAUTHORIZED(96003)，且不产生任何配置变更；
+ *   <li><b>键级 ACL</b>：写路径经 {@code DynamicConfigAccessGuards.requireKeyWriteAccess}——运营档
+ *       （OPERATIONAL）键对 608 持有者放开（方法级注解在拦截器层强制），成本/结构档（COST/STRUCTURAL）键仅 超管可写（FORBIDDEN
+ *       96005）、未登录抛 UNAUTHORIZED(96003)，且不产生任何配置变更； 读路径（列表/详情/ 历史/缓存刷新）撤除服务层超管闸，鉴权由方法级
+ *       {@code @RequirePermission(608)} 承接；
  *   <li><b>校验护栏</b>：写前经 {@link DynamicConfigKeyRegistry#validate} 做类型/范围/枚举/长度校验， 非法值抛
  *       VALIDATION(96007) 并保持原值（不落库、不写历史）；
  *   <li><b>版本与回滚</b>：每次变更（含回滚/删除/复活）版本 +1 并追加历史行；回滚目标 = 目标版本行的 new_value，回滚前仍过一遍校验护栏（防历史脏数据）；
@@ -75,7 +77,7 @@ public class DynamicConfigAdminService {
     this.auditRecorders = auditRecorders;
   }
 
-  // ==================== 查询（超管配置中心专属） ====================
+  // ==================== 查询（608 读端点，方法级注解承接鉴权） ====================
 
   /**
    * 按命名空间列出全部配置项（注册表 + DB 覆盖合并；DB 无覆盖的项展示静态默认）。
@@ -83,7 +85,6 @@ public class DynamicConfigAdminService {
    * @param namespace 命名空间；null 或空 = 全部
    */
   public List<ConfigItemView> listItems(String namespace) {
-    DynamicConfigAccessGuards.requireSuperAdmin(userResolver);
     Map<String, DynamicConfigItemEntity> rowsByKey =
         itemMapper.selectList(null).stream()
             .collect(Collectors.toMap(DynamicConfigItemEntity::getConfigKey, Function.identity()));
@@ -98,7 +99,6 @@ public class DynamicConfigAdminService {
    * @param key 配置键
    */
   public ConfigItemView getItem(String key) {
-    DynamicConfigAccessGuards.requireSuperAdmin(userResolver);
     ConfigKeyDefinition def = DynamicConfigAccessGuards.requireDefinition(registry, key);
     return DynamicConfigViewSupport.toView(
         DynamicConfigAccessGuards.findByKeyAny(itemMapper, key), def);
@@ -110,7 +110,6 @@ public class DynamicConfigAdminService {
    * @param key 配置键
    */
   public List<ConfigHistoryView> history(String key) {
-    DynamicConfigAccessGuards.requireSuperAdmin(userResolver);
     ConfigKeyDefinition def = DynamicConfigAccessGuards.requireDefinition(registry, key);
     return DynamicConfigViewSupport.listHistory(key, def, historyMapper);
   }
@@ -129,8 +128,10 @@ public class DynamicConfigAdminService {
    */
   @Transactional(rollbackFor = Exception.class)
   public ConfigItemView updateValue(String key, String rawValue, String remark) {
-    ConfigOperator op = DynamicConfigAccessGuards.requireSuperAdmin(userResolver);
-    ConfigKeyDefinition def = DynamicConfigAccessGuards.requireDefinition(registry, key);
+    DynamicConfigAccessGuards.WriteAccess writeAccess =
+        DynamicConfigAccessGuards.requireKeyWriteAccess(userResolver, registry, key);
+    ConfigOperator op = writeAccess.operator();
+    ConfigKeyDefinition def = writeAccess.definition();
     ConfigValueType.Parsed parsed = registry.validate(key, rawValue);
     if (!parsed.valid()) {
       // 非法值拒绝：抛校验错误，保持原配置不变（此处尚未触碰数据库）
@@ -160,8 +161,10 @@ public class DynamicConfigAdminService {
    */
   @Transactional(rollbackFor = Exception.class)
   public ConfigItemView rollback(String key, int targetVersion, String remark) {
-    ConfigOperator op = DynamicConfigAccessGuards.requireSuperAdmin(userResolver);
-    ConfigKeyDefinition def = DynamicConfigAccessGuards.requireDefinition(registry, key);
+    DynamicConfigAccessGuards.WriteAccess writeAccess =
+        DynamicConfigAccessGuards.requireKeyWriteAccess(userResolver, registry, key);
+    ConfigOperator op = writeAccess.operator();
+    ConfigKeyDefinition def = writeAccess.definition();
     DynamicConfigItemEntity row = DynamicConfigAccessGuards.findByKeyAny(itemMapper, key);
     if (row == null || Boolean.TRUE.equals(row.getIsDeleted())) {
       throw new ServiceException(PlatformErrorCode.VALIDATION.getCode(), "配置不存在或已删除，无法回滚：" + key);
@@ -232,8 +235,10 @@ public class DynamicConfigAdminService {
    */
   @Transactional(rollbackFor = Exception.class)
   public ConfigItemView deleteOverride(String key, String remark) {
-    ConfigOperator op = DynamicConfigAccessGuards.requireSuperAdmin(userResolver);
-    ConfigKeyDefinition def = DynamicConfigAccessGuards.requireDefinition(registry, key);
+    DynamicConfigAccessGuards.WriteAccess writeAccess =
+        DynamicConfigAccessGuards.requireKeyWriteAccess(userResolver, registry, key);
+    ConfigOperator op = writeAccess.operator();
+    ConfigKeyDefinition def = writeAccess.definition();
     DynamicConfigItemEntity row = DynamicConfigAccessGuards.findByKeyAny(itemMapper, key);
     if (row == null || Boolean.TRUE.equals(row.getIsDeleted())) {
       throw new ServiceException(
@@ -272,7 +277,6 @@ public class DynamicConfigAdminService {
    * @return 刷新后缓存条目数
    */
   public int refreshCache() {
-    DynamicConfigAccessGuards.requireSuperAdmin(userResolver);
     return cache.refreshAll();
   }
 

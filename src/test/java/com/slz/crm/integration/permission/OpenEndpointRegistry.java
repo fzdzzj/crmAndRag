@@ -29,7 +29,7 @@ public final class OpenEndpointRegistry {
 
   // ==================== 有意开放区（登记理由充分，门禁直接放行） ====================
 
-  /** 有意开放端点。仅当前 5 条；新增有意开放端点必须在此登记并附理由。 */
+  /** 有意开放端点。仅当前 13 条；新增有意开放端点必须在此登记并附理由。 */
   public static final List<Entry> INTENTIONAL_OPEN = buildIntentionalOpen();
 
   // ==================== 待拍板区（首轮审计实测零注解端点全量登记） ====================
@@ -126,49 +126,8 @@ public final class OpenEndpointRegistry {
             "业务必需：联系人侧审批人下拉（与 /permission/auditor 同款）",
             "CustomerContactController#auditor"));
     list.add(new Entry("GET", "/role", "业务必需：用户自查自身角色（登录即可用）", "RoleController#getMyRole"));
-    // apply-permission-matrix 任务 3.5：DynamicConfig（服务层已强制 roleId=1 抛 96005，登记避免双重鉴权漂移）
-    list.add(
-        new Entry(
-            "GET",
-            "/platform/config/items",
-            "服务层已强制 roleId=1 抛 96005（登记避免双重鉴权漂移）",
-            "DynamicConfigAdminController#list"));
-    list.add(
-        new Entry(
-            "GET",
-            "/platform/config/items/{key}",
-            "服务层已强制 roleId=1 抛 96005（登记避免双重鉴权漂移）",
-            "DynamicConfigAdminController#detail"));
-    list.add(
-        new Entry(
-            "GET",
-            "/platform/config/items/{key}/history",
-            "服务层已强制 roleId=1 抛 96005（登记避免双重鉴权漂移）",
-            "DynamicConfigAdminController#history"));
-    list.add(
-        new Entry(
-            "POST",
-            "/platform/config/items",
-            "服务层已强制 roleId=1 抛 96005（登记避免双重鉴权漂移）",
-            "DynamicConfigAdminController#update"));
-    list.add(
-        new Entry(
-            "POST",
-            "/platform/config/items/{key}/rollback",
-            "服务层已强制 roleId=1 抛 96005（登记避免双重鉴权漂移）",
-            "DynamicConfigAdminController#rollback"));
-    list.add(
-        new Entry(
-            "DELETE",
-            "/platform/config/items/{key}",
-            "服务层已强制 roleId=1 抛 96005（登记避免双重鉴权漂移）",
-            "DynamicConfigAdminController#delete"));
-    list.add(
-        new Entry(
-            "POST",
-            "/platform/config/cache/refresh",
-            "服务层已强制 roleId=1 抛 96005（登记避免双重鉴权漂移）",
-            "DynamicConfigAdminController#refreshCache"));
+    // add-dynamic-config-key-tier-acl 任务 3.2：/platform/config 7 端点已挂 608 方法级注解转 SECURED，
+    // 原「服务层超管闸」INTENTIONAL_OPEN 登记随之移除（矩阵迁移，登记数 20 → 13）。
     return Collections.unmodifiableList(list);
   }
 

@@ -1,6 +1,7 @@
 package com.slz.crm.integration.permission;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -133,5 +134,27 @@ class PermissionCoverageComparatorTest {
         0,
         byTier(findings, PermissionCoverageComparator.Tier.PENDING_DECISION).size(),
         "PENDING_DECISION 已全部消解为 0（apply-permission-matrix 任务 3.6）");
+  }
+
+  @Test
+  void dynamicConfigEndpointsSecuredByTierAcl() {
+    // add-dynamic-config-key-tier-acl 任务 3.2：/platform/config 7 端点挂 608 注解转 SECURED，
+    // OpenEndpointRegistry 7 条 INTENTIONAL_OPEN 登记随之移除（原登记理由「服务层已强制 roleId=1」
+    // 随读路径撤除超管闸而失效）——本测试即矩阵迁移的防回归锚。
+    List<EndpointCoverage> endpoints =
+        PermissionCoverageScanner.scanEndpoints().stream()
+            .filter(e -> e.controllerClass().endsWith("DynamicConfigAdminController"))
+            .toList();
+    assertEquals(7, endpoints.size(), "DynamicConfigAdminController 应恰 7 端点");
+    for (EndpointCoverage endpoint : endpoints) {
+      assertFalse(
+          OpenEndpointRegistry.isIntentionalOpen(endpoint.httpMethod(), endpoint.path()),
+          "矩阵迁移后不应再登记 INTENTIONAL_OPEN：" + endpoint.httpMethod() + " " + endpoint.path());
+      assertTrue(endpoint.secured(), "挂 608 后端点应转 SECURED：" + endpoint.methodRef());
+      assertEquals(
+          "PLATFORM_DYNAMIC_CONFIG_MANAGE",
+          endpoint.permissionName(),
+          "注解值应为 608 对应常量：" + endpoint.methodRef());
+    }
   }
 }

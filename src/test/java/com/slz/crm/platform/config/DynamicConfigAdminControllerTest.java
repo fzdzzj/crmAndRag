@@ -1,5 +1,6 @@
 package com.slz.crm.platform.config;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -11,10 +12,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.slz.crm.common.annotation.RequirePermission;
+import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.platform.config.controller.ConfigRollbackRequest;
 import com.slz.crm.platform.config.controller.DynamicConfigAdminController;
 import com.slz.crm.platform.config.service.DynamicConfigAdminService;
 import com.slz.crm.platform.contract.PlatformErrorCode;
+import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -25,6 +30,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 
 /**
  * 动态配置管理接口测试：路由、统一 Result 封装、越权/校验错误经 GlobalExceptionHandler 映射为平台错误码。 （鉴权判定在服务层，本测试只验证 HTTP
@@ -220,5 +229,36 @@ class DynamicConfigAdminControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.code").value(1))
         .andExpect(jsonPath("$.data").value(3));
+  }
+
+  // ==================== add-dynamic-config-key-tier-acl 红锚（任务 1.1/1.2/3.1） ====================
+
+  @Test
+  @DisplayName("红锚→绿：PermissionOperates 须含 PLATFORM_DYNAMIC_CONFIG_MANAGE(608)")
+  void platformDynamicConfigManageConstantExists() {
+    PermissionOperates constant = PermissionOperates.valueOf("PLATFORM_DYNAMIC_CONFIG_MANAGE");
+    assertThat(constant.getId()).isEqualTo(608L);
+  }
+
+  @Test
+  @DisplayName("红锚→绿：7 端点全部挂 @RequirePermission(PLATFORM_DYNAMIC_CONFIG_MANAGE)")
+  void allEndpointsAnnotatedWithRequirePermission608() {
+    List<Method> endpoints =
+        Arrays.stream(DynamicConfigAdminController.class.getDeclaredMethods())
+            .filter(
+                m ->
+                    m.isAnnotationPresent(GetMapping.class)
+                        || m.isAnnotationPresent(PostMapping.class)
+                        || m.isAnnotationPresent(PutMapping.class)
+                        || m.isAnnotationPresent(DeleteMapping.class))
+            .toList();
+    assertThat(endpoints).hasSize(7);
+    for (Method endpoint : endpoints) {
+      RequirePermission annotation = endpoint.getAnnotation(RequirePermission.class);
+      assertThat(annotation).as("端点 %s 缺 @RequirePermission 注解", endpoint.getName()).isNotNull();
+      assertThat(annotation.value())
+          .as("端点 %s 注解值应为 PLATFORM_DYNAMIC_CONFIG_MANAGE", endpoint.getName())
+          .isEqualTo(PermissionOperates.valueOf("PLATFORM_DYNAMIC_CONFIG_MANAGE"));
+    }
   }
 }
