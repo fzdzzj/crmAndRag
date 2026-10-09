@@ -4,7 +4,7 @@
 
 ## 0. 执行记录（执行 agent 填，复核 agent 核）
 
-- 分支 / 基线 / 合并节点：feature/close-harness-review-residue / 基线 master@b47593c / 合并节点（待填）
+- 分支 / 基线 / 合并节点：feature/close-harness-review-residue / 基线 master@b47593c / 合并节点 a7fd472
 - 前置实测（替代红测试先行的说明）：本卡零测试文件改动，不适用红测试先行；以任务组 1 现状实测清单为前置取证，raw 归档权威树 work/_paf-first/
 - work/ 归档摘要：归档 12 目录 + 493 顶层散文件（共 505 项）至 work/_archive-P-af/ ｜保留原位 4 目录（commit-msgs、mailbox、_pad-red-first、_stale-openspec-drafts）+ 57 顶层文件（11 项 master 文本引用命中 + 46 项白名单 task-card-*/handoff-*）｜递归计数移动前 1797（排除 task-card-P-af.md 为 1796）= 移动后 1797（排除 task-card-P-af.md 为 1796，且排除 _MANIFEST.md 为 1796）
 - 删除授权清单（停步请求 owner 拍板，本卡未删）：work/AiChatStreamErrorRecovery.java.bak、work/AiChatStreamFinalizer.java.bak + .qoder/worktrees 14 目录（全名单见任务 5.2）
@@ -47,9 +47,9 @@
 
 ## 7. 门禁与合并（收口）
 
-- [ ] 7.1 `mvn -B -ntp test`（DASHSCOPE_API_KEY 置空字符串）：1075/1075 全绿 0 失败 0 跳过，总数与台账零偏差；`bash scripts/check-test-baseline.sh` 不带 `--update` 必须通过（台账零更新）
-- [ ] 7.2 四静态 0 违规（checkstyle / spotbugs / pmd:check / spotless:check）+ 三守卫（check-dirty CLEAN / check-line-endings lf <本卡 7 文件> / check-write-set b47593c 写集恰 = 7 文件清单、frontend/ 零 diff）+ `bash scripts/merge-gate.sh` 全 PASS；Docker 前提 `docker info` 实测，不在线则 failsafe 段 fail-closed 明列不掩瞒，禁止宣称「已验证」
-- [ ] 7.3 切 master → merge --no-ff（合并节点回填 §0，分支保留）→ `git status` 双确认 CLEAN → master 收口笔（仅本卡 tasks.md §0 回填 + 7.3 勾选）
+- [x] 7.1 `mvn -B -ntp test`（DASHSCOPE_API_KEY 置空字符串）：1075/1075 全绿 0 失败 0 跳过，总数与台账零偏差；`bash scripts/check-test-baseline.sh` 不带 `--update` 必须通过（台账零更新）
+- [x] 7.2 四静态 0 违规（checkstyle / spotbugs / pmd:check / spotless:check）+ 三守卫（check-dirty CLEAN / check-line-endings lf <本卡 7 文件> / check-write-set b47593c 写集恰 = 7 文件清单、frontend/ 零 diff）+ `bash scripts/merge-gate.sh` 全 PASS；Docker 前提 `docker info` 实测，不在线则 failsafe 段 fail-closed 明列不掩瞒，禁止宣称「已验证」
+- [x] 7.3 切 master → merge --no-ff（合并节点回填 §0，分支保留）→ `git status` 双确认 CLEAN → master 收口笔（仅本卡 tasks.md §0 回填 + 7.3 勾选）
 - [ ] 7.4 严格停步回报（绝对禁止 git push）：原样粘贴路径自证、git log --oneline --graph -10、git status --short、每笔 git show --stat、门禁 raw 结论行、归档前后递归计数、引用核对命中清单；结尾单列 5.2 删除授权请求
       预注册（本卡 spec-delta 契约 6）：本格与 §8 复核区为终态未勾，回补载体为 owner 指定的后续 master 前向提交，带此注记的未勾格不构成悬空。
 
