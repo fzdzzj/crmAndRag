@@ -17,7 +17,10 @@ import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.api.MigrationState;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.MySQLContainer;
 
@@ -26,19 +29,21 @@ import org.testcontainers.containers.MySQLContainer;
  *
  * <p>动机：单元测试与 H2 上下文冒烟都用 auto-table/ddl-auto，<b>从不执行 Flyway 脚本</b>； 而 V1 含 MySQL 专有 DDL（{@code
  * generated always as(if(...))stored}）H2 无法解析。
- * 因此十五张迁移脚本（V1/V3/V4/V4_1/V5/V6/V21/V22/V23/V24/V25/V26/V27/V28/V29）能否在真 MySQL 上按序无撞号跑通，只能靠本 IT。
+ * 因此十六张迁移脚本（V1/V3/V4/V4_1/V5/V6/V21/V22/V23/V24/V25/V26/V27/V28/V29/V30）能否在真 MySQL 上按序无撞号跑通，只能靠本
+ * IT。方法顺序由 @Order 强制：migrate 用例先行，其余断言用例依赖其建库结果（add-dynamic-config-key-tier-acl 任务 1.4）。
  *
  * <p>Docker 门禁：无 Docker 时 {@code assumeTrue} 优雅跳过（本地开发机）；CI（ubuntu-latest 自带 Docker）真跑。 与 {@link
  * AbstractMySqlIT} 共用 mysql:8.0.36 镜像口径。
  */
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class FlywayMigrationIT {
 
   /** 迁移脚本全集（版本 → 归属 lane），任何增删都要在此登记，防漏跑/撞号。 */
   private static final Set<String> EXPECTED_VERSIONS =
       new TreeSet<>(
           List.of(
-              "1", "3", "4", "4.1", "5", "6", "21", "22", "23", "24", "25", "26", "27", "28",
-              "29"));
+              "1", "3", "4", "4.1", "5", "6", "21", "22", "23", "24", "25", "26", "27", "28", "29",
+              "30"));
 
   /** 跨 lane 关键表抽样：确认各号段 DDL 真的建出了表（V1/V3/V4/V5/V6）。 */
   private static final List<String> SPOT_CHECK_TABLES =
@@ -73,6 +78,7 @@ class FlywayMigrationIT {
   }
 
   @Test
+  @Order(1)
   void allMigrationsApplyInOrderOnRealMySql() throws Exception {
     Flyway flyway =
         Flyway.configure()
@@ -104,11 +110,48 @@ class FlywayMigrationIT {
   }
 
   /**
+   * V30 断言（add-dynamic-config-key-tier-acl 任务 1.4）： 608 权限种子落库——业务角色全量获权、 roleId 0/1/2
+   * 特殊角色不授（@Order(2) 在 migrate 用例之后执行，同 V22/V23 断言模式）。
+   */
+  @Test
+  @Order(2)
+  void dynamicConfigPermissionSeedGrantsBusinessRolesOnly() throws Exception {
+    assumeTrue(mysql != null, "Docker 不可用时本用例随类跳过");
+    try (Connection connection =
+            DriverManager.getConnection(
+                mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
+        Statement statement = connection.createStatement()) {
+      ResultSet perm =
+          statement.executeQuery(
+              "SELECT COUNT(*) FROM permissions WHERE id = 608"
+                  + " AND permissions_name = 'PLATFORM_DYNAMIC_CONFIG_MANAGE'");
+      assertTrue(perm.next() && perm.getLong(1) == 1, "V30 应种入 608 权限行恰一行");
+      ResultSet granted =
+          statement.executeQuery(
+              "SELECT COUNT(DISTINCT rp.role_id) FROM role_permissions rp JOIN sys_role r"
+                  + " ON rp.role_id = r.id WHERE rp.permissions_id = 608"
+                  + " AND r.id NOT IN (0, 1, 2) AND r.is_deleted = b'0'");
+      assertTrue(granted.next(), "已授权角色计数行缺失");
+      long grantedRoles = granted.getLong(1); // 先取出：同一 Statement 再执行查询会自动关闭前一 ResultSet
+      ResultSet totalBusiness =
+          statement.executeQuery(
+              "SELECT COUNT(*) FROM sys_role WHERE id NOT IN (0, 1, 2) AND is_deleted = b'0'");
+      assertTrue(totalBusiness.next(), "业务角色总数行缺失");
+      assertEquals(totalBusiness.getLong(1), grantedRoles, "608 应授权全部业务角色（同轮 CROSS JOIN）");
+      ResultSet special =
+          statement.executeQuery(
+              "SELECT COUNT(*) FROM role_permissions WHERE permissions_id = 608 AND role_id IN (0, 1, 2)");
+      assertTrue(special.next() && special.getLong(1) == 0, "608 不应授给 roleId 0/1/2 特殊角色");
+    }
+  }
+
+  /**
    * V22 断言（complete-hybrid-retrieval-and-rerank 任务 1.1）： document_vector_chunk 上存在 ngram parser 的
    * chunk_text 全文索引——稀疏召回路的载体。 parser 名不在 information_schema.statistics 暴露，用 SHOW CREATE TABLE 验证
    * DDL 原文。
    */
   @Test
+  @Order(3)
   void chunkFulltextIndexExistsWithNgramParser() throws Exception {
     assumeTrue(mysql != null, "Docker 不可用时本用例随类跳过");
     try (Connection connection =
@@ -133,6 +176,7 @@ class FlywayMigrationIT {
    * parent_chunk_id（可空自引用父块列）与 chunk_role（默认 CHILD）， 双粒度索引的库结构载体——缺列会让父块生成与展开在运行期直接 SQL 报错。
    */
   @Test
+  @Order(4)
   void chunkParentLinkColumnsExist() throws Exception {
     assumeTrue(mysql != null, "Docker 不可用时本用例随类跳过");
     try (Connection connection =
