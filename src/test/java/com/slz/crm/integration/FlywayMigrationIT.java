@@ -26,7 +26,7 @@ import org.testcontainers.containers.MySQLContainer;
  *
  * <p>动机：单元测试与 H2 上下文冒烟都用 auto-table/ddl-auto，<b>从不执行 Flyway 脚本</b>； 而 V1 含 MySQL 专有 DDL（{@code
  * generated always as(if(...))stored}）H2 无法解析。
- * 因此十四张迁移脚本（V1/V3/V4/V4_1/V5/V6/V21/V22/V23/V24/V25/V26/V27/V28）能否在真 MySQL 上按序无撞号跑通，只能靠本 IT。
+ * 因此十五张迁移脚本（V1/V3/V4/V4_1/V5/V6/V21/V22/V23/V24/V25/V26/V27/V28/V29）能否在真 MySQL 上按序无撞号跑通，只能靠本 IT。
  *
  * <p>Docker 门禁：无 Docker 时 {@code assumeTrue} 优雅跳过（本地开发机）；CI（ubuntu-latest 自带 Docker）真跑。 与 {@link
  * AbstractMySqlIT} 共用 mysql:8.0.36 镜像口径。
@@ -36,7 +36,9 @@ class FlywayMigrationIT {
   /** 迁移脚本全集（版本 → 归属 lane），任何增删都要在此登记，防漏跑/撞号。 */
   private static final Set<String> EXPECTED_VERSIONS =
       new TreeSet<>(
-          List.of("1", "3", "4", "4.1", "5", "6", "21", "22", "23", "24", "25", "26", "27", "28"));
+          List.of(
+              "1", "3", "4", "4.1", "5", "6", "21", "22", "23", "24", "25", "26", "27", "28",
+              "29"));
 
   /** 跨 lane 关键表抽样：确认各号段 DDL 真的建出了表（V1/V3/V4/V5/V6）。 */
   private static final List<String> SPOT_CHECK_TABLES =

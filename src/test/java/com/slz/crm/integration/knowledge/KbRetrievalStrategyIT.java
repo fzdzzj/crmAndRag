@@ -13,6 +13,7 @@ import java.sql.Statement;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.MySQLContainer;
@@ -26,6 +27,8 @@ import org.testcontainers.containers.MySQLContainer;
  *
  * <p>端点级 900 权限/403 由 {@link com.slz.crm.integration.permission.PermissionCoverageAuditIT}（SECURED
  * 档） 与既有拦截器门禁覆盖；本 IT 专注存储层真实行为（DDL + 唯一约束 + 软删复活/回滚落库）。
+ *
+ * <p>add-per-kb-retrieval-strategy-override 任务 4.3 CI 红修复：用例自足化，@BeforeEach 清理残留数据，用例自备前置数据，顺序无关。
  */
 class KbRetrievalStrategyIT {
 
@@ -59,6 +62,18 @@ class KbRetrievalStrategyIT {
     }
   }
 
+  /** 用例自足化清理（add-per-kb-retrieval-strategy-override 任务 4.3 CI 红修复）： 保证用例执行顺序无关，清理遗留的测试数据。 */
+  @BeforeEach
+  void cleanTestData() throws SQLException {
+    try (Connection c = conn();
+        Statement st = c.createStatement()) {
+      st.executeUpdate(
+          "DELETE FROM kb_retrieval_strategy_history WHERE kb_id=1 AND strategy_key='rag.retrieval.topK'");
+      st.executeUpdate(
+          "DELETE FROM kb_retrieval_strategy WHERE kb_id=1 AND strategy_key='rag.retrieval.topK'");
+    }
+  }
+
   private Connection conn() throws SQLException {
     return DriverManager.getConnection(
         mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
@@ -80,6 +95,7 @@ class KbRetrievalStrategyIT {
     }
   }
 
+  /** 活覆盖唯一约束（add-per-kb-retrieval-strategy-override 任务 4.3 CI 红修复：用例自足化）。 */
   @Test
   void liveCoverageUniqueConstraint() throws SQLException {
     try (Connection c = conn();
@@ -104,15 +120,25 @@ class KbRetrievalStrategyIT {
     }
   }
 
+  /** 软删复活与同键约束（add-per-kb-retrieval-strategy-override 任务 4.3 CI 红修复：自备活行前提，顺序无关）。 */
   @Test
   void softDeleteRowSharesSameKeyAndReviveUpdates() throws SQLException {
     try (Connection c = conn()) {
-      // 软删一行后，同 key 仍不得新建（复活语义：软删行保留，唯一键含软删行）
+      // 1. 自备前提：先插入一行活行
+      try (PreparedStatement ps =
+          c.prepareStatement(
+              "INSERT INTO kb_retrieval_strategy"
+                  + " (kb_id, strategy_key, config_value, version, is_deleted)"
+                  + " VALUES (1, 'rag.retrieval.topK', '8', 1, 0)")) {
+        ps.executeUpdate();
+      }
+      // 2. 软删该行后，同 key 仍不得新建（复活语义：软删行保留，唯一键含软删行）
       try (PreparedStatement ps =
           c.prepareStatement(
               "UPDATE kb_retrieval_strategy SET is_deleted=1 WHERE kb_id=1 AND strategy_key='rag.retrieval.topK'")) {
         ps.executeUpdate();
       }
+      // 3. 断言同 key 再次插入必撞唯一约束
       try (PreparedStatement ps =
           c.prepareStatement(
               "INSERT INTO kb_retrieval_strategy"

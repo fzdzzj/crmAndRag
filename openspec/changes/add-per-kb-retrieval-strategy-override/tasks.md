@@ -7,6 +7,7 @@
 - 门禁 raw 留证位置：work/_pac-gate-raw/（mvn-test.raw / 四静态 / baseline / 三自测 / merge-gate）
 - surefire 基线变化：1019 → 1048（只增 +29；test-baseline.txt 更新来自一次真实运行 `--update`，surefire.reports 172→178，failsafe 不降保持 24/83/6）
 - 未跑项明列：Testcontainers 系 IT（KbRetrievalStrategyIT 等）因本机 Docker 不可用（`docker info` exit 1）整类 assumeTrue 优雅跳（B 组）；[it]/failsafe 未重跑（沿用 P-ab 时 24/83/6 基线，failsafe 不降）；真实模型外呼零涉及（DASHSCOPE_API_KEY 置空）
+- CI 红修复（CI Run 37886148663）：FlywayMigrationIT EXPECTED_VERSIONS 补登 V29（14→15）；KbRetrievalStrategyIT @BeforeEach 清理 + softDeleteRowSharesSameKeyAndReviveUpdates 自备活行前提，解决测试间数据残留与顺序依赖；本地 Docker 实测全绿。
 
 ## 1. 存储层（V29 + 实体 + Mapper）
 
