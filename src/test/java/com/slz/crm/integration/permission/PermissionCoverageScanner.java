@@ -42,7 +42,7 @@ public final class PermissionCoverageScanner {
 
   private static final String SCAN_BASE_PACKAGE = "com.slz.crm";
 
-  /** controller 登记清单（简单类名 → 全限定类名，按类名字母序）：server/controller 27 + platform/config 1 = 28。 */
+  /** controller 登记清单（简单类名 → 全限定类名，按类名字母序）：server/controller 27 + platform/config 2 = 29。 */
   public static final Map<String, Class<?>> CONTROLLER_REGISTRY = buildRegistry();
 
   private PermissionCoverageScanner() {}
@@ -272,6 +272,9 @@ public final class PermissionCoverageScanner {
     registry.put(
         "ContractOrderItemController",
         clazz("com.slz.crm.server.controller.ContractOrderItemController"));
+    registry.put(
+        "CostKeyChangeRequestController",
+        clazz("com.slz.crm.platform.config.controller.CostKeyChangeRequestController"));
     registry.put(
         "CustomerCompanyController",
         clazz("com.slz.crm.server.controller.CustomerCompanyController"));

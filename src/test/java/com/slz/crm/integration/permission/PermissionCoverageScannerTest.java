@@ -155,4 +155,16 @@ class PermissionCoverageScannerTest {
         counts.entrySet().stream().filter(e -> e.getValue() > 1).map(Map.Entry::getKey).toList();
     assertTrue(dupes.isEmpty(), "存在重复端点 key（METHOD path）可能导致路由歧义：" + dupes);
   }
+
+  @Test
+  void costKeyChangeRequestControllerAllEndpointsSecured() {
+    List<EndpointCoverage> endpoints =
+        endpointsOf(com.slz.crm.platform.config.controller.CostKeyChangeRequestController.class);
+    assertEquals(5, endpoints.size(), "CostKeyChangeRequestController 实测 5 个端点");
+    assertTrue(endpoints.stream().allMatch(EndpointCoverage::secured), "5 个端点必须全挂注解");
+    assertTrue(
+        endpoints.stream()
+            .allMatch(e -> "PLATFORM_DYNAMIC_CONFIG_MANAGE".equals(e.permissionName())),
+        "5 端点必须全挂 PLATFORM_DYNAMIC_CONFIG_MANAGE(608)");
+  }
 }
