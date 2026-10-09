@@ -235,20 +235,22 @@ public class CostKeyChangeRequestServiceImpl implements CostKeyChangeRequestServ
   }
 
   private CostKeyChangeRequestVO toVO(CostKeyChangeRequestEntity entity) {
-    if (entity == null) {
-      return null;
+    CostKeyChangeRequestVO vo = null;
+    if (entity != null) {
+      vo =
+          new CostKeyChangeRequestVO(
+              entity.getId(),
+              entity.getConfigKey(),
+              entity.getRequestedValue(),
+              entity.getReason(),
+              entity.getStatus(),
+              entity.getRequesterId(),
+              entity.getApproverId(),
+              entity.getRejectReason(),
+              entity.getCreatedAt(),
+              entity.getDecidedAt(),
+              entity.getAppliedConfigVersion());
     }
-    return new CostKeyChangeRequestVO(
-        entity.getId(),
-        entity.getConfigKey(),
-        entity.getRequestedValue(),
-        entity.getReason(),
-        entity.getStatus(),
-        entity.getRequesterId(),
-        entity.getApproverId(),
-        entity.getRejectReason(),
-        entity.getCreatedAt(),
-        entity.getDecidedAt(),
-        entity.getAppliedConfigVersion());
+    return vo;
   }
 }
