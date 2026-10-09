@@ -15,6 +15,7 @@ import com.slz.crm.knowledge.entity.KnowledgeBaseEntity;
 import com.slz.crm.knowledge.entity.KnowledgeBaseMemberEntity;
 import com.slz.crm.knowledge.entity.UploadedFileEntity;
 import com.slz.crm.platform.audit.PlatformGovernanceAuditEntity;
+import com.slz.crm.platform.config.entity.CostKeyChangeRequestEntity;
 import com.slz.crm.platform.config.entity.DynamicConfigHistoryEntity;
 import com.slz.crm.platform.config.entity.DynamicConfigItemEntity;
 import com.slz.crm.platform.lifecycle.PlatformLifecycleEventEntity;
@@ -85,7 +86,10 @@ public final class SchemaDriftAuditor {
   /** 内嵌/匿名类不入审计（防御：测试夹具类即使带 @TableName 也不污染扫描计数）。 */
   private static final String SCAN_BASE_PACKAGE = "com.slz.crm";
 
-  /** 实体登记清单（表名 → 实体类，按表名升序）：pojo/entity 38 + knowledge/entity 9 + platform 8 = 55。 */
+  /**
+   * 实体登记清单（表名 → 实体类，按表名升序）：pojo/entity 38 + knowledge/entity 9 + platform 9 = 56（本卡新增
+   * cost_key_change_request）。
+   */
   public static final Map<String, Class<?>> ENTITY_REGISTRY = buildRegistry();
 
   private SchemaDriftAuditor() {}
@@ -227,6 +231,7 @@ public final class SchemaDriftAuditor {
     registry.put("contact_task", ContactTaskEntity.class);
     registry.put("contract", ContractEntity.class);
     registry.put("contract_order_item", ContractOrderItemEntity.class);
+    registry.put("cost_key_change_request", CostKeyChangeRequestEntity.class);
     registry.put("customer_company", CustomerCompanyEntity.class);
     registry.put("customer_company_log", CustomerCompanyLogEntity.class);
     registry.put("customer_contact", CustomerContactEntity.class);
