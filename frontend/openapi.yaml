@@ -1751,6 +1751,117 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultConfigItemView"
+  /platform/config/cost-requests:
+    get:
+      tags:
+      - cost-key-change-request-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 10
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: configKey
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageCostKeyChangeRequestVO"
+    post:
+      tags:
+      - cost-key-change-request-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CostKeyChangeRequestSubmitReq"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultCostKeyChangeRequestVO"
+  /platform/config/cost-requests/{id}/withdraw:
+    post:
+      tags:
+      - cost-key-change-request-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultCostKeyChangeRequestVO"
+  /platform/config/cost-requests/{id}/reject:
+    post:
+      tags:
+      - cost-key-change-request-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CostKeyChangeRequestRejectReq"
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultCostKeyChangeRequestVO"
+  /platform/config/cost-requests/{id}/approve:
+    post:
+      tags:
+      - cost-key-change-request-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultCostKeyChangeRequestVO"
   /platform/config/cache/refresh:
     post:
       tags:
@@ -6353,6 +6464,61 @@ components:
           format: int32
         remark:
           type: string
+    CostKeyChangeRequestSubmitReq:
+      type: object
+      properties:
+        configKey:
+          type: string
+        requestedValue:
+          type: string
+        reason:
+          type: string
+    CostKeyChangeRequestVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        configKey:
+          type: string
+        requestedValue:
+          type: string
+        reason:
+          type: string
+        status:
+          type: string
+        requesterId:
+          type: integer
+          format: int64
+        approverId:
+          type: integer
+          format: int64
+        rejectReason:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        decidedAt:
+          type: string
+          format: date-time
+        appliedConfigVersion:
+          type: integer
+          format: int64
+    ResultCostKeyChangeRequestVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/CostKeyChangeRequestVO"
+    CostKeyChangeRequestRejectReq:
+      type: object
+      properties:
+        rejectReason:
+          type: string
     RoleANDPermissionDTO:
       type: object
       properties:
@@ -7933,6 +8099,54 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ConfigHistoryView"
+    PageCostKeyChangeRequestVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/CostKeyChangeRequestVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    ResultPageCostKeyChangeRequestVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PageCostKeyChangeRequestVO"
     ResultPermissionGroupedVO:
       type: object
       properties:
