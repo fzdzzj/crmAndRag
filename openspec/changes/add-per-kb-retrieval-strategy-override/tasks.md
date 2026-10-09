@@ -2,7 +2,7 @@
 
 ## 0. 执行记录（执行 agent 填，复核 agent 核）
 
-- 分支 / 基线 / 合并节点：feature/add-per-kb-retrieval-strategy-override / 基线 master@9379420 / 合并节点 ________（双亲 = 9379420 + feature 顶端，master 收口笔回填）
+- 分支 / 基线 / 合并节点：feature/add-per-kb-retrieval-strategy-override / 基线 master@9379420 / 合并节点 fc24dc6（双亲 = 9379420 + 6cdd484，master 收口笔回填）
 - 红测试先行：实施前在基线 master@9379420 实跑本卡新测试贴红（红输出归档 work/_pac-red-first/）：V29 表不存在（KbRetrievalStrategyMigrationContractTest「缺少 V29__kb_retrieval_strategy.sql…存储层表不存在」）、端点 404（KnowledgeAdminStrategyEndpointTest 4 用例全 404 CLIENT_ERROR）、服务/白名单未实现（KbRetrievalStrategyService/Whitelist 编译期找不到符号）；见 red-migration.log / red-endpoint404.log / red-runtime.log
 - 门禁 raw 留证位置：work/_pac-gate-raw/（mvn-test.raw / 四静态 / baseline / 三自测 / merge-gate）
 - surefire 基线变化：1019 → 1048（只增 +29；test-baseline.txt 更新来自一次真实运行 `--update`，surefire.reports 172→178，failsafe 不降保持 24/83/6）
@@ -51,7 +51,7 @@
 
 - [x] 7.1 提交按任务组分组（feat/4-5 笔：存储层 / 白名单与读端 / 写端 / 文档与台账 / 基线台账更新），中文提交信息，新代码中文 Javadoc 标注「add-per-kb-retrieval-strategy-override 任务 x.x」
 - [x] 7.2 笔 N docs(openspec)：本卡 tasks.md 1.x-6.x/7.1-7.2 勾选 + §0 填齐
-- [ ] 7.3 切 master → merge --no-ff（分支保留）→ git status 双确认 CLEAN
+- [x] 7.3 切 master → merge --no-ff（分支保留）→ git status 双确认 CLEAN（合并节点 fc24dc6，feature 分支保留在册）
 - [ ] 7.4 master 收口笔：§0 回填合并节点 hash + 7.3 勾选
 - [ ] 7.5 严格停步回报（绝对禁止 git push）
       预注册（本卡 spec-delta 契约 6）：本格与 §8 复核区为终态未勾，回补载体为 owner 指定的后续 master 前向提交，带此注记的未勾格不构成悬空。
