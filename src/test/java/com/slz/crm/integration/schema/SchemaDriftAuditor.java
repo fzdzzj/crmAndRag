@@ -9,6 +9,8 @@ import com.slz.crm.knowledge.entity.BatchFileResultEntity;
 import com.slz.crm.knowledge.entity.BatchTaskEntity;
 import com.slz.crm.knowledge.entity.ChunkUploadSessionEntity;
 import com.slz.crm.knowledge.entity.DocumentVectorChunkEntity;
+import com.slz.crm.knowledge.entity.KbRetrievalStrategy;
+import com.slz.crm.knowledge.entity.KbRetrievalStrategyHistory;
 import com.slz.crm.knowledge.entity.KnowledgeBaseEntity;
 import com.slz.crm.knowledge.entity.KnowledgeBaseMemberEntity;
 import com.slz.crm.knowledge.entity.UploadedFileEntity;
@@ -76,14 +78,14 @@ import org.springframework.core.type.filter.AnnotationTypeFilter;
  * TableInfoHelper#initTableInfo} 走运行期同一套映射 （{@code @TableId} 计入、{@code @TableField} 显式列名优先、{@code
  * exist=false} 排除、驼峰转下划线）， 不做正则解析 Java 源码。
  *
- * <p><b>登记清单</b>：{@link #ENTITY_REGISTRY} 为 53 张实体表权威清单；扫描结果与登记不一致即抛错—— 新实体必须同步登记，防止漏审。
+ * <p><b>登记清单</b>：{@link #ENTITY_REGISTRY} 为 55 张实体表权威清单；扫描结果与登记不一致即抛错—— 新实体必须同步登记，防止漏审。
  */
 public final class SchemaDriftAuditor {
 
   /** 内嵌/匿名类不入审计（防御：测试夹具类即使带 @TableName 也不污染扫描计数）。 */
   private static final String SCAN_BASE_PACKAGE = "com.slz.crm";
 
-  /** 实体登记清单（表名 → 实体类，按表名升序）：pojo/entity 38 + knowledge/entity 7 + platform 8 = 53。 */
+  /** 实体登记清单（表名 → 实体类，按表名升序）：pojo/entity 38 + knowledge/entity 9 + platform 8 = 55。 */
   public static final Map<String, Class<?>> ENTITY_REGISTRY = buildRegistry();
 
   private SchemaDriftAuditor() {}
@@ -238,6 +240,8 @@ public final class SchemaDriftAuditor {
     registry.put("invoice_info", InvoiceInfoEntity.class);
     registry.put("knowledge_base", KnowledgeBaseEntity.class);
     registry.put("knowledge_base_member", KnowledgeBaseMemberEntity.class);
+    registry.put("kb_retrieval_strategy", KbRetrievalStrategy.class);
+    registry.put("kb_retrieval_strategy_history", KbRetrievalStrategyHistory.class);
     registry.put("payment_record", PaymentRecordEntity.class);
     registry.put("permissions", PermissionsEntity.class);
     // 平台（platform）

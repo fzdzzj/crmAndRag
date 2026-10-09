@@ -45,7 +45,7 @@ class SchemaDriftAuditorTest {
     assertEquals(
         SchemaDriftAuditor.ENTITY_REGISTRY.size(),
         tables.size(),
-        "扫描实体数必须等于登记数（当前登记 53：pojo 38 / knowledge 7 / platform 8）");
+        "扫描实体数必须等于登记数（当前登记 55：pojo 38 / knowledge 9 / platform 8）");
     Set<String> scanned = new TreeSet<>();
     for (EntityTable table : tables) {
       scanned.add(table.tableName());

@@ -427,6 +427,57 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+  /knowledge/strategies/{key}:
+    put:
+      tags:
+      - knowledge-admin-controller
+      parameters:
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: kbId
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: string
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultKbRetrievalStrategyItem"
+    delete:
+      tags:
+      - knowledge-admin-controller
+      parameters:
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: kbId
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
   /invoice/info:
     put:
       tags:
@@ -1788,6 +1839,35 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageOrderVO"
+  /knowledge/strategies/{key}/rollback:
+    post:
+      tags:
+      - knowledge-admin-controller
+      parameters:
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: kbId
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: version
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
   /knowledge/retrieval/test:
     post:
       tags:
@@ -3431,6 +3511,24 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultOrderVO"
+  /knowledge/strategies:
+    get:
+      tags:
+      - knowledge-admin-controller
+      parameters:
+      - name: kbId
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListKbRetrievalStrategyItem"
   /knowledge/files/{id}:
     get:
       tags:
@@ -5253,6 +5351,30 @@ components:
         data:
           type: integer
           format: int32
+    KbRetrievalStrategyItem:
+      type: object
+      properties:
+        key:
+          type: string
+        source:
+          type: string
+        effectiveValue:
+          type: string
+        storedOverride:
+          type: string
+        version:
+          type: integer
+          format: int32
+    ResultKbRetrievalStrategyItem:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/KbRetrievalStrategyItem"
     InvoiceInfoDTO:
       type: object
       properties:
@@ -7873,6 +7995,18 @@ components:
           type: string
         data:
           $ref: "#/components/schemas/OrderVO"
+    ResultListKbRetrievalStrategyItem:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/KbRetrievalStrategyItem"
     KnowledgeFileVO:
       type: object
       properties:

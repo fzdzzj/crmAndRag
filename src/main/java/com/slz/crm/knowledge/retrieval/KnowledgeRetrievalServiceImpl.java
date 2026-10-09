@@ -88,6 +88,10 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
   /** 多查询/HyDE 变体路协作类（任务 6.3 拆出）。 */
   private final VariantRouteCollaborator variantRoutes;
 
+  /** per-KB 覆盖读取服务（add-per-kb-retrieval-strategy-override 任务 3.3；字段注入以免改兼容构造签名）。 */
+  @Autowired(required = false)
+  private KbRetrievalStrategyService kbStrategyService;
+
   @Autowired
   public KnowledgeRetrievalServiceImpl(
       KnowledgeBaseAuthorizationService authorizationService,
@@ -116,7 +120,8 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
     this.multiQueryRewriteService = multiQueryRewriteService;
     this.hydeQueryExpander = hydeQueryExpander;
     this.routeExecutor = routeExecutor;
-    this.configResolver = new RetrievalConfigResolver(dynamicConfigProvider);
+    this.configResolver =
+        new RetrievalConfigResolver(dynamicConfigProvider, () -> kbStrategyService);
     this.variantRoutes =
         new VariantRouteCollaborator(
             embeddingService,
@@ -221,19 +226,26 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
     return result;
   }
 
-  /** 授权 KB 非空时的主检索链路：改写 → 多路文本召回融合 → 重排 → 文图融合 → 构建结果 */
+  /**
+   * 授权 KB 非空时的主检索链路：改写 → 多路文本召回融合 → 重排 → 文图融合 → 构建结果。
+   *
+   * <p>add-per-kb-retrieval-strategy-override 任务 3.3：授权收敛后 kbScope 恰 1 库时取该库 id 传入解析 重载（{@code
+   * singleKbId}，单库作用域才应用 per-KB 覆盖）；多库/全库/空 → null（走全局）。除该传参外主链路逻辑零改动。
+   */
   private KnowledgeRetrievalPort.RetrievalResult retrieveFromKnowledgeBases(
       KnowledgeRetrievalPort.RetrievalQuery query, List<Long> knowledgeBaseIds) {
+    Long singleKbId = knowledgeBaseIds.size() == 1 ? knowledgeBaseIds.get(0) : null;
     String retrievalQuery = queryRewriteService.rewrite(query.query());
     // D17 收尾（complete-hybrid-retrieval-and-rerank 任务 2.1）：意图类目两路同语义过滤，空 = 不过滤
     String category = normalizeCategory(query.intentCategory());
-    int topK = configResolver.resolveTopK(query.topK());
-    double minScore = configResolver.resolveMinScore();
-    int candidateLimit = topK * configResolver.resolveCandidateMultiplier();
+    int topK = configResolver.resolveTopK(query.topK(), singleKbId);
+    double minScore = configResolver.resolveMinScore(singleKbId);
+    int candidateLimit = topK * configResolver.resolveCandidateMultiplier(singleKbId);
     boolean hasImageVector = query.imageVector() != null && query.imageVector().length > 0;
 
     List<RetrievalCandidate> fusedTextCandidates =
-        recallAllTextRoutes(retrievalQuery, knowledgeBaseIds, category, candidateLimit, minScore);
+        recallAllTextRoutes(
+            retrievalQuery, knowledgeBaseIds, category, candidateLimit, minScore, singleKbId);
 
     Reranker reranker = activeReranker();
     List<RetrievalCandidate> textCandidates = reranker.rerank(retrievalQuery, fusedTextCandidates);
@@ -244,7 +256,7 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
                 recall(query.imageVector(), knowledgeBaseIds, category, candidateLimit, minScore))
             : List.of();
     List<RetrievalCandidate> candidates =
-        configResolver.fuseRoutes(textCandidates, imageCandidates).stream()
+        configResolver.fuseRoutes(textCandidates, imageCandidates, singleKbId).stream()
             .sorted(Comparator.comparingDouble(RetrievalCandidate::rerankScore).reversed())
             .limit(topK)
             .toList();
@@ -261,7 +273,8 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
       List<Long> knowledgeBaseIds,
       String category,
       int candidateLimit,
-      double minScore) {
+      double minScore,
+      Long singleKbId) {
     List<List<RetrievalCandidate>> routes = new ArrayList<>();
     List<String> constraintQueries = ConstraintQuerySplitter.split(retrievalQuery);
     for (String routeQuery : constraintQueries) {
@@ -272,9 +285,10 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
               knowledgeBaseIds,
               category,
               candidateLimit,
-              minScore));
+              minScore,
+              singleKbId));
     }
-    boolean multiRouteEnabled = configResolver.useRrfFusion() && rrfFusion != null;
+    boolean multiRouteEnabled = configResolver.useRrfFusion(singleKbId) && rrfFusion != null;
     List<CompletableFuture<List<RetrievalCandidate>>> variantFutures =
         multiRouteEnabled
             ? variantRoutes.submitVariantRoutes(
@@ -285,7 +299,7 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
           retrievalQuery, routes, knowledgeBaseIds, category, candidateLimit, minScore);
     }
     variantRoutes.collectVariantRoutes(routes, variantFutures);
-    return variantRoutes.fuseTextRoutes(routes, rrfFusion, configResolver.resolveRrfK());
+    return variantRoutes.fuseTextRoutes(routes, rrfFusion, configResolver.resolveRrfK(singleKbId));
   }
 
   /** 由最终候选集构建检索结果：空候选返回空结果，否则映射来源引用并携带上下文 */
@@ -306,10 +320,7 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
     return result;
   }
 
-  /**
-   * 文本路召回：向量路（按授权 KB 逐库过滤）+ 稀疏路 → 融合（任务 3.1/3.3）。 融合模式 {@code rag.retrieval.fusion.mode = rrf |
-   * weighted}（默认 rrf）； weighted = 升级前行为，稀疏路完全不参与。
-   */
+  /** 文本路召回（6 参版本，VariantRouteCollaborator 方法引用用）：多查询/HyDE 变体路走全局（singleKbId=null）。 */
   private List<RetrievalCandidate> recallTextRoute(
       String query,
       float[] queryVector,
@@ -317,10 +328,28 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
       String category,
       int candidateLimit,
       double minScore) {
+    return recallTextRoute(
+        query, queryVector, knowledgeBaseIds, category, candidateLimit, minScore, null);
+  }
+
+  /**
+   * 文本路召回（7 参版本）：同 6 参，额外带 per-KB 单库作用域 {@code singleKbId}（非单库传 null 走全局）。 融合模式 {@code
+   * rag.retrieval.fusion.mode = rrf | weighted}（默认 rrf）； weighted = 升级前行为，稀疏路完全不参与。
+   */
+  private List<RetrievalCandidate> recallTextRoute(
+      String query,
+      float[] queryVector,
+      List<Long> knowledgeBaseIds,
+      String category,
+      int candidateLimit,
+      double minScore,
+      Long singleKbId) {
     List<RetrievalCandidate> vectorCandidates =
         recall(queryVector, knowledgeBaseIds, category, candidateLimit, minScore);
     List<RetrievalCandidate> result;
-    if (sparseRecallService == null || rrfFusion == null || !configResolver.useRrfFusion()) {
+    if (sparseRecallService == null
+        || rrfFusion == null
+        || !configResolver.useRrfFusion(singleKbId)) {
       result = vectorCandidates;
     } else {
       List<RetrievalCandidate> sparseCandidates =
@@ -328,7 +357,9 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
       if (sparseCandidates.isEmpty()) {
         result = vectorCandidates;
       } else {
-        result = rrfFusion.fuse(vectorCandidates, sparseCandidates, configResolver.resolveRrfK());
+        result =
+            rrfFusion.fuse(
+                vectorCandidates, sparseCandidates, configResolver.resolveRrfK(singleKbId));
       }
     }
     return result;

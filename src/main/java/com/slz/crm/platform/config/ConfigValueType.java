@@ -31,11 +31,11 @@ public enum ConfigValueType {
    */
   public record Parsed(Object typed, String canonical, boolean valid, String errorMessage) {
 
-    static Parsed ok(Object typed, String canonical) {
+    public static Parsed ok(Object typed, String canonical) {
       return new Parsed(typed, canonical, true, null);
     }
 
-    static Parsed fail(String errorMessage) {
+    public static Parsed fail(String errorMessage) {
       return new Parsed(null, null, false, errorMessage);
     }
   }

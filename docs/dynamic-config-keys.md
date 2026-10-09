@@ -160,3 +160,22 @@
 > 调度与身份：由 IngestionReplayScheduler 固定 tick 调度（默认 60s），以 uploaded_file.userId 加载真实用户构造 UserContext 调用既有 reingest 入口，走既有 canWrite 授权与平台治理审计；上传者不存在、离职、冻结或无权限时转 FAILED 终态并记录审计，熔断仍开快速拒绝时保持 PENDING 下轮再试。
 
 
+## per-KB 覆盖（add-per-kb-retrieval-strategy-override）
+> 知识库级检索策略覆盖：对单个知识库覆盖检索参数。恰 12 键白名单（v1 封闭集，扩充需 owner 拍板并同步本清单）；三层合并 = 覆盖值 > 全局动态配置 > 注册表默认；仅当授权收敛后 kbScope 恰为单库时应用覆盖（多库/全库/kbId 不可解析一律走全局）。覆盖值非法/越界 = WARN 审计 + 回落全局，打不断检索。写端点复用 KNOWLEDGE_ADMIN_MANAGE(900)：GET /knowledge/strategies（清单含来源 override/global/default）、PUT /knowledge/strategies/{key}（单键覆盖）、DELETE /knowledge/strategies/{key}（软删回落全局）、POST /knowledge/strategies/{key}/rollback（按版本回滚）。热失效：写后逐键失效 + 有界全量刷新兜底。
+
+| 键 | 类型 | 默认值 | 语义与回退 |
+|---|---|---|---|
+| rag.retrieval.topK | Integer | 5 | 单库覆盖返回候选片段数（1~100，越界回落全局） |
+| rag.retrieval.minScore | Double | 0.20 | 单库检索相关度阈值（0~1，越界回落全局） |
+| rag.retrieval.fusion.mode | String | rrf | 单库融合模式（rrf/weighted） |
+| rag.retrieval.fusion.rrf-k | Integer | 60 | 单库 RRF 常数 k |
+| rag.retrieval.rerank.vector-weight | Double | 0.60 | 单库重排向量权重（0~1） |
+| rag.retrieval.rerank.bm25-weight | Double | 0.40 | 单库重排 BM25 权重（0~1） |
+| rag.retrieval.rerank.candidate-multiplier | Integer | 4 | 单库候选倍数 |
+| rag.retrieval.image-text-route-weight | Double | 0.70 | 单库图文路由文本路权重（0~1） |
+| rag.retrieval.image-vector-route-weight | Double | 0.30 | 单库图文路由图片路权重（0~1） |
+| rag.context.neighbors | Integer | 1 | 单库邻居增强开关（0/1） |
+| rag.context.parent-expand | String | on | 单库父块展开开关（on/off） |
+| rag.retrieval.query-rewrite.enabled | Boolean | true | 单库查询改写开关 |
+
+> 成本类（rerank.mode=llm、compressor.mode=llm、multi-query.*、hyde.*、derived-questions.*、vision-pdf.*、replay-*）与结构类（chunking.*、chunkSize/chunkOverlap）永远不得进入 per-KB 覆盖——封闭集白名单外键写入被拒。
