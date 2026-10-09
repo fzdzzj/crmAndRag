@@ -47,7 +47,8 @@
 ## 6. 提交与合并
 
 - [x] 6.1 提交按任务组分组（feat 6 笔：V31+实体 / 服务层状态机+单测 / 控制器+矩阵+IT / 文档 / SchemaDrift 登记 / PMD 修复 + test-baseline），中文提交信息，新代码中文 Javadoc 标注「add-cost-key-approval-workflow 任务 x.x」
-- [ ] 6.2 笔 N docs(openspec)：本卡三件套入库 + tasks.md 1.x-5.x / 6.1-6.3 勾选 + §0 填齐
+- [x] 6.2 笔 N docs(openspec)：本卡三件套入库 + tasks.md 1.x-5.x / 6.1-6.3 勾选 + §0 填齐
+      补勾依据（2026-10-09 复核终审修正）：笔 N（d4dcbea）已实际完成三件套入库、1.2-5.7 与 6.1 勾选、§0 填齐（git show d4dcbea 勾选 diff 逐行核实），收口笔 273525e 漏勾本格；由复核子agent 只读终审发现、主 agent 核实后前向补勾。
 - [x] 6.3 切 master → merge --no-ff（7def7b0，分支保留）→ git status 双确认 CLEAN
 - [x] 6.4 master 收口笔：§0 回填合并节点 hash 7def7b0 + 6.3 勾选
 - [ ] 6.5 严格停步回报（绝对禁止 git push）
