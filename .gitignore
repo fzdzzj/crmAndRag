@@ -16,6 +16,9 @@ build/
 *.iml
 .vscode/
 .qoder/
+.trae/
+.trae-tmp/
+.workbuddy/
 
 # ---- 日志 / 临时 ----
 logs/
