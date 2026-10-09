@@ -64,7 +64,7 @@
   - 角色：主干所在，代码实现、分支检出、所有门禁运行（Maven / Docker / 门禁脚本）、合并与 push 唯一法定工作树。
   - 判别命令：`git branch --show-current` 为 `master`，且 `git remote -v` 存在 `origin`。
 - **主协作树 / 观察树**（`crmAndRag`）：
-  - 角色：承载 `docs/main-agent-execution.md`（权威流水账）与 `work/`（任务卡与交接快照），严禁在此直接修改 `src/` 或执行代码合并。`frontend/typed-router.d.ts` 为他人改动，严禁碰触。
+  - 角色：承载 `docs/main-agent-logbook.md`（实时执行日志，未跟踪）与 `work/`（任务卡与交接快照）；`docs/main-agent-execution.md` 已收敛为 master 上的方法论手册，严禁在此直接修改 `src/` 或执行代码合并。`frontend/typed-router.d.ts` 为他人改动，严禁碰触。
 - **分支与合并纪律**：
   - 子 agent 实现代码一律从权威树 `master` 检出 `feature/<card-name>` 分支；
   - 验证全绿后以 `git merge --no-ff` 合入 master，保留分支；
