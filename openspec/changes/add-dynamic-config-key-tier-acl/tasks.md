@@ -2,7 +2,7 @@
 
 ## 0. 执行记录（执行 agent 填，复核 agent 核）
 
-- 分支 / 基线 / 合并节点：feature/add-dynamic-config-key-tier-acl / 基线 master@a109e51 / 合并节点 ________（双亲 = a109e51 + ________，master 收口笔回填）
+- 分支 / 基线 / 合并节点：feature/add-dynamic-config-key-tier-acl / 基线 master@a109e51 / 合并节点 57253ef（双亲 = a109e51 + 7614b0d，master 收口笔回填）
 - 红测试先行：实施前在基线 master@a109e51 实跑本卡新测试贴红（红输出归档 work/_pad-red-first/）：608 常量缺失（反射断言）、7 端点注解缺失（扫描断言）、行为红（非超管读 /items 与非超管写运营档键 topK 现基线均 FORBIDDEN 96005）、覆盖矩阵档位红（7 端点现 INTENTIONAL_OPEN）；见 red-constant.log / red-annotation.log / red-behavior.log / red-matrix.log
 - 门禁 raw 留证位置：work/_pad-gate-raw/（mvn-test.raw / 四静态 / baseline / 三自测 / merge-gate；一律显式 UTF-8 无 BOM 写出）
 - surefire 基线变化：1048 → 1058（只增，红测试全转绿；test-baseline.txt 更新来自一次真实运行 `--update`，failsafe 实际 25/87/6，较立项预估 24/83/6 只增不降（含 P-ac CI 修复轮 2 份 10-09 报告合法沿用））
@@ -52,8 +52,8 @@
 
 - [x] 6.1 提交按任务组分组（feat 4-5 笔：常量与定级 + census 测试 / V30 种子（或并入前笔）/ ACL 与端点注解 + 矩阵迁移 / 单测与 IT / 文档），中文提交信息，新代码中文 Javadoc 标注「add-dynamic-config-key-tier-acl 任务 x.x」
 - [x] 6.2 笔 N docs(openspec)：本卡 tasks.md 1.x-5.x / 6.1-6.3 勾选 + §0 填齐
-- [ ] 6.3 切 master → merge --no-ff（分支保留）→ git status 双确认 CLEAN
-- [ ] 6.4 master 收口笔：§0 回填合并节点 hash + 6.3 勾选
+- [x] 6.3 切 master → merge --no-ff（分支保留）→ git status 双确认 CLEAN
+- [x] 6.4 master 收口笔：§0 回填合并节点 hash + 6.3 勾选
 - [ ] 6.5 严格停步回报（绝对禁止 git push）
       预注册（本卡 spec-delta 契约 6）：本格与 §7 复核区为终态未勾，回补载体为 owner 指定的后续 master 前向提交，带此注记的未勾格不构成悬空。
 
