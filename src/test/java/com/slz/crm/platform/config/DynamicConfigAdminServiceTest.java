@@ -174,12 +174,12 @@ class DynamicConfigAdminServiceTest {
   // ==================== 越权 ====================
 
   @Test
-  @DisplayName("非超管写被拒（FORBIDDEN），零 DB 写入零历史零审计")
+  @DisplayName("非超管写结构档键被拒（FORBIDDEN 96005），零 DB 写入零历史零审计")
   void nonSuperAdminWriteRejected() {
     UserContextHolder.runWith(
         normalUser(),
         () ->
-            assertThatThrownBy(() -> service.updateValue("rag.retrieval.topK", "8", ""))
+            assertThatThrownBy(() -> service.updateValue("rag.retrieval.chunkSize", "600", ""))
                 .isInstanceOf(ServiceException.class)
                 .extracting(e -> ((ServiceException) e).getCode())
                 .isEqualTo(PlatformErrorCode.FORBIDDEN.getCode()));
@@ -198,24 +198,81 @@ class DynamicConfigAdminServiceTest {
         .isEqualTo(PlatformErrorCode.UNAUTHORIZED.getCode());
   }
 
+  // ==================== add-dynamic-config-key-tier-acl 红锚（任务 1.1/2.2） ====================
+
   @Test
-  @DisplayName("非超管读（列表/历史/回滚/刷新）同样被拒")
-  void nonSuperAdminReadRejected() {
+  @DisplayName("红锚→绿：非超管读配置中心在服务层放行（608 由方法级注解承接）")
+  void nonSuperAdminCanReadConfigAtServiceLayer() {
     UserContextHolder.runWith(
         normalUser(),
         () -> {
-          assertThatThrownBy(() -> service.listItems("rag.retrieval"))
-              .isInstanceOf(ServiceException.class)
-              .extracting(e -> ((ServiceException) e).getCode())
-              .isEqualTo(PlatformErrorCode.FORBIDDEN.getCode());
-          assertThatThrownBy(() -> service.history("rag.retrieval.topK"))
-              .isInstanceOf(ServiceException.class)
-              .extracting(e -> ((ServiceException) e).getCode())
-              .isEqualTo(PlatformErrorCode.FORBIDDEN.getCode());
-          assertThatThrownBy(() -> service.refreshCache())
-              .isInstanceOf(ServiceException.class)
-              .extracting(e -> ((ServiceException) e).getCode())
-              .isEqualTo(PlatformErrorCode.FORBIDDEN.getCode());
+          assertThat(service.listItems("rag.retrieval")).isNotEmpty();
+          assertThat(service.getItem("rag.retrieval.topK")).isNotNull();
+          assertThat(service.history("rag.retrieval.topK")).isNotNull();
+          assertThat(service.refreshCache()).isGreaterThanOrEqualTo(0);
+        });
+  }
+
+  @Test
+  @DisplayName("红锚→绿：非超管写运营档键在服务层放行（OPERATIONAL 键 608 可写）")
+  void nonSuperAdminCanWriteOperationalKeyAtServiceLayer() {
+    UserContextHolder.runWith(
+        normalUser(),
+        () -> {
+          ConfigItemView view = service.updateValue("rag.retrieval.topK", "8", "运营档放行");
+          assertThat(view.version()).isEqualTo(1);
+          assertThat(view.value()).isEqualTo("8");
+        });
+  }
+
+  // ==================== 三档判定矩阵（add-dynamic-config-key-tier-acl 任务 2.3） ====================
+
+  @Test
+  @DisplayName("档位矩阵：非超管写成本档键被拒（rerank.mode → FORBIDDEN），零 DB 写入")
+  void nonSuperAdminCostKeyWriteRejected() {
+    UserContextHolder.runWith(
+        normalUser(),
+        () ->
+            assertThatThrownBy(
+                    () -> service.updateValue("rag.retrieval.rerank.mode", "llm", "成本档越权"))
+                .isInstanceOf(ServiceException.class)
+                .extracting(e -> ((ServiceException) e).getCode())
+                .isEqualTo(PlatformErrorCode.FORBIDDEN.getCode()));
+    verify(itemMapper, never()).insert(any());
+  }
+
+  @Test
+  @DisplayName("档位矩阵：非超管回滚成本档键被拒（FORBIDDEN，档位闸先于历史查找）")
+  void nonSuperAdminRollbackCostKeyRejected() {
+    UserContextHolder.runWith(
+        normalUser(),
+        () ->
+            assertThatThrownBy(() -> service.rollback("ai.model.chatModel", 1, ""))
+                .isInstanceOf(ServiceException.class)
+                .extracting(e -> ((ServiceException) e).getCode())
+                .isEqualTo(PlatformErrorCode.FORBIDDEN.getCode()));
+  }
+
+  @Test
+  @DisplayName("档位矩阵：非超管删除成本档键覆盖被拒（FORBIDDEN，档位闸先于行查找）")
+  void nonSuperAdminDeleteOverrideCostKeyRejected() {
+    UserContextHolder.runWith(
+        normalUser(),
+        () ->
+            assertThatThrownBy(() -> service.deleteOverride("ai.model.chatModel", ""))
+                .isInstanceOf(ServiceException.class)
+                .extracting(e -> ((ServiceException) e).getCode())
+                .isEqualTo(PlatformErrorCode.FORBIDDEN.getCode()));
+  }
+
+  @Test
+  @DisplayName("档位矩阵：超管写成本档键仍放行（档位闸对超管直通，语义与升级前一致）")
+  void superAdminCanStillWriteCostKey() {
+    UserContextHolder.runWith(
+        admin(),
+        () -> {
+          ConfigItemView view = service.updateValue("ai.model.chatModel", "qwen-turbo", "超管调档");
+          assertThat(view.version()).isEqualTo(1);
         });
   }
 

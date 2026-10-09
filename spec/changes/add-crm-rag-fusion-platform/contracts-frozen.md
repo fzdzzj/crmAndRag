@@ -89,7 +89,7 @@
 - C 需自建聊天图片存储 + 按 hash 持久化 L1 理解（对齐 D13"imageRef 指向的图/理解需可恢复"）。引用 KB 文档图 / CRM 附件图是后续功能，本期不做。
 
 ## 10. DynamicConfigService（E 实现 / B/C/D 消费）
-- `get(key, type, default)` + 命名空间 `ai.prompt.*`/`ai.model.*`/`rag.retrieval.*`/`rag.intent.*`/`business.*`；含意图类目/`strict-KB`/图片缓存上限/限流配额阈值。仅超管可写、热生效、校验护栏、版本回滚、审计。
+- `get(key, type, default)` + 命名空间 `ai.prompt.*`/`ai.model.*`/`rag.retrieval.*`/`rag.intent.*`/`business.*`；含意图类目/`strict-KB`/图片缓存上限/限流配额阈值。运营档键 608 可写、成本/结构档键超管专写（add-dynamic-config-key-tier-acl，owner 2026-10-09 拍板解冻）、热生效、校验护栏、版本回滚、审计。
 
 ## 11. PlatformErrorCode（全集，base 核对+补）
 `UNAUTHORIZED`(现网 96003=请先登录) · `FORBIDDEN` · `RATE_LIMITED` · `QUOTA_EXCEEDED` · `TOKEN_BUDGET_EXCEEDED` · `CONTENT_RISK` · `VALIDATION` · `DEPENDENCY_UNAVAILABLE` · **`RESUME_UNAVAILABLE`(新)** · `INTERNAL`。

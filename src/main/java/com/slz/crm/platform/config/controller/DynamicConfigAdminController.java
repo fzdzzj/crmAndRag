@@ -1,5 +1,7 @@
 package com.slz.crm.platform.config.controller;
 
+import com.slz.crm.common.annotation.RequirePermission;
+import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.result.Result;
 import com.slz.crm.platform.config.ConfigHistoryView;
 import com.slz.crm.platform.config.ConfigItemView;
@@ -17,9 +19,9 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 超级管理员动态配置中心 REST 接口（任务 16）。
  *
- * <p>权限：本控制器所有端点仅超级管理员（roleId=1）可访问——越权由 {@link DynamicConfigAdminService} 统一判定并抛
- * FORBIDDEN(96005)（未登录 UNAUTHORIZED(96003)）， 由既有 {@code GlobalExceptionHandler} 封装为统一 {@link
- * Result} 返回。
+ * <p>权限（add-dynamic-config-key-tier-acl 任务 3.1）：7 端点统一挂方法级 {@code
+ * * @RequirePermission(PLATFORM_DYNAMIC_CONFIG_MANAGE(608))}——608 持有者可读、可刷新缓存、运营档（OPERATIONAL）
+ * 键可写；成本/结构档（COST/STRUCTURAL）键仍由服务层档位闸超管专写（FORBIDDEN 96005）。超管（roleId=1）由拦截器直通。
  *
  * <p>约定：{@code value} 字段对敏感键返回掩码（{@code ******}）；写路径校验失败返回 VALIDATION(96007) 且不产生任何变更。响应统一 {@link
  * Result}（code=1 成功）。
@@ -42,24 +44,28 @@ public class DynamicConfigAdminController {
    * @param namespace 命名空间（ai.prompt/ai.model/rag.retrieval/rag.intent/business）；空 = 全部
    */
   @GetMapping("/items")
+  @RequirePermission(PermissionOperates.PLATFORM_DYNAMIC_CONFIG_MANAGE)
   public Result<List<ConfigItemView>> list(@RequestParam(required = false) String namespace) {
     return Result.success(adminService.listItems(namespace));
   }
 
   /** 查询单个配置项详情（敏感值掩码） */
   @GetMapping("/items/{key}")
+  @RequirePermission(PermissionOperates.PLATFORM_DYNAMIC_CONFIG_MANAGE)
   public Result<ConfigItemView> detail(@PathVariable String key) {
     return Result.success(adminService.getItem(key));
   }
 
   /** 查询配置键的版本历史（按版本倒序；旧/新值对敏感键掩码） */
   @GetMapping("/items/{key}/history")
+  @RequirePermission(PermissionOperates.PLATFORM_DYNAMIC_CONFIG_MANAGE)
   public Result<List<ConfigHistoryView>> history(@PathVariable String key) {
     return Result.success(adminService.history(key));
   }
 
   /** 更新（或首次创建/复活）配置项：写前过校验护栏，非法值拒绝并保持原值 */
   @PostMapping("/items")
+  @RequirePermission(PermissionOperates.PLATFORM_DYNAMIC_CONFIG_MANAGE)
   public Result<ConfigItemView> update(@RequestBody ConfigUpdateRequest request) {
     return Result.success(
         adminService.updateValue(request.getKey(), request.getValue(), request.getRemark()));
@@ -67,6 +73,7 @@ public class DynamicConfigAdminController {
 
   /** 回滚到指定历史版本（回滚本身也留痕并热生效） */
   @PostMapping("/items/{key}/rollback")
+  @RequirePermission(PermissionOperates.PLATFORM_DYNAMIC_CONFIG_MANAGE)
   public Result<ConfigItemView> rollback(
       @PathVariable String key, @RequestBody ConfigRollbackRequest request) {
     Integer targetVersion = request.getVersion();
@@ -84,6 +91,7 @@ public class DynamicConfigAdminController {
 
   /** 软删除配置项 = 恢复静态默认（历史保留可回滚/复活） */
   @DeleteMapping("/items/{key}")
+  @RequirePermission(PermissionOperates.PLATFORM_DYNAMIC_CONFIG_MANAGE)
   public Result<ConfigItemView> delete(
       @PathVariable String key, @RequestParam(required = false) String remark) {
     return Result.success(adminService.deleteOverride(key, remark));
@@ -91,6 +99,7 @@ public class DynamicConfigAdminController {
 
   /** 手动触发缓存全量刷新（多实例兜底手段），返回刷新后条目数 */
   @PostMapping("/cache/refresh")
+  @RequirePermission(PermissionOperates.PLATFORM_DYNAMIC_CONFIG_MANAGE)
   public Result<Integer> refreshCache() {
     return Result.success(adminService.refreshCache());
   }
