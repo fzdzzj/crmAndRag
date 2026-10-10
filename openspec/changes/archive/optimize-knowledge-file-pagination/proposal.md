@@ -53,7 +53,7 @@
   2. `src/main/java/com/slz/crm/server/service/KnowledgeAdminService.java`
   3. `src/test/java/com/slz/crm/server/service/KnowledgeAdminServiceTest.java`
   4. `scripts/test-baseline.txt`（仅由基线脚本按真实增加用例写入）
-  5. `openspec/changes/optimize-knowledge-file-pagination/`（提案三件套）
+  5. `openspec/changes/archive/optimize-knowledge-file-pagination/`（提案三件套）
   6. `work/task-card-knowledge-file-pagination.md`（任务卡）
 - **零破坏边界**：
   - 零 DDL 修改（无需新增数据库迁移，复用现有表结构与索引）；

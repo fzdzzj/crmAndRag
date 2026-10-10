@@ -56,4 +56,4 @@
 ## 4. 边界与风险
 
 - **零破坏**：本项改动仅涉及代码书写规范与配置豁免，不改变组件 DOM 结构与响应式逻辑；
-- **环境隔离**：仅改动 `frontend/` 目录与 `openspec/changes/resolve-frontend-lint-warnings/`，不碰后端 Java 代码、不碰 Maven 配置、不碰 Flyway 迁移。
+- **环境隔离**：仅改动 `frontend/` 目录与 `openspec/changes/archive/resolve-frontend-lint-warnings/`，不碰后端 Java 代码、不碰 Maven 配置、不碰 Flyway 迁移。

@@ -54,5 +54,5 @@
   8. `src/test/java/com/slz/crm/knowledge/document/IngestionReplaySchedulerTest.java`
   9. `src/test/java/com/slz/crm/platform/config/DynamicConfigKeyRegistryTest.java`
   10. `scripts/test-baseline.txt`
-  11. `openspec/changes/wire-ingestion-recovery-replay/tasks.md`
+  11. `openspec/changes/archive/wire-ingestion-recovery-replay/tasks.md`
 - 未跑项与假设：未跑需 Docker 的 IT 容器测试（本卡全为 JVM 内逻辑）；假设 `rag.ingest.replay-enabled` 默认关闭保护费用，DASHSCOPE_API_KEY="" 空跑零外部调用。

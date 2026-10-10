@@ -126,7 +126,7 @@ com.slz.crm
 
 性能基线：`docs/perf-baseline.md`（measure-perf-baseline）。
 
-摄取：`docs/ingest-gap-map.md`（调研）+ `docs/ingest-vision-pdf-pilot.md`（1 页真 VLM 试点记录，1 次 vision）+ `openspec/changes/add-vision-pdf-ingest-pilot/`（试点实现，默认关；生产打开待授权）。
+摄取：`docs/ingest-gap-map.md`（调研）+ `docs/ingest-vision-pdf-pilot.md`（1 页真 VLM 试点记录，1 次 vision）+ `openspec/changes/archive/add-vision-pdf-ingest-pilot/`（试点实现，默认关；生产打开待授权）。
 
 协作方式：`docs/main-agent-execution.md`（项目指导主 agent 的职责边界、证据优先级、任务卡与验证闸门；2026-09-25 自原工作树改写入库，原 `work/` 交接依赖已改为文内自足摘要，文中历史读数以现场实测为准）。
 

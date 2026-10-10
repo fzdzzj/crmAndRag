@@ -42,7 +42,7 @@ List<ProjectFileEntity> filterReadableProjectFiles(List<ProjectFileEntity> files
  src/test/.../unit/service/ProjectFileServiceImplTest.java  | 122 ++++++--
  scripts/test-baseline.txt                                  |   6 +-
  docs/project-file-list-auth-batch-evaluation.md            | (本文件，新增)
- openspec/changes/batch-project-file-list-auth-reads/tasks.md | (勾选留痕)
+ openspec/changes/archive/batch-project-file-list-auth-reads/tasks.md | (勾选留痕)
 ```
 
 （`BusinessActivityUserMapper.java` 未入集——复用既有 `selectByActivityIds`，卡面登记的条件性写集未触发。）

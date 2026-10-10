@@ -2,7 +2,7 @@
 
 ## 1. 背景与问题定义
 本机仓库级 `core.autocrlf=true`，`.gitattributes`（卡 P-h 产物）目前仅钉 `*.sh`、`.githooks/*`、`*.java` 为 `text eol=lf`。其余文本类型（md/txt/yml/yaml/xml/properties/sql/json）在 merge/checkout 检出时被转换为 CRLF，而对象库（index）恒为 LF。实测后果（卡 P-o 终审，2026-10-02）：
-1. merge 后 `openspec/changes/optimize-project-file-list-auth-reuse/tasks.md` 与 `scripts/test-baseline.txt` 工作树变 CRLF（`git ls-files --eol` 实测 `i/lf w/crlf`）；
+1. merge 后 `openspec/changes/archive/optimize-project-file-list-auth-reuse/tasks.md` 与 `scripts/test-baseline.txt` 工作树变 CRLF（`git ls-files --eol` 实测 `i/lf w/crlf`）；
 2. 本地换行门禁 `agent-helper.sh check-line-endings lf` 红（`LINE_ENDING_VIOLATION: found CR`）；
 3. 每张涉及非 Java 写集文件的卡在 merge 后都要人工判读 + sed + git add 处置，属可根治的重复摩擦；
 4. 对象库健康（远端 CI Linux 检出 LF 无碍），纯本地环境摩擦。

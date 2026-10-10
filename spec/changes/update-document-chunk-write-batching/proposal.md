@@ -19,7 +19,7 @@
 
 ## Impact
 
-- **规范来源**：`openspec/changes/archive/upgrade-semantic-chunking-and-index/specs/document-chunking/spec.md`（双粒度与重建幂等）；本案在 `specs/document-ingest/spec-delta.md` 新增内部批写/验收约束，不修改归档规格。`openspec/changes/add-vision-pdf-ingest-pilot/` 在途且有真实视觉费用节点，本案不进入该路径或授权它。
+- **规范来源**：`openspec/changes/archive/upgrade-semantic-chunking-and-index/specs/document-chunking/spec.md`（双粒度与重建幂等）；本案在 `specs/document-ingest/spec-delta.md` 新增内部批写/验收约束，不修改归档规格。`openspec/changes/archive/add-vision-pdf-ingest-pilot/` 在途且有真实视觉费用节点，本案不进入该路径或授权它。
 - **潜在生产范围**：共享的 `knowledge/document/DocumentIngestionSupport.java`，必要时一处窄的 DB 批写协作组件与 `server/mapper/DocumentVectorChunkMapper.java`；若需触碰 `DocumentIngestionService.java` 的失败补偿或短事务接线，只准语义等价的最小修改并在动手前说明。测试可调整 `DocumentIngestionServiceTest`、真实 MySQL 的定向 IT/显式本机度量、`RequestHotpathBaselineTest` 与 `RepresentativeHotpathBenchmark` 的精确形状计数；不删除旧硬断言，只分开计量“24 逻辑子行”与“物理执行/提交”。
 - **不变/禁区**：权限、文档解析/切分、embedding 次数与输入、向量 upsert/delete、来源引用、费用开关、动态配置默认、API/DTO、冻结契约、Flyway 迁移和索引、依赖、CI/JVM/线程池/连接池参数均不改；不改旧报告历史数字。生产真实 Provider、vision/embedding 试点及 reingest 真实外呼均不运行。
 - **费用与隔离**：只用已有显式 opt-in 的一次性 MySQL/Qdrant 和硬绑定确定性假模型；Docker/本地镜像缺失时 fail closed，绝不 pull 或回退到业务数据库。默认 surefire/merge-gate 不启动容器度量；真模型、生产开关及成本试点仍要 owner 另行授权。
