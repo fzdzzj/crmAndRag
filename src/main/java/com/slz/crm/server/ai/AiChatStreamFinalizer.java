@@ -28,6 +28,7 @@ class AiChatStreamFinalizer {
   private final AiChatPromptService promptService;
   private final Supplier<AiMemoryOrchestrator> memoryOrchestratorSupplier;
   private final Supplier<TokenUsageRecorder> tokenUsageRecorderSupplier;
+  private final Supplier<SelfRagReflector> reflectorSupplier;
   private final String modelName;
 
   AiChatStreamFinalizer(
@@ -38,6 +39,7 @@ class AiChatStreamFinalizer {
       AiChatPromptService promptService,
       Supplier<AiMemoryOrchestrator> memoryOrchestratorSupplier,
       Supplier<TokenUsageRecorder> tokenUsageRecorderSupplier,
+      Supplier<SelfRagReflector> reflectorSupplier,
       String modelName) {
     this.eventWriter = eventWriter;
     this.assistantMessageStore = assistantMessageStore;
@@ -46,7 +48,29 @@ class AiChatStreamFinalizer {
     this.promptService = promptService;
     this.memoryOrchestratorSupplier = memoryOrchestratorSupplier;
     this.tokenUsageRecorderSupplier = tokenUsageRecorderSupplier;
+    this.reflectorSupplier = reflectorSupplier;
     this.modelName = modelName;
+  }
+
+  AiChatStreamFinalizer(
+      AiChatSseEventWriter eventWriter,
+      AiAssistantMessageStore assistantMessageStore,
+      AiStreamRegistry aiStreamRegistry,
+      AiChatMetrics metrics,
+      AiChatPromptService promptService,
+      Supplier<AiMemoryOrchestrator> memoryOrchestratorSupplier,
+      Supplier<TokenUsageRecorder> tokenUsageRecorderSupplier,
+      String modelName) {
+    this(
+        eventWriter,
+        assistantMessageStore,
+        aiStreamRegistry,
+        metrics,
+        promptService,
+        memoryOrchestratorSupplier,
+        tokenUsageRecorderSupplier,
+        () -> null,
+        modelName);
   }
 
   /** 事件写出器包内访问器（块处理协作类拼 payload 时使用）。 */
@@ -240,6 +264,15 @@ class AiChatStreamFinalizer {
       CitationAligner.Alignment aligned = CitationAligner.align(content, sources);
       content = aligned.text();
       List<Integer> citations = extractCitations(content, sources);
+      // add-self-rag-reflection 任务 1.1：生成侧反思校验与过滤（触发前提 hasSources）
+      if (sources != null && !sources.isEmpty()) {
+        SelfRagReflector reflector = reflectorSupplier == null ? null : reflectorSupplier.get();
+        if (reflector != null) {
+          SelfRagResult reflected = reflector.reflect(content, sources, citations);
+          content = reflected.answer();
+          citations = reflected.citations();
+        }
+      }
       if (!references.isEmpty()
           && !sendBufferedEvent(
               activeStream, "references", eventWriter.toReferencesJson(references, citations))) {
