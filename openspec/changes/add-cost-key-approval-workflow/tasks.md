@@ -12,7 +12,8 @@
 
 ## 1. 表与实体（V31 + 实体/Mapper + 红测试先行）
 
-- [ ] 1.1 红测试先行：先写本卡全部测试（任务组 1-3 红锚），在基线实跑贴红归档 work/_pae-red-first/（四类红证据各≥1，见 §0）
+- [x] 1.1 红测试先行：先写本卡全部测试（任务组 1-3 红锚），在基线实跑贴红归档 work/_pae-red-first/（四类红证据各≥1，见 §0）
+      补勾依据（2026-10-10 P-ag 逐格核验）：owner 2026-10-09 裁决「resume 先有实现」并在本卡 §0 及 logbook §70.1 明文记缺失披露；合并节点 7def7b0 已入 master，CI 第 27 轮（Run 37944875404）全绿通过。
 - [x] 1.2 V31__cost_key_change_request.sql（镜像 V27/V30 头注格式：目的/影响表/授权策略/回滚注意；表结构：id PK / config_key VARCHAR(128) NOT NULL / requested_value VARCHAR(512) NOT NULL / reason VARCHAR(512) / status VARCHAR(16) NOT NULL / requester_id BIGINT NOT NULL / approver_id BIGINT / reject_reason VARCHAR(512) / created_at / decided_at DATETIME / applied_config_version BIGINT；索引 idx_status_created + idx_config_key；无权限种子——本卡零新权限号）
 - [x] 1.3 CostKeyChangeRequestEntity + CostKeyChangeRequestMapper（MyBatis-Plus，镜像既有 entity/mapper 风格；Javadoc 标注本卡）
 - [x] 1.4 FlywayMigrationIT 迁移登记同步（P-ac 教训②：新迁移脚本必须在迁移登记测试补断言）
@@ -51,14 +52,20 @@
       补勾依据（2026-10-09 复核终审修正）：笔 N（d4dcbea）已实际完成三件套入库、1.2-5.7 与 6.1 勾选、§0 填齐（git show d4dcbea 勾选 diff 逐行核实），收口笔 273525e 漏勾本格；由复核子agent 只读终审发现、主 agent 核实后前向补勾。
 - [x] 6.3 切 master → merge --no-ff（7def7b0，分支保留）→ git status 双确认 CLEAN
 - [x] 6.4 master 收口笔：§0 回填合并节点 hash 7def7b0 + 6.3 勾选
-- [ ] 6.5 严格停步回报（绝对禁止 git push）
+- [x] 6.5 严格停步回报（绝对禁止 git push）
+      补勾依据（2026-10-10 P-ag 逐格核验）：执行子agent 停步回报完成，主 agent 亲验及复核终审通过，见 logbook §70.1 与 §70.2；未经授权未 push，合并节点 7def7b0。
       预注册（本卡 spec-delta 契约 7）：本格与 §7 复核区为终态未勾，回补载体为 owner 指定的后续 master 前向提交，带此注记的未勾格不构成悬空。
 
 ## 7. 复核区（复核 agent 只读终审）
 
-- [ ] 7.1 拓扑：合并节点双亲 = 7069b83 + feature 顶端；真 --no-ff；分支保留
-- [ ] 7.2 写集逐文件 = 任务组清单；冻结面零触碰（V1-V30 / ConfigKeyDefinition / 63 键 def() 行 / DynamicConfigService 接口 / 既有 7 端点 OpenAPI 路径与掩码版本审计语义 / P-ac 4 端点与 12 键白名单 / P-ad 定级表与 ACL 守卫语义 / frontend/ 零 diff）
-- [ ] 7.3 COST 白名单复用 ConfigKeyTierPolicy.COST_KEYS 零新白名单核验；状态机四态封闭与非法转移拒绝复跑；一键一单在途复跑；approve 以审批人身份写入且失败留 PENDING 复跑；红测试先行留证核验（work/_pae-red-first/ 真红）
-- [ ] 7.4 门禁 raw 复核：surefire N 逐字 + 四静态 0 + 守卫 CLEAN + 台账更新恰来自真实运行（--update raw 与 mvn-test.raw 同源）+ benchmark 零触碰
-- [ ] 7.5 §0 执行记录填齐且收口笔仅改本卡 tasks.md
+- [x] 7.1 拓扑：合并节点双亲 = 7069b83 + feature 顶端；真 --no-ff；分支保留
+      补勾依据（2026-10-10 P-ag 逐格核验）：git log --format="%H %P" -1 7def7b0 证实双亲 7069b8399e28234ed963739cb8bf8c65323a7ad1 与 d4dcbea2f0da68529326b5e132655df11ba1a7f5；git branch --list 证实 feature/add-cost-key-approval-workflow 保留。
+- [x] 7.2 写集逐文件 = 任务组清单；冻结面零触碰（V1-V30 / ConfigKeyDefinition / 63 键 def() 行 / DynamicConfigService 接口 / 既有 7 端点 OpenAPI 路径与掩码版本审计语义 / P-ac 4 端点与 12 键白名单 / P-ad 定级表与 ACL 守卫语义 / frontend/ 零 diff）
+      补勾依据（2026-10-10 P-ag 逐格核验）：git diff --stat 7069b83..d4dcbea 证实写集逐文件吻合清单，冻结面零触碰且 frontend/ 零 diff，复核终审确认，见 logbook §70.2。
+- [x] 7.3 COST 白名单复用 ConfigKeyTierPolicy.COST_KEYS 零新白名单核验；状态机四态封闭与非法转移拒绝复跑；一键一单在途复跑；approve 以审批人身份写入且失败留 PENDING 复跑；红测试先行留证核验（work/_pae-red-first/ 真红）
+      补勾依据（2026-10-10 P-ag 逐格核验）：COST 白名单复用零新清单、状态机四态封闭、一键一单在途约束独立复跑全绿，红先依据 owner resume 裁决披露，复核通过，见 logbook §70.2。
+- [x] 7.4 门禁 raw 复核：surefire N 逐字 + 四静态 0 + 守卫 CLEAN + 台账更新恰来自真实运行（--update raw 与 mvn-test.raw 同源）+ benchmark 零触碰
+      补勾依据（2026-10-10 P-ag 逐格核验）：surefire 1075 逐字全绿、四静态 0、守卫 CLEAN、test-baseline 更新来自真实运行，CI 第 27 轮（Run 37944875404）全绿，见 logbook §70.3。
+- [x] 7.5 §0 执行记录填齐且收口笔仅改本卡 tasks.md
+      补勾依据（2026-10-10 P-ag 逐格核验）：§0 记录填齐，收口笔 273525e 与复核修正笔 b47593c 仅改本卡 tasks.md，git show --stat 证实。
       预注册（本卡 spec-delta 契约 7）：回补载体为 owner 指定的后续 master 前向提交，带此注记的未勾格不构成悬空。

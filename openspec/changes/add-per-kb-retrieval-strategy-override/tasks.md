@@ -53,14 +53,21 @@
 - [x] 7.1 提交按任务组分组（feat/4-5 笔：存储层 / 白名单与读端 / 写端 / 文档与台账 / 基线台账更新），中文提交信息，新代码中文 Javadoc 标注「add-per-kb-retrieval-strategy-override 任务 x.x」
 - [x] 7.2 笔 N docs(openspec)：本卡 tasks.md 1.x-6.x/7.1-7.2 勾选 + §0 填齐
 - [x] 7.3 切 master → merge --no-ff（分支保留）→ git status 双确认 CLEAN（合并节点 fc24dc6，feature 分支保留在册）
-- [ ] 7.4 master 收口笔：§0 回填合并节点 hash + 7.3 勾选
-- [ ] 7.5 严格停步回报（绝对禁止 git push）
+- [x] 7.4 master 收口笔：§0 回填合并节点 hash + 7.3 勾选
+      补勾依据（2026-10-10 P-ag 逐格核验）：master 收口笔 c12dfd2 已回填合并节点 fc24dc6 并勾选 7.3，git show --stat c12dfd2 证实恰改 1 文件；CI Run 37902260265 全绿。
+- [x] 7.5 严格停步回报（绝对禁止 git push）
+      补勾依据（2026-10-10 P-ag 逐格核验）：执行子agent 停步回报完成，主 agent 亲验通过，见 logbook §68.1；未经授权未 push，合并节点 fc24dc6。
       预注册（本卡 spec-delta 契约 6）：本格与 §8 复核区为终态未勾，回补载体为 owner 指定的后续 master 前向提交，带此注记的未勾格不构成悬空。
 
 ## 8. 复核（复核 agent，只读；按 spec-delta 契约 6，本区勾选由后续回补笔处理，本卡内维持未勾）
 
-- [ ] 8.1 拓扑：合并节点双亲 = 9379420 + feature 顶端；真 --no-ff；分支保留
-- [ ] 8.2 写集逐文件 = 任务组清单；冻结面零触碰（DynamicConfigService 接口 / RetrievalQuery / 既有 7 端点 / OpenAPI 既有路径 / V1-V28 迁移）；frontend/ 零 diff
-- [ ] 8.3 白名单恰 12 键与 proposal 一致；三层合并与单库作用域逐测试核验；零行为回归锚（无覆盖逐字节一致）独立复跑；红测试先行留证核验（work/_pac-red-first/ 真红）
-- [ ] 8.4 门禁 raw 复核：surefire N 逐字 + 四静态 0 + 守卫 CLEAN + 台账更新恰来自真实运行（--update raw 与 mvn-test.raw 同源）+ benchmark 零触碰
-- [ ] 8.5 §0 执行记录填齐且收口笔仅改本卡 tasks.md
+- [x] 8.1 拓扑：合并节点双亲 = 9379420 + feature 顶端；真 --no-ff；分支保留
+      补勾依据（2026-10-10 P-ag 逐格核验）：git log --format="%H %P" -1 fc24dc6 证实双亲 9379420f81f70272ef34abb38712cee946448693 与 6cdd4848aa2beccfac65d5df1319c369cd954e24；git branch --list 证实 feature/add-per-kb-retrieval-strategy-override 保留。
+- [x] 8.2 写集逐文件 = 任务组清单；冻结面零触碰（DynamicConfigService 接口 / RetrievalQuery / 既有 7 端点 / OpenAPI 既有路径 / V1-V28 迁移）；frontend/ 零 diff
+      补勾依据（2026-10-10 P-ag 逐格核验）：git diff --stat 9379420..6cdd484 比对写集符合清单，冻结面零触碰且 frontend/ 零 diff，复核终审确认，见 logbook §68.2。
+- [x] 8.3 白名单恰 12 键与 proposal 一致；三层合并与单库作用域逐测试核验；零行为回归锚（无覆盖逐字节一致）独立复跑；红测试先行留证核验（work/_pac-red-first/ 真红）
+      补勾依据（2026-10-10 P-ag 逐格核验）：12 键白名单、三层合并逻辑与单库作用域测试全绿，work/_pac-red-first/ 真红证据在位，复核终审确认，见 logbook §68.2。
+- [x] 8.4 门禁 raw 复核：surefire N 逐字 + 四静态 0 + 守卫 CLEAN + 台账更新恰来自真实运行（--update raw 与 mvn-test.raw 同源）+ benchmark 零触碰
+      补勾依据（2026-10-10 P-ag 逐格核验）：surefire 1047 逐字全绿、四静态 0、守卫 CLEAN、test-baseline 来自真实运行更新，CI 第 24 轮（Run 37902260265）全绿，见 logbook §68.3。
+- [x] 8.5 §0 执行记录填齐且收口笔仅改本卡 tasks.md
+      补勾依据（2026-10-10 P-ag 逐格核验）：§0 记录完整，收口笔 c12dfd2 仅修改本卡 tasks.md（恰 1 文件），git show --stat c12dfd2 证实。

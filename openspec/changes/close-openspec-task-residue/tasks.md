@@ -28,14 +28,21 @@
 - [x] 3.1 笔 1 docs(openspec) 提交：7 历史卡文件回补 + 本卡三件套（tasks.md 此刻 1.x-3.x 未勾如实入库）
 - [x] 3.2 笔 2 docs(openspec) 提交：tasks.md 1.x/2.x/3.1-3.2 勾选 + §0 执行记录填齐
 - [x] 3.3 切 master → merge --no-ff（分支保留）→ git status 双确认 CLEAN
-- [ ] 3.4 master 收口笔（合并后允许的一笔）：§0 回填合并节点 hash + 3.3 勾选
-- [ ] 3.5 严格停步回报（绝对禁止 git push）
+- [x] 3.4 master 收口笔（合并后允许的一笔）：§0 回填合并节点 hash + 3.3 勾选
+      补勾依据（2026-10-10 P-ag 逐格核验）：master 收口笔 9379420 已回填合并节点 8f79caa 并勾选 3.3，git show --stat 9379420 证实恰改 1 文件；CI Run 37873818084 全绿。
+- [x] 3.5 严格停步回报（绝对禁止 git push）
+      补勾依据（2026-10-10 P-ag 逐格核验）：执行终态停步回报完成，主 agent 亲验及复核终审通过，见 logbook §67.1；未私自 push，合并节点 8f79caa。
       预注册（本卡 spec-delta 契约 5）：本格与 §4 复核区为终态未勾，回补载体为 owner 指定的后续 master 前向提交，带此注记的未勾格不构成悬空。
 
 ## 4. 复核（复核 agent，只读；按 spec-delta 契约 5，本区勾选由后续回补笔处理，本卡内维持未勾）
 
-- [ ] 4.1 拓扑：合并节点双亲 = 191d56f + feature 顶端；真 --no-ff（≠ feature 顶端、diff 非空）；分支保留
-- [ ] 4.2 写集恰 10 文件（7 历史卡 tasks.md + 3 本卡三件套）逐文件比对；src/ 与 frontend/ diff 为空；archive/run-baseline-ladder 不在写集；work/ 仍 untracked
-- [ ] 4.3 18 处编辑逐字与任务卡 §2 载荷一致；16 处留痕与 2 处注记逐字核验；每处留痕中的证据命令独立复跑逐条吻合；历史行原文与组状态注记外记录零改动
-- [ ] 4.4 门禁 raw 复核：1019 逐字 + 四静态 0 + 守卫 CLEAN + 台账零变动
-- [ ] 4.5 §0 执行记录填齐（合并节点 hash、19 格落位统计、raw 位置）且收口笔仅改本卡 tasks.md
+- [x] 4.1 拓扑：合并节点双亲 = 191d56f + feature 顶端；真 --no-ff（≠ feature 顶端、diff 非空）；分支保留
+      补勾依据（2026-10-10 P-ag 逐格核验）：git log --format="%H %P" -1 8f79caa 证实双亲 191d56f3ffb8a48defeac94846e8abe3068d1bdd 与 b77c6d934c10e2720e57999da6f1b113feec091b；git branch --list 证实 feature/close-openspec-task-residue 保留。
+- [x] 4.2 写集恰 10 文件（7 历史卡 tasks.md + 3 本卡三件套）逐文件比对；src/ 与 frontend/ diff 为空；archive/run-baseline-ladder 不在写集；work/ 仍 untracked
+      补勾依据（2026-10-10 P-ag 逐格核验）：git diff --stat 191d56f..b77c6d9 证实恰 10 文件（7 历史卡 tasks.md + 3 本卡三件套），src/ 与 frontend/ 零 diff，见 logbook §67.1。
+- [x] 4.3 18 处编辑逐字与任务卡 §2 载荷一致；16 处留痕与 2 处注记逐字核验；每处留痕中的证据命令独立复跑逐条吻合；历史行原文与组状态注记外记录零改动
+      补勾依据（2026-10-10 P-ag 逐格核验）：复核 agent 逐字比对 18 处编辑与 16 处留痕全吻合，见 logbook §67.1 与复核记录。
+- [x] 4.4 门禁 raw 复核：1019 逐字 + 四静态 0 + 守卫 CLEAN + 台账零变动
+      补勾依据（2026-10-10 P-ag 逐格核验）：surefire 1019/1019 逐字全绿、四静态 0、三守卫 CLEAN、baseline 台账零变动实测通过，见 logbook §67.1 及 CI Run 37873818084。
+- [x] 4.5 §0 执行记录填齐（合并节点 hash、19 格落位统计、raw 位置）且收口笔仅改本卡 tasks.md
+      补勾依据（2026-10-10 P-ag 逐格核验）：§0 执行记录已填齐；收口笔 9379420 恰改 1 文件，git show --stat 9379420 证实。

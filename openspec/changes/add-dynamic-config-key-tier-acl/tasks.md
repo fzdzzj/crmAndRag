@@ -54,13 +54,19 @@
 - [x] 6.2 笔 N docs(openspec)：本卡 tasks.md 1.x-5.x / 6.1-6.3 勾选 + §0 填齐
 - [x] 6.3 切 master → merge --no-ff（分支保留）→ git status 双确认 CLEAN
 - [x] 6.4 master 收口笔：§0 回填合并节点 hash + 6.3 勾选
-- [ ] 6.5 严格停步回报（绝对禁止 git push）
+- [x] 6.5 严格停步回报（绝对禁止 git push）
+      补勾依据（2026-10-10 P-ag 逐格核验）：主 agent 接管实施完成停步回报，复核 agent 终审通过，见 logbook §69.4 与 §69.5；未私自 push，合并节点 57253ef。
       预注册（本卡 spec-delta 契约 6）：本格与 §7 复核区为终态未勾，回补载体为 owner 指定的后续 master 前向提交，带此注记的未勾格不构成悬空。
 
 ## 7. 复核（复核 agent，只读；按 spec-delta 契约 6，本区勾选由后续回补笔处理，本卡内维持未勾）
 
-- [ ] 7.1 拓扑：合并节点双亲 = a109e51 + feature 顶端；真 --no-ff；分支保留
-- [ ] 7.2 写集逐文件 = 任务组清单；冻结面零触碰（DynamicConfigService.get 接口签名 / 命名空间 / V1-V29 迁移 / P-ac 4 端点与 12 键白名单 / OpenAPI 既有路径 / 掩码与版本审计语义）；contracts-frozen.md 恰 §10 一处短语更新；frontend/ 零 diff
-- [ ] 7.3 定级表 63 键逐键对照 Registry 实测普查核验；三档 ACL 判定矩阵独立复跑；红测试先行留证核验（work/_pad-red-first/ 真红）
-- [ ] 7.4 门禁 raw 复核：surefire N 逐字 + 四静态 0 + 守卫 CLEAN + 台账更新恰来自真实运行（--update raw 与 mvn-test.raw 同源）+ benchmark 零触碰
-- [ ] 7.5 §0 执行记录填齐且收口笔仅改本卡 tasks.md
+- [x] 7.1 拓扑：合并节点双亲 = a109e51 + feature 顶端；真 --no-ff；分支保留
+      补勾依据（2026-10-10 P-ag 逐格核验）：git log --format="%H %P" -1 57253ef 证实双亲 a109e51c2592257d997970d15f1d2ef5e5977acf 与 7614b0d3f6565a648c2a70bbd1ce7bf5d615ebc6；git branch --list 证实 feature/add-dynamic-config-key-tier-acl 保留。
+- [x] 7.2 写集逐文件 = 任务组清单；冻结面零触碰（DynamicConfigService.get 接口签名 / 命名空间 / V1-V29 迁移 / P-ac 4 端点与 12 键白名单 / OpenAPI 既有路径 / 掩码与版本审计语义）；contracts-frozen.md 恰 §10 一处短语更新；frontend/ 零 diff
+      补勾依据（2026-10-10 P-ag 逐格核验）：git diff --stat a109e51..7614b0d 证实写集逐文件吻合清单，冻结面零触碰，contracts-frozen 仅一处更新，frontend/ 零 diff，见 logbook §69.5。
+- [x] 7.3 定级表 63 键逐键对照 Registry 实测普查核验；三档 ACL 判定矩阵独立复跑；红测试先行留证核验（work/_pad-red-first/ 真红）
+      补勾依据（2026-10-10 P-ag 逐格核验）：63 键定级表普查全覆盖，三档 ACL 判定矩阵测试独立复跑全绿，work/_pad-red-first/ 真红在位，复核确认，见 logbook §69.5。
+- [x] 7.4 门禁 raw 复核：surefire N 逐字 + 四静态 0 + 守卫 CLEAN + 台账更新恰来自真实运行（--update raw 与 mvn-test.raw 同源）+ benchmark 零触碰
+      补勾依据（2026-10-10 P-ag 逐格核验）：surefire 1058 逐字全绿、四静态 0、三守卫 CLEAN、台账更新真实同源，CI 第 26 轮（Run 37926555423）全绿，见 logbook §69.6。
+- [x] 7.5 §0 执行记录填齐且收口笔仅改本卡 tasks.md
+      补勾依据（2026-10-10 P-ag 逐格核验）：§0 记录填齐，收口笔 7069b83 恰改 1 文件，git show --stat 7069b83 证实。
