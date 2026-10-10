@@ -29,7 +29,7 @@
 | 06 | Document Augmentation | 缺 → 可选新增 | enhance-query-transformation |
 | 11 | Feedback Loop | 待定（触发：产品提供点赞/点踩信号） | enhance-query-transformation 附台账 |
 | 14 | Hierarchical Index | 待定（触发：单库 chunk 量级超阈值/跨库路由需求） | enhance-query-transformation 附台账 |
-| 12 | Self-RAG | 不做（复杂度；等基线归因后再议） | — |
+| 12 | Self-RAG | 做（生成侧反思） | add-self-rag-reflection |
 | 13 | KG RAG | 不做（CRM 实体走 DB 查询，文档侧无多跳需求） | — |
 | 17 | CRAG 完整版 | 不做（企业合规库不接 web 兜底；诚实兜底 D16 已覆盖） | — |
 | 01 | Simple RAG | 基线对照，非升级项 | — |

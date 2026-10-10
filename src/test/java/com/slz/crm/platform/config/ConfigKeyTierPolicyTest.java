@@ -25,19 +25,19 @@ class ConfigKeyTierPolicyTest {
       new DynamicConfigKeyRegistry(new ObjectMapper());
 
   @Test
-  @DisplayName("census：注册表 63 键与三档封闭集完全分区，计数恰 34/22/7")
+  @DisplayName("census：注册表 66 键与三档封闭集完全分区，计数恰 34/25/7")
   void registryPartitionsExactlyIntoTiers() {
     Collection<ConfigKeyDefinition> defs = REGISTRY.definitions();
-    assertThat(defs).hasSize(63);
+    assertThat(defs).hasSize(66);
 
     Set<String> all = new LinkedHashSet<>();
     all.addAll(ConfigKeyTierPolicy.operationalKeys());
     all.addAll(ConfigKeyTierPolicy.costKeys());
     all.addAll(ConfigKeyTierPolicy.structuralKeys());
     assertThat(ConfigKeyTierPolicy.operationalKeys()).hasSize(34);
-    assertThat(ConfigKeyTierPolicy.costKeys()).hasSize(22);
+    assertThat(ConfigKeyTierPolicy.costKeys()).hasSize(25);
     assertThat(ConfigKeyTierPolicy.structuralKeys()).hasSize(7);
-    assertThat(all).hasSize(63);
+    assertThat(all).hasSize(66);
 
     Set<String> registryKeys = new LinkedHashSet<>();
     for (ConfigKeyDefinition def : defs) {

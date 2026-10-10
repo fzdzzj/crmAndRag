@@ -8,9 +8,9 @@ import java.util.Set;
 /**
  * 动态配置键三档定级封闭表（add-dynamic-config-key-tier-acl 任务 1.3）。
  *
- * <p>与 {@link DynamicConfigKeyRegistry} 的 63 键全集一一对应（2026-10-09 实测普查）：OPERATIONAL 34 （608 持有者可写，含
- * P-ac per-KB 12 键白名单全集）/ COST 22（超管专写——LLM 重排/压缩、查询增强、VLM 转写、重放、限流配额、模型选择等费用红线族）/ STRUCTURAL
- * 7（超管专写——切分策略/分块尺寸、嵌入模型、 Provider、数据范围安全语义等变更管理键）。
+ * <p>与 {@link DynamicConfigKeyRegistry} 的 66 键全集一一对应（2026-10-10 实测普查）：OPERATIONAL 34 （608 持有者可写，含
+ * P-ac per-KB 12 键白名单全集）/ COST 25（超管专写——LLM 重排/压缩/Self-RAG自评、查询增强、VLM 转写、重放、限流配额、模型选择等费用红线族）/
+ * STRUCTURAL 7（超管专写——切分策略/分块尺寸、嵌入模型、 Provider、数据范围安全语义等变更管理键）。
  *
  * <p>解析顺序（tierOf）：sensitive=true 防御性映射 COST → 显式登记表 → 默认 OPERATIONAL。封闭性由 census 防呆测试 {@code
  * ConfigKeyTierPolicyTest} 锁死：注册表新增键未在此登记即红。改档需 owner 拍板并同步 docs/dynamic-config-keys.md（「权限档位」列与
@@ -60,7 +60,7 @@ public final class ConfigKeyTierPolicy {
           "platform.resilience.failure-threshold.storage-minio",
           "platform.resilience.open-duration-ms.storage-minio");
 
-  /** COST 档封闭集（22 键：成本开关，超管专写） */
+  /** COST 档封闭集（25 键：成本开关，超管专写） */
   private static final Set<String> COST_KEYS =
       Set.of(
           "ai.model.chatModel",
@@ -84,7 +84,10 @@ public final class ConfigKeyTierPolicy {
           "rag.query.derived-questions.enabled",
           "rag.query.derived-questions.max-per-chunk",
           "rag.ingest.replay-enabled",
-          "rag.ingest.replay-batch-size");
+          "rag.ingest.replay-batch-size",
+          "rag.generation.selfrag.mode",
+          "rag.generation.selfrag.llm.timeout-ms",
+          "rag.generation.selfrag.llm.max-claims");
 
   /** STRUCTURAL 档封闭集（7 键：变更管理，超管专写） */
   private static final Set<String> STRUCTURAL_KEYS =

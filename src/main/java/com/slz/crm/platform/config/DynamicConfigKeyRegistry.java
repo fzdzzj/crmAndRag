@@ -21,10 +21,10 @@ import org.springframework.stereotype.Component;
  * （model-chat/model-embed/model-vision/vector-qdrant/storage-minio）追加 10 个按依赖名覆盖熔断参数键。
  *
  * <p>命名空间约定（任务 16 起五命名空间，2026-09-25 扩为八个，wire-circuit-dynamic-config
- * 扩为九个，wire-ingestion-recovery-replay 扩为十个）：{@code ai.prompt}/{@code ai.model}/{@code
- * rag.retrieval}/{@code rag.context}/{@code rag.chunking}/{@code rag.query}/{@code
- * rag.intent}/{@code business}/{@code platform.resilience}/{@code rag.ingest}；每个键 = 命名空间 + '.' +
- * 键名。
+ * 扩为九个，wire-ingestion-recovery-replay 扩为十个，add-self-rag-reflection 扩为十一个）：{@code ai.prompt}/{@code
+ * ai.model}/{@code rag.retrieval}/{@code rag.context}/{@code rag.chunking}/{@code rag.query}/{@code
+ * rag.intent}/{@code business}/{@code platform.resilience}/{@code rag.ingest}/{@code
+ * rag.generation}；每个键 = 命名空间 + '.' + 键名。
  *
  * <p>敏感值说明：密钥/凭据按 D10 边界仍走环境变量（静态），本域原则上不注册敏感键； {@code sensitive} 标记与掩码逻辑完整保留，供将来确需运行期调整的半敏感参数使用。
  *
@@ -36,7 +36,7 @@ public class DynamicConfigKeyRegistry {
   /** 键 → 定义，保序（管理端列表按注册顺序展示） */
   private final Map<String, ConfigKeyDefinition> definitions = new LinkedHashMap<>();
 
-  /** 官方命名空间白名单（wire-ingestion-recovery-replay 任务 3：扩为十个） */
+  /** 官方命名空间白名单（add-self-rag-reflection 任务 3.1：扩为十一个） */
   public static final Set<String> NAMESPACES =
       Set.of(
           "ai.prompt",
@@ -48,7 +48,8 @@ public class DynamicConfigKeyRegistry {
           "rag.intent",
           "business",
           "platform.resilience",
-          "rag.ingest");
+          "rag.ingest",
+          "rag.generation");
 
   public DynamicConfigKeyRegistry(ObjectMapper objectMapper) {
     register(catalog(objectMapper));
@@ -959,6 +960,47 @@ public class DynamicConfigKeyRegistry {
             "摄取恢复自动重放单批最大处理文档数，范围 1~50（默认 5）。非法或越界回落默认值 5。",
             "1",
             "50",
+            Set.of(),
+            false,
+            100),
+
+        // ---------------- rag.generation.*：生成侧 Self-RAG 反思（add-self-rag-reflection 任务 3.1）
+        // ----------------
+        def(
+            objectMapper,
+            "rag.generation.selfrag.mode",
+            "rag.generation",
+            ConfigValueType.STRING,
+            "rule",
+            "Self-RAG 反思模式：off（关闭反思）| rule（确定性规则反思，默认）| llm（LLM 支持度自评——默认关闭，"
+                + "开启会产生模型调用费用，COST 档）。非法值回落默认 rule。",
+            null,
+            null,
+            Set.of("off", "rule", "llm"),
+            false,
+            100),
+        def(
+            objectMapper,
+            "rag.generation.selfrag.llm.timeout-ms",
+            "rag.generation",
+            ConfigValueType.LONG,
+            "3000",
+            "Self-RAG LLM 自评等待超时（毫秒）：超时/失败/空输出/解析失败均回退规则反思链。"
+                + "消费点 <1 回落默认 3000。仅在 selfrag.mode=llm 时生效（COST 档）。",
+            "1",
+            "60000",
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "rag.generation.selfrag.llm.max-claims",
+            "rag.generation",
+            ConfigValueType.INTEGER,
+            "20",
+            "Self-RAG LLM 自评单次断言/引用上限，防 prompt 膨胀。范围 1~100（默认 20）。",
+            "1",
+            "100",
             Set.of(),
             false,
             100));

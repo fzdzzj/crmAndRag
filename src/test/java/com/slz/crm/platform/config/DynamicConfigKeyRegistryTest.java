@@ -84,7 +84,7 @@ class DynamicConfigKeyRegistryTest {
   }
 
   @Test
-  @DisplayName("十个官方命名空间齐全，键名与命名空间自洽")
+  @DisplayName("十一个官方命名空间齐全，键名与命名空间自洽")
   void namespacesComplete() {
     assertThat(DynamicConfigKeyRegistry.NAMESPACES)
         .containsExactlyInAnyOrder(
@@ -97,7 +97,8 @@ class DynamicConfigKeyRegistryTest {
             "rag.intent",
             "business",
             "platform.resilience",
-            "rag.ingest");
+            "rag.ingest",
+            "rag.generation");
     var defs = registry.definitions();
     assertThat(defs).isNotEmpty();
     // 键必须以命名空间开头；同一命名空间下键前缀一致（V6 脚本分组约定）
@@ -108,8 +109,10 @@ class DynamicConfigKeyRegistryTest {
     assertThat(registry.byNamespace("platform.resilience"))
         .allMatch(d -> d.key().startsWith("platform.resilience."));
     assertThat(registry.byNamespace("rag.ingest")).allMatch(d -> d.key().startsWith("rag.ingest."));
+    assertThat(registry.byNamespace("rag.generation"))
+        .allMatch(d -> d.key().startsWith("rag.generation."));
     assertThat(registry.byNamespace(null)).hasSameSizeAs(defs);
-    // 覆盖 spec 优先项：提示词/模型/检索/strict-KB/意图类目/图片缓存上限/熔断治理/摄取恢复
+    // 覆盖 spec 优先项：提示词/模型/检索/strict-KB/意图类目/图片缓存上限/熔断治理/摄取恢复/Self-RAG反思
     assertThat(registry.definitionOf("ai.prompt.system")).isPresent();
     assertThat(registry.definitionOf("rag.retrieval.strictKb")).isPresent();
     assertThat(registry.definitionOf("rag.retrieval.admin-vector.enabled")).isPresent();
@@ -119,6 +122,47 @@ class DynamicConfigKeyRegistryTest {
     assertThat(registry.definitionOf("platform.resilience.open-duration-ms")).isPresent();
     assertThat(registry.definitionOf("rag.ingest.replay-enabled")).isPresent();
     assertThat(registry.definitionOf("rag.ingest.replay-batch-size")).isPresent();
+    assertThat(registry.definitionOf("rag.generation.selfrag.mode")).isPresent();
+    assertThat(registry.definitionOf("rag.generation.selfrag.llm.timeout-ms")).isPresent();
+    assertThat(registry.definitionOf("rag.generation.selfrag.llm.max-claims")).isPresent();
+  }
+
+  @Test
+  @DisplayName("add-self-rag-reflection 任务 3.1：3 个 rag.generation 键已登记，默认值=代码缺省且非法值拒绝")
+  void generationKeysRegisteredAndValidated() {
+    var modeDef = registry.definitionOf("rag.generation.selfrag.mode");
+    assertThat(modeDef).isPresent();
+    assertThat(modeDef.orElseThrow().defaultValue()).isEqualTo("rule");
+    assertThat(modeDef.orElseThrow().namespace()).isEqualTo("rag.generation");
+
+    var timeoutDef = registry.definitionOf("rag.generation.selfrag.llm.timeout-ms");
+    assertThat(timeoutDef).isPresent();
+    assertThat(timeoutDef.orElseThrow().defaultValue()).isEqualTo("3000");
+
+    var maxClaimsDef = registry.definitionOf("rag.generation.selfrag.llm.max-claims");
+    assertThat(maxClaimsDef).isPresent();
+    assertThat(maxClaimsDef.orElseThrow().defaultValue()).isEqualTo("20");
+
+    // 合法值放行
+    assertThat(registry.validate("rag.generation.selfrag.mode", "off").typed()).isEqualTo("off");
+    assertThat(registry.validate("rag.generation.selfrag.mode", "rule").typed()).isEqualTo("rule");
+    assertThat(registry.validate("rag.generation.selfrag.mode", "llm").typed()).isEqualTo("llm");
+    assertThat(registry.validate("rag.generation.selfrag.llm.timeout-ms", "1").typed())
+        .isEqualTo(1L);
+    assertThat(registry.validate("rag.generation.selfrag.llm.timeout-ms", "60000").typed())
+        .isEqualTo(60000L);
+    assertThat(registry.validate("rag.generation.selfrag.llm.max-claims", "1").typed())
+        .isEqualTo(1);
+    assertThat(registry.validate("rag.generation.selfrag.llm.max-claims", "100").typed())
+        .isEqualTo(100);
+
+    // 非法值拒绝
+    assertRejected("rag.generation.selfrag.mode", "invalid");
+    assertRejected("rag.generation.selfrag.mode", "auto");
+    assertRejected("rag.generation.selfrag.llm.timeout-ms", "0");
+    assertRejected("rag.generation.selfrag.llm.timeout-ms", "60001");
+    assertRejected("rag.generation.selfrag.llm.max-claims", "0");
+    assertRejected("rag.generation.selfrag.llm.max-claims", "101");
   }
 
   @Test
