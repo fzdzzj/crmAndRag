@@ -81,7 +81,6 @@ public class LlmSelfRagReflector implements SelfRagReflector {
   }
 
   @Override
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // LLM 自评外呼多源，失败回退规则反思链
   public SelfRagResult reflect(
       String answer, List<SourceReference> sources, List<Integer> initialCitations) {
     SelfRagResult result;
@@ -92,79 +91,109 @@ public class LlmSelfRagReflector implements SelfRagReflector {
         || answer.isBlank()) {
       result = fallbackReflector.reflect(answer, sources, initialCitations);
     } else {
-      String safeAnswer = answer;
-      Map<Integer, String> citationClauses = extractClauses(safeAnswer);
-      List<Integer> targetCitations =
-          initialCitations != null ? initialCitations : List.copyOf(citationClauses.keySet());
-
-      if (targetCitations.isEmpty()) {
-        result = fallbackReflector.reflect(answer, sources, initialCitations);
-      } else {
-        int maxClaims = resolveMaxClaims();
-        List<Integer> claimsToEvaluate =
-            targetCitations.size() <= maxClaims
-                ? targetCitations
-                : targetCitations.subList(0, maxClaims);
-
-        try {
-          ModelCallResult<String> callResult =
-              callModel(safeAnswer, claimsToEvaluate, citationClauses, sources);
-          String output = callResult == null ? null : callResult.content();
-          Set<Integer> supportedSet = parseSupported(output);
-
-          if (supportedSet == null) {
-            LOG.info("LLM 自评输出不可用或解析失败，回退规则反思链");
-            recordUsage(callResult, false);
-            result = fallbackReflector.reflect(answer, sources, initialCitations);
-          } else {
-            recordUsage(callResult, true);
-            LinkedHashSet<Integer> validCitations = new LinkedHashSet<>();
-            boolean stripped = false;
-
-            for (Integer citation : targetCitations) {
-              if (citation != null) {
-                if (supportedSet.contains(citation)
-                    && citation >= 1
-                    && citation <= sources.size()
-                    && sources.get(citation - 1) != null
-                    && sources.get(citation - 1).excerpt() != null
-                    && !sources.get(citation - 1).excerpt().isBlank()) {
-                  validCitations.add(citation);
-                } else {
-                  stripped = true;
-                }
-              }
-            }
-
-            String finalAnswer = safeAnswer;
-            if (stripped && !finalAnswer.isBlank() && !finalAnswer.contains("未获知识库直接支持")) {
-              finalAnswer = finalAnswer + UNSUPPORTED_CLAIM_NOTE;
-            }
-
-            result = new SelfRagResult(finalAnswer, List.copyOf(validCitations), false);
-          }
-        } catch (InterruptedException exception) {
-          Thread.currentThread().interrupt();
-          LOG.warn("LLM 自评被中断，回退规则反思链: {}", exception.getMessage());
-          recordUsage(null, false);
-          result = fallbackReflector.reflect(answer, sources, initialCitations);
-        } catch (Exception exception) {
-          LOG.warn("LLM 自评失败或超时，回退规则反思链: {}", exception.getMessage());
-          recordUsage(null, false);
-          result = fallbackReflector.reflect(answer, sources, initialCitations);
-        }
-      }
+      result = evaluateWithLlm(answer, sources, initialCitations);
     }
     return result;
   }
 
+  private SelfRagResult evaluateWithLlm(
+      String safeAnswer, List<SourceReference> sources, List<Integer> initialCitations) {
+    SelfRagResult result;
+    Map<Integer, String> citationClauses = extractClauses(safeAnswer);
+    List<Integer> targetCitations =
+        initialCitations != null ? initialCitations : List.copyOf(citationClauses.keySet());
+
+    if (targetCitations.isEmpty()) {
+      result = fallbackReflector.reflect(safeAnswer, sources, initialCitations);
+    } else {
+      result =
+          executeLlmEvaluation(
+              safeAnswer, sources, initialCitations, targetCitations, citationClauses);
+    }
+    return result;
+  }
+
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // LLM 自评外呼多源，失败回退规则反思链
+  private SelfRagResult executeLlmEvaluation(
+      String safeAnswer,
+      List<SourceReference> sources,
+      List<Integer> initialCitations,
+      List<Integer> targetCitations,
+      Map<Integer, String> citationClauses) {
+    SelfRagResult result;
+    int maxClaims = resolveMaxClaims();
+    List<Integer> claimsToEvaluate =
+        targetCitations.size() <= maxClaims
+            ? targetCitations
+            : targetCitations.subList(0, maxClaims);
+
+    try {
+      ModelCallResult<String> callResult = callModel(claimsToEvaluate, citationClauses, sources);
+      String output = callResult == null ? null : callResult.content();
+      Set<Integer> supportedSet = parseSupported(output);
+
+      if (supportedSet == null) {
+        LOG.info("LLM 自评输出不可用或解析失败，回退规则反思链");
+        recordUsage(callResult, false);
+        result = fallbackReflector.reflect(safeAnswer, sources, initialCitations);
+      } else {
+        recordUsage(callResult, true);
+        result = assembleResult(safeAnswer, sources, targetCitations, supportedSet);
+      }
+    } catch (InterruptedException exception) {
+      Thread.currentThread().interrupt();
+      LOG.warn("LLM 自评被中断，回退规则反思链: {}", exception.getMessage());
+      recordUsage(null, false);
+      result = fallbackReflector.reflect(safeAnswer, sources, initialCitations);
+    } catch (Exception exception) {
+      LOG.warn("LLM 自评失败或超时，回退规则反思链: {}", exception.getMessage());
+      recordUsage(null, false);
+      result = fallbackReflector.reflect(safeAnswer, sources, initialCitations);
+    }
+    return result;
+  }
+
+  private SelfRagResult assembleResult(
+      String safeAnswer,
+      List<SourceReference> sources,
+      List<Integer> targetCitations,
+      Set<Integer> supportedSet) {
+    LinkedHashSet<Integer> validCitations = new LinkedHashSet<>();
+    boolean stripped = false;
+
+    for (Integer citation : targetCitations) {
+      if (citation != null && isSupportedSource(citation, sources, supportedSet)) {
+        validCitations.add(citation);
+      } else {
+        stripped = true;
+      }
+    }
+
+    String finalAnswer = safeAnswer;
+    if (stripped && !finalAnswer.isBlank() && !finalAnswer.contains("未获知识库直接支持")) {
+      finalAnswer = finalAnswer + UNSUPPORTED_CLAIM_NOTE;
+    }
+
+    return new SelfRagResult(finalAnswer, List.copyOf(validCitations), false);
+  }
+
+  private boolean isSupportedSource(
+      int citation, List<SourceReference> sources, Set<Integer> supportedSet) {
+    boolean supported = false;
+    if (supportedSet.contains(citation) && citation >= 1 && citation <= sources.size()) {
+      SourceReference source = sources.get(citation - 1);
+      supported = source != null && source.excerpt() != null && !source.excerpt().isBlank();
+    }
+    return supported;
+  }
+
   private ModelCallResult<String> callModel(
-      String answer,
       List<Integer> claimsToEvaluate,
       Map<Integer, String> citationClauses,
       List<SourceReference> sources)
       throws Exception {
-    StringBuilder userContent = new StringBuilder("答案断言：\n");
+    StringBuilder userContent = new StringBuilder(1024);
+    userContent.append("答案断言：\n");
     for (Integer citation : claimsToEvaluate) {
       String clause = citationClauses.get(citation);
       userContent

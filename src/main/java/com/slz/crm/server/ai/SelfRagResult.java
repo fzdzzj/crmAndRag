@@ -12,6 +12,10 @@ import java.util.Objects;
  */
 public record SelfRagResult(String answer, List<Integer> citations, boolean fallback) {
 
+  public SelfRagResult(String answer, List<Integer> citations) {
+    this(answer, citations, false);
+  }
+
   public SelfRagResult {
     answer = Objects.requireNonNullElse(answer, "");
     citations = citations == null ? List.of() : List.copyOf(citations);

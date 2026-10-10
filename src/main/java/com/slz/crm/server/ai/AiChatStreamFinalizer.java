@@ -234,6 +234,21 @@ class AiChatStreamFinalizer {
     return result;
   }
 
+  private SelfRagResult applySelfRag(
+      String content, List<SourceReference> sources, List<Integer> citations) {
+    SelfRagResult result = null;
+    if (sources != null && !sources.isEmpty() && reflectorSupplier != null) {
+      SelfRagReflector reflector = reflectorSupplier.get();
+      if (reflector != null) {
+        result = reflector.reflect(content, sources, citations);
+      }
+    }
+    if (result == null) {
+      result = new SelfRagResult(content, citations);
+    }
+    return result;
+  }
+
   @SuppressWarnings("PMD.OnlyOneReturn")
   // OnlyOneReturn 豁免理由（tighten-pmd-residual-325 任务 6.2）：流正常完成收尾里的三处守卫式早返回
   // （被接管 / 思考结束事件发送失败 / references 事件发送失败）均需跳过后续落库与注册表清理，
@@ -265,14 +280,9 @@ class AiChatStreamFinalizer {
       content = aligned.text();
       List<Integer> citations = extractCitations(content, sources);
       // add-self-rag-reflection 任务 1.1：生成侧反思校验与过滤（触发前提 hasSources）
-      if (sources != null && !sources.isEmpty()) {
-        SelfRagReflector reflector = reflectorSupplier == null ? null : reflectorSupplier.get();
-        if (reflector != null) {
-          SelfRagResult reflected = reflector.reflect(content, sources, citations);
-          content = reflected.answer();
-          citations = reflected.citations();
-        }
-      }
+      SelfRagResult reflected = applySelfRag(content, sources, citations);
+      content = reflected.answer();
+      citations = reflected.citations();
       if (!references.isEmpty()
           && !sendBufferedEvent(
               activeStream, "references", eventWriter.toReferencesJson(references, citations))) {

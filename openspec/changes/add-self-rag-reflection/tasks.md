@@ -33,6 +33,12 @@
   - `openspec/project.md` 处置表 12 行已改判为「做（生成侧反思）｜add-self-rag-reflection」。
   - `proposal.md` §6 决策点已回填 owner 三项拍板（D1 R+L 组合、D2 软降级、D3 验收真跑锚定不回退）。
   - 真跑另授权：本卡门禁阶段仅跑内存测试，`RAG_BENCHMARK_REAL=1` 真跑须待 owner 另行授权。
+- 任务组 5 门禁与基线核验：
+  - 全量单测：`mvn -B -ntp test`（`DASHSCOPE_API_KEY=""`）Tests run: 1088, Failures: 0, Errors: 0, Skipped: 0 全绿。
+  - 回归基线：surefire 报告 184，Tests run 1088，Failures 0，Skipped 0；failsafe 报告 27，Tests run 98，Skipped 6。`bash scripts/check-test-baseline.sh --update` 实测更新。
+  - 四静态门禁：checkstyle 0 违规、spotbugs 0 违规（双射 BIJECTION_OK）、spotless 0 偏差、pmd 0 违规（台账 PMD_BASELINE_OK 0==0==0）。
+  - 三守卫与 merge-gate：三守卫 CLEAN / WRITE_SET_OK，`bash scripts/merge-gate.sh` 全 PASS。
+  - Docker 结论：Docker Desktop 29.6.2 在线。
 
 ## 任务组 1 — 规则反思层（R 档）
 
@@ -59,9 +65,9 @@
 
 ## 任务组 5 — 门禁与基线
 
-- [ ] 5.1 `DASHSCOPE_API_KEY` 置空串跑 `mvn -B -ntp test`：全绿 0 失败，surefire 只增不减（`bash scripts/check-test-baseline.sh` 裁决；基线 bump 只许 `--update` 从本次真实运行写入）
-- [ ] 5.2 四静态 0 违规（checkstyle/spotbugs/spotless/pmd）+ 三守卫 CLEAN（check-dirty / check-line-endings lf / check-write-set）+ `bash scripts/merge-gate.sh` 全 PASS
-- [ ] 5.3 （D3 含真跑口径时）真跑前停步向 owner 请求 `RAG_BENCHMARK_REAL=1` 授权；未授权则记「真跑另授权」于 §0
+- [x] 5.1 `DASHSCOPE_API_KEY` 置空串跑 `mvn -B -ntp test`：全绿 0 失败，surefire 只增不减（`bash scripts/check-test-baseline.sh` 裁决；基线 bump 只许 `--update` 从本次真实运行写入）
+- [x] 5.2 四静态 0 违规（checkstyle/spotbugs/spotless/pmd）+ 三守卫 CLEAN（check-dirty / check-line-endings lf / check-write-set）+ `bash scripts/merge-gate.sh` 全 PASS
+- [x] 5.3 （D3 含真跑口径时）真跑前停步向 owner 请求 `RAG_BENCHMARK_REAL=1` 授权；未授权则记「真跑另授权」于 §0
 
 ## Git 操作（本提案专属执行序）
 
