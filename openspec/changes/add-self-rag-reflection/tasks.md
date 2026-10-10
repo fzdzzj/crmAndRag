@@ -16,6 +16,15 @@
       位置: 类 com.slz.crm.server.ai.RuleSelfRagReflectorTest
     ```
   - 转绿输出：`Tests run: 5, Failures: 0, Errors: 0, Skipped: 0 -- in com.slz.crm.server.ai.RuleSelfRagReflectorTest` 全绿。
+- 任务组 2 红测试先行：
+  - 测试文件：`src/test/java/com/slz/crm/server/ai/LlmSelfRagReflectorTest.java`
+  - 红测输出：
+    ```
+    [ERROR] /D:/code/crmAndRag-merge-add-knowledge-admin-api/src/test/java/com/slz/crm/server/ai/LlmSelfRagReflectorTest.java:[49,11] 找不到符号
+      符号:   类 LlmSelfRagReflector
+      位置: 类 com.slz.crm.server.ai.LlmSelfRagReflectorTest
+    ```
+  - 转绿输出：`Tests run: 4, Failures: 0, Errors: 0, Skipped: 0 -- in com.slz.crm.server.ai.LlmSelfRagReflectorTest` 全绿；`DefaultSelfRagServiceTest` 3 例全绿。
 
 ## 任务组 1 — 规则反思层（R 档）
 
@@ -25,9 +34,9 @@
 
 ## 任务组 2 — LLM 支持度自评（L 档，D1 含 L 时执行）
 
-- [ ] 2.1 新建自评服务：ModelProvider + ModelCallOptions + TokenUsageRecorder（type 复用语义最近枚举，同 LLM 压缩口径）；逐条引用「被支持/不被支持」判定 + 无据断言处置（按 D2 拍板）
-- [ ] 2.2 失败回退链：超时/模型不可用/空输出/解析失败 → 回退 R 档规则链（与 compressor/rerank 回退语义同构）
-- [ ] 2.3 单测：fake ModelProvider 的支持/不支持/超时回退/空输出回退四类 case（无外呼）
+- [x] 2.1 新建自评服务：ModelProvider + ModelCallOptions + TokenUsageRecorder（type 复用语义最近枚举，同 LLM 压缩口径）；逐条引用「被支持/不被支持」判定 + 无据断言处置（按 D2 拍板）
+- [x] 2.2 失败回退链：超时/模型不可用/空输出/解析失败 → 回退 R 档规则链（与 compressor/rerank 回退语义同构）
+- [x] 2.3 单测：fake ModelProvider 的支持/不支持/超时回退/空输出回退四类 case（无外呼）
 
 ## 任务组 3 — 动态键与治理
 
