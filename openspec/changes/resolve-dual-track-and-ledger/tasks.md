@@ -4,7 +4,7 @@
 
 ## 0. 执行记录（执行 agent 填，复核 agent 核）
 
-- 分支 / 基线：feature/resolve-dual-track-and-ledger / 基线 master@fd4ad62（合并节点待 master 收口笔回填）
+- 分支 / 基线：feature/resolve-dual-track-and-ledger / 基线 master@fd4ad62 / 合并节点 a720f5f（双亲 = fd4ad62 + 2e04197，master 收口笔回填）
 - 前置实测（替代红测试先行的说明）：本卡零测试文件改动，不适用红测试先行；以任务组 1 现状实测清单为前置取证（work/_pag-gate-raw/group1-evidence.txt）
 - 27 格回补落位统计：P-ab 7 / P-ac 7 / P-ad 6 / P-ae 7，共 27 格逐格核验证据补勾完成，optimize-project-file-list-auth-reuse 6.1 维持未勾核验在位（work/_pag-gate-raw/group3-evidence.txt）
 - 归档落位统计：26 个变更目录全部 git mv 移入 archive/；移动前 changes/ 26 目录、archive/ 28 目录，移动后 changes/ 仅剩本卡（1 目录）、archive/ 54 目录；全仓 13 文件文字引用同步更新，旧路径 git grep 零命中
@@ -43,9 +43,9 @@
 
 ## 6. 门禁与合并（收口）
 
-- [ ] 6.1 `mvn -B -ntp test`（DASHSCOPE_API_KEY 置空字符串）：1075/1075 全绿 0 失败 0 跳过；`bash scripts/check-test-baseline.sh` 不带 `--update` 必须通过（台账零更新）
-- [ ] 6.2 四静态 0 违规（checkstyle / spotbugs / pmd:check / spotless:check）+ 三守卫（check-dirty CLEAN / check-line-endings lf <本卡写集> / check-write-set fd4ad62 写集逐文件比对——移动型文件以 rename 记账）+ `bash scripts/merge-gate.sh` 全 PASS；Docker 前提 `docker info` 实测，不在线则 failsafe 段 fail-closed 明列不掩瞒
-- [ ] 6.3 切 master → merge --no-ff（合并节点回填 §0，分支保留）→ `git status` 双确认 CLEAN → master 收口笔（仅本卡 tasks.md §0 回填 + 6.3 勾选）
+- [x] 6.1 `mvn -B -ntp test`（DASHSCOPE_API_KEY 置空字符串）：1075/1075 全绿 0 失败 0 跳过；`bash scripts/check-test-baseline.sh` 不带 `--update` 必须通过（台账零更新）
+- [x] 6.2 四静态 0 违规（checkstyle / spotbugs / pmd:check / spotless:check）+ 三守卫（check-dirty CLEAN / check-line-endings lf <本卡写集> / check-write-set fd4ad62 写集逐文件比对——移动型文件以 rename 记账）+ `bash scripts/merge-gate.sh` 全 PASS；Docker 前提 `docker info` 实测，不在线则 failsafe 段 fail-closed 明列不掩瞒
+- [x] 6.3 切 master → merge --no-ff（合并节点回填 §0，分支保留）→ `git status` 双确认 CLEAN → master 收口笔（仅本卡 tasks.md §0 回填 + 6.3 勾选）
 - [ ] 6.4 严格停步回报（绝对禁止 git push）：原样粘贴路径自证、git log --oneline --graph -12、git status --short、每笔 git show --stat、门禁 raw 结论行、27 格逐格留痕摘录、归档前后对账与引用同步清单；任何未实际执行的命令不得出现在回报中
       预注册注记：本格与复核区 7.1-7.5 的勾选不在本卡执行时点完成（停步回报为执行终态；复核 agent 只读不改文件），回补载体为 owner 指定的后续 master 前向提交（P-ab 契约 5）。
 
