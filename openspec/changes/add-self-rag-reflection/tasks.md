@@ -32,7 +32,7 @@
 - 任务组 4 处置表改判与规格收口：
   - `openspec/project.md` 处置表 12 行已改判为「做（生成侧反思）｜add-self-rag-reflection」。
   - `proposal.md` §6 决策点已回填 owner 三项拍板（D1 R+L 组合、D2 软降级、D3 验收真跑锚定不回退）。
-  - 真跑另授权：本卡门禁阶段仅跑内存测试，`RAG_BENCHMARK_REAL=1` 真跑须待 owner 另行授权。
+  - 真跑已执行（2026-10-10 owner 授权，D3 尾段任务卡 `work/task-card-P-ah-selfrag-realrun.md`）：合入后于 master 单轮真跑 `RAG_BENCHMARK_REAL=1`（run profile=CHUNKING），18 例口径 citationPrecision 0.9167 ≥ 0.8889 锚点、answerConsistency 1.0 持平不回退，54 例全量 0.8704/0.9907、0 失败——D3 验收 PASS；证据 `docs/rag-quality/after-selfrag.json`，亲验与独立复算见 `docs/main-agent-logbook.md` §74.4。
 - 任务组 5 门禁与基线核验：
   - 全量单测：`mvn -B -ntp test`（`DASHSCOPE_API_KEY=""`）Tests run: 1088, Failures: 0, Errors: 0, Skipped: 0 全绿。
   - 回归基线：surefire 报告 184，Tests run 1088，Failures 0，Skipped 0；failsafe 报告 27，Tests run 98，Skipped 6。`bash scripts/check-test-baseline.sh --update` 实测更新。
