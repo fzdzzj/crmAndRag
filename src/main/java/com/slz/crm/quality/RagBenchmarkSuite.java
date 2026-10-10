@@ -16,9 +16,10 @@ import java.util.Set;
  *
  * <p>修改本套件（增删用例/改黄金片段）= 提升 {@link #SUITE_VERSION}，否则历史基线不可比。
  *
- * <p><b>版本语义（expand-rag-benchmark 任务 2.2）</b>：v1.0 = 18 条初始集（历史锚点 {@code
- * docs/rag-quality/baseline-v1.json}）；v2.0 = 54 条扩容集（新锚点 {@code
- * docs/rag-quality/baseline-v2.json}）。两版跨版本<b>不可直接比较</b>—— 单条权重由 5.6% 降至 1.9%，v2.0
+ * <p><b>版本语义（expand-rag-benchmark 任务 2.2；expand-rag-benchmark-mismatch 任务 2.3）</b>：v1.0 = 18
+ * 条初始集（历史锚点 {@code docs/rag-quality/baseline-v1.json}）；v2.0 = 54 条扩容集（新锚点 {@code
+ * docs/rag-quality/baseline-v2.json}）；v3.0 = 新增 MISMATCH 失配组 9 条（54 → 63，新锚点 {@code
+ * docs/rag-quality/baseline-v3.json}，本卡暂未授权真跑落锚）。任一版本跨版本<b>不可直接比较</b>—— 单条权重随总数而变，
  * 只与同版报告对比（比较前先核对报告 suiteVersion）。
  */
 public final class RagBenchmarkSuite {
@@ -26,14 +27,15 @@ public final class RagBenchmarkSuite {
   /**
    * 基准集版本：写入每份 {@code RagQualityReport.Report}，跨变更比较时先核对版本一致。 v1.0 = add-rag-quality-baseline 落地的
    * 18 条初始集；v2.0 = expand-rag-benchmark 扩容的 54 条（TEXT 17 / TABLE 13 / IMAGE 6 / LEXICAL 14 / EDGE
-   * 4），与 v1.0 不可直接比较。
+   * 4），与 v1.0 不可直接比较；v3.0 = 新增 MISMATCH 失配组 9 条（63 条：TEXT 17 / TABLE 13 / IMAGE 6 / LEXICAL 14 /
+   * EDGE 4 / MISMATCH 9，expand-rag-benchmark-mismatch 任务 2.3），激活卡以 baseline-v3.json 为关态基线对照。
    */
-  public static final String SUITE_VERSION = "2.0";
+  public static final String SUITE_VERSION = "3.0";
 
   private RagBenchmarkSuite() {}
 
   /**
-   * @return 标准基准集（54 条：TEXT 17 / TABLE 13 / IMAGE 6 / LEXICAL 14 / EDGE 4）
+   * @return 标准基准集（63 条：TEXT 17 / TABLE 13 / IMAGE 6 / LEXICAL 14 / EDGE 4 / MISMATCH 9）
    */
   public static List<RagBenchmarkCase> standard() {
     return List.of(
@@ -366,6 +368,72 @@ public final class RagBenchmarkSuite {
             true),
         new RagBenchmarkCase(
             "L-14", Category.LEXICAL, "价格政策的版本号是多少", Set.of("price-owner"), List.of("v2.7"), true),
+        // ---- MISMATCH：查询-文档词汇失配（expand-rag-benchmark-mismatch 任务 2.1） ----
+        // question 用口语/行话之外的话面，gold chunk 用技术术语/编号/书面语；二者词面 2-gram 交集≈空（机械判据见 §0），
+        // 纯召回词法命中考题救不动，考察 multi-query/HyDE/衍生问题等改写是否补漏召；答案点宽写（E 组先例）。
+        new RagBenchmarkCase(
+            "M-01",
+            Category.MISMATCH,
+            "货都卖出去一个多月了钱还没到账，有没有什么办法先把钱挪回来用",
+            Set.of("jargon-factoring"),
+            List.of("应收账款保理", "转让融资", "提前回笼"),
+            true),
+        new RagBenchmarkCase(
+            "M-02",
+            Category.MISMATCH,
+            "银行那边批给我们的额度，到底还有多少是能直接动的",
+            Set.of("jargon-credit"),
+            List.of("授信敞口", "剩余可用", "支用前核对"),
+            true),
+        new RagBenchmarkCase(
+            "M-03",
+            Category.MISMATCH,
+            "手里压了一张还没到期的票据，想尽早换成现钱该找谁",
+            Set.of("jargon-discount"),
+            List.of("承兑汇票贴现", "背书转让", "扣除利息提前兑付"),
+            true),
+        new RagBenchmarkCase(
+            "M-04",
+            Category.MISMATCH,
+            "三号车间那台专门把铁板接到一起的机器，隔多久要做一回保养",
+            Set.of("eq-041"),
+            List.of("数控焊接机", "两周一次点检", "清理焊渣"),
+            true),
+        new RagBenchmarkCase(
+            "M-05",
+            Category.MISMATCH,
+            "库房门口来回搬货的小车，一趟最多能驮多重的东西",
+            Set.of("eq-107"),
+            List.of("自动引导搬运车", "托盘转运", "载重六百公斤"),
+            true),
+        new RagBenchmarkCase(
+            "M-06",
+            Category.MISMATCH,
+            "产线最后面那台把每箱口自动合起来的设备，一分钟能处理多少只",
+            Set.of("eq-172"),
+            List.of("自动封箱机", "胶带封口", "每分钟四十五件"),
+            true),
+        new RagBenchmarkCase(
+            "M-07",
+            Category.MISMATCH,
+            "出差在外地过夜住店花的钱，公司这边能给报销吗",
+            Set.of("expense-travel"),
+            List.of("住宿费", "城市标准限额", "凭发票"),
+            true),
+        new RagBenchmarkCase(
+            "M-08",
+            Category.MISMATCH,
+            "出发办事之前能不能先从单位支点钱垫着，回头多退少补",
+            Set.of("expense-advance"),
+            List.of("备用金借款", "垫付", "对冲结算"),
+            true),
+        new RagBenchmarkCase(
+            "M-09",
+            Category.MISMATCH,
+            "报销单递上去之后，要过几层手续钱才会打到账上",
+            Set.of("expense-claim"),
+            List.of("逐级审核", "财务初审", "终审放款"),
+            true),
         // ---- EDGE：诚实生成语义（D16） ----
         // 边界1：闲聊，KB OFF——绝不该触发检索或注入未命中提示
         new RagBenchmarkCase("E-01", Category.EDGE, "你好，在吗", Set.of(), List.of(), false),
