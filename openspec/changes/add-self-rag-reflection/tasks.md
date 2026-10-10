@@ -29,6 +29,10 @@
   - `ConfigKeyTierPolicyTest`：66 键 census 分区恰 34/25/7（Tests run: 2, Failures: 0）。
   - `DynamicConfigKeyRegistryTest`：11 个官方命名空间及 3 个 `rag.generation.*` 键校验放行与非法值拒绝全绿（Tests run: 10, Failures: 0）。
   - `docs/dynamic-config-keys.md` 同步登记完成。
+- 任务组 4 处置表改判与规格收口：
+  - `openspec/project.md` 处置表 12 行已改判为「做（生成侧反思）｜add-self-rag-reflection」。
+  - `proposal.md` §6 决策点已回填 owner 三项拍板（D1 R+L 组合、D2 软降级、D3 验收真跑锚定不回退）。
+  - 真跑另授权：本卡门禁阶段仅跑内存测试，`RAG_BENCHMARK_REAL=1` 真跑须待 owner 另行授权。
 
 ## 任务组 1 — 规则反思层（R 档）
 
@@ -50,8 +54,8 @@
 
 ## 任务组 4 — 处置表改判与规格收口
 
-- [ ] 4.1 `openspec/project.md` 处置表 12 行改判：「不做（复杂度；等基线归因后再议）」→「做（生成侧反思）｜add-self-rag-reflection」
-- [ ] 4.2 proposal.md §6 决策点回填拍板结果；tasks.md 勾选 + §0 执行记录收口
+- [x] 4.1 `openspec/project.md` 处置表 12 行改判：「不做（复杂度；等基线归因后再议）」→「做（生成侧反思）｜add-self-rag-reflection」
+- [x] 4.2 proposal.md §6 决策点回填拍板结果；tasks.md 勾选 + §0 执行记录收口
 
 ## 任务组 5 — 门禁与基线
 
