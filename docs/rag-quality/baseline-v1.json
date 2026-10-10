@@ -259,14 +259,14 @@
   "fixtureRegression" : {
     "harness" : "RagQualityRegressionTest",
     "harnessVersion" : "1",
-    "generatedAt" : "2026-09-20T14:47:34.020228400Z",
+    "generatedAt" : "2026-10-10T11:38:15.305882200Z",
     "k" : 5,
-    "suiteVersion" : "2.0",
-    "caseCount" : 54,
-    "chunkCount" : 45,
-    "fixtureCount" : 12,
-    "recallAt5" : 0.8888888888888888,
-    "mrr" : 0.7546296296296298,
+    "suiteVersion" : "3.0",
+    "caseCount" : 63,
+    "chunkCount" : 57,
+    "fixtureCount" : 15,
+    "recallAt5" : 0.8412698412698413,
+    "mrr" : 0.6838624338624341,
     "floorRatio" : 0.95,
     "note" : "纯 JVM 确定性 fixture 门禁口径，由 -Drag.baseline.regen=true 首刷/再生成；与真跑 RagRealRetrievalBenchmarkIT 的 metrics 段不可互相比较"
   }
