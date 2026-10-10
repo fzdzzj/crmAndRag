@@ -24,9 +24,10 @@
 
 ## 任务组 4 · 真跑授权节点（成本闸门，同 P-ah-D3 模式）
 
-- [ ] 4.1 owner 授权 `RAG_BENCHMARK_REAL=1` 后：Docker 实测在线 → 白名单单轮默认矩阵真跑（命令见 design.md §4，`-Drag.benchmark.out=docs/rag-quality/baseline-v3.json`）→ 跑毕清环境变量
+- [x] 4.1 已执行（2026-10-10 owner 授权：Docker 在线实测、白名单单轮默认矩阵真跑 290.7s、MVN_EXIT=0 未触额、跑毕清 RAG_BENCHMARK_REAL 实测确认；命令与 raw 见 §0 任务组 4 留痕）
 - [ ] 4.2 验收：SUITE_VERSION=3.0、failureRate=0、旧 54 例对照 `baseline-after-quality-loop.json` 无回退、MISMATCH 组 recall<1.0 用例 ≥6（缺口落证）；产物 baseline-v3.json + baseline-v3-diff.md 差异说明
-- [ ] 4.3 未获授权则 §0 标「真跑待授权」合入收口，不阻塞
+  - 未勾依据（2026-10-10 真跑实证）：前半达成（3.0 / failureRate=0 / 旧 54 例零回退），但「MISMATCH ≥6 例 recall<1.0」不成立——9/9 关态 recall=1.0，缺口面为零，按判据 FAIL 结案（证伪，非悬空格）；baseline-v3-diff.md 不再产出，结论并入 §0 与 HANDOFF。
+- [ ] 4.3 未获授权则 §0 标「真跑待授权」合入收口，不阻塞（条件未触发：2026-10-10 已获授权并执行，兜底路径未启用；非悬空格）
 
 ## 任务组 5 · 收口（¥0）
 
@@ -73,3 +74,10 @@
 **红线自检**：`git diff` 确认未触碰 12 个既有 fixture 正文/GOLD、54 例既有 case、任何既有真跑锚点 JSON（baseline-v1.json 仅 regen 写入口更新 fixtureRegression 段，metrics/cases 逐字保留）；三开关默认 false 未动；检索主代码零改动；零 DDL/零新依赖/禁 frontend（pre-commit 仅跑前端静态检查，未改 frontend 文件）；写集 15 个 tracked 文件对账 design.md §6。
 
 **任务组 4（真跑授权节点，未执行）**：待 owner 授权 `RAG_BENCHMARK_REAL=1` 后按 design.md §4 白名单命令落 `docs/rag-quality/baseline-v3.json`（默认矩阵、不注入 rag.*、三开关 false），并以 `baseline-after-quality-loop.json` 对照旧 54 例无回退、MISMATCH 组 recall<1.0 ≥6 落证。未授权前本卡停步，不阻塞其后授权流程。
+
+**任务组 4 真跑实证（2026-10-10，owner 授权 RAG_BENCHMARK_REAL=1，终判 FAIL=证伪结案）**：
+
+- 命令原样：`mvn -B -ntp test-compile failsafe:integration-test '-Dit.test=RagRealRetrievalBenchmarkIT' '-Drag.benchmark.out=docs/rag-quality/baseline-v3.json'`（默认矩阵 V1、不注入 rag.*、三开关 false）→ failsafe `Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 290.7 s`，MVN_EXIT=0，未触额，跑毕开关实测清除。
+- 结果：`docs/rag-quality/baseline-v3.json` 落盘——suiteVersion 3.0 / caseCount 63 / failureRate 0 / meanRecallAtK 0.9550 / meanCitationPrecision 0.8272 / meanAnswerConsistency 0.9550 / totalTokens 61734；旧 54 例对照 `baseline-after-quality-loop.json` 零回退（敏感例逐例一致：T-12=0.667 / T-14=0.5 / TB-01=1.0 / TB-10=1.0 / E-02=0 / E-04=0）。
+- **证伪结论**：MISMATCH M-01..M-09 关态 recallAtK 9/9 = 1.0，验收 #3「≥6 例 recall<1.0」不成立（0/9）——默认检索稠密语义路线已桥接近义/行话/口语级词面失配（嵌入空间本就含改写可造的语义桥），multi-query/HyDE 改写收益面在 synonym 级失配上**结构性不存在**；与 `ladder-report.md`「作用面为空」结论互证。设计假设「2-gram 词面近零 ⇒ 漏召缺口」被真跑推翻。
+- 处置联动（owner 2026-10-10 拍板「都授权」）：project.md 处置表 07/15/06 改判「不做（真跑证伪收益面）」，三开关留库默认关；激活卡不立项；若未来生产出现歧义/干扰项型查询痛点（multi-query 真正作用面为改写消歧），另立新卡再议（挂低优先级账）。baseline-v3.json 留档为 63 例 V1 口径现行锚。

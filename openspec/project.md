@@ -24,9 +24,9 @@
 | 02 | Semantic Chunking | 缺 → 新增 | upgrade-semantic-chunking-and-index |
 | 05 | Chunk Header | 缺 → 新增 | upgrade-semantic-chunking-and-index |
 | 03 | Small-to-Big | 缺 → 新增 | upgrade-semantic-chunking-and-index |
-| 07 | Query Transformation | 部分已有 → 增强 | enhance-query-transformation |
-| 15 | HyDE | 缺 → 可选新增（默认关） | enhance-query-transformation |
-| 06 | Document Augmentation | 缺 → 可选新增 | enhance-query-transformation |
+| 07 | Query Transformation | 不做（真跑证伪改写收益面，2026-10-10） | enhance-query-transformation（开关留库默认关） |
+| 15 | HyDE | 不做（真跑证伪，同 07） | enhance-query-transformation（开关留库默认关） |
+| 06 | Document Augmentation | 不做（真跑证伪，同 07） | enhance-query-transformation（开关留库默认关） |
 | 11 | Feedback Loop | 待定（触发：产品提供点赞/点踩信号） | enhance-query-transformation 附台账 |
 | 14 | Hierarchical Index | 待定（触发：单库 chunk 量级超阈值/跨库路由需求） | enhance-query-transformation 附台账 |
 | 12 | Self-RAG | 做（生成侧反思） | add-self-rag-reflection |
@@ -35,7 +35,7 @@
 | 01 | Simple RAG | 基线对照，非升级项 | — |
 | 09 | Sentence Window | 不单独立项（与 04 邻居增强同机制，按需在 rag-context 演进） | — |
 
-> 台账注记：07（Query Transformation）/ 15（HyDE）/ 06（Document Augmentation）三行的激活度量前置已闭合（expand-rag-benchmark-mismatch）——失配语料与 MISMATCH 用例组已入库、套件升 v3.0，后续激活卡以 `docs/rag-quality/baseline-v3.json`（待授权真跑落锚）为关态基线做多查询/HyDE/衍生问题改写收益对照。
+> 台账注记：07/15/06 三行已于 2026-10-10 改判「不做」——P-ai 任务组 4 真跑证伪改写收益面（MISMATCH M-01..M-09 关态 recall 9/9=1.0，缺口面为零；默认检索稠密语义路线已桥接近义级词面失配，改写可造的语义桥嵌入空间本就有）。三开关代码留库默认关；`docs/rag-quality/baseline-v3.json`（63 例 V1 口径现行锚，旧 54 例零回退）留档供后续任何卡锚定。若未来生产出现歧义/干扰项型查询痛点（multi-query 真正作用面为改写消歧），另立新卡再议。
 
 ## 硬约束（所有变更遵守）
 

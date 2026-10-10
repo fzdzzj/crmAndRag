@@ -22,15 +22,17 @@
 | frontend/ / DDL / 新依赖 | **未动 / 零 / 零** |
 | surefire 计数 | 1088→**1089**（新增 1 个 DataPreparer 加载用例） |
 
-## v3 锚点状态（待授权）
+## v3 锚点状态（已落盘，2026-10-10 真跑实证）
 
-- 默认矩阵（V1、不注入 rag.*、三开关 false）的**真跑锚点 `docs/rag-quality/baseline-v3.json` 尚未落盘**（任务组 4，需 owner 显式授权 `RAG_BENCHMARK_REAL=1`）。本卡 ¥0 部分已合入，v3 锚点待补跑不阻塞后续授权流程。
-- 对照口径：旧 54 例对照 `baseline-after-quality-loop.json`（V1 最新锚），任一旧例 recall 回退即 FAIL；MISMATCH 组 per-case recall<1.0 ≥6 条为「缺口成立」落证。
-- 真跑命令/产物见 `design.md §4`。
+- owner 已授权 `RAG_BENCHMARK_REAL=1`，任务组 4 单轮默认矩阵真跑已执行（failsafe 1/0/0/0，elapsed 290.7s，未触额，跑毕清开关）；`docs/rag-quality/baseline-v3.json` 落盘——suiteVersion 3.0 / caseCount 63 / failureRate 0 / meanRecallAtK 0.9550 / totalTokens 61734。
+- 旧 54 例对照 `baseline-after-quality-loop.json` **零回退**（敏感例逐例一致：T-12=0.667 / T-14=0.5 / TB-01=1.0 / TB-10=1.0 / E-02=0 / E-04=0）。
+- **证伪结论（验收 #3 FAIL）**：MISMATCH M-01..M-09 关态 recall 9/9 = 1.0，缺口面为零——默认检索稠密语义路线已桥接近义级词面失配，改写收益面在 synonym 级失配上结构性不存在；与 `ladder-report.md`「作用面为空」互证。设计假设「2-gram 词面近零 ⇒ 漏召缺口」被真跑推翻，本卡以证伪结案。
 
-## 激活卡接口（后续立项）
+## 激活卡接口（不立项，2026-10-10 owner 拍板）
 
-- 以 `baseline-v3.json` 为**关态基线**，开 `rag.query.multi-query.enabled` / `hyde.enabled` / `derived-questions.enabled` 真跑对照，MISMATCH 组 recall 攀升即 07/15/06 收益实证。
+- 三开关（`rag.query.multi-query.enabled` / `hyde.enabled` / `derived-questions.enabled`）**留库默认关**，处置表 07/15/06 已改判「不做（真跑证伪收益面）」。
+- 激活卡**不立项**：MISMATCH 组关态 recall 已满格，无攀升度量面。若未来生产出现**歧义/干扰项型**查询痛点（multi-query 真正作用面为改写消歧而非同义桥接），另立新卡再议（挂低优先级账）。
+- `baseline-v3.json` 留档为 63 例 V1 口径现行锚，供后续任何卡锚定。
 
 ## 验证命令
 
@@ -43,5 +45,6 @@ bash scripts/merge-gate.sh
 
 ## 遗留 / 非本单
 
-- 任务组 4 真跑授权节点（`RAG_BENCHMARK_REAL=1` + `-Drag.benchmark.out=docs/rag-quality/baseline-v3.json`）**未执行**。
-- merge / push 需 owner 显式授权（本卡停在分支，未 push）。
+- 任务组 4 真跑已执行并以证伪结案（见上）；`baseline-v3-diff.md` 不产出，结论并入 tasks.md §0 与本文件。
+- merge / push 已完成：`c405776`（--no-ff 入 master），push `c155226..c405776`，CI 第 32 轮全绿。
+- 本卡收口笔：baseline-v3.json + i05-forensics.json 证据入库、tasks.md 4.x 回填、处置表 07/15/06 改判（owner 2026-10-10「都授权」）。
