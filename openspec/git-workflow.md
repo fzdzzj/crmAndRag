@@ -83,3 +83,9 @@
   - **在途提案**——还挂着未拍板的开关 / 授权节点，哪怕 tasks 全勾也留着：下一步动作还押在 owner 手上。
 - **移动与引用同步同一笔提交**：移动前对每个目录名 `grep` 全部被跟踪 `*.md`（排除 `archive/`），load-bearing 的活路径改指 `archive/<change-id>/`；纯历史叙述（带日期的状态快照、已记"完成于某提交"的动作记录）不动。
 - 提交信息：`docs(openspec): 归档 <change-id>`；一次多案用 `docs(openspec): 批量归档 N 案已闭合提案`，并逐案给出上面三条的判定结论。只动 `openspec/changes/**` 与同步改过的引用文件，不夹带代码改动。
+
+## 9. 双轨归属与检索链路辨权规则
+
+- **spec/changes = 平台总纲与冻结契约轨**：`add-crm-rag-fusion-platform`（proposal / contracts-frozen / db-table-coordination / design-decisions）为长期活文档，契约改动走受控解冻；其余 13 目录历史规格资产只读保留不再新加。
+- **openspec/changes = 逐卡变更唯一新卡轨**：新卡三件套一律在此立项，完工归 `archive/`。
+- **检索链路辨权规则**：改契约先查 `spec/changes/add-crm-rag-fusion-platform/contracts-frozen.md`（受控解冻）；功能/修复改动经 openspec 卡走。

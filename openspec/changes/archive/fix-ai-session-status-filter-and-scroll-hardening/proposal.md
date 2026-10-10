@@ -27,7 +27,7 @@
 1. `src/main/java/com/slz/crm/server/service/impl/AiSessionServiceImpl.java`
 2. `src/test/java/com/slz/crm/unit/service/AiSessionServiceImplTest.java`
 3. `scripts/test-baseline.txt`
-4. `openspec/changes/fix-ai-session-status-filter-and-scroll-hardening/tasks.md`
+4. `openspec/changes/archive/fix-ai-session-status-filter-and-scroll-hardening/tasks.md`
 
 ## 4. 禁止事项与边界
 

@@ -33,7 +33,7 @@
   实测：纯追加 10 行（1 注释 + 8 类 + 自钉）；既有三组规约原样保留，`GitAttributesContractGuardTest` 3 条全绿（surefire 全量 928 含此守卫）
 
 ### 阶段 3：绿对照与安全等价验证
-- [x] 3.1 绿对照：再次删除并 `git checkout -- scripts/test-baseline.txt openspec/changes/optimize-project-file-list-auth-reuse/tasks.md` 重检出 → `git ls-files --eol -- <两文件>` 显示 `w/lf` → `check-line-endings lf` 绿。实测：两文件均 `i/lf w/lf attr/text eol=lf`，门禁输出 `LINE_ENDINGS_OK: scripts/test-baseline.txt`，退出码 0
+- [x] 3.1 绿对照：再次删除并 `git checkout -- scripts/test-baseline.txt openspec/changes/archive/optimize-project-file-list-auth-reuse/tasks.md` 重检出 → `git ls-files --eol -- <两文件>` 显示 `w/lf` → `check-line-endings lf` 绿。实测：两文件均 `i/lf w/lf attr/text eol=lf`，门禁输出 `LINE_ENDINGS_OK: scripts/test-baseline.txt`，退出码 0
 - [x] 3.2 `git check-attr eol text -- <八类各取一个真实样本路径>` 全部 `eol: lf`。实测样本：`docs/migration-runbook.md` / `scripts/test-baseline.txt` / `.github/workflows/ci.yml` / `frontend/openapi.yaml` / `pom.xml` / `src/main/resources/application.properties`（全仓无 tracked `.properties` 文件，用代表性路径验证 `*.properties` 模式绑定，check-attr 按路径求值不要求文件存在）/ `src/main/resources/db/migration/V1__baseline.sql` / `frontend/package.json`，另加 `.gitattributes` 自身，九条路径全部 `eol: lf` + `text: set`
 - [x] 3.3 安全等价铁证：`git add --renormalize .` → `git status --porcelain` 零 M 条目（对象库内容零变化），若出现任何 M 停步回报。实测：renormalize 前后 status 完全一致，唯一 M 为写集内已暂存 `.gitattributes`（+10 行），零新增 M 条目
 - [x] 3.4 `git status` 全局 CLEAN（未跟踪物料不计）。实测：两笔提交后 `check-dirty` = CLEAN（见 4.4）
@@ -42,7 +42,7 @@
 - [x] 4.1 `mvn -B -ntp test` 全量 928/0/0/0（数量不变）。实测：`Tests run: 928, Failures: 0, Errors: 0, Skipped: 0`，BUILD SUCCESS
 - [x] 4.2 四静态门禁 `mvn -B -ntp pmd:check spotbugs:check checkstyle:check spotless:check` 0 违规。实测：BUILD SUCCESS（退出码 0）
 - [x] 4.3 `& "D:\git\Git\bin\bash.exe" scripts/check-test-baseline.sh` 通过（不 `--update`）。实测：RC=0，surefire 报告 165（默认口径）Tests run=928 Failures=0 Errors=0 Skipped=0，failsafe 报告 24（默认口径）Tests run=83 Skipped=6，回归基线门禁通过
-- [x] 4.4 三守卫：`check-line-endings lf .gitattributes scripts/test-baseline.txt openspec/changes/extend-gitattributes-eol-coverage/tasks.md` 全 OK、`check-write-set fc529f4 .gitattributes openspec/changes/extend-gitattributes-eol-coverage/tasks.md` 命中、`check-dirty` CLEAN。实测：三守卫在两笔提交后执行（check-write-set 检查已提交改动、check-dirty 要求净树，均需提交后才有意义），三守卫全绿
+- [x] 4.4 三守卫：`check-line-endings lf .gitattributes scripts/test-baseline.txt openspec/changes/archive/extend-gitattributes-eol-coverage/tasks.md` 全 OK、`check-write-set fc529f4 .gitattributes openspec/changes/archive/extend-gitattributes-eol-coverage/tasks.md` 命中、`check-dirty` CLEAN。实测：三守卫在两笔提交后执行（check-write-set 检查已提交改动、check-dirty 要求净树，均需提交后才有意义），三守卫全绿
 - [x] 4.5 门禁自测：`scripts/tests/check-test-baseline-selftest.sh`（101）+ `scripts/tests/agent-helper-selftest.sh`（35）= 136 条全绿。实测：`SELFTEST PASSED: 101 assertions` + `SELFTEST PASSED: 35 assertions`，退出码均 0
 
 ### 阶段 5：提交、合并与停步

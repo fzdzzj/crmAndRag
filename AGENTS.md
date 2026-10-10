@@ -75,7 +75,7 @@
 ### 前端与在途变更规格
 
 - 前端（`frontend/`）的 pnpm 命令、pre-commit 钩子与代码约定见 `frontend/AGENTS.md`；CI 里 `frontend-quality` job 跑 `pnpm lint:check` + `pnpm type-check:check`。
-- 在途变更规格位于 `openspec/changes/`（提案/tasks/验收三件套，归档在 `openspec/changes/archive/`）；与 `spec/changes/` 的分工**待 owner 确认**，改检索链路前两个目录都先看。
+- 在途变更规格位于 `openspec/changes/`（提案/tasks/验收三件套，归档在 `openspec/changes/archive/`）；双轨归属已定论：spec/changes = 平台总纲与冻结契约轨（add-crm-rag-fusion-platform 长期活文档，契约改动走受控解冻；其余 13 目录历史规格资产只读保留不再新加）；openspec/changes = 逐卡变更唯一新卡轨（完工归 archive/）；检索链路辨权：改契约先查 spec/changes/add-crm-rag-fusion-platform/contracts-frozen.md，功能/修复改动经 openspec 卡走。
 
 ### 权威上下文 owner
 

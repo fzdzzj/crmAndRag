@@ -46,7 +46,7 @@
 ## 3. Impact & Boundary（影响与边界）
 
 - **受控写集**：
-  1. `openspec/changes/test-frontend-use-knowledge/`（提案三件套）
+  1. `openspec/changes/archive/test-frontend-use-knowledge/`（提案三件套）
   2. `frontend/src/hooks/__tests__/useKnowledge.test.ts`（新建测试文件）
   3. `work/task-card-frontend-use-knowledge-test.md`（任务卡）
 - **零侵入保证**：

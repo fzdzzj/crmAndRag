@@ -12,7 +12,7 @@
 ## 1. 读取指定文档 (completed)
 - [x] 1.1 读取 AGENTS.md（本仓执行约束）
 - [x] 1.2 读取 openspec/git-workflow.md
-- [x] 1.3 读取 openspec/changes/add-knowledge-admin-api/{proposal.md,tasks.md}
+- [x] 1.3 读取 openspec/changes/archive/add-knowledge-admin-api/{proposal.md,tasks.md}
 - [x] 1.4 读取/确认 specs/knowledge/spec.md（不存在则后续创建若需）
 - [x] 1.5 核对当前 surefire 基线 653 与 V26 迁移格式
 
