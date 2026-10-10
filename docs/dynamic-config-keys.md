@@ -34,8 +34,12 @@
 > `rag.ingest`），登记 2 个摄取恢复重放配置键，新调用实时读取生效、非法/缺失 fail-safe 回落——
 > `rag.ingest.replay-enabled`（默认 false，费用红线：重放=真实嵌入调用，必须显式开启）与
 > `rag.ingest.replay-batch-size`（默认 5，范围 1~50）。
-> 定级状态（add-dynamic-config-key-tier-acl，2026-10-09）：注册表 63 键全集完成三档定级，各表新增「权限档位」列——
-> OPERATIONAL 34 键 = 608 持有者可写，COST 22 键 / STRUCTURAL 7 键 = 超管专写；608 语义与三档全清单见文末
+> 注册状态（add-self-rag-reflection，2026-10-10）：命名空间白名单扩为十一个（新增
+> `rag.generation`），登记 3 个生成侧 Self-RAG 反思配置键，新调用实时读取生效、非法/缺失 fail-safe 回落——
+> `rag.generation.selfrag.mode`（默认 rule，非法值回落默认）/ `rag.generation.selfrag.llm.timeout-ms`（默认 3000）/
+> `rag.generation.selfrag.llm.max-claims`（默认 20）。三键全定级为 COST 档（超管专写，适用成本键申请-审批流）。
+> 定级状态（add-dynamic-config-key-tier-acl，2026-10-09；add-self-rag-reflection 扩为 66 键）：注册表 66 键全集完成三档定级，各表新增「权限档位」列——
+> OPERATIONAL 34 键 = 608 持有者可写，COST 25 键 / STRUCTURAL 7 键 = 超管专写；608 语义与三档全清单见文末
 > 「键级权限分层（tier ACL）」节。
 
 ## rag.retrieval.* —— 检索管线（Lane B）
@@ -162,6 +166,15 @@
 
 > 调度与身份：由 IngestionReplayScheduler 固定 tick 调度（默认 60s），以 uploaded_file.userId 加载真实用户构造 UserContext 调用既有 reingest 入口，走既有 canWrite 授权与平台治理审计；上传者不存在、离职、冻结或无权限时转 FAILED 终态并记录审计，熔断仍开快速拒绝时保持 PENDING 下轮再试。
 
+## rag.generation.* —— 生成侧 Self-RAG 反思（add-self-rag-reflection）
+
+| 键 | 类型 | 默认值 | 权限档位 | 语义与回退 |
+|---|---|---|---|---|
+| `rag.generation.selfrag.mode` | String | `rule` | COST | Self-RAG 反思模式：`off`（关闭反思）\| `rule`（确定性规则反思，默认）\| `llm`（LLM 支持度自评——默认关闭，开启会产生模型调用费用，COST 档）。非法值回落默认 `rule` |
+| `rag.generation.selfrag.llm.timeout-ms` | Long | 3000 | COST | Self-RAG LLM 自评等待超时（毫秒）：超时/失败/空输出/解析失败均回退规则反思链。消费点 <1 回落默认 3000。仅在 `selfrag.mode=llm` 时生效（COST 档） |
+| `rag.generation.selfrag.llm.max-claims` | Integer | 20 | COST | Self-RAG LLM 自评单次断言/引用上限，防 prompt 膨胀。范围 1~100（默认 20） |
+
+> 计量与回退：LLM 支持度自评调用 token 挂 `TokenUsageRecorder`（type=SUMMARY，复用语义最近枚举）。LLM 自评失败（超时/模型不可用/空输出/解析异常）无缝回退规则反思链，保障回答生成不中断。COST 档超管专写，支持通过成本键申请-审批流（`/platform/config/cost-requests`）按规范流程申请开启与调整。
 
 ## per-KB 覆盖（add-per-kb-retrieval-strategy-override）
 > 知识库级检索策略覆盖：对单个知识库覆盖检索参数。恰 12 键白名单（v1 封闭集，扩充需 owner 拍板并同步本清单）；三层合并 = 覆盖值 > 全局动态配置 > 注册表默认；仅当授权收敛后 kbScope 恰为单库时应用覆盖（多库/全库/kbId 不可解析一律走全局）。覆盖值非法/越界 = WARN 审计 + 回落全局，打不断检索。写端点复用 KNOWLEDGE_ADMIN_MANAGE(900)：GET /knowledge/strategies（清单含来源 override/global/default）、PUT /knowledge/strategies/{key}（单键覆盖）、DELETE /knowledge/strategies/{key}（软删回落全局）、POST /knowledge/strategies/{key}/rollback（按版本回滚）。热失效：写后逐键失效 + 有界全量刷新兜底。
@@ -182,7 +195,7 @@
 | rag.context.parent-expand | String | on | OPERATIONAL | 单库父块展开开关（on/off） |
 | rag.retrieval.query-rewrite.enabled | Boolean | true | OPERATIONAL | 单库查询改写开关 |
 
-> 成本类（rerank.mode=llm、compressor.mode=llm、multi-query.*、hyde.*、derived-questions.*、vision-pdf.*、replay-*）与结构类（chunking.*、chunkSize/chunkOverlap）永远不得进入 per-KB 覆盖——封闭集白名单外键写入被拒。
+> 成本类（rerank.mode=llm、compressor.mode=llm、multi-query.*、hyde.*、derived-questions.*、vision-pdf.*、replay-*、selfrag.*）与结构类（chunking.*、chunkSize/chunkOverlap）永远不得进入 per-KB 覆盖——封闭集白名单外键写入被拒。
 
 ## 键级权限分层（tier ACL）（add-dynamic-config-key-tier-acl）
 
@@ -190,14 +203,14 @@
 > `@RequirePermission(PLATFORM_DYNAMIC_CONFIG_MANAGE)`（608「平台动态配置管理」，V30 `__dynamic_config_permission_seed`
 > 注册并授权全部业务角色，超管经拦截器直通）。服务层写路径 `DynamicConfigAccessGuards.requireKeyWriteAccess`
 > 按键档位闸门：OPERATIONAL 档键对 608 持有者放开，COST / STRUCTURAL 档键仍超管专写（FORBIDDEN 96005）；
-> 读端点与 cache/refresh 由 608 方法级注解承接鉴权。定级封闭表 = `ConfigKeyTierPolicy`（63 键与注册表一一对应，
+> 读端点与 cache/refresh 由 608 方法级注解承接鉴权。定级封闭表 = `ConfigKeyTierPolicy`（66 键与注册表一一对应，
 > census 防呆测试 `ConfigKeyTierPolicyTest` 锁死全集），改档需 owner 拍板并同步本节与各表「权限档位」列。
 
 - **OPERATIONAL（运营调参档，34 键，608 持有者可写）**：检索参数与融合/重排权重、图文路由、邻居与父块、意图类目、提示词与采样参数、业务功能开关、熔断治理参数等——热调无边际成本、可随时回落。
-- **COST（成本开关档，22 键，超管专写）**：LLM 重排/压缩、查询增强（多查询/HyDE/衍生问题）、VLM 视觉转写、摄取恢复重放、管理端真向量、限流配额、token 预算、模型选择等费用红线族——开关拨动直接产生真实模型调用费用。
+- **COST（成本开关档，25 键，超管专写）**：LLM 重排/压缩/Self-RAG自评、查询增强（多查询/HyDE/衍生问题）、VLM 视觉转写、摄取恢复重放、管理端真向量、限流配额、token 预算、模型选择等费用红线族——开关拨动直接产生真实模型调用费用。
 - **STRUCTURAL（变更管理档，7 键，超管专写）**：切分策略与分块尺寸、嵌入模型、模型 Provider、数据范围安全语义等——热改会造成新旧数据切片/嵌入标准不一致，属变更管理而非运行时开关。
 
-**COST 22 键全清单**：`ai.model.chatModel`、`ai.model.visionModel`、`business.rateLimit.perMinute`、`business.quota.maxTokensPerSession`、`rag.retrieval.admin-vector.enabled`、`rag.retrieval.vision-pdf.enabled`、`rag.retrieval.vision-pdf.min-text-chars`、`rag.retrieval.vision-pdf.max-pages`、`rag.retrieval.rerank.mode`、`rag.retrieval.rerank.llm.timeout-ms`、`rag.retrieval.rerank.llm.max-candidates`、`rag.context.token-budget`、`rag.context.compressor.mode`、`rag.context.compressor.llm.timeout-ms`、`rag.query.multi-query.enabled`、`rag.query.multi-query.variants`、`rag.query.hyde.enabled`、`rag.query.hyde.timeout-ms`、`rag.query.derived-questions.enabled`、`rag.query.derived-questions.max-per-chunk`、`rag.ingest.replay-enabled`、`rag.ingest.replay-batch-size`。
+**COST 25 键全清单**：`ai.model.chatModel`、`ai.model.visionModel`、`business.rateLimit.perMinute`、`business.quota.maxTokensPerSession`、`rag.retrieval.admin-vector.enabled`、`rag.retrieval.vision-pdf.enabled`、`rag.retrieval.vision-pdf.min-text-chars`、`rag.retrieval.vision-pdf.max-pages`、`rag.retrieval.rerank.mode`、`rag.retrieval.rerank.llm.timeout-ms`、`rag.retrieval.rerank.llm.max-candidates`、`rag.context.token-budget`、`rag.context.compressor.mode`、`rag.context.compressor.llm.timeout-ms`、`rag.query.multi-query.enabled`、`rag.query.multi-query.variants`、`rag.query.hyde.enabled`、`rag.query.hyde.timeout-ms`、`rag.query.derived-questions.enabled`、`rag.query.derived-questions.max-per-chunk`、`rag.ingest.replay-enabled`、`rag.ingest.replay-batch-size`、`rag.generation.selfrag.mode`、`rag.generation.selfrag.llm.timeout-ms`、`rag.generation.selfrag.llm.max-claims`。
 
 **STRUCTURAL 7 键全清单**：`ai.model.provider`、`ai.model.embeddingModel`、`rag.retrieval.chunkSize`、`rag.retrieval.chunkOverlap`、`rag.chunking.strategy`、`rag.chunking.max-chunk-size`、`business.dataScope.enabled`。
 
@@ -220,7 +233,7 @@
    - 终态不可逆：一旦进入 `APPROVED`、`REJECTED` 或 `WITHDRAWN`，不可再次转移；
    - 无过期（EXPIRED）态：审批通过即写入生效。
 3. **COST 白名单封闭**：
-   - 严格引用 `ConfigKeyTierPolicy.costKeys()`（22 键封闭集），零新增白名单常量；
+   - 严格引用 `ConfigKeyTierPolicy.costKeys()`（25 键封闭集），零新增白名单常量；
    - 白名单外键（OPERATIONAL 34 / STRUCTURAL 7 / 未注册未知键）提交申请一律拒绝（96007 语义）。
 4. **一键一单在途约束**：
    - 同一 `config_key` 在存在 `PENDING` 态申请单时，禁止提交新申请单，避免同键并发审批歧义；终态完结后可再次申请。

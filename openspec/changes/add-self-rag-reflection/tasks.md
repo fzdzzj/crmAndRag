@@ -25,6 +25,10 @@
       位置: 类 com.slz.crm.server.ai.LlmSelfRagReflectorTest
     ```
   - 转绿输出：`Tests run: 4, Failures: 0, Errors: 0, Skipped: 0 -- in com.slz.crm.server.ai.LlmSelfRagReflectorTest` 全绿；`DefaultSelfRagServiceTest` 3 例全绿。
+- 任务组 3 动态键与治理验证：
+  - `ConfigKeyTierPolicyTest`：66 键 census 分区恰 34/25/7（Tests run: 2, Failures: 0）。
+  - `DynamicConfigKeyRegistryTest`：11 个官方命名空间及 3 个 `rag.generation.*` 键校验放行与非法值拒绝全绿（Tests run: 10, Failures: 0）。
+  - `docs/dynamic-config-keys.md` 同步登记完成。
 
 ## 任务组 1 — 规则反思层（R 档）
 
@@ -40,9 +44,9 @@
 
 ## 任务组 3 — 动态键与治理
 
-- [ ] 3.1 `DynamicConfigKeyRegistry.NAMESPACES` 扩 `rag.generation`；登记 3 键（selfrag.mode / selfrag.llm.timeout-ms / selfrag.llm.max-claims），默认值/描述与 proposal §3 一致
-- [ ] 3.2 `ConfigKeyTierPolicy` 定级（按 D1 拍板：mode 含 llm 语义的定级回填此处）+ census 测试更新（63 → N 全量）
-- [ ] 3.3 `docs/dynamic-config-keys.md` 新增 `rag.generation.*` 节（键/类型/默认值/权限档位/语义与回退）+ COST 键审批流适用说明
+- [x] 3.1 `DynamicConfigKeyRegistry.NAMESPACES` 扩 `rag.generation`；登记 3 键（selfrag.mode / selfrag.llm.timeout-ms / selfrag.llm.max-claims），默认值/描述与 proposal §3 一致
+- [x] 3.2 `ConfigKeyTierPolicy` 定级（按 D1 拍板：mode 含 llm 语义的定级回填此处）+ census 测试更新（63 → N 全量）
+- [x] 3.3 `docs/dynamic-config-keys.md` 新增 `rag.generation.*` 节（键/类型/默认值/权限档位/语义与回退）+ COST 键审批流适用说明
 
 ## 任务组 4 — 处置表改判与规格收口
 
