@@ -46,14 +46,16 @@
 - [x] 6.1 `mvn -B -ntp test`（DASHSCOPE_API_KEY 置空字符串）：1075/1075 全绿 0 失败 0 跳过；`bash scripts/check-test-baseline.sh` 不带 `--update` 必须通过（台账零更新）
 - [x] 6.2 四静态 0 违规（checkstyle / spotbugs / pmd:check / spotless:check）+ 三守卫（check-dirty CLEAN / check-line-endings lf <本卡写集> / check-write-set fd4ad62 写集逐文件比对——移动型文件以 rename 记账）+ `bash scripts/merge-gate.sh` 全 PASS；Docker 前提 `docker info` 实测，不在线则 failsafe 段 fail-closed 明列不掩瞒
 - [x] 6.3 切 master → merge --no-ff（合并节点回填 §0，分支保留）→ `git status` 双确认 CLEAN → master 收口笔（仅本卡 tasks.md §0 回填 + 6.3 勾选）
-- [ ] 6.4 严格停步回报（绝对禁止 git push）：原样粘贴路径自证、git log --oneline --graph -12、git status --short、每笔 git show --stat、门禁 raw 结论行、27 格逐格留痕摘录、归档前后对账与引用同步清单；任何未实际执行的命令不得出现在回报中
+- [x] 6.4 严格停步回报（绝对禁止 git push）：原样粘贴路径自证、git log --oneline --graph -12、git status --short、每笔 git show --stat、门禁 raw 结论行、27 格逐格留痕摘录、归档前后对账与引用同步清单；任何未实际执行的命令不得出现在回报中
       预注册注记：本格与复核区 7.1-7.5 的勾选不在本卡执行时点完成（停步回报为执行终态；复核 agent 只读不改文件），回补载体为 owner 指定的后续 master 前向提交（P-ab 契约 5）。
+      补勾依据（2026-10-10 owner 转交执行子agent停步回报，主 agent 亲验逐项核对 PASS——拓扑/写集 86 分类/双轨落地/27 格回补/归档对账 54+1/旧路径零命中/门禁 raw/CI 证据抽查全吻合，见 docs/main-agent-logbook.md §72.3）；预注册回补按契约 5 于本笔完成。
 
 ## 7. 复核区（复核 agent 只读终审）
 
-- [ ] 7.1 拓扑：合并节点双亲 = fd4ad62 + feature 顶端；真 --no-ff；分支保留；收口笔仅改本卡 tasks.md
-- [ ] 7.2 写集：AGENTS.md 仅一处 + openspec 规则文件仅一节 + 4 张历史卡 tasks.md 仅勾格/留痕 + 26 目录纯 rename + 13 文件仅引用路径替换；src/、frontend/、pom.xml、scripts/、db/migration 零 diff
-- [ ] 7.3 回补核对：27 格逐格证据独立复跑（合并节点/分支/CI 轮次）；断言语义冻结抽验；optimize-project-file-list-auth-reuse 6.1 仍未勾且注记在位
-- [ ] 7.4 归档核对：archive/ 目录数 = 原数 + 26；changes/ 仅剩本卡；旧路径引用零命中；归档 manifest 与实物一致（抽 3 项）
-- [ ] 7.5 门禁 raw 复核：surefire 1075 逐字 + 台账零更新 + 四静态 0 + 守卫 CLEAN + merge-gate 逐 PASS 行
+- [x] 7.1 拓扑：合并节点双亲 = fd4ad62 + feature 顶端；真 --no-ff；分支保留；收口笔仅改本卡 tasks.md
+- [x] 7.2 写集：AGENTS.md 仅一处 + openspec 规则文件仅一节 + 4 张历史卡 tasks.md 仅勾格/留痕 + 26 目录纯 rename + 13 文件仅引用路径替换；src/、frontend/、pom.xml、scripts/、db/migration 零 diff
+- [x] 7.3 回补核对：27 格逐格证据独立复跑（合并节点/分支/CI 轮次）；断言语义冻结抽验；optimize-project-file-list-auth-reuse 6.1 仍未勾且注记在位
+- [x] 7.4 归档核对：archive/ 目录数 = 原数 + 26；changes/ 仅剩本卡；旧路径引用零命中；归档 manifest 与实物一致（抽 3 项）
+- [x] 7.5 门禁 raw 复核：surefire 1075 逐字 + 台账零更新 + 四静态 0 + 守卫 CLEAN + merge-gate 逐 PASS 行
       预注册注记：同 6.4，回补载体为 owner 指定的后续 master 前向提交（P-ab 契约 5）。
+      补勾依据（2026-10-10 owner 转交复核子agent只读终审报告：7.1-7.5 全 PASS、差异清单无差异，全程只读零写操作，主 agent 交叉核验与亲验实测逐项吻合，见 docs/main-agent-logbook.md §72.4）；预注册回补按契约 5 于本笔完成。
