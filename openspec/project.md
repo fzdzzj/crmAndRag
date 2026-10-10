@@ -35,6 +35,8 @@
 | 01 | Simple RAG | 基线对照，非升级项 | — |
 | 09 | Sentence Window | 不单独立项（与 04 邻居增强同机制，按需在 rag-context 演进） | — |
 
+> 台账注记：07（Query Transformation）/ 15（HyDE）/ 06（Document Augmentation）三行的激活度量前置已闭合（expand-rag-benchmark-mismatch）——失配语料与 MISMATCH 用例组已入库、套件升 v3.0，后续激活卡以 `docs/rag-quality/baseline-v3.json`（待授权真跑落锚）为关态基线做多查询/HyDE/衍生问题改写收益对照。
+
 ## 硬约束（所有变更遵守）
 
 - 不改 `platform/contract/` 冻结接口（`KnowledgeRetrievalPort`/`SourceReference`/`CrmVectorStore`/`ModelProvider`/`DynamicConfigService`/`TokenUsageRecorder`）；改契约走解冻流程。

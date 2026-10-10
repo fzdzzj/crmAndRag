@@ -36,6 +36,11 @@ public record RagBenchmarkCase(
     /** 词法精确型：型号/编号/专名命中。考察纯向量检索的已知短板——目标片段与问题 向量相似度低、但文本精确包含目标词；混合检索补全（提案 2）前后的对照刚需。 */
     LEXICAL,
     /** 边界：闲聊、零命中、越权等——考察诚实生成而非强行召回。 */
-    EDGE
+    EDGE,
+    /**
+     * 查询-文档词汇失配（expand-rag-benchmark-mismatch 任务 2.1）：question 与 gold chunk 词面重叠≈空
+     * （行话/编号体系/口语-术语同义类失配），词法命中救不动，考察检索改写类增强（multi-query/HyDE/衍生问题）能否 桥接用语差异补漏召；答案一致性由黄金答案点覆盖。
+     */
+    MISMATCH
   }
 }

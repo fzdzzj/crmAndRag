@@ -43,10 +43,11 @@ public final class RagBenchmarkDataPreparer {
       Pattern.compile("【GOLD:([A-Za-z0-9_\\-\\u4e00-\\u9fff]+)】");
 
   /**
-   * 剥离用宽松模式（expand-rag-benchmark 任务 1.3）：滑窗 320/overlap 40 的切点可能把标记 切在半截（前一 slice 只含 {@code
-   * 【GOLD:...} 前缀、无闭合 {@code 】}）。完整标记由 {@link #GOLD_MARKER} 负责映射；本模式兼容残段，保证索引文本不留任何评测脚手架痕迹。
+   * 剥离用宽松模式（expand-rag-benchmark 任务 1.3；expand-rag-benchmark-mismatch 任务 1.2 拓边）：滑窗 320/overlap 40
+   * 的切点可能把标记切在半截——可能只含 {@code 【GOLD:...} 前缀、无闭合 {@code 】}，也可能整段正文较长 时把前缀切得更短、只剩 {@code
+   * 【GOLD}（连冒号与占位 id 都落在下一片）。完整标记由 {@link #GOLD_MARKER} 负责映射； 本模式兼容上述任意残段形态，保证索引文本不留任何评测脚手架痕迹。
    */
-  private static final Pattern GOLD_MARKER_FRAGMENT = Pattern.compile("【GOLD:[^】]*】?");
+  private static final Pattern GOLD_MARKER_FRAGMENT = Pattern.compile("【GOLD(?:[^】]*)?】?");
 
   /** 评测语料的业务类目元数据值（区别于生产文档的真实类目）。 */
   private static final String BENCHMARK_CATEGORY = "benchmark";
@@ -112,8 +113,13 @@ public final class RagBenchmarkDataPreparer {
           new FixtureDocument("regional-policy", "regional-policy.txt"),
           new FixtureDocument("sla", "sla-terms.md"),
           // fix-i05-caption-chunk 任务 1.3：图注独立成文件，避免 320 滑窗与赔偿/责任段粘连
+          // fix-i05-caption-chunk 任务 1.3：图注独立成文件，避免 320 滑窗与赔偿/责任段粘连
           new FixtureDocument("sla-arch", "sla-arch-diagram.md"),
-          new FixtureDocument("maint", "maintenance-schedule.xlsx"));
+          new FixtureDocument("maint", "maintenance-schedule.xlsx"),
+          // expand-rag-benchmark-mismatch 任务 1.1：三类失配语料（行话/编号体系/口语-术语同义）
+          new FixtureDocument("trade-jargon", "trade-jargon-glossary.md"),
+          new FixtureDocument("equipment", "equipment-codebook.txt"),
+          new FixtureDocument("expense", "expense-colloquial-faq.md"));
 
   /**
    * 幂等入库全部评测语料：清旧向量 → 真实分块 → 剥标记 → 向量化 → 写入向量库。
