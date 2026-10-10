@@ -37,4 +37,39 @@
 ## §0 执行记录
 
 - 决策点拍板（2026-10-10 owner「按建议」）：D1 新 category `MISMATCH`；D2 真跑节点留本卡尾段（先 ¥0 合入后授权跑，expand 卡 f2bcfbd→4c3431e 先例同构）；D3 失配缺口以授权真跑 per-case recall<1.0 落证，内存基准只验功能。
-- （执行留痕区）
+
+### 执行留痕（2026-10-10）
+
+**组1 红绿灯**（`DASHSCOPE_API_KEY=""`，`mvn -B -ntp test -Dtest=RagBenchmarkDataPreparerTest`）：
+- 红（fixture 未登记）：`Tests run: 8, Failures: 1` `mismatchFixturesRegisterAndAlignGold` `失配语料 GOLD jargon-factoring 未对齐（fixture 未登记或分块丢失？）`
+- 绿（登记后 + GOLD_MARKER_FRAGMENT 拓边）：`Tests run: 8, Failures: 0, Errors: 0, Skipped: 0`
+
+**组2 红绿灯**（套件升 3.0 / caseCount 63）：
+- `RagQualityRegressionTest.recallAt5AndMrrStayAboveNinetyFivePercentOfBaseline` 红：`基线度量口径与当前不一致：fixtureRegression.suiteVersion 基线=2.0，当前=3.0。`
+- regen 后绿：`Tests run: 4, Failures: 0, Errors: 0, Skipped: 0`
+
+**组2 机械 2-gram 判据**（临时脚本，跑完即删；MISMATCH question bigrams vs gold chunk bigrams 交集）：
+
+| case | q bigrams | gold bigrams | 交集 | gold->chunk |
+|---|---|---|---|---|
+| M-01 | 29 | 263 | 1 | jargon-factoring->trade-jargon-0 |
+| M-02 | 23 | 261 | 1 | jargon-credit->trade-jargon-1 |
+| M-03 | 23 | 263 | 3 | jargon-discount->trade-jargon-2 |
+| M-04 | 27 | 278 | 3 | eq-041->equipment-0 |
+| M-05 | 22 | 285 | 1 | eq-107->equipment-1 |
+| M-06 | 28 | 284 | 2 | eq-172->equipment-2 |
+| M-07 | 21 | 255 | 2 | expense-travel->expense-0 |
+| M-08 | 24 | 242 | 0 | expense-advance->expense-1 |
+| M-09 | 21 | 258 | 3 | expense-claim->expense-2 |
+
+交集 0–3（近零/空），每例 gold 均落独立 chunk（映射扫描确认 9/9 分离），失配成立且黄金切片可定位。
+
+**组2/组3 全套绿色行**：`mvn -B -ntp test` → `Tests run: 1089, Failures: 0, Errors: 0, Skipped: 0`；`mvn -B -ntp clean verify` → surefire 1089 / failsafe 98（6 skip）。
+
+**组3 基线**：`check-test-baseline.sh --update`（从 clean verify 同一真实跑）→ `surefire.tests=1089`（1088→1089 只增）、`failsafe.tests=98 skipped=6`（不变）；回归基线门禁 check 通过。
+
+**组3 静态与合并门禁**：checkstyle/spotbugs/pmd 三 maven 门禁 BUILD SUCCESS；`spotbugs-exclude-staleness-check.sh` RESULT=BIJECTION_OK（12 配对）；`pmd-baseline-check.sh` RESULT=PMD_BASELINE_OK（0==0==0）；`bash scripts/merge-gate.sh` 八子门禁全 PASS（unit/spotbugs/pmd/baseline/frontend-unit/hook/bijection/pmd-baseline）。
+
+**红线自检**：`git diff` 确认未触碰 12 个既有 fixture 正文/GOLD、54 例既有 case、任何既有真跑锚点 JSON（baseline-v1.json 仅 regen 写入口更新 fixtureRegression 段，metrics/cases 逐字保留）；三开关默认 false 未动；检索主代码零改动；零 DDL/零新依赖/禁 frontend（pre-commit 仅跑前端静态检查，未改 frontend 文件）；写集 15 个 tracked 文件对账 design.md §6。
+
+**任务组 4（真跑授权节点，未执行）**：待 owner 授权 `RAG_BENCHMARK_REAL=1` 后按 design.md §4 白名单命令落 `docs/rag-quality/baseline-v3.json`（默认矩阵、不注入 rag.*、三开关 false），并以 `baseline-after-quality-loop.json` 对照旧 54 例无回退、MISMATCH 组 recall<1.0 ≥6 落证。未授权前本卡停步，不阻塞其后授权流程。
