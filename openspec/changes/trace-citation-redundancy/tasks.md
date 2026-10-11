@@ -7,7 +7,8 @@
 
 ## 任务组 2 · 真跑授权节点（成本闸门）
 
-- [ ] 2.1 停步请 owner 授权 `RAG_BENCHMARK_REAL=1`（说明：20 例单轮约 92s / 20k tokens 量级、未触额预期、跑毕即清）；授权后执行单轮真跑，failsafe 1/0/0/0，实测清开关；锚点 SHA256 跑后核对不变
+- [x] 2.1 停步请 owner 授权 `RAG_BENCHMARK_REAL=1`（说明：20 例单轮约 92s / 20k tokens 量级、未触额预期、跑毕即清）；授权后执行单轮真跑，failsafe 1/0/0/0，实测清开关；锚点 SHA256 跑后核对不变
+      补勾依据（2026-10-11 复核逐格核验）：§0 任务组 2 留痕完整——授权 08:27:49 / EXIT=0 BUILD SUCCESS / failsafe "Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 144.4 s" / tokens=22438 / 清开关实测 RAG_BENCHMARK_REAL=unset / ANCHORS-UNCHANGED-17-FILES
 
 ## 任务组 3 · 判读与报告（¥0）
 
@@ -16,8 +17,10 @@
 
 ## 任务组 4 · 收口
 
-- [ ] 4.1 单笔中文提交（卡三件套 + citation-forensics-v4.{json,md} + report JSON，约 5 文件）；git commit 单独执行（Git Bash 用 -F 临时文件，PS 用 2>&1 | Out-String），不合并不 push
-- [ ] 4.2 停步回报：原样粘贴 git log --oneline --graph -5 / git status --short / git show --stat HEAD / failsafe 真跑 raw 行（Tests run/elapsed/清开关实测）/ 锚点 SHA256 前后对照 / 1.1 登记清单；任何未实际执行的命令不得出现在回报中
+- [x] 4.1 单笔中文提交（卡三件套 + citation-forensics-v4.{json,md} + report JSON，约 5 文件）；git commit 单独执行（Git Bash 用 -F 临时文件，PS 用 2>&1 | Out-String），不合并不 push
+      补勾依据（2026-10-11 复核逐格核验）：单笔提交 a56397c（父 cdcdb87）在案，6 文件全 A，写集与复核第 1 项核对一致；§0 任务组 4 执行留痕同步在案
+- [x] 4.2 停步回报：原样粘贴 git log --oneline --graph -5 / git status --short / git show --stat HEAD / failsafe 真跑 raw 行（Tests run/elapsed/清开关实测）/ 锚点 SHA256 前后对照 / 1.1 登记清单；任何未实际执行的命令不得出现在回报中
+      补勾依据（2026-10-11 复核逐格核验）：停步回报已由 owner 转发且要素齐全，复核六项 PASS（含 4.2 要求之 raw 行、锚点对照与 1.1 登记清单核对）
 
 ## §0 执行记录
 
@@ -136,7 +139,7 @@ Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 144.4 s -- in co
 ### 任务组 4（收口）
 
 - [x] 4.1 单笔中文提交（卡三件套 + citation-forensics-v4.{json,md} + report JSON，约 5 文件）；git commit 单独执行（Git Bash 用 -F 临时文件，PS 用 2>&1 | Out-String），不合并不 push
-- [ ] 4.2 停步回报：原样粘贴 git log --oneline --graph -5 / git status --short / git show --stat HEAD / failsafe 真跑 raw 行（Tests run/elapsed/清开关实测）/ 锚点 SHA256 前后对照 / 1.1 登记清单；任何未实际执行的命令不得出现在回报中
+- [x] 4.2 停步回报：原样粘贴 git log --oneline --graph -5 / git status --short / git show --stat HEAD / failsafe 真跑 raw 行（Tests run/elapsed/清开关实测）/ 锚点 SHA256 前后对照 / 1.1 登记清单；任何未实际执行的命令不得出现在回报中
 
 **4.1 执行留痕**
 
