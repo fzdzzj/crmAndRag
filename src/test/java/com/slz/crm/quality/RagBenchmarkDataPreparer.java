@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -52,6 +53,13 @@ public final class RagBenchmarkDataPreparer {
   /** 评测语料的业务类目元数据值（区别于生产文档的真实类目）。 */
   private static final String BENCHMARK_CATEGORY = "benchmark";
 
+  /** harden-gold-marker-tearing 任务 1.2：完整标记前缀（RIGHT 负向后视排除本体、LEFT goldId 尽力解析共用）。 */
+  private static final String GOLD_MARKER_PREFIX = "【GOLD:";
+
+  /** harden-gold-marker-tearing 任务 1.2：撕裂检出聚合 WARN 的 logger（JUL；真跑 IT 走同一 prepare 自然产出该行）。 */
+  private static final java.util.logging.Logger TEAR_LOGGER =
+      java.util.logging.Logger.getLogger(RagBenchmarkDataPreparer.class.getName());
+
   private RagBenchmarkDataPreparer() {}
 
   /** 文本向量化函数：真跑传 {@code EmbeddingService::embed}，单测传确定性 fake。 */
@@ -73,12 +81,41 @@ public final class RagBenchmarkDataPreparer {
    * @param chunkIds 本次入库的全部真实 chunkId
    * @param chunkTexts 实际索引的切片文本（已剥离 GOLD 标记；顺序同 chunkIds，供单测断言）
    * @param chunks 本次入库的切片明细（含 chunkId/文本/元数据），供稀疏路与邻居装配用例
+   * @param tornMarkers GOLD 标记撕裂检出事件（只读旁路登记，零行为变更；无撕裂语料为空表）
    */
   public record Preparation(
       Map<String, String> goldenToChunkId,
       Set<String> chunkIds,
       List<String> chunkTexts,
-      List<BenchmarkChunk> chunks) {}
+      List<BenchmarkChunk> chunks,
+      List<TornMarkerEvent> tornMarkers) {}
+
+  /**
+   * harden-gold-marker-tearing 任务 1.2：GOLD 标记撕裂检出事件（只读旁路，零行为变更）。
+   *
+   * <p>滑窗 320/40 切点穿过 {@code 【GOLD:占位id】} 标记时产生两种残段与一种错位（trace-citation-redundancy 取证实锤
+   * T-15）：左残段（FRAGMENT 剥离正确但此前无检出信号）、右残段（FRAGMENT 不识别、泄漏进索引文本）、
+   * 归点与语义主体分离（无任何显式信号）。本事件是三者的机械证据产出，只影响日志可见性，不 fail、不改判分。
+   *
+   * @param goldId 涉事占位 id（左残段可能为部分/空串）
+   * @param direction LEFT（前缀残段）/ RIGHT（右残段）
+   * @param tornChunkId 残段所在 chunkId
+   * @param alignedChunkId 该 goldId 的归点 chunkId（RIGHT 事件对照用——归点 ≠ 语义主体块即分离证据；无归点时为 null）
+   * @param matchedFragment 残段原文（留证）
+   */
+  public record TornMarkerEvent(
+      String goldId,
+      Direction direction,
+      String tornChunkId,
+      String alignedChunkId,
+      String matchedFragment) {
+
+    /** LEFT：{@code 【GOLD:…} 前缀残段（无闭合）；RIGHT：{@code 占位id】} 右残段（无前缀）。 */
+    public enum Direction {
+      LEFT,
+      RIGHT
+    }
+  }
 
   /**
    * 一次性入块明细（run-baseline-ladder）：测试侧稀疏/邻居用同一批块，chunkId 与向量库一致。
@@ -154,12 +191,16 @@ public final class RagBenchmarkDataPreparer {
     Set<String> chunkIds = new LinkedHashSet<>();
     List<String> chunkTexts = new ArrayList<>();
     List<BenchmarkChunk> chunkList = new ArrayList<>();
+    // harden-gold-marker-tearing 任务 1.2：只读旁路收集（剥离/归点/upsert/向量输入零改动），
+    // 供主循环后两遍撕裂检出复用已解析切片；右残段 goldId 必属本语料完整标记集合——归点已证明完整命中存在
+    List<Map.Entry<String, List<DocumentChunk>>> tornScanInputs = new ArrayList<>();
 
     for (FixtureDocument fixture : FIXTURES) {
       String documentId = "benchdoc-" + fixture.key();
       // 幂等第一步：先清掉本语料的旧向量，语料改版后重跑不留脏切片
       store.deleteByDocumentId(documentId);
       List<DocumentChunk> chunks = parse(documentService, fixture);
+      tornScanInputs.add(Map.entry(fixture.key(), chunks));
 
       for (DocumentChunk chunk : chunks) {
         Matcher marker = GOLD_MARKER.matcher(chunk.text());
@@ -206,11 +247,116 @@ public final class RagBenchmarkDataPreparer {
                 metadata(fixture, chunk, evalKbId, chunkId)));
       }
     }
+    // harden-gold-marker-tearing 任务 1.2：两遍撕裂检出（只读旁路，零行为变更）——主循环后统一执行
+    List<TornMarkerEvent> tornMarkers = scanTornMarkers(tornScanInputs, goldenToChunkId);
+    if (!tornMarkers.isEmpty()) {
+      TEAR_LOGGER.warning(
+          "GOLD 标记撕裂检出（只读登记，零行为变更）: "
+              + tornMarkers.size()
+              + " 事件 "
+              + tornMarkers.stream()
+                  .map(
+                      e ->
+                          e.direction()
+                              + " "
+                              + e.goldId()
+                              + " torn="
+                              + e.tornChunkId()
+                              + " aligned="
+                              + e.alignedChunkId()
+                              + " frag="
+                              + e.matchedFragment())
+                  .collect(java.util.stream.Collectors.joining("; ")));
+    }
     return new Preparation(
         Map.copyOf(goldenToChunkId),
         Set.copyOf(chunkIds),
         List.copyOf(chunkTexts),
-        List.copyOf(chunkList));
+        List.copyOf(chunkList),
+        List.copyOf(tornMarkers));
+  }
+
+  /**
+   * harden-gold-marker-tearing 任务 1.2：两遍撕裂检出（只读旁路，零行为变更）。
+   *
+   * <p>第一遍对每份语料全部切片跑 {@link #GOLD_MARKER} 完整扫描收集合法占位 id 集合；第二遍逐切片在<b>剥离前 原文</b>上检出：右残段用定长负向后视
+   * {@code (?<!【GOLD:)id】} 排除完整标记本体；左残段取 {@link #GOLD_MARKER_FRAGMENT} 命中中未被完整命中区间覆盖者。事件按语料顺序 +
+   * chunkIndex + 区间起点确定性 排序。右残段<b>不剥</b>——剥离即向量输入变（baseline-v3 锚点漂移，属 B2 升版受控校准范畴）。
+   */
+  private static List<TornMarkerEvent> scanTornMarkers(
+      List<Map.Entry<String, List<DocumentChunk>>> scanInputs,
+      Map<String, String> goldenToChunkId) {
+    List<TornMarkerEvent> events = new ArrayList<>();
+    for (Map.Entry<String, List<DocumentChunk>> input : scanInputs) {
+      List<DocumentChunk> chunks = input.getValue();
+      // 第一遍：合法 goldId 集合（完整标记扫描）
+      Set<String> fixtureGoldIds = new LinkedHashSet<>();
+      for (DocumentChunk chunk : chunks) {
+        Matcher marker = GOLD_MARKER.matcher(chunk.text());
+        while (marker.find()) {
+          fixtureGoldIds.add(marker.group(1));
+        }
+      }
+      // 第二遍：逐切片在剥离前原文上检出；同切片内多事件按区间起点确定性排序
+      for (DocumentChunk chunk : chunks) {
+        String raw = chunk.text();
+        String chunkId = input.getKey() + "-" + chunk.chunkIndex();
+        List<Map.Entry<Integer, TornMarkerEvent>> chunkEvents = new ArrayList<>();
+        // 右残段：(?<!【GOLD:)id】 —— 负向后视排除完整标记本体
+        for (String goldId : fixtureGoldIds) {
+          Pattern rightPattern = Pattern.compile("(?<!【GOLD:)" + Pattern.quote(goldId) + "】");
+          Matcher right = rightPattern.matcher(raw);
+          while (right.find()) {
+            chunkEvents.add(
+                Map.entry(
+                    right.start(),
+                    new TornMarkerEvent(
+                        goldId,
+                        TornMarkerEvent.Direction.RIGHT,
+                        chunkId,
+                        goldenToChunkId.get(goldId),
+                        right.group())));
+          }
+        }
+        // 左残段：FRAGMENT 命中中非完整标记覆盖区间者；goldId 尽力解析（含 : 前缀取剩余，否则空串）
+        List<int[]> fullSpans = new ArrayList<>();
+        Matcher full = GOLD_MARKER.matcher(raw);
+        while (full.find()) {
+          fullSpans.add(new int[] {full.start(), full.end()});
+        }
+        Matcher fragment = GOLD_MARKER_FRAGMENT.matcher(raw);
+        while (fragment.find()) {
+          boolean covered = false;
+          for (int[] span : fullSpans) {
+            if (span[0] <= fragment.start() && fragment.end() <= span[1]) {
+              covered = true;
+              break;
+            }
+          }
+          if (!covered) {
+            String text = fragment.group();
+            String partialId =
+                text.startsWith(GOLD_MARKER_PREFIX)
+                    ? text.substring(GOLD_MARKER_PREFIX.length())
+                    : "";
+            chunkEvents.add(
+                Map.entry(
+                    fragment.start(),
+                    new TornMarkerEvent(
+                        partialId, TornMarkerEvent.Direction.LEFT, chunkId, null, text)));
+          }
+        }
+        chunkEvents.sort(
+            Map.Entry.<Integer, TornMarkerEvent>comparingByKey()
+                .thenComparing(e -> e.getValue().direction().name())
+                .thenComparing(
+                    e -> e.getValue().goldId(), Comparator.nullsFirst(Comparator.naturalOrder())));
+        for (Map.Entry<Integer, TornMarkerEvent> entry : chunkEvents) {
+          events.add(entry.getValue());
+        }
+      }
+    }
+    return events;
   }
 
   /**
