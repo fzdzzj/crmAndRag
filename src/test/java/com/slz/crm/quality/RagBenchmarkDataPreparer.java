@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -34,6 +35,10 @@ import java.util.regex.Pattern;
  * <p>幂等性（任务 2.3）：chunkId = {@code <语料key>-<chunkIndex>}、documentId = {@code benchdoc-<key>}、 向量
  * point id = {@code documentId:chunkIndex} 全部确定性生成；入库前先按 documentId 清理旧向量， 因此同一环境重复执行产出完全一致的
  * chunkId 集合，向量库状态可覆盖复现。
+ *
+ * <p>判卷口径分离（fix-citation-grading-overlap，scoringVersion=v2 概念登记）：在 {@code goldenToChunkId} 主锚块
+ * 映射（recall/ansC 判卷口径，不变）之外另行产出 {@code goldenToCarrierChunkIds} 黄金承载集——位置区间承载黄金句 span
+ * 的全部块（重叠复本/跨块段落/撕裂语义主体），<b>只供 citationPrecision 判卷</b>；切分 320/40 语义与向量输入零改动。
  *
  * <p>真跑与单测共用本类：真检索基准 IT 传真实 {@code EmbeddingService::embed}； 幂等/对齐单测传确定性 fake embedder，无需外网与模型 key。
  */
@@ -55,6 +60,12 @@ public final class RagBenchmarkDataPreparer {
 
   /** harden-gold-marker-tearing 任务 1.2：完整标记前缀（RIGHT 负向后视排除本体、LEFT goldId 尽力解析共用）。 */
   private static final String GOLD_MARKER_PREFIX = "【GOLD:";
+
+  /**
+   * fix-citation-grading-overlap 任务 1.2：承载判定最小交集字符数。块区间与黄金句 span 的区间交集 ≥ 此值才计入 承载集——取证 v4 九例 B1
+   * 重叠面均为 40 字符级，16 远离 1-2 字符偶然相交（防承载集虚增拉低 citP 判别力）。
+   */
+  static final int MIN_CARRIAGE_CHARS = 16;
 
   /** harden-gold-marker-tearing 任务 1.2：撕裂检出聚合 WARN 的 logger（JUL；真跑 IT 走同一 prepare 自然产出该行）。 */
   private static final java.util.logging.Logger TEAR_LOGGER =
@@ -78,6 +89,9 @@ public final class RagBenchmarkDataPreparer {
    * 数据准备产出。
    *
    * @param goldenToChunkId 黄金占位 id → 真实 chunkId（按语料顺序确定性排序）
+   * @param goldenToCarrierChunkIds fix-citation-grading-overlap 任务 1.2：黄金占位 id → 承载块 chunkId 集（位置区间
+   *     承载黄金句 span 的全部块，锚点块恒在集内；<b>只供 citP 判卷</b>，recall/ansC 口径不动，见 {@link
+   *     #computeCarrierChunkIds} 与 {@link #citationExpectedByCase}）
    * @param chunkIds 本次入库的全部真实 chunkId
    * @param chunkTexts 实际索引的切片文本（已剥离 GOLD 标记；顺序同 chunkIds，供单测断言）
    * @param chunks 本次入库的切片明细（含 chunkId/文本/元数据），供稀疏路与邻居装配用例
@@ -85,6 +99,7 @@ public final class RagBenchmarkDataPreparer {
    */
   public record Preparation(
       Map<String, String> goldenToChunkId,
+      Map<String, Set<String>> goldenToCarrierChunkIds,
       Set<String> chunkIds,
       List<String> chunkTexts,
       List<BenchmarkChunk> chunks,
@@ -247,6 +262,9 @@ public final class RagBenchmarkDataPreparer {
                 metadata(fixture, chunk, evalKbId, chunkId)));
       }
     }
+    // fix-citation-grading-overlap 任务 1.2：黄金承载集（位置区间承载判定，只供 citP；recall 主锚映射零改动）
+    Map<String, Set<String>> goldenToCarrierChunkIds =
+        computeCarrierChunkIds(tornScanInputs, goldenToChunkId);
     // harden-gold-marker-tearing 任务 1.2：两遍撕裂检出（只读旁路，零行为变更）——主循环后统一执行
     List<TornMarkerEvent> tornMarkers = scanTornMarkers(tornScanInputs, goldenToChunkId);
     if (!tornMarkers.isEmpty()) {
@@ -270,10 +288,133 @@ public final class RagBenchmarkDataPreparer {
     }
     return new Preparation(
         Map.copyOf(goldenToChunkId),
+        goldenToCarrierChunkIds,
         Set.copyOf(chunkIds),
         List.copyOf(chunkTexts),
         List.copyOf(chunkList),
         List.copyOf(tornMarkers));
+  }
+
+  /**
+   * fix-citation-grading-overlap 任务 1.2：黄金承载判定（判卷口径受控解冻，scoringVersion=v2 概念登记）。
+   *
+   * <p>黄金承载集 = 位置区间承载黄金句 span 的全部块：黄金句 span = 标记起点至段末（首个换行符；与 fixture 标注语义一致——标记位于段首、标注整段，取证 v4
+   * T-02 的重叠复本承载的正是段尾内容；xlsx 行语料无行内换行， span 即该行全文，无换行符则至页组文本末尾）；块承载 = 块区间与 span 的区间交集长度 ≥ {@link
+   * #MIN_CARRIAGE_CHARS}。
+   *
+   * <p>区间求法（design D2，策略无关）：切片是页归一化文本的字面顺序切片——页组内按顺序游标重建「重叠消解拼接 坐标」（相邻块头部与上一块尾部的最长匹配即滑窗
+   * overlap，被复制内容在坐标里只计一次，等价于逐块 {@code indexOf} 定位），每块文本在该坐标里都是字面连续区间；span 与块区间同坐标系取交集，确定性可复算。
+   * paragraph 收刀跳界（无重叠）时相邻块按紧邻处理，坐标漂移 ≤ 被跳过的边界宽（2 字符级），远小于 {@link #MIN_CARRIAGE_CHARS}，不影响承载判定。
+   *
+   * <p>口径分离：本映射<b>只供 citP 判卷</b>（经 {@link #citationExpectedByCase} 组装进 evaluator）； recall/ansC 仍用
+   * {@code goldenToChunkId} 主锚块口径（design D2），由 {@code RagBenchmarkCarrierScoringTest} 机械锁定。主锚块（现行最小
+   * chunkIndex 归点）恒在承载集内；撕裂场景（T-15）语义主体块由同一区间规则自然涵盖。
+   *
+   * @param fixtureChunks 每份语料的原始切片（剥离前文本，含 GOLD 标记），key = 语料稳定键
+   * @param goldenToChunkId 现行主锚块映射（锚点恒入承载集；键集 = 承载映射键集）
+   * @return 黄金占位 id → 承载块 chunkId 集合（值与映射均不可变）
+   */
+  static Map<String, Set<String>> computeCarrierChunkIds(
+      List<Map.Entry<String, List<DocumentChunk>>> fixtureChunks,
+      Map<String, String> goldenToChunkId) {
+    Map<String, Set<String>> carriers = new LinkedHashMap<>();
+    for (String goldId : goldenToChunkId.keySet()) {
+      carriers.put(goldId, new LinkedHashSet<>());
+    }
+    for (Map.Entry<String, List<DocumentChunk>> entry : fixtureChunks) {
+      String fixtureKey = entry.getKey();
+      List<DocumentChunk> chunks = entry.getValue();
+      // 页组：DocumentService 按页归一化后切分、策略从不跨页（ChunkingStrategy 契约），
+      // 同 pageNo+rowIndex 的连续切片共享一份页归一化文本，区间坐标按页组重建
+      int groupStart = 0;
+      while (groupStart < chunks.size()) {
+        Integer pageNo = chunks.get(groupStart).pageNo();
+        Integer rowIndex = chunks.get(groupStart).rowIndex();
+        int groupEnd = groupStart + 1;
+        while (groupEnd < chunks.size()
+            && Objects.equals(chunks.get(groupEnd).pageNo(), pageNo)
+            && Objects.equals(chunks.get(groupEnd).rowIndex(), rowIndex)) {
+          groupEnd++;
+        }
+        accumulateCarriers(fixtureKey, chunks.subList(groupStart, groupEnd), carriers);
+        groupStart = groupEnd;
+      }
+    }
+    // 主锚块恒在承载集内（design D2：承载集 ⊇ 主锚块）
+    for (Map.Entry<String, String> entry : goldenToChunkId.entrySet()) {
+      carriers.get(entry.getKey()).add(entry.getValue());
+    }
+    Map<String, Set<String>> result = new LinkedHashMap<>();
+    carriers.forEach((goldId, set) -> result.put(goldId, Set.copyOf(set)));
+    return Map.copyOf(result);
+  }
+
+  /**
+   * fix-citation-grading-overlap 任务 1.1/1.2：单页组承载判定。先按顺序游标重建重叠消解拼接坐标， 再对 V 内每个黄金标记（每占位 id
+   * 取首个完整命中，与归点的最小 chunkIndex 规则一致）求 span， 区间交集 ≥ {@link #MIN_CARRIAGE_CHARS} 的块入承载集。
+   */
+  private static void accumulateCarriers(
+      String fixtureKey, List<DocumentChunk> group, Map<String, Set<String>> carriers) {
+    if (group.isEmpty()) {
+      return;
+    }
+    StringBuilder virtual = new StringBuilder(group.get(0).text());
+    int[] starts = new int[group.size()];
+    for (int i = 1; i < group.size(); i++) {
+      String previous = group.get(i - 1).text();
+      String raw = group.get(i).text();
+      int overlap = overlappingTailChars(previous, raw);
+      starts[i] = starts[i - 1] + previous.length() - overlap;
+      virtual.append(raw, overlap, raw.length());
+    }
+    Set<String> spanned = new LinkedHashSet<>();
+    Matcher marker = GOLD_MARKER.matcher(virtual);
+    while (marker.find()) {
+      String goldId = marker.group(1);
+      Set<String> carrierSet = carriers.get(goldId);
+      if (carrierSet == null || !spanned.add(goldId)) {
+        // 无主锚映射的跨界偶成完整命中（未登记脚手架形态）跳过；同 id 只按首个命中定 span
+        continue;
+      }
+      int spanStart = marker.start();
+      int spanEnd = paragraphEndIndex(virtual, marker.end());
+      for (int i = 0; i < group.size(); i++) {
+        int chunkStart = starts[i];
+        int chunkEnd = chunkStart + group.get(i).text().length();
+        int intersect = Math.min(chunkEnd, spanEnd) - Math.max(chunkStart, spanStart);
+        if (intersect >= MIN_CARRIAGE_CHARS) {
+          carrierSet.add(fixtureKey + "-" + group.get(i).chunkIndex());
+        }
+      }
+    }
+  }
+
+  /**
+   * fix-citation-grading-overlap 任务 1.1：相邻切片的重叠头部字符数——上一块尾部与当前块头部的最长匹配。 滑窗 overlap
+   * 复制（fixed/paragraph 40 字符级）被识别消解；紧邻拼接（含 paragraph 收刀跳界）返回 0。
+   */
+  private static int overlappingTailChars(String previous, String next) {
+    int max = Math.min(previous.length(), next.length());
+    for (int k = max; k > 0; k--) {
+      if (previous.regionMatches(previous.length() - k, next, 0, k)) {
+        return k;
+      }
+    }
+    return 0;
+  }
+
+  /**
+   * fix-citation-grading-overlap 任务 1.2：span 末界——段末（{@code from} 起首个换行符；无则页组文本末尾）。 与 fixture
+   * 标注语义一致：标记位于段首、标注整段（取证 v4 T-02 的 B1 重叠复本承载的正是段尾内容， span 截到首个句号会漏掉段尾、判不出邻块承载）；xlsx 行语料无行内换行，span
+   * 即该行全文。
+   */
+  private static int paragraphEndIndex(CharSequence text, int from) {
+    for (int i = from; i < text.length(); i++) {
+      if (text.charAt(i) == '\n') {
+        return i + 1;
+      }
+    }
+    return text.length();
   }
 
   /**
@@ -401,6 +542,32 @@ public final class RagBenchmarkDataPreparer {
                     c.expectedAnswerPoints(),
                     c.useKnowledgeBase()))
         .toList();
+  }
+
+  /**
+   * fix-citation-grading-overlap 任务 1.3：按基准用例组装 citP 判卷期望（scoringVersion=v2）——用例各占位 id
+   * 承载集的并集。<b>只供</b> {@code RagQualityEvaluator.evaluate} 的 {@code citationExpectedByCaseId} 入参；
+   * recall/ansC 期望仍走 {@link #rewriteSuite} 的主锚块改写（口径分离，design D2）。
+   *
+   * @param suite 占位 id 基准集（{@code RagBenchmarkSuite.standard()}，{@link #rewriteSuite} <b>之前</b>——
+   *     承载映射按占位 id 键控，改写后的 expectedChunkIds 已是真实 chunkId 查不到）
+   * @param preparation 数据准备产出（含 {@code goldenToCarrierChunkIds}）
+   * @return 用例 id → citP 期望块集合（空集 = 边界用例，citP 诚实满分口径不变）
+   */
+  public static Map<String, Set<String>> citationExpectedByCase(
+      List<RagBenchmarkCase> suite, Preparation preparation) {
+    Map<String, Set<String>> result = new LinkedHashMap<>();
+    for (RagBenchmarkCase benchmarkCase : suite) {
+      Set<String> union = new LinkedHashSet<>();
+      for (String placeholder : benchmarkCase.expectedChunkIds()) {
+        Set<String> carrierSet = preparation.goldenToCarrierChunkIds().get(placeholder);
+        if (carrierSet != null) {
+          union.addAll(carrierSet);
+        }
+      }
+      result.put(benchmarkCase.id(), Set.copyOf(union));
+    }
+    return Map.copyOf(result);
   }
 
   private static List<DocumentChunk> parse(

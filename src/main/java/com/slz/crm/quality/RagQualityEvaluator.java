@@ -6,6 +6,7 @@ import com.slz.crm.quality.RagQualityReport.Metrics;
 import com.slz.crm.quality.RagQualityReport.Report;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -31,15 +32,34 @@ public final class RagQualityEvaluator {
   }
 
   /**
-   * 跑完基准集并聚合指标。
+   * 跑完基准集并聚合指标（v1 口径：citP 期望 = 主锚块集）。
    *
    * @param suite 基准用例集
    * @param retrieval 检索函数（抛异常按失败用例计，不打断整轮评估）
    * @param k recall@k / precision@k / MRR 的截断排名
    * @return 聚合指标 + 逐条评分的报告
    */
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 评估兜底边界：任一用例检索异常也按失败计、整轮继续，需宽捕获
   public static Report evaluate(List<RagBenchmarkCase> suite, RetrievalFunction retrieval, int k) {
+    return evaluate(suite, retrieval, k, Map.of());
+  }
+
+  /**
+   * 跑完基准集并聚合指标（fix-citation-grading-overlap 任务 1.3：评分口径版本化，scoringVersion=v2 概念登记）。
+   *
+   * <p>评分口径：v1 = citP 期望 = 主锚块集（{@code benchmarkCase.expectedChunkIds()}，3 参重载即此口径）； v2 = citP 期望 =
+   * 黄金承载集（{@code citationExpectedByCaseId}——位置区间承载黄金句的全部块，经 {@code
+   * RagBenchmarkDataPreparer.citationExpectedByCase} 组装）。recall / precision / MRR / ansC 一律仍按
+   * 主锚块集判卷（口径分离，design D2），跨口径可比；citationPrecision 公式零改动，仅期望入参切换。 scoringVersion
+   * 随真跑锚点（baseline-v4.json）登记落盘（任务组 4 另授权）。
+   *
+   * @param citationExpectedByCaseId 用例 id → citP 期望块集合；缺项或空集回落主锚块集（v1 口径兼容）
+   */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 评估兜底边界：任一用例检索异常也按失败计、整轮继续，需宽捕获
+  public static Report evaluate(
+      List<RagBenchmarkCase> suite,
+      RetrievalFunction retrieval,
+      int k,
+      Map<String, Set<String>> citationExpectedByCaseId) {
     List<CaseScore> scores = new ArrayList<>();
     int n = 0;
     int hits = 0;
@@ -62,7 +82,12 @@ public final class RagQualityEvaluator {
         // 检索异常按失败用例计（空结果 + success=false），整轮评估继续
         outcome = new CaseOutcome(List.of(), List.of(), 0d, 0L, 0L, 0, false);
       }
-      CaseScore score = score(benchmarkCase, outcome, k);
+      CaseScore score =
+          score(
+              benchmarkCase,
+              outcome,
+              k,
+              citationExpectedByCaseId.getOrDefault(benchmarkCase.id(), Set.of()));
       scores.add(score);
       n++;
       sumRecall += score.recallAtK();
@@ -104,7 +129,8 @@ public final class RagQualityEvaluator {
         RagBenchmarkSuite.SUITE_VERSION, java.time.Instant.now().toString(), metrics, scores);
   }
 
-  private static CaseScore score(RagBenchmarkCase benchmarkCase, CaseOutcome outcome, int k) {
+  private static CaseScore score(
+      RagBenchmarkCase benchmarkCase, CaseOutcome outcome, int k, Set<String> citationExpected) {
     Set<String> expected = benchmarkCase.expectedChunkIds();
     List<String> topK = outcome.retrievedChunkIds().stream().limit(k).toList();
     int relevant = countRelevant(topK, expected);
@@ -123,7 +149,9 @@ public final class RagQualityEvaluator {
       reciprocalRank = firstRelevantReciprocal(topK, expected);
     }
     boolean hit = !expected.isEmpty() && relevant > 0;
-    double citationPrecision = citationPrecision(outcome, expected);
+    // fix-citation-grading-overlap 任务 1.3：citP 期望切承载集（scoringVersion=v2；空集回落主锚块 = v1 口径兼容）
+    double citationPrecision =
+        citationPrecision(outcome, citationExpected.isEmpty() ? expected : citationExpected);
     return new CaseScore(
         benchmarkCase.id(),
         benchmarkCase.category().name(),
@@ -160,7 +188,12 @@ public final class RagQualityEvaluator {
     return result;
   }
 
-  /** 引用精度：答案实际引用的来源里，属于黄金片段的比例（伪造/越界引用拉低精度）。 */
+  /**
+   * 引用精度：答案实际引用的来源里，属于黄金片段的比例（伪造/越界引用拉低精度）。
+   *
+   * <p>口径注明（fix-citation-grading-overlap 任务 1.3）：{@code expected} 由调用方按评分口径传入——v1 = 主锚块集，v2 =
+   * 黄金承载集（位置区间承载黄金句的全部块）；本方法公式零改动。
+   */
   private static double citationPrecision(CaseOutcome outcome, Set<String> expected) {
     List<Integer> citations = outcome.citations();
     double result;
