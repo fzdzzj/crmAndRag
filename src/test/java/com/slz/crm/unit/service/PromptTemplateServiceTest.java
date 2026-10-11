@@ -5,11 +5,16 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.pojo.dto.PromptTemplateDTO;
+import com.slz.crm.pojo.dto.PromptTemplateFeedbackDTO;
 import com.slz.crm.pojo.dto.PromptTemplateRenderDTO;
+import com.slz.crm.pojo.dto.PromptTemplateRevertDTO;
 import com.slz.crm.pojo.entity.PromptTemplateEntity;
+import com.slz.crm.pojo.entity.PromptTemplateFeedbackEntity;
+import com.slz.crm.server.mapper.PromptTemplateFeedbackMapper;
 import com.slz.crm.server.mapper.PromptTemplateHistoryMapper;
 import com.slz.crm.server.service.impl.PromptTemplateServiceImpl;
 import java.util.List;
@@ -23,12 +28,14 @@ import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-/** 提示词模板服务单元测试（add-prompt-template-admin 任务 3.1/3.2）。 */
+/** 提示词模板服务单元测试（add-prompt-template-admin 任务 3.1/3.2 + prompt-template-enhance 任务 3.1）。 */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("提示词模板服务")
 class PromptTemplateServiceTest {
 
   @Mock private PromptTemplateHistoryMapper historyMapper;
+
+  @Mock private PromptTemplateFeedbackMapper feedbackMapper;
 
   @Spy @InjectMocks private PromptTemplateServiceImpl service;
 
@@ -288,6 +295,142 @@ class PromptTemplateServiceTest {
     assertEquals(1, list.get(2).getVersion());
   }
 
+  // ===== revert 三态（prompt-template-enhance 任务 3.1） =====
+
+  @Test
+  @DisplayName("回滚：目标版本内容+variables 落档新版本，历史落 REVERT 并记 sourceVersion")
+  void revertRestoresTargetAsNewVersionWithSource() {
+    PromptTemplateEntity existing = template(3L, "tpl", 0, 3, "current-v3", null);
+    doReturn(existing).when(service).getById(3L);
+    com.slz.crm.pojo.entity.PromptTemplateHistoryEntity target =
+        historyOf(3L, 3L, 1, "v1-content", "v1-variables", "CREATE", null);
+    doReturn(target).when(historyMapper).selectOne(any(LambdaQueryWrapper.class));
+    doReturn(true).when(service).updateById(any(PromptTemplateEntity.class));
+    doReturn(1).when(historyMapper).insert(any());
+
+    PromptTemplateRevertDTO dto = new PromptTemplateRevertDTO();
+    dto.setTargetVersion(1);
+    dto.setExpectedVersion(3);
+
+    Integer next = service.revert(3L, dto);
+    assertEquals(4, next);
+    assertEquals(4, existing.getVersion());
+    assertEquals("v1-content", existing.getContent());
+    assertEquals("v1-variables", existing.getVariables());
+
+    ArgumentCaptor<com.slz.crm.pojo.entity.PromptTemplateHistoryEntity> hc =
+        ArgumentCaptor.forClass(com.slz.crm.pojo.entity.PromptTemplateHistoryEntity.class);
+    verify(historyMapper).insert(hc.capture());
+    assertEquals("REVERT", hc.getValue().getOperation());
+    assertEquals(4, hc.getValue().getVersion());
+    assertEquals(1, hc.getValue().getSourceVersion());
+    assertEquals("v1-content", hc.getValue().getContent());
+  }
+
+  @Test
+  @DisplayName("回滚：目标版本不存在于 history 返回 92008")
+  void revertRejectsMissingTargetVersion() {
+    PromptTemplateEntity existing = template(3L, "tpl", 0, 3, "current-v3", null);
+    doReturn(existing).when(service).getById(3L);
+    doReturn(null).when(historyMapper).selectOne(any(LambdaQueryWrapper.class));
+
+    PromptTemplateRevertDTO dto = new PromptTemplateRevertDTO();
+    dto.setTargetVersion(9);
+    dto.setExpectedVersion(3);
+
+    BaseException ex = assertThrows(BaseException.class, () -> service.revert(3L, dto));
+    assertEquals(ErrorCode.ID_NOT_EXISTS.getCode(), ex.getCode());
+  }
+
+  @Test
+  @DisplayName("回滚：乐观锁 expectedVersion 与当前版本不符返回 92001")
+  void revertRejectsVersionConflict() {
+    PromptTemplateEntity existing = template(3L, "tpl", 0, 3, "current-v3", null);
+    doReturn(existing).when(service).getById(3L);
+
+    PromptTemplateRevertDTO dto = new PromptTemplateRevertDTO();
+    dto.setTargetVersion(1);
+    dto.setExpectedVersion(2); // 与当前 version=3 不符
+
+    BaseException ex = assertThrows(BaseException.class, () -> service.revert(3L, dto));
+    assertEquals(ErrorCode.UPDATE_FAILED.getCode(), ex.getCode());
+  }
+
+  // ===== feedback 三态（prompt-template-enhance 任务 3.1） =====
+
+  @Test
+  @DisplayName("反馈：记录版本存在 + score 合法 => 插入反馈行")
+  void feedbackRecordsWhenVersionExistsAndScoreValid() {
+    PromptTemplateEntity existing = template(3L, "tpl", 0, 3, "current-v3", null);
+    doReturn(existing).when(service).getById(3L);
+    doReturn(1L).when(historyMapper).selectCount(any(LambdaQueryWrapper.class));
+    doReturn(1).when(feedbackMapper).insert(any());
+
+    PromptTemplateFeedbackDTO dto = new PromptTemplateFeedbackDTO();
+    dto.setVersion(2);
+    dto.setScore(5);
+    dto.setComment("很好用");
+
+    Boolean r = service.addFeedback(3L, dto);
+    assertTrue(r);
+    ArgumentCaptor<PromptTemplateFeedbackEntity> captor =
+        ArgumentCaptor.forClass(PromptTemplateFeedbackEntity.class);
+    verify(feedbackMapper).insert(captor.capture());
+    assertEquals(3L, captor.getValue().getTemplateId());
+    assertEquals(2, captor.getValue().getVersion());
+    assertEquals(5, captor.getValue().getScore());
+    assertEquals("很好用", captor.getValue().getComment());
+  }
+
+  @Test
+  @DisplayName("反馈：score 越界（>5）返回 50002")
+  void feedbackRejectsScoreOutOfRange() {
+    PromptTemplateEntity existing = template(3L, "tpl", 0, 3, "current-v3", null);
+    doReturn(existing).when(service).getById(3L);
+    doReturn(1L).when(historyMapper).selectCount(any(LambdaQueryWrapper.class));
+
+    PromptTemplateFeedbackDTO dto = new PromptTemplateFeedbackDTO();
+    dto.setVersion(2);
+    dto.setScore(6);
+    dto.setComment("x");
+
+    BaseException ex = assertThrows(BaseException.class, () -> service.addFeedback(3L, dto));
+    assertEquals(ErrorCode.PARAM_FORMAT_ERROR.getCode(), ex.getCode());
+  }
+
+  @Test
+  @DisplayName("反馈：版本不存在于 history 返回 92008")
+  void feedbackRejectsMissingVersion() {
+    PromptTemplateEntity existing = template(3L, "tpl", 0, 3, "current-v3", null);
+    doReturn(existing).when(service).getById(3L);
+    doReturn(0L).when(historyMapper).selectCount(any(LambdaQueryWrapper.class));
+
+    PromptTemplateFeedbackDTO dto = new PromptTemplateFeedbackDTO();
+    dto.setVersion(7);
+    dto.setScore(4);
+
+    BaseException ex = assertThrows(BaseException.class, () -> service.addFeedback(3L, dto));
+    assertEquals(ErrorCode.ID_NOT_EXISTS.getCode(), ex.getCode());
+  }
+
+  @Test
+  @DisplayName("反馈分页：按模板过滤并按创建时间倒序")
+  void feedbackListFiltersByTemplateAndDesc() {
+    PromptTemplateEntity existing = template(3L, "tpl", 0, 3, "current-v3", null);
+    doReturn(existing).when(service).getById(3L);
+    PromptTemplateFeedbackEntity one = feedback(1L, 3L, 2, 5, "好评");
+    PromptTemplateFeedbackEntity two = feedback(2L, 3L, 1, 4, "不错");
+    doReturn(
+            new Page<PromptTemplateFeedbackEntity>(1, 10).setRecords(List.of(one, two)).setTotal(2))
+        .when(feedbackMapper)
+        .selectPage(any(), any(LambdaQueryWrapper.class));
+
+    Page<com.slz.crm.pojo.vo.PromptTemplateFeedbackVO> page = service.listFeedback(3L, 1, 10);
+    assertEquals(2, page.getTotal());
+    assertEquals(2, page.getRecords().size());
+    assertEquals(5, page.getRecords().get(0).getScore());
+  }
+
   // ===== 工具 =====
 
   private PromptTemplateEntity template(
@@ -313,6 +456,32 @@ class PromptTemplateServiceTest {
     h.setContent(content);
     h.setOperation("UPDATE");
     return h;
+  }
+
+  private com.slz.crm.pojo.entity.PromptTemplateHistoryEntity historyOf(
+      Long id,
+      Long tplId,
+      Integer ver,
+      String content,
+      String variables,
+      String operation,
+      Integer sourceVersion) {
+    com.slz.crm.pojo.entity.PromptTemplateHistoryEntity h = history(id, tplId, ver, content);
+    h.setVariables(variables);
+    h.setOperation(operation);
+    h.setSourceVersion(sourceVersion);
+    return h;
+  }
+
+  private PromptTemplateFeedbackEntity feedback(
+      Long id, Long tplId, Integer ver, Integer score, String comment) {
+    PromptTemplateFeedbackEntity f = new PromptTemplateFeedbackEntity();
+    f.setId(id);
+    f.setTemplateId(tplId);
+    f.setVersion(ver);
+    f.setScore(score);
+    f.setComment(comment);
+    return f;
   }
 
   private PromptTemplateDTO dtoOf(String code, String name, String content, String variables) {

@@ -19,15 +19,16 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 提示词模板管理接口集成测试（add-prompt-template-admin 任务 3.3，Testcontainers MySQL）。
+ * 提示词模板管理接口集成测试（add-prompt-template-admin 任务 3.3 + prompt-template-enhance 任务 3.2，Testcontainers
+ * MySQL）。
  *
  * <p><b>鉴权口径</b>：方法级 {@code @RequirePermission}，由 {@code PermissionsInterceptor#preHandle} 强制执行；
  * 注解存在而用户无对应权限时抛 {@code BaseException(PERMISSION_DENIED)} → code 12002。两档分权：808
- * PROMPT_TEMPLATE_VIEW （读/渲染），809 PROMPT_TEMPLATE_MANAGE（写）。
+ * PROMPT_TEMPLATE_VIEW （读/渲染/反馈），809 PROMPT_TEMPLATE_MANAGE（写/回滚）。
  *
- * <p><b>正向</b>：种子角色同时持 808/809 → create→detail→history→render→delete 全链。 <b>反向</b>：仅持 808（VIEW）写
- * create → 12002；无 808（读）→ 12002。真库由 auto-table 在上下文启动建表，零 Flyway 种子；权限与模板在用例内 jdbcTemplate/API
- * 补种，不依赖 V33。
+ * <p><b>正向</b>：种子角色同时持 808/809 → create→detail→history→render→feedback→revert→history（审计链）→delete
+ * 全链。 <b>反向</b>：仅持 808（VIEW）写 create/revert → 12002；无 808（读）→ 12002。真库由 auto-table 在上下文启动建表，零
+ * Flyway 种子；权限与模板在用例内 jdbcTemplate/API 补种，不依赖 V33。
  */
 @AutoConfigureMockMvc
 @Transactional
@@ -46,13 +47,16 @@ class PromptTemplateControllerIT extends AbstractMySqlIT {
 
   /** 种子角色并挂权限，返回该角色下的用户 token。 */
   private String seedToken(Long roleId, Long userId, boolean view, boolean manage) {
+    // 权限 808/809 在同事务内被多次 seed 时需先清 role_permissions 引用再删权限，避免重复插入与 FK 冲突
+    jdbcTemplate.update("DELETE FROM role_permissions WHERE permissions_id IN (808, 809)");
+    jdbcTemplate.update("DELETE FROM permissions WHERE id IN (808, 809)");
     jdbcTemplate.update("DELETE FROM sys_user WHERE id = ?", userId);
     jdbcTemplate.update("DELETE FROM role_permissions WHERE role_id = ?", roleId);
     jdbcTemplate.update("DELETE FROM sys_role WHERE id = ?", roleId);
     jdbcTemplate.update(
         "INSERT INTO sys_role (id, role_name, role_desc, create_time) VALUES (?, ?, ?, NOW())",
         roleId,
-        "提示词模板角色",
+        "提示词模板角色" + roleId,
         "IT 用例角色");
     if (view) {
       jdbcTemplate.update(
@@ -78,8 +82,8 @@ class PromptTemplateControllerIT extends AbstractMySqlIT {
         userId,
         "e10adc3949ba59abbe56e057f20f883e",
         "提示词模板用户",
-        "13900000088",
-        "pt@slz.com",
+        "13900000" + (100 + userId),
+        "pt" + userId + "@slz.com",
         roleId,
         1);
     return RoleTokenSupport.tokenOfUserId(userId);
@@ -175,5 +179,136 @@ class PromptTemplateControllerIT extends AbstractMySqlIT {
         .perform(get("/promptTemplate/1").header("token", token))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.code").value(12002));
+  }
+
+  // ===== prompt-template-enhance：revert / feedback =====
+
+  private String updateTpl(String token, String id, Integer expectedVersion) throws Exception {
+    String body =
+        "{\"id\":"
+            + id
+            + ",\"expectedVersion\":"
+            + expectedVersion
+            + ",\"code\":\"it-tpl\",\"name\":\"IT模板改\",\"content\":\"你好 {{name}} (v2)\","
+            + "\"variables\":\"[{\\\"name\\\":\\\"name\\\",\\\"required\\\":true,"
+            + "\\\"description\\\":\\\"名字\\\"}]\",\"remark\":\"updated\"}";
+    return mockMvc
+        .perform(
+            post("/promptTemplate/update")
+                .header("token", token)
+                .content(body)
+                .contentType("application/json"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(1))
+        .andReturn()
+        .getResponse()
+        .getContentAsString();
+  }
+
+  @Test
+  @DisplayName("808+809：revert 端到端含审计链（REVERT 笔 sourceVersion + 源版本内容回填）")
+  void revertEndToEndKeepsAuditChain() throws Exception {
+    String token = seedToken(22L, 203L, true, true);
+    String id = createTpl(token); // v1 CREATE，content="你好 {{name}} ({{role}})"
+
+    // 更新 → v2：content 变为 v2
+    updateTpl(token, id, 1);
+    mockMvc
+        .perform(get("/promptTemplate/{id}/history", id).header("token", token))
+        .andExpect(jsonPath("$.data[0].operation").value("UPDATE"))
+        .andExpect(jsonPath("$.data[0].version").value(2));
+
+    // 回滚到 v1（expectedVersion=2）→ 新版本 v3，REVERT 笔回填 v1 内容
+    String revertBody = "{\"targetVersion\":1,\"expectedVersion\":2}";
+    mockMvc
+        .perform(
+            post("/promptTemplate/{id}/revert", id)
+                .header("token", token)
+                .content(revertBody)
+                .contentType("application/json"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(1))
+        .andExpect(jsonPath("$.data").value(3));
+
+    // 审计链：history 倒序 [REVERT v3, UPDATE v2, CREATE v1]
+    mockMvc
+        .perform(get("/promptTemplate/{id}/history", id).header("token", token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(1))
+        .andExpect(jsonPath("$.data[0].operation").value("REVERT"))
+        .andExpect(jsonPath("$.data[0].version").value(3))
+        .andExpect(jsonPath("$.data[0].sourceVersion").value(1))
+        .andExpect(jsonPath("$.data[0].content").value("你好 {{name}} ({{role}})"))
+        .andExpect(jsonPath("$.data[1].operation").value("UPDATE"))
+        .andExpect(jsonPath("$.data[2].operation").value("CREATE"));
+
+    // 仅 808 的 VIEW 角色写 revert → 12002
+    String viewOnly = seedToken(23L, 204L, true, false);
+    mockMvc
+        .perform(
+            post("/promptTemplate/{id}/revert", id)
+                .header("token", viewOnly)
+                .content(revertBody)
+                .contentType("application/json"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(12002));
+  }
+
+  @Test
+  @DisplayName("808：feedback 记录与分页查询（score/version 校验 + 权限正反向）")
+  void feedbackRecordAndListWithPermission() throws Exception {
+    String token = seedToken(24L, 205L, true, true);
+    String id = createTpl(token); // v1
+
+    // 记录合法反馈
+    mockMvc
+        .perform(
+            post("/promptTemplate/{id}/feedback", id)
+                .header("token", token)
+                .content("{\"version\":1,\"score\":5,\"comment\":\"效果很好\"}")
+                .contentType("application/json"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(1));
+
+    // 分页查询出该条
+    mockMvc
+        .perform(get("/promptTemplate/{id}/feedback/list", id).header("token", token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(1))
+        .andExpect(jsonPath("$.data.records[0].version").value(1))
+        .andExpect(jsonPath("$.data.records[0].score").value(5))
+        .andExpect(jsonPath("$.data.records[0].comment").value("效果很好"))
+        .andExpect(jsonPath("$.data.total").value(1));
+
+    // 越界 score → 拒绝（50002）
+    mockMvc
+        .perform(
+            post("/promptTemplate/{id}/feedback", id)
+                .header("token", token)
+                .content("{\"version\":1,\"score\":6,\"comment\":\"bad\"}")
+                .contentType("application/json"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(50002));
+
+    // 版本不存在 → 拒绝（92008）
+    mockMvc
+        .perform(
+            post("/promptTemplate/{id}/feedback", id)
+                .header("token", token)
+                .content("{\"version\":999,\"score\":4}")
+                .contentType("application/json"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(92008));
+
+    // 仅 808 的 VIEW 角色也能 feedback（记录成功）→ 权限正反向
+    String viewOnly = seedToken(25L, 206L, true, false);
+    mockMvc
+        .perform(
+            post("/promptTemplate/{id}/feedback", id)
+                .header("token", viewOnly)
+                .content("{\"version\":1,\"score\":4,\"comment\":\"view 反馈\"}")
+                .contentType("application/json"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(1));
   }
 }
