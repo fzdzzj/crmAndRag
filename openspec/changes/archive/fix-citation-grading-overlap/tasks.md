@@ -1,13 +1,13 @@
 # tasks — fix-citation-grading-overlap
 
-> 红线：所有测试/门禁运行前 `DASHSCOPE_API_KEY` 置空字符串；surefire 只增不减；旧锚点 17 文件 SHA256 零漂移；indexedText/embedText 逐字节不变；生产链路（server/ai、knowledge 切分）零改动；真跑（RAG_BENCHMARK_REAL=1）未经 owner 授权不得执行。
+> 红线：所有测试/门禁运行前 `DASHSCOPE_API_KEY` 置空字符串；surefire 只增不减；旧锚点 20 文件 SHA256 零漂移；indexedText/embedText 逐字节不变；生产链路（server/ai、knowledge 切分）零改动；真跑（RAG_BENCHMARK_REAL=1）未经 owner 授权不得执行。
 
 ## 任务组 1 · 承载判定实现（quality 评测域）
 
 - [x] 1.1 RagBenchmarkDataPreparer 增 chunk 区间游标（顺序 indexOf 求每块 [start,end)），红测先行：三形态（重叠复本承载 / 跨块段落承载 / 无承载零误报）
 - [x] 1.2 黄金句 span 界定 + 承载集计算（`goldenToCarrierChunkIds` 多值映射，MIN_CARRIAGE_CHARS=16；主锚块恒在集内；tornMarkers 场景自然涵盖）
 - [x] 1.3 runner 接线：citP 的 expected 入参切承载集；recall/ansC 口径不动（主锚块）；RagQualityEvaluator 仅 Javadoc 注明口径
-- [x] 1.4 向量输入红线断言：indexedText/embedText 与改动前逐字节一致；旧锚点 17 文件 SHA256 跑前跑后一致
+- [x] 1.4 向量输入红线断言：indexedText/embedText 与改动前逐字节一致；旧锚点 20 文件 SHA256 跑前跑后一致
 
 ## 任务组 2 · 测试与口径锁
 
@@ -29,7 +29,7 @@
 
 ## §0 执行留痕（执行方：执行子 agent，2026-10-11，权威树 feature/fix-citation-grading-overlap）
 
-**红测先行（1.1）**：先落 `RagBenchmarkCarrierTest`（7 测）+ `RagBenchmarkCarrierScoringTest`（2 测）再实现。红态留痕 `work/_red-run.log`：`MVN_EXIT=1`，COMPILATION ERROR——找不到符号 `goldenToCarrierChunkIds` / `citationExpectedByCase` / `computeCarrierChunkIds` / `MIN_CARRIAGE_CHARS` 与 4 参 `evaluate`（新 API 未实现）。实现后同两文件 + 既有 10 测 + evaluator 7 测共 26/26 绿。
+**红测先行（1.1）**：先落 `RagBenchmarkCarrierTest`（7 测）+ `RagBenchmarkCarrierScoringTest`（2 测）再实现。红态留痕 `work/_red-run.log`：`BUILD FAILURE`，COMPILATION ERROR——找不到符号（实际日志无 MVN_EXIT 字面标记，以 BUILD FAILURE + 缺符号清单为红态实证） `goldenToCarrierChunkIds` / `citationExpectedByCase` / `computeCarrierChunkIds` / `MIN_CARRIAGE_CHARS` 与 4 参 `evaluate`（新 API 未实现）。实现后同两文件 + 既有 10 测 + evaluator 7 测共 26/26 绿。
 
 **span 口径实测校准（1.2，偏差披露）**：初版按「标记起点至句末（首个句读符 。！？\n）」实现，实测 `overlapReplicaChunkCarriesGoldenSentence` 红——payment-plan-1 复本块不承载。核对 fixture：标记位于**段首、标注整段**，取证 T-02 被复本的「项目明确每一期的验收前置条件；风险识别…」是段尾内容，span 截到首个句号漏掉段尾。校准为**段末（首个换行）**口径（与 fixture 标注语义一致），MIN_CARRIAGE 合成边界测试同步重排几何（span 末界由换行控制，交集 = 40 − tail），T-15 几何经 fixture 实测核实后保持预测（完整标记在 customer-sop-2、段落延入 customer-sop-3 约 250 字符）。校准已锁进单测与 Javadoc。
 
@@ -45,7 +45,7 @@
 
 **真跑另授权节点（任务组 4，2026-10-11 owner 授权后执行）**：
 
-- **红测先行（4.2）**：`RagBenchmarkV4AnchorValidationTest` 10 测先落。红态留痕 `work/_fixcitation-tg4-red-run.log`：`MVN_EXIT=1`，COMPILATION ERROR 找不到符号 13 处（`V4_ANCHOR_FILE_NAME` / `validateAgainstV4Anchor` / `V4_SCORING_VERSION` / `withScoringVersionRegistration` 等新 API 未实现）。实现后 10/10 绿。首跑曾被 spotless GJF javadoc 重排挡一道（validate 先于编译），`spotless:apply` 归一（只动本卡新文件）后取得编译红。
+- **红测先行（4.2）**：`RagBenchmarkV4AnchorValidationTest` 10 测先落。红态留痕 `work/_fixcitation-tg4-red-run.log`：`BUILD FAILURE`，COMPILATION ERROR 找不到符号 13 处（实际日志无 MVN_EXIT 字面标记，以 BUILD FAILURE + 缺符号清单为红态实证）（`V4_ANCHOR_FILE_NAME` / `validateAgainstV4Anchor` / `V4_SCORING_VERSION` / `withScoringVersionRegistration` 等新 API 未实现）。实现后 10/10 绿。首跑曾被 spotless GJF javadoc 重排挡一道（validate 先于编译），`spotless:apply` 归一（只动本卡新文件）后取得编译红。
 - **锚点校验切换形态（4.2，design D3）**：产物文件名=baseline-v4.json **且锚点在场**才对账——citP 按 scoringVersion=v2（多块承载）对锚点 `meanCitationPrecision`，recall/ansC 沿用**同一锚点文件** `meanRecallAtK`/`meanAnswerConsistency`，下限 = 记录值 × 0.95（RagQualityRegressionTest FLOOR_RATIO 房风，聚合均值粒度）；v4 缺席（首次真跑产出前）或产物非 v4 整体跳过——锚点校验不因本卡变红，CI failsafe 跳过口径恒 6 不变。写侧：v4 产物落盘登记 `scoringVersion=v2`（紧跟 suiteVersion，与 v3 键序对齐）；非 v4 产物永不获得该键。
 - **真跑命令原样（4.1，唯一授权外呼）**：`RAG_BENCHMARK_REAL=1 mvn -B -ntp test-compile failsafe:integration-test "-Dit.test=RagRealRetrievalBenchmarkIT" "-Drag.benchmark.out=docs/rag-quality/baseline-v4.json" "-Drag.benchmark.trace.out=work/_fixcitation-tg4-forensics.json"`。
 - **偏差披露（trace.out 改道）**：先例卡 P-ai 真跑未带 trace.out、随跑覆写并提交了 i05-forensics.json（c4a3491 同笔可见）；本卡红线是 docs/rag-quality 既有 20 文件 SHA256 零漂移，故加 `-Drag.benchmark.trace.out` 把取证旁路引到 work/（gitignore 域），i05-forensics.json 跑后零改动（SHA256 前后一致见停步回报）。
@@ -58,3 +58,5 @@
 **提交笔**：c8911d2 docs 三件套 → f211bbc feat 任务组 1 → 798c8a0 test 任务组 2 → c478bbf chore 基线写回 → 912e62a docs 任务组 3。
 
 **提交笔（补记任务组 4）**：fd30d6c feat（4.2 锚点校验增量支持 v4 + 10 测）→（本笔）docs+data（4.1 真跑产物 baseline-v4.json + 本 §0 留痕与 4.1/4.2 勾选）。4.3 的 push 请示未执行（铁律禁 push），以停步回报交 owner 处置。
+
+      归档批次订正（2026-10-11 archive-batch-2 复核 MINOR 7 条收尾）：work/ 域历史日志按原样保留——_green-run1.log 实为 span 校准前红跑、_green-run2.log spotless 925 系临时探针在场时点、改 IT 文件的第二轮 spotless:apply 归一只动本卡新文件。
