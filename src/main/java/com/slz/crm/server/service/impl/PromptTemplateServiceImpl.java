@@ -3,11 +3,11 @@ package com.slz.crm.server.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.BaseUnit;
+import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.dto.PromptTemplateDTO;
 import com.slz.crm.pojo.dto.PromptTemplateRenderDTO;
 import com.slz.crm.pojo.entity.PromptTemplateEntity;
@@ -21,8 +21,6 @@ import com.slz.crm.server.service.PromptTemplateService;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,6 +46,24 @@ public class PromptTemplateServiceImpl
   @Autowired private PromptTemplateHistoryMapper promptTemplateHistoryMapper;
 
   @Autowired private ObjectMapper objectMapper;
+
+  private PromptTemplateRenderSupport renderSupport;
+
+  private PromptTemplateVoAssembler voAssembler;
+
+  private PromptTemplateRenderSupport renderSupport() {
+    if (renderSupport == null) {
+      renderSupport = new PromptTemplateRenderSupport(objectMapper);
+    }
+    return renderSupport;
+  }
+
+  private PromptTemplateVoAssembler voAssembler() {
+    if (voAssembler == null) {
+      voAssembler = new PromptTemplateVoAssembler();
+    }
+    return voAssembler;
+  }
 
   // ===== 查询 =====
 
@@ -75,14 +91,14 @@ public class PromptTemplateServiceImpl
     Page<PromptTemplateEntity> entityPage = this.page(new Page<>(pageNum, pageSize), wrapper);
     Page<PromptTemplateVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize());
     voPage.setTotal(entityPage.getTotal());
-    voPage.setRecords(entityPage.getRecords().stream().map(this::toVo).toList());
+    voPage.setRecords(entityPage.getRecords().stream().map(voAssembler()::toVo).toList());
     return voPage;
   }
 
   @Override
   public PromptTemplateVO detail(Long id) {
     PromptTemplateEntity entity = requireById(id);
-    return toVo(entity);
+    return voAssembler().toVo(entity);
   }
 
   // ===== 写路径 =====
@@ -91,19 +107,14 @@ public class PromptTemplateServiceImpl
   @Transactional(rollbackFor = Exception.class)
   public Long create(PromptTemplateDTO dto) {
     dto.validateBase();
-    String variables = parseVariablesOrReject(dto.getVariables());
+    String variables = renderSupport().parseVariablesOrReject(dto.getVariables());
     ensureCodeNotUsed(dto.getCode());
     Long operator = currentUserId();
 
     PromptTemplateEntity entity = new PromptTemplateEntity();
-    entity.setCode(dto.getCode());
-    entity.setName(dto.getName());
-    entity.setCategory(dto.getCategory());
-    entity.setContent(dto.getContent());
-    entity.setVariables(variables);
+    bindContentFields(entity, dto, variables);
     entity.setVersion(1);
     entity.setStatus(0);
-    entity.setRemark(dto.getRemark());
     entity.setCreatedBy(operator);
     entity.setUpdatedBy(operator);
     save(entity);
@@ -116,7 +127,7 @@ public class PromptTemplateServiceImpl
   @Transactional(rollbackFor = Exception.class)
   public Boolean update(PromptTemplateDTO dto) {
     dto.validateBase();
-    String variables = parseVariablesOrReject(dto.getVariables());
+    String variables = renderSupport().parseVariablesOrReject(dto.getVariables());
     PromptTemplateEntity existing = requireById(dto.getId());
     if (dto.getExpectedVersion() == null
         || !dto.getExpectedVersion().equals(existing.getVersion())) {
@@ -126,14 +137,8 @@ public class PromptTemplateServiceImpl
 
     Long operator = currentUserId();
     int nextVersion = existing.getVersion() + 1;
-
-    existing.setCode(dto.getCode());
-    existing.setName(dto.getName());
-    existing.setCategory(dto.getCategory());
-    existing.setContent(dto.getContent());
-    existing.setVariables(variables);
+    bindContentFields(existing, dto, variables);
     existing.setVersion(nextVersion);
-    existing.setRemark(dto.getRemark());
     existing.setUpdatedBy(operator);
     existing.setUpdatedAt(LocalDateTime.now());
     updateById(existing);
@@ -141,6 +146,17 @@ public class PromptTemplateServiceImpl
     appendHistory(
         existing.getId(), nextVersion, existing.getContent(), variables, OP_UPDATE, operator);
     return true;
+  }
+
+  /** 绑定正文变更字段（code/name/category/content/variables/remark），create/update 共用。 */
+  private void bindContentFields(
+      PromptTemplateEntity entity, PromptTemplateDTO dto, String variables) {
+    entity.setCode(dto.getCode());
+    entity.setName(dto.getName());
+    entity.setCategory(dto.getCategory());
+    entity.setContent(dto.getContent());
+    entity.setVariables(variables);
+    entity.setRemark(dto.getRemark());
   }
 
   @Override
@@ -161,23 +177,23 @@ public class PromptTemplateServiceImpl
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "状态只能为 0（启用）或 1（停用）");
     }
     PromptTemplateEntity existing = requireById(id);
-    if (existing.getStatus() != null && existing.getStatus().equals(status)) {
-      // 状态一致视为幂等，直接返回，不落历史
-      return true;
+    boolean unchanged = existing.getStatus() != null && existing.getStatus().equals(status);
+    Boolean result = Boolean.TRUE;
+    if (!unchanged) {
+      Long operator = currentUserId();
+      existing.setStatus(status);
+      existing.setUpdatedBy(operator);
+      existing.setUpdatedAt(LocalDateTime.now());
+      updateById(existing);
+      appendHistory(
+          existing.getId(),
+          existing.getVersion(),
+          existing.getContent(),
+          existing.getVariables(),
+          OP_STATUS,
+          operator);
     }
-    Long operator = currentUserId();
-    existing.setStatus(status);
-    existing.setUpdatedBy(operator);
-    existing.setUpdatedAt(LocalDateTime.now());
-    updateById(existing);
-    appendHistory(
-        existing.getId(),
-        existing.getVersion(),
-        existing.getContent(),
-        existing.getVariables(),
-        OP_STATUS,
-        operator);
-    return true;
+    return result;
   }
 
   // ===== 历史 =====
@@ -190,17 +206,34 @@ public class PromptTemplateServiceImpl
             new LambdaQueryWrapper<PromptTemplateHistoryEntity>()
                 .eq(PromptTemplateHistoryEntity::getTemplateId, id)
                 .orderByDesc(PromptTemplateHistoryEntity::getVersion));
-    return list.stream().map(this::toHistoryVo).toList();
+    return list.stream().map(voAssembler()::toHistoryVo).toList();
   }
 
   // ===== 渲染 =====
 
   @Override
   public PromptTemplateRenderVO render(PromptTemplateRenderDTO dto) {
+    PromptTemplateEntity template = resolveEnabledTemplate(dto);
+    Map<String, String> provided = dto.getVariables() == null ? Map.of() : dto.getVariables();
+    List<PromptTemplateRenderSupport.PromptTemplateVariable> definitions =
+        renderSupport().parseVariableDefinitions(template.getVariables());
+    renderSupport().rejectUndefined(definitions, provided);
+    renderSupport().rejectMissingRequired(definitions, provided);
+
+    PromptTemplateRenderVO vo = new PromptTemplateRenderVO();
+    vo.setContent(renderSupport().replacePlaceholders(template.getContent(), provided));
+    vo.setVersion(template.getVersion());
+    vo.setCode(template.getCode());
+    return vo;
+  }
+
+  /** 定位启用态模板：入参/不存在/停用任一异常即抛（单返回）。 */
+  private PromptTemplateEntity resolveEnabledTemplate(PromptTemplateRenderDTO dto) {
+    PromptTemplateEntity template;
     if (dto == null || dto.getCode() == null || dto.getCode().isBlank()) {
       throw new BaseException(ErrorCode.PARAM_REQUIRED, "渲染模板编码 code 不能为空");
     }
-    PromptTemplateEntity template =
+    template =
         getOne(
             new LambdaQueryWrapper<PromptTemplateEntity>()
                 .eq(PromptTemplateEntity::getCode, dto.getCode())
@@ -211,51 +244,7 @@ public class PromptTemplateServiceImpl
     if (template.getStatus() == null || template.getStatus() != 0) {
       throw new BaseException(ErrorCode.NOT_ENABLED, "提示词模板已停用");
     }
-
-    // 解析变量定义（坏 JSON 理论上不该存在，防御性拒绝）
-    List<PromptTemplateVariable> definitions = parseVariableDefinitions(template.getVariables());
-    Map<String, String> provided = dto.getVariables() == null ? Map.of() : dto.getVariables();
-
-    Set<String> definedNames =
-        definitions.stream()
-            .map(PromptTemplateVariable::getName)
-            .filter(n -> n != null && !n.isBlank())
-            .collect(Collectors.toSet());
-
-    // 未定义变量提供值 → 拒绝（防静默吞错）
-    List<String> undefined =
-        provided.keySet().stream().filter(k -> !definedNames.contains(k)).sorted().toList();
-    if (!undefined.isEmpty()) {
-      throw new BaseException(
-          ErrorCode.PARAM_FORMAT_ERROR, "模板未定义变量：" + String.join(", ", undefined));
-    }
-
-    // required 缺失 → 拒绝
-    List<String> missing =
-        definitions.stream()
-            .filter(d -> Boolean.TRUE.equals(d.isRequired()))
-            .map(PromptTemplateVariable::getName)
-            .filter(n -> provided.get(n) == null || provided.get(n).isBlank())
-            .sorted()
-            .toList();
-    if (!missing.isEmpty()) {
-      throw new BaseException(ErrorCode.PARAM_REQUIRED, "必填变量缺失：" + String.join(", ", missing));
-    }
-
-    // 纯 Java 占位符替换（不用 MessageFormat，避免格式符歧义）
-    String rendered = template.getContent();
-    for (Map.Entry<String, String> entry : provided.entrySet()) {
-      String value = entry.getValue();
-      if (value != null) {
-        rendered = rendered.replace("{{" + entry.getKey() + "}}", value);
-      }
-    }
-
-    PromptTemplateRenderVO vo = new PromptTemplateRenderVO();
-    vo.setContent(rendered);
-    vo.setVersion(template.getVersion());
-    vo.setCode(template.getCode());
-    return vo;
+    return template;
   }
 
   // ===== 私有工具 =====
@@ -266,27 +255,6 @@ public class PromptTemplateServiceImpl
       throw new BaseException(ErrorCode.ID_NOT_EXISTS, "提示词模板不存在");
     }
     return entity;
-  }
-
-  /** create/update 入参加载 variables：null/空放行，非空 JSON 数组坏格式即拒。返回归一化文本。 */
-  private String parseVariablesOrReject(String variables) {
-    if (variables == null || variables.isBlank()) {
-      return null;
-    }
-    parseVariableDefinitions(variables);
-    return variables;
-  }
-
-  private List<PromptTemplateVariable> parseVariableDefinitions(String variables) {
-    if (variables == null || variables.isBlank()) {
-      return List.of();
-    }
-    try {
-      return objectMapper.readValue(
-          variables, new TypeReference<List<PromptTemplateVariable>>() {});
-    } catch (Exception e) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "变量定义 variables 必须是合法 JSON 数组");
-    }
   }
 
   private void ensureCodeNotUsed(String code) {
@@ -325,73 +293,9 @@ public class PromptTemplateServiceImpl
     promptTemplateHistoryMapper.insert(history);
   }
 
+  /** 取当前登录用户ID；无登录上下文返回 null（单返回，避免 generic catch）。 */
   private Long currentUserId() {
-    try {
-      return BaseUnit.getCurrentId();
-    } catch (RuntimeException e) {
-      return null;
-    }
-  }
-
-  private PromptTemplateVO toVo(PromptTemplateEntity entity) {
-    PromptTemplateVO vo = new PromptTemplateVO();
-    vo.setId(entity.getId());
-    vo.setCode(entity.getCode());
-    vo.setName(entity.getName());
-    vo.setCategory(entity.getCategory());
-    vo.setContent(entity.getContent());
-    vo.setVariables(entity.getVariables());
-    vo.setVersion(entity.getVersion());
-    vo.setStatus(entity.getStatus());
-    vo.setRemark(entity.getRemark());
-    vo.setCreatedBy(entity.getCreatedBy());
-    vo.setCreatedAt(entity.getCreatedAt());
-    vo.setUpdatedBy(entity.getUpdatedBy());
-    vo.setUpdatedAt(entity.getUpdatedAt());
-    return vo;
-  }
-
-  private PromptTemplateHistoryVO toHistoryVo(PromptTemplateHistoryEntity entity) {
-    PromptTemplateHistoryVO vo = new PromptTemplateHistoryVO();
-    vo.setId(entity.getId());
-    vo.setTemplateId(entity.getTemplateId());
-    vo.setVersion(entity.getVersion());
-    vo.setContent(entity.getContent());
-    vo.setVariables(entity.getVariables());
-    vo.setOperation(entity.getOperation());
-    vo.setOperator(entity.getOperator());
-    vo.setOperatedAt(entity.getOperatedAt());
-    return vo;
-  }
-
-  /** 模板变量定义（variables JSON 数组元素）。 */
-  public static class PromptTemplateVariable {
-    private String name;
-    private Boolean required;
-    private String description;
-
-    public String getName() {
-      return name;
-    }
-
-    public void setName(String name) {
-      this.name = name;
-    }
-
-    public Boolean isRequired() {
-      return required;
-    }
-
-    public void setRequired(Boolean required) {
-      this.required = required;
-    }
-
-    public String getDescription() {
-      return description;
-    }
-
-    public void setDescription(String description) {
-      this.description = description;
-    }
+    RoleAO role = BaseUnit.getCurrentRole();
+    return role == null ? null : role.getId();
   }
 }
