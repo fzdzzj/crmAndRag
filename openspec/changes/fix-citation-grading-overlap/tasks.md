@@ -23,9 +23,9 @@
 
 ## 任务组 4 · 真跑锚点切换（另授权，本段未授权不执行）
 
-- [ ] 4.1 【另授权】owner 授权 RAG_BENCHMARK_REAL=1 后：63 例全量单轮真跑（预估 ~290s / tokens ~60k），产出 baseline-v4.json（suiteVersion=3.0 + scoringVersion=v2）
-- [ ] 4.2 【另授权】锚点校验增量切 v4 + scoringVersion 登记 + tasks.md §0 真跑留痕（清开关自证 + 锚点前后 SHA256）
-- [ ] 4.3 【另授权】修复笔/证据笔提交与 push 请示
+- [x] 4.1 【另授权】owner 授权 RAG_BENCHMARK_REAL=1 后：63 例全量单轮真跑（预估 ~290s / tokens ~60k），产出 baseline-v4.json（suiteVersion=3.0 + scoringVersion=v2）
+- [x] 4.2 【另授权】锚点校验增量切 v4 + scoringVersion 登记 + tasks.md §0 真跑留痕（清开关自证 + 锚点前后 SHA256）
+- [ ] 4.3 【另授权】修复笔/证据笔提交与 push 请示（提交已按组分笔完成：fd30d6c feat + 本 docs 笔；push 请示=停步回报，待 owner 处置）
 
 ## §0 执行留痕（执行方：执行子 agent，2026-10-11，权威树 feature/fix-citation-grading-overlap）
 
@@ -43,6 +43,18 @@
 
 **外呼防线**：每条 mvn/门禁命令均以 `export DASHSCOPE_API_KEY=""` 前缀执行（宿主环境存在真实 key，任务书红线即为此设）；本轮全部运行仅 surefire 域（failsafe IT 未执行），`RAG_BENCHMARK_REAL` 未设置，零真实外呼。
 
-**真跑另授权节点（任务组 4）**：未执行，待 owner 授权。卡停在「代码合入 + 旧锚点校验」态：baseline-v4.json 未产出，锚点校验未切 v4，旧锚点零漂移（SHA256 前后对比见停步回报）。
+**真跑另授权节点（任务组 4，2026-10-11 owner 授权后执行）**：
 
-**提交笔**：c8911d2 docs 三件套 → f211bbc feat 任务组 1 → 798c8a0 test 任务组 2 → c478bbf chore 基线写回 →（本笔）docs 任务组 3。
+- **红测先行（4.2）**：`RagBenchmarkV4AnchorValidationTest` 10 测先落。红态留痕 `work/_fixcitation-tg4-red-run.log`：`MVN_EXIT=1`，COMPILATION ERROR 找不到符号 13 处（`V4_ANCHOR_FILE_NAME` / `validateAgainstV4Anchor` / `V4_SCORING_VERSION` / `withScoringVersionRegistration` 等新 API 未实现）。实现后 10/10 绿。首跑曾被 spotless GJF javadoc 重排挡一道（validate 先于编译），`spotless:apply` 归一（只动本卡新文件）后取得编译红。
+- **锚点校验切换形态（4.2，design D3）**：产物文件名=baseline-v4.json **且锚点在场**才对账——citP 按 scoringVersion=v2（多块承载）对锚点 `meanCitationPrecision`，recall/ansC 沿用**同一锚点文件** `meanRecallAtK`/`meanAnswerConsistency`，下限 = 记录值 × 0.95（RagQualityRegressionTest FLOOR_RATIO 房风，聚合均值粒度）；v4 缺席（首次真跑产出前）或产物非 v4 整体跳过——锚点校验不因本卡变红，CI failsafe 跳过口径恒 6 不变。写侧：v4 产物落盘登记 `scoringVersion=v2`（紧跟 suiteVersion，与 v3 键序对齐）；非 v4 产物永不获得该键。
+- **真跑命令原样（4.1，唯一授权外呼）**：`RAG_BENCHMARK_REAL=1 mvn -B -ntp test-compile failsafe:integration-test "-Dit.test=RagRealRetrievalBenchmarkIT" "-Drag.benchmark.out=docs/rag-quality/baseline-v4.json" "-Drag.benchmark.trace.out=work/_fixcitation-tg4-forensics.json"`。
+- **偏差披露（trace.out 改道）**：先例卡 P-ai 真跑未带 trace.out、随跑覆写并提交了 i05-forensics.json（c4a3491 同笔可见）；本卡红线是 docs/rag-quality 既有 20 文件 SHA256 零漂移，故加 `-Drag.benchmark.trace.out` 把取证旁路引到 work/（gitignore 域），i05-forensics.json 跑后零改动（SHA256 前后一致见停步回报）。
+- **Docker 与耗时**：`docker info` 实测在线（Server 29.6.2）；实跑日志无 Testcontainers 容器拉起（RagReal 本体为纯 JVM + InMemoryVectorStore + DashScope 外呼，MySQL 依赖属 failsafe 域其他 IT）。Maven 全程 **310s**（failsafe `Tests run: 1, Failures: 0, Errors: 0, Skipped: 0` 耗时 **287.3s**，与先例 290.7s 同量级）；`totalTokens=61584`（答案生成+判卷两段口径，先例 61734 同口径），未触额度。
+- **63 例 V1 指标摘要**：caseCount=63 / failureRate=0 / hitRate=1.0 / meanRecallAtK=**0.955026455026455**（与 v3 逐位一致）/ mrr=0.9206349206349206（与 v3 逐位一致）/ meanAnswerConsistency=0.9550264550264548（与 v3 逐位一致）/ **meanCitationPrecision=0.9243386243386243**——v3（v1 主锚单块口径）0.8272486772486772 → v4（v2 承载口径）**+0.0971 方向上升**，承载集消除邻块引用误判的方向实证成立；recall/precision/MRR/ansC 跨口径直接对账零漂移。
+- **产物（4.1）**：`docs/rag-quality/baseline-v4.json`——suiteVersion=3.0 + scoringVersion=v2 + 63 例 V1 全量；落盘 CRLF 与在位 v3 工作树形态一致，入库经 `.gitattributes *.json eol=lf` 归一为 LF。
+- **清开关自证**：`RAG_BENCHMARK_REAL` 以命令内联前缀作用单轮，跑毕新 shell 实测 unset；真实 key 仅真跑命令经宿主环境继承使用（长度 35 自证在位、值未打印），其余全部 mvn/门禁命令前置 `DASHSCOPE_API_KEY=""`；真跑之外零真实外呼。
+- **基线红线**：surefire 1100→1110 只增不减；`scripts/test-baseline.txt` 零改动（`--update` 未执行），只读裁决真跑前后双 PASS（surefire 187/1110/0 ≥ 186/1100/0；failsafe 真跑后 27/98/**5** ≤ skipped 上限 6，任务书预警的「5≠上限判红」按脚本只读语义未成立，按在案修复路径无需刷新）。
+
+**提交笔**：c8911d2 docs 三件套 → f211bbc feat 任务组 1 → 798c8a0 test 任务组 2 → c478bbf chore 基线写回 → 912e62a docs 任务组 3。
+
+**提交笔（补记任务组 4）**：fd30d6c feat（4.2 锚点校验增量支持 v4 + 10 测）→（本笔）docs+data（4.1 真跑产物 baseline-v4.json + 本 §0 留痕与 4.1/4.2 勾选）。4.3 的 push 请示未执行（铁律禁 push），以停步回报交 owner 处置。
