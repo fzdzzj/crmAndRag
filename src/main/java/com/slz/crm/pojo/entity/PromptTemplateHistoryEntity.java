@@ -11,12 +11,14 @@ import java.time.LocalDateTime;
 import lombok.Data;
 
 /**
- * 提示词模板版本历史实体（表 {@code prompt_template_history}，Flyway V32 建表，add-prompt-template-admin 任务 1.1）。
+ * 提示词模板版本历史实体（表 {@code prompt_template_history}，Flyway V32 建表 + V34 扩 source_version
+ * 列，add-prompt-template-admin 任务 1.1 / prompt-template-enhance 任务 1.1）。
  *
- * <p>每次模板变更追加一行：内容变更（CREATE/UPDATE）与启停用（STATUS）均留承。 参照 dynamic_config_history 双表模式， 删除模板时同事务先删
- * history 再删主表（无外键约束，Service 层保证）。
+ * <p>每次模板变更追加一行：内容变更（CREATE/UPDATE）、启停用（STATUS）、版本回滚（REVERT）均留承。 参照 dynamic_config_history 双表模式，
+ * 删除模板时同事务先删 history 再删主表（无外键约束，Service 层保证）。{@code source_version} 为 V34 新增可空列，<b>仅 REVERT
+ * 笔非空</b>：记录被回滚的目标版本号，供审计链显式追溯；既有 create/update/status 存量笔为 NULL。
  *
- * <p>{@code @AutoTable} + {@code @TableName} 与 V32 DDL 严格对齐（SchemaDriftAuditIT 面向新表零 CRITICAL/NEW）。
+ * <p>{@code @AutoTable} + {@code @TableName} 与 DDL 严格对齐（SchemaDriftAuditIT 面向新增列零 CRITICAL/NEW）。
  */
 @Data
 @AutoTable
@@ -39,6 +41,10 @@ public class PromptTemplateHistoryEntity {
   /** 本次变更后的版本号 */
   @Column(comment = "本次变更后的版本号", type = "int", notNull = true)
   private Integer version;
+
+  /** revert 时被回滚的源版本号（V34 新增，仅 REVERT 笔非空，其余笔为 NULL） */
+  @Column(comment = "revert 时被回滚的源版本号", type = "int")
+  private Integer sourceVersion;
 
   /** 历史正文快照 */
   @Column(comment = "历史正文快照", type = "text", notNull = true)
