@@ -282,4 +282,88 @@ class RagBenchmarkDataPreparerTest {
       assertFalse(text.contains("【GOLD"), "新语料索引文本不得含 GOLD 标记: " + text);
     }
   }
+
+  /**
+   * harden-gold-marker-tearing 任务 1.1：T-15 撕裂现场检出（红测先行，纯检出登记、零行为变更）。
+   *
+   * <p>取证实测（trace-citation-redundancy citation-forensics-v4 §5-M3 + 本卡探针 2026-10-11 复测）：
+   * customer-sop.md 被 320/40 滑窗切分后——左残段在 customer-sop-1 尾部（区间 [302,320)，精确形态 {@code
+   * 【GOLD:customer-onb}，18 字符无闭合，FRAGMENT 剥离正确但此前无检出信号，goldId 尽力解析为 {@code customer-onb}）；完整标记
+   * {@code 【GOLD:customer-onboard-3】} 因 overlap 复制在 customer-sop-2 区间 [274,299) 唯一完整命中（归点，最小
+   * chunkIndex 规则，机制正确）；右残段在 customer-sop-3 开头 （{@code customer-onboard-3】}，19 字符无前缀，FRAGMENT 不识别 →
+   * 泄漏进索引文本）。
+   */
+  @Test
+  void tornMarkerT15SceneIsDetected() {
+    InMemoryVectorStore store = new InMemoryVectorStore();
+    RagBenchmarkDataPreparer.Preparation preparation =
+        RagBenchmarkDataPreparer.prepare(
+            store, RagBenchmarkDataPreparerTest::fakeEmbed, EVAL_KB_ID);
+
+    List<RagBenchmarkDataPreparer.TornMarkerEvent> torn = preparation.tornMarkers();
+
+    // RIGHT 事件：右残段所在 chunkId=customer-sop-3，归点对照=customer-sop-2（归点与语义主体分离的机械证据）
+    RagBenchmarkDataPreparer.TornMarkerEvent right =
+        torn.stream()
+            .filter(
+                e ->
+                    e.direction() == RagBenchmarkDataPreparer.TornMarkerEvent.Direction.RIGHT
+                        && "customer-onboard-3".equals(e.goldId()))
+            .findFirst()
+            .orElse(null);
+    assertTrue(right != null, "T-15 右残段必须被检出（customer-onboard-3）: " + torn);
+    assertEquals("customer-sop-3", right.tornChunkId(), "右残段所在 chunkId");
+    assertEquals("customer-sop-2", right.alignedChunkId(), "归点对照 chunkId");
+    assertEquals(
+        "customer-onboard-3】", right.matchedFragment(), "右残段精确形态（实测校准：sop-3 剥离前原文开头 19 字符）");
+
+    // LEFT 事件：customer-sop 语料的左残段（FRAGMENT 命中中非完整标记覆盖区间者）
+    RagBenchmarkDataPreparer.TornMarkerEvent left =
+        torn.stream()
+            .filter(
+                e ->
+                    e.direction() == RagBenchmarkDataPreparer.TornMarkerEvent.Direction.LEFT
+                        && e.tornChunkId().startsWith("customer-sop-"))
+            .findFirst()
+            .orElse(null);
+    assertTrue(left != null, "customer-sop 语料必须存在左残段事件: " + torn);
+    assertEquals("customer-sop-1", left.tornChunkId(), "左残段所在 chunkId（实测校准：sop-1 尾部）");
+    assertEquals("customer-onb", left.goldId(), "左残段 goldId 尽力解析（实测校准：部分 id）");
+    assertEquals("【GOLD:customer-onb", left.matchedFragment(), "左残段精确形态（实测校准：18 字符无闭合）");
+  }
+
+  /**
+   * harden-gold-marker-tearing 任务 1.1：零行为变更锁 + 检出零误报。
+   *
+   * <p>右残段<b>不剥</b>：剥离会改 indexedText/embedText → 向量输入变 → baseline-v3 锚点漂移（属 B2 升版
+   * 受控校准范畴，本卡不碰）。本测试锁现行剥离/归点行为不因检出实现而漂移，并锁撕裂事件只登记在 customer-sop 语料（探针实测 2026-10-11：全 15 份语料中撕裂仅
+   * customer-sop 一家，其余 14 份零登记）。
+   */
+  @Test
+  void tornMarkerDetectionKeepsIndexingBehaviorUntouched() {
+    InMemoryVectorStore store = new InMemoryVectorStore();
+    RagBenchmarkDataPreparer.Preparation preparation =
+        RagBenchmarkDataPreparer.prepare(
+            store, RagBenchmarkDataPreparerTest::fakeEmbed, EVAL_KB_ID);
+
+    // 锁剥离行为：sop-3 索引文本仍以右残段开头（右残段不剥——改了就是向量输入漂移）
+    String sop3Text =
+        preparation.chunks().stream()
+            .filter(c -> c.chunkId().equals("customer-sop-3"))
+            .map(RagBenchmarkDataPreparer.BenchmarkChunk::text)
+            .findFirst()
+            .orElseThrow();
+    assertTrue(
+        sop3Text.startsWith("customer-onboard-3】"), "零行为变更锁：sop-3 索引文本必须仍以右残段开头: " + sop3Text);
+
+    // 锁归点：customer-onboard-3 归点仍为完整命中块 customer-sop-2
+    assertEquals(
+        "customer-sop-2", preparation.goldenToChunkId().get("customer-onboard-3"), "零行为变更锁：归点规则未漂");
+
+    // 零误报：撕裂事件只登记在 customer-sop 语料（其余 14 份零登记）
+    assertTrue(
+        preparation.tornMarkers().stream()
+            .allMatch(e -> e.tornChunkId().startsWith("customer-sop-")),
+        "其余 14 份语料零登记（实测撕裂仅 customer-sop 一家）: " + preparation.tornMarkers());
+  }
 }
