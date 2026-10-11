@@ -5,7 +5,10 @@ import com.slz.crm.common.annotation.RequirePermission;
 import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.result.Result;
 import com.slz.crm.pojo.dto.PromptTemplateDTO;
+import com.slz.crm.pojo.dto.PromptTemplateFeedbackDTO;
 import com.slz.crm.pojo.dto.PromptTemplateRenderDTO;
+import com.slz.crm.pojo.dto.PromptTemplateRevertDTO;
+import com.slz.crm.pojo.vo.PromptTemplateFeedbackVO;
 import com.slz.crm.pojo.vo.PromptTemplateHistoryVO;
 import com.slz.crm.pojo.vo.PromptTemplateRenderVO;
 import com.slz.crm.pojo.vo.PromptTemplateVO;
@@ -22,10 +25,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 提示词模板管理 REST 接口（add-prompt-template-admin 任务 2.3）。
+ * 提示词模板管理 REST 接口（add-prompt-template-admin 任务 2.3 + prompt-template-enhance 任务 2.3）。
  *
- * <p>路由前缀 {@code /promptTemplate}，8 端点两档分权：VIEW（808）——分页/详情/历史/渲染；MANAGE（809）——
- * 创建/更新/删除/启停用。所有端点挂方法级 {@code @RequirePermission}，零裸奔零 INTENTIONAL_OPEN。 渲染为纯 Java 占位符组装，零真实模型外呼。
+ * <p>路由前缀 {@code /promptTemplate}，11 端点两档分权：VIEW（808）——分页/详情/历史/渲染/feedback 记录与列表；MANAGE（809）——
+ * 创建/更新/删除/启停用/revert。所有端点挂方法级 {@code @RequirePermission}，零裸奔零 INTENTIONAL_OPEN。 渲染为纯 Java
+ * 占位符组装，零真实模型外呼。
  *
  * <p>参照 AssistController 模式：{@code Result} 统一包装，MyBatis-Plus {@code Page} 分页。
  */
@@ -96,5 +100,30 @@ public class PromptTemplateController {
   @RequirePermission(PermissionOperates.PROMPT_TEMPLATE_VIEW)
   public Result<PromptTemplateRenderVO> render(@RequestBody PromptTemplateRenderDTO dto) {
     return Result.success(promptTemplateService.render(dto));
+  }
+
+  /** 回滚模板到指定历史版本（prompt-template-enhance 任务 2.3）：内容+variables 作新版本落档，历史落 REVERT+sourceVersion。 */
+  @PostMapping("/{id}/revert")
+  @RequirePermission(PermissionOperates.PROMPT_TEMPLATE_MANAGE)
+  public Result<Integer> revert(@PathVariable Long id, @RequestBody PromptTemplateRevertDTO dto) {
+    return Result.success(promptTemplateService.revert(id, dto));
+  }
+
+  /** 记录模板版本使用反馈（prompt-template-enhance 任务 2.3）：score 1-5 越界拒绝、version 须存在于 history。 */
+  @PostMapping("/{id}/feedback")
+  @RequirePermission(PermissionOperates.PROMPT_TEMPLATE_VIEW)
+  public Result<Boolean> feedback(
+      @PathVariable Long id, @RequestBody PromptTemplateFeedbackDTO dto) {
+    return Result.success(promptTemplateService.addFeedback(id, dto));
+  }
+
+  /** 分页查询模板使用反馈（prompt-template-enhance 任务 2.3），按创建时间倒序。 */
+  @GetMapping("/{id}/feedback/list")
+  @RequirePermission(PermissionOperates.PROMPT_TEMPLATE_VIEW)
+  public Result<Page<PromptTemplateFeedbackVO>> feedbackList(
+      @PathVariable Long id,
+      @RequestParam(defaultValue = "1") Integer pageNum,
+      @RequestParam(defaultValue = "10") Integer pageSize) {
+    return Result.success(promptTemplateService.listFeedback(id, pageNum, pageSize));
   }
 }
