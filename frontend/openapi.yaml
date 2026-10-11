@@ -1551,6 +1551,81 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+  /promptTemplate/update:
+    post:
+      tags:
+      - prompt-template-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptTemplateDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /promptTemplate/status:
+    post:
+      tags:
+      - prompt-template-controller
+      parameters:
+      - name: id
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: status
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /promptTemplate/render:
+    post:
+      tags:
+      - prompt-template-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptTemplateRenderDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPromptTemplateRenderVO"
+  /promptTemplate/create:
+    post:
+      tags:
+      - prompt-template-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptTemplateDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultLong"
   /project/file/upload/standalone:
     post:
       tags:
@@ -3394,6 +3469,106 @@ paths:
       responses:
         "200":
           description: OK
+  /promptTemplate/{id}:
+    get:
+      tags:
+      - prompt-template-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPromptTemplateVO"
+    delete:
+      tags:
+      - prompt-template-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /promptTemplate/{id}/history:
+    get:
+      tags:
+      - prompt-template-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListPromptTemplateHistoryVO"
+  /promptTemplate/page:
+    get:
+      tags:
+      - prompt-template-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 10
+      - name: code
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: name
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: category
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPagePromptTemplateVO"
   /project/file/list/order/{orderId}:
     get:
       tags:
@@ -6264,6 +6439,67 @@ components:
             type: integer
             format: int64
           uniqueItems: true
+    PromptTemplateDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        expectedVersion:
+          type: integer
+          format: int32
+        code:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+        content:
+          type: string
+        variables:
+          type: string
+        remark:
+          type: string
+    PromptTemplateRenderDTO:
+      type: object
+      properties:
+        code:
+          type: string
+        variables:
+          type: object
+          additionalProperties:
+            type: string
+    PromptTemplateRenderVO:
+      type: object
+      properties:
+        content:
+          type: string
+        version:
+          type: integer
+          format: int32
+        code:
+          type: string
+    ResultPromptTemplateRenderVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PromptTemplateRenderVO"
+    ResultLong:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: integer
+          format: int64
     ProjectFileDTO:
       type: object
       properties:
@@ -7367,17 +7603,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AssistApplyItem"
-    ResultLong:
-      type: object
-      properties:
-        code:
-          type: integer
-          format: int32
-        msg:
-          type: string
-        data:
-          type: integer
-          format: int64
     AssistAppendDTO:
       type: object
       properties:
@@ -8044,6 +8269,136 @@ components:
         reportEndTime:
           type: string
           format: date-time
+    PromptTemplateVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        code:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+        content:
+          type: string
+        variables:
+          type: string
+        version:
+          type: integer
+          format: int32
+        status:
+          type: integer
+          format: int32
+        remark:
+          type: string
+        createdBy:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: integer
+          format: int64
+        updatedAt:
+          type: string
+          format: date-time
+    ResultPromptTemplateVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PromptTemplateVO"
+    PromptTemplateHistoryVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        templateId:
+          type: integer
+          format: int64
+        version:
+          type: integer
+          format: int32
+        content:
+          type: string
+        variables:
+          type: string
+        operation:
+          type: string
+        operator:
+          type: integer
+          format: int64
+        operatedAt:
+          type: string
+          format: date-time
+    ResultListPromptTemplateHistoryVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PromptTemplateHistoryVO"
+    PagePromptTemplateVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/PromptTemplateVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    ResultPagePromptTemplateVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PagePromptTemplateVO"
     ResultListProjectFileVO:
       type: object
       properties:
