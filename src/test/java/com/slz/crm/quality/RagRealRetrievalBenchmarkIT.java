@@ -35,6 +35,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -123,6 +124,21 @@ class RagRealRetrievalBenchmarkIT {
 
   /** excerpt 截断长度（字）。 */
   private static final int EXCERPT_LIMIT = 400;
+
+  /**
+   * fix-citation-grading-overlap 任务 4.2：v4 锚点产物文件名——锚点校验只对该产物文件名生效，其他 profile 产物（after-* 阶梯、取证旁路等）与
+   * v4 锚点不可比、一律不参与对账。
+   */
+  static final String V4_ANCHOR_FILE_NAME = "baseline-v4.json";
+
+  /** fix-citation-grading-overlap 任务 4.2：v4 锚点登记的评分口径（v2 = 多块承载判卷，design D2/D3）。 */
+  static final String V4_SCORING_VERSION = "v2";
+
+  /**
+   * fix-citation-grading-overlap 任务 4.2：v4 锚点对账下限比例（实测 ≥ 锚点记录值 × 本比例才放行）。 沿用 {@code
+   * RagQualityRegressionTest} FLOOR_RATIO=0.95 房风：真跑受 LLM 非确定性支配，5% 抖动内不判回退。
+   */
+  static final double V4_ANCHOR_FLOOR_RATIO = 0.95d;
 
   /** 本轮 evaluateCase 采集的取证旁路（不进 CaseScore）。 */
   private final List<ForensicCase> forensicCases = new ArrayList<>();
@@ -235,6 +251,9 @@ class RagRealRetrievalBenchmarkIT {
         System.getProperty(OUT_PROP) == null || System.getProperty(OUT_PROP).isBlank()
             ? run.outFile == null ? DEFAULT_BASELINE_PATH : Path.of(run.outFile)
             : Path.of(System.getProperty(OUT_PROP));
+    // fix-citation-grading-overlap 任务 4.2：v4 锚点在场时先按 scoringVersion=v2 口径对账再落盘
+    // （首次真跑产出前文件缺席 → 整体跳过，锚点校验不因本卡变红）
+    validateAgainstV4Anchor(outPath, report);
     writeBaselineReport(outPath, report.toJson(), run);
     System.out.println("[rag-benchmark] 基线已落盘（合并写，保留非本 run 的顶层段）: " + outPath.toAbsolutePath());
     System.out.println("[rag-benchmark] metrics=" + report.metrics());
@@ -395,6 +414,11 @@ class RagRealRetrievalBenchmarkIT {
     String existing =
         Files.isRegularFile(outPath) ? Files.readString(outPath, StandardCharsets.UTF_8) : null;
     String merged = mergeBaselineJson(existing, reportJson, run);
+    // fix-citation-grading-overlap 任务 4.2：v4 锚点产物落盘登记 scoringVersion=v2；
+    // 其他产物不带该键——旧锚点文件即使被重写也永不获得新键（SHA256 锚面零噪声）。
+    if (isV4AnchorTarget(outPath)) {
+      merged = withScoringVersionRegistration(merged);
+    }
     Path parent = outPath.toAbsolutePath().getParent();
     if (parent != null) {
       Files.createDirectories(parent);
@@ -442,6 +466,152 @@ class RagRealRetrievalBenchmarkIT {
       return MAPPER.writeValueAsString(root);
     } catch (Exception exception) {
       throw new IOException("基线 JSON 序列化失败，拒绝写盘：" + exception.getMessage(), exception);
+    }
+  }
+
+  /**
+   * fix-citation-grading-overlap 任务 4.2：产物路径是否指向 v4 锚点（仅文件名判定）。锚点校验与 scoringVersion 登记都只作用于 {@link
+   * #V4_ANCHOR_FILE_NAME} 产物——其他 profile 产物与 v4 锚点不可比，不越权。
+   */
+  static boolean isV4AnchorTarget(Path outPath) {
+    return outPath != null
+        && outPath.getFileName() != null
+        && V4_ANCHOR_FILE_NAME.equals(outPath.getFileName().toString());
+  }
+
+  /**
+   * fix-citation-grading-overlap 任务 4.2（design D3）：产物是 v4 锚点且锚点<b>已在场</b>时，落盘前先对账—— citP 按
+   * scoringVersion=v2（多块承载）口径对锚点 {@code meanCitationPrecision}，recall/ansC 沿用<b>同一锚点 文件</b>的 {@code
+   * meanRecallAtK}/{@code meanAnswerConsistency}，下限 = 记录值 × {@link
+   * #V4_ANCHOR_FLOOR_RATIO}（RagQualityRegressionTest floor 房风）。真跑逐例受 LLM 非确定性支配，对账取聚合 均值粒度、不做逐例断言。
+   *
+   * <p>触发条件（不满足即静默返回——锚点校验不因本卡代码变红）：产物文件名 = {@link #V4_ANCHOR_FILE_NAME} 且文件在场。首次真跑产出前 v4 必然缺席 →
+   * 跳过；CI failsafe 跳过口径（恒 6）不受影响。
+   *
+   * <p>结构登记校验：锚点 scoringVersion 必须已是 v2、suiteVersion 与本轮一致、caseCount 与本轮一致 （{@code
+   * -Drag.benchmark.only} 过滤跑产物禁止当锚点）；锚点三项均值须落在 (0,1]——记录 0 会让下限恒真、 对账形同虚设（RagQualityRegressionTest
+   * 同风格守卫）。
+   *
+   * @param outPath 本轮产物路径（与写盘同一路径）
+   * @param report 本轮评估报告
+   */
+  static void validateAgainstV4Anchor(Path outPath, Report report) {
+    if (report == null || !isV4AnchorTarget(outPath) || !Files.isRegularFile(outPath)) {
+      return;
+    }
+    JsonNode anchor;
+    try {
+      anchor = MAPPER.readTree(Files.readString(outPath, StandardCharsets.UTF_8));
+    } catch (Exception exception) {
+      throw new AssertionError(
+          "v4 锚点 JSON 读不出来，拒绝在未对账时覆盖：" + outPath + "（" + exception.getMessage() + "）", exception);
+    }
+    assertTrue(anchor.isObject(), "v4 锚点根节点不是 JSON 对象：" + outPath);
+    assertTrue(
+        V4_SCORING_VERSION.equals(anchor.path("scoringVersion").asText(null)),
+        "v4 锚点 scoringVersion 登记缺失或不是 "
+            + V4_SCORING_VERSION
+            + "（现值="
+            + anchor.path("scoringVersion").asText("")
+            + "）——多块承载口径锚点必须带登记字段，拒绝静默对账");
+    assertEquals(
+        report.suiteVersion(),
+        anchor.path("suiteVersion").asText(""),
+        "v4 锚点 suiteVersion 与本轮报告不一致（套件变更必须先升版重锚，禁止跨版本对账）");
+    JsonNode anchorMetrics = anchor.path("metrics");
+    assertTrue(anchorMetrics.isObject(), "v4 锚点缺 metrics 段：" + outPath);
+    assertEquals(
+        report.metrics().caseCount(),
+        anchorMetrics.path("caseCount").asInt(-1),
+        "v4 锚点 caseCount 与本轮不一致——过滤跑（-Drag.benchmark.only）产物禁止当锚点覆盖");
+    assertV4AnchorFloor(
+        "meanCitationPrecision（v2 多块承载口径）",
+        report.metrics().meanCitationPrecision(),
+        requireV4AnchorRatio(anchorMetrics, "meanCitationPrecision"),
+        outPath);
+    assertV4AnchorFloor(
+        "meanRecallAtK（同文件登记值）",
+        report.metrics().meanRecallAtK(),
+        requireV4AnchorRatio(anchorMetrics, "meanRecallAtK"),
+        outPath);
+    assertV4AnchorFloor(
+        "meanAnswerConsistency（同文件登记值）",
+        report.metrics().meanAnswerConsistency(),
+        requireV4AnchorRatio(anchorMetrics, "meanAnswerConsistency"),
+        outPath);
+  }
+
+  /**
+   * fix-citation-grading-overlap 任务 4.2：单一均值对账（实测 ≥ 记录值 × {@link #V4_ANCHOR_FLOOR_RATIO}）。
+   * 连续越限按回退处置（修链路），确认为有意口径变更时按授权流程重跑真跑再生成 v4 锚点。
+   */
+  private static void assertV4AnchorFloor(
+      String metric, double actual, double recorded, Path anchorPath) {
+    double floor = recorded * V4_ANCHOR_FLOOR_RATIO;
+    assertTrue(
+        actual >= floor,
+        () ->
+            "本轮 "
+                + metric
+                + " 低于 v4 锚点下限（允许 "
+                + (int) Math.round((1 - V4_ANCHOR_FLOOR_RATIO) * 100)
+                + "% 抖动）：实测 "
+                + actual
+                + " < 下限 "
+                + floor
+                + "（锚点记录 "
+                + recorded
+                + "，锚点="
+                + anchorPath
+                + "）\n"
+                + "  先判定是真跑波动还是链路回退：连续越限必须修链路，禁止顺手改锚；"
+                + "确认为有意口径变更时按授权流程重跑真跑再生成 v4 锚点");
+  }
+
+  /** fix-citation-grading-overlap 任务 4.2：读锚点均值并拒绝 (0,1] 之外的登记值（记录 0 会让下限恒真）。 */
+  private static double requireV4AnchorRatio(JsonNode anchorMetrics, String field) {
+    JsonNode value = anchorMetrics.path(field);
+    assertTrue(value.isNumber(), "v4 锚点 metrics 缺 " + field + "——登记段不完整，拒绝在未对账时覆盖");
+    double ratio = value.asDouble();
+    assertTrue(
+        !Double.isNaN(ratio) && ratio > 0d && ratio <= 1d,
+        "v4 锚点 " + field + " 必须落在 (0,1]，实际=" + ratio + "（记录 0 会让下限恒真，对账形同虚设）");
+    return ratio;
+  }
+
+  /**
+   * fix-citation-grading-overlap 任务 4.2：v4 锚点落盘前登记 {@code scoringVersion=v2}（design D3 口径版本化），
+   * 插入位置紧跟 {@code suiteVersion}、与 baseline-v3 既有键序对齐；无 suiteVersion 键时兜底追加尾部。
+   */
+  static String withScoringVersionRegistration(String mergedJson) throws IOException {
+    JsonNode parsed;
+    try {
+      parsed = MAPPER.readTree(mergedJson);
+    } catch (Exception exception) {
+      throw new IOException(
+          "v4 锚点 scoringVersion 登记前读 JSON 失败：" + exception.getMessage(), exception);
+    }
+    if (!parsed.isObject()) {
+      throw new IOException("v4 锚点 JSON 根节点不是对象，拒绝登记 scoringVersion");
+    }
+    ObjectNode root = (ObjectNode) parsed;
+    ObjectNode reordered = MAPPER.createObjectNode();
+    boolean inserted = false;
+    for (Iterator<Map.Entry<String, JsonNode>> iterator = root.fields(); iterator.hasNext(); ) {
+      Map.Entry<String, JsonNode> entry = iterator.next();
+      reordered.set(entry.getKey(), entry.getValue());
+      if ("suiteVersion".equals(entry.getKey())) {
+        reordered.put("scoringVersion", V4_SCORING_VERSION);
+        inserted = true;
+      }
+    }
+    if (!inserted) {
+      reordered.put("scoringVersion", V4_SCORING_VERSION);
+    }
+    try {
+      return MAPPER.writeValueAsString(reordered);
+    } catch (Exception exception) {
+      throw new IOException("v4 锚点 scoringVersion 登记后序列化失败：" + exception.getMessage(), exception);
     }
   }
 
