@@ -277,6 +277,10 @@ public enum PermissionOperates {
   AI_ACTION_VIEW(806L, "查看待确认操作"),
   /** AI 模块 - 确认执行/取消/编辑待确认操作（含创建客户/开票等敏感动作） */
   AI_ACTION_CONFIRM(807L, "确认执行待确认操作"),
+  /** AI 模块 - 提示词模板查看/详情/历史/渲染，add-prompt-template-admin 任务 1.2 */
+  PROMPT_TEMPLATE_VIEW(808L, "查看提示词模板"),
+  /** AI 模块 - 提示词模板创建/更新/删除/启停用，add-prompt-template-admin 任务 1.2 */
+  PROMPT_TEMPLATE_MANAGE(809L, "管理提示词模板"),
   /** 知识库管理 - 管理知识库文档（列表、上传摄取、删除、重建、检索 dry-run），读写同权单码，add-knowledge-admin-api 任务 2.1 */
   KNOWLEDGE_ADMIN_MANAGE(900L, "知识库管理");
 

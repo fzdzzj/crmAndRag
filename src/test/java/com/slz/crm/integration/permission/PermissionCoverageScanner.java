@@ -31,7 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
  * RequirePermission} 值——与 {@code PermissionsInterceptor#preHandle} 的鉴权口径一致 （注解缺失 =
  * 静默放行，扫描器的职责就是把"缺失"显式化）。
  *
- * <p><b>登记清单</b>：{@link #CONTROLLER_REGISTRY} 为 28 个 controller 权威清单；扫描集合与登记不一致 即抛错——新 controller
+ * <p><b>登记清单</b>：{@link #CONTROLLER_REGISTRY} 为 30 个 controller 权威清单；扫描集合与登记不一致 即抛错——新 controller
  * 必须同步登记，防止漏审（同 schema 审计的实体登记制）。
  *
  * <p><b>口径说明</b>：摸底（2026-09-13）曾记 26 controller / Assist 22 / AiChat 8，与实测不符： 当前全仓实际 28 个
@@ -42,7 +42,10 @@ public final class PermissionCoverageScanner {
 
   private static final String SCAN_BASE_PACKAGE = "com.slz.crm";
 
-  /** controller 登记清单（简单类名 → 全限定类名，按类名字母序）：server/controller 27 + platform/config 2 = 29。 */
+  /**
+   * controller 登记清单（简单类名 → 全限定类名，按类名字母序）：server/controller 28 + platform/config 2 = 30（本卡新增
+   * PromptTemplateController）。
+   */
   public static final Map<String, Class<?>> CONTROLLER_REGISTRY = buildRegistry();
 
   private PermissionCoverageScanner() {}
@@ -296,6 +299,9 @@ public final class PermissionCoverageScanner {
         "PermissionController", clazz("com.slz.crm.server.controller.PermissionController"));
     registry.put(
         "ProjectFileController", clazz("com.slz.crm.server.controller.ProjectFileController"));
+    registry.put(
+        "PromptTemplateController",
+        clazz("com.slz.crm.server.controller.PromptTemplateController"));
     registry.put(
         "PublicAttachmentController",
         clazz("com.slz.crm.server.controller.PublicAttachmentController"));

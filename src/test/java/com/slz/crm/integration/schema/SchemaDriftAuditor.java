@@ -50,6 +50,8 @@ import com.slz.crm.pojo.entity.InvoiceInfoEntity;
 import com.slz.crm.pojo.entity.PaymentRecordEntity;
 import com.slz.crm.pojo.entity.PermissionsEntity;
 import com.slz.crm.pojo.entity.ProjectFileEntity;
+import com.slz.crm.pojo.entity.PromptTemplateEntity;
+import com.slz.crm.pojo.entity.PromptTemplateHistoryEntity;
 import com.slz.crm.pojo.entity.RoleEntity;
 import com.slz.crm.pojo.entity.RolePermissionsEntity;
 import com.slz.crm.pojo.entity.SalesOpportunityEntity;
@@ -87,8 +89,8 @@ public final class SchemaDriftAuditor {
   private static final String SCAN_BASE_PACKAGE = "com.slz.crm";
 
   /**
-   * 实体登记清单（表名 → 实体类，按表名升序）：pojo/entity 38 + knowledge/entity 9 + platform 9 = 56（本卡新增
-   * cost_key_change_request）。
+   * 实体登记清单（表名 → 实体类，按表名升序）：pojo/entity 40 + knowledge/entity 9 + platform 9 = 58（本卡新增
+   * prompt_template、prompt_template_history）。
    */
   public static final Map<String, Class<?>> ENTITY_REGISTRY = buildRegistry();
 
@@ -257,6 +259,8 @@ public final class SchemaDriftAuditor {
     registry.put("platform_reconcile_report", PlatformReconcileReportEntity.class);
     registry.put("platform_token_usage", PlatformTokenUsageEntity.class);
     registry.put("project_file", ProjectFileEntity.class);
+    registry.put("prompt_template", PromptTemplateEntity.class);
+    registry.put("prompt_template_history", PromptTemplateHistoryEntity.class);
     registry.put("role_permissions", RolePermissionsEntity.class);
     registry.put("sales_opportunity", SalesOpportunityEntity.class);
     registry.put("sales_stage_approval", SalesStageApprovalEntity.class);
