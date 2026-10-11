@@ -188,6 +188,12 @@ class RagRealRetrievalBenchmarkIT {
     suite = applyOnlyFilter(suite, System.getProperty(ONLY_PROP));
     System.out.println("[rag-benchmark] suite size after only-filter=" + suite.size());
 
+    // fix-citation-grading-overlap 任务 1.3：citP 期望切承载集（scoringVersion=v2）；recall/ansC 仍用主锚块改写口径
+    Map<String, Set<String>> citationExpected =
+        RagBenchmarkDataPreparer.citationExpectedByCase(RagBenchmarkSuite.standard(), preparation);
+    System.out.println(
+        "[rag-benchmark] citation expected (carrier sets) cases=" + citationExpected.size());
+
     // 2) 真检索管线：真改写 + 真嵌入 + 真召回融合重排（授权为评测桩：固定放行评测库）
     KnowledgeRetrievalPort retrievalPort =
         RagBenchmarkPipelineFactory.build(
@@ -211,7 +217,8 @@ class RagRealRetrievalBenchmarkIT {
     try {
       UserContextHolder.set(evaluator);
       report =
-          RagQualityEvaluator.evaluate(suite, c -> evaluateCase(retrievalPort, provider, c), TOP_K);
+          RagQualityEvaluator.evaluate(
+              suite, c -> evaluateCase(retrievalPort, provider, c), TOP_K, citationExpected);
     } finally {
       UserContextHolder.clear();
     }
