@@ -23,7 +23,20 @@
 - [ ] 4.1 63 例全量单轮真跑（DASHSCOPE_API_KEY 真值 + RAG_BENCHMARK_REAL=1），产出 baseline-v5.json（SUITE_VERSION=4.0 登记）
 - [ ] 4.2 v4→v5 指标对比报告：修正九例（8+1）citP 应改善、T-15 脱离 0 分态；未触碰例 recall/MRR/ansC 逐位不动（或解释漂移）；recall 因黄金面扩大允许合理下降并逐例归因
 - [ ] 4.3 门禁复跑 + 停步回报（真跑 raw、成本、对比表）
-
 ## §0 执行留痕
 
-（执行方填写）
+执行方：DSH 执行子 agent；日期：2026-10-12；分支：feature/b2-suite-recalibration（权威树
+D:\code\crmAndRag-merge-add-knowledge-admin-api）。
+
+1. **偏差（误写主树，已重做）**：本卡早期多个文件写入以相对路径落在主协作树 D:\code\crmAndRag\src\...
+   （该树为只读观察树，任务书明文「除读草稿外禁止触碰」）。指导侧已保全草稿至
+   D:\code\crmAndRag\work\_b2-main-tree-suite-draft-artifact.patch（首行 package 被进度笔记污染 + BOM，
+   不可编译，仅作参考）。权威树 src/ 经 git status 确认未被写入。全部 src/ 编辑已在权威树按
+   citation-forensics-v4 §3 逐例判定重做并实测转绿。主树还原由指导侧处理，本卡未再触碰主树。
+2. **T-15 移标记零撕裂**：customer-onboard-3 撕裂依 D4（移标记至报备句主体段）归零；锚归点
+   customer-sop-3 且字面承载报备句；向量输入 SHA 双钉已刷新。
+3. **customer-onboard-2 LEFT 残片遗留（非本卡范围）**：fixtures 中 customer-onboard-2 标记跨切块边界仍产生
+   一条 LEFT 残片（goldId=customer-onb, customer-sop-1），属 T-11 黄金、超出本卡「8+1 例」铁律改动范围，
+   未触碰；如需整仓零撕裂需另立卡处置。
+4. **回归基线刷新**：黄金面扩大致 recall@5 0.8413→0.8386（recall 分母扩大合理下降），RagQualityRegressionTest
+   经 -Drag.baseline.regen=true 一次性刷新 fixtureRegression 段（suiteVersion=4.0）。
