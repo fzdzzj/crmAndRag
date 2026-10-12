@@ -51,6 +51,10 @@
 - `[pmd]` 与 `[pmd-baseline]` 在 `scripts/merge-gate.sh` 里是**显式单点调用**，不等 `[it]`（`mvn verify`）顺带——pmd 绑 verify 而默认序列不跑 verify，这是 `harness-gates` 已确认的坑。
 - 启用状态、豁免历史（三条理由的消除过程）与复测命令：`docs/migration-runbook.md` §6.7；变更规格：`openspec/changes/archive/wire-pmd-ruleset/`。
 
+### 复核档位
+
+- 复核强度按变更内容分 A/B/C 三档，判据、职责矩阵与生效语义见 `docs/review-intensity-policy.md`；机械核对表出 `scripts/tests/review-mechanical-check.sh`（非门禁，恒 exit 0）。本卡为首个 C 档试点。
+
 ### 环境与迁移入口
 
 - `docs/migration-runbook.md`：`.env.example` → `.env`、`SPRING_PROFILES_ACTIVE=prod`、Flyway 号段归属。
