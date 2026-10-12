@@ -66,8 +66,9 @@ class RagBenchmarkV5AnchorValidationTest {
           new CaseScore(
               "C-" + i, "TEXT", 1.0d, 0.4d, 1.0d, true, citP, ansC, 300L, 3000L, 900, true));
     }
-    // SUITE_VERSION=4.0 是 v5 锚点的版本认定；代码里引用奧组常量而非硬编码，避免双真相源
-    return new Report(RagBenchmarkSuite.SUITE_VERSION, "2026-10-12T00:00:00Z", metrics, cases);
+    // v5 锚点版本认定为 4.0（历史产物）：本测锁定 suite=4.0 域对 v5 锚点的校验语义。
+    // clear-onboard-2-left-fragment 升版 5.0 后套件常量已变，故此处硬编码 v5 锚点自身版本，避免跨版本误配。
+    return new Report("4.0", "2026-10-12T00:00:00Z", metrics, cases);
   }
 
   private static Path writeAnchor(Path dir, String fileName, String json) throws Exception {

@@ -30,10 +30,12 @@ public final class RagBenchmarkSuite {
    * 4），与 v1.0 不可直接比较；v3.0 = 新增 MISMATCH 失配组 9 条（63 条：TEXT 17 / TABLE 13 / IMAGE 6 / LEXICAL 14 /
    * EDGE 4 / MISMATCH 9，expand-rag-benchmark-mismatch 任务 2.3）；v4.0 = b2-suite-recalibration 受控校准：B2
    * 八例 黄金补标（T-01/TB-01/TB-08/TB-09/TB-10/TB-11/M-01/M-04 按 citation-forensics-v4 §3 补入真实支撑块）+ T-15
-   * 锚修正 （customer-onboard-3 标记移至报备句主体段，撕裂消除），新锚点 {@code docs/rag-quality/baseline-v5.json}。任一版本跨版本
+   * 锚修正 （customer-onboard-3 标记移至报备句主体段，撕裂消除），新锚点 {@code docs/rag-quality/baseline-v5.json}； v5.0 =
+   * clear-onboard-2-left-fragment：T-11 黄金（customer-onboard-2）标记移至客户分级标准语义主体段（撕裂消除，
+   * 锚块字面承载分级标准文本），新锚点 {@code docs/rag-quality/baseline-v6.json}。任一版本跨版本
    * <b>不可直接比较</b>，只与同版报告对比（比较前先核对报告 suiteVersion）。
    */
-  public static final String SUITE_VERSION = "4.0";
+  public static final String SUITE_VERSION = "5.0";
 
   private RagBenchmarkSuite() {}
 

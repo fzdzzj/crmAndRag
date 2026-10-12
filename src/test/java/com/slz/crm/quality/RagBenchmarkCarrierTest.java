@@ -136,8 +136,9 @@ class RagBenchmarkCarrierTest {
   }
 
   /**
-   * 向量输入红线（任务 1.4）：indexedText/embedText 逐字节不变——SHA256 钉值取自实现前探针 （VectorInputDigestProbe
-   * 于实现前一轮实测，57 切片），承载判定任何实现都不得触碰索引/嵌入输入。
+   * 向量输入红线（任务 1.4；clear-onboard-2-left-fragment 任务 1.3 移标记后刷新）：indexedText/embedText 逐字节不变 ——SHA256
+   * 钉值取自实现前探针（VectorInputDigestProbe 于实现前一轮实测，57 切片），clear-onboard-2 移标记后由 Onb2MoveProbe 复测刷新（57
+   * 切片不变）。承载判定任何实现都不得触碰索引/嵌入输入。
    */
   @Test
   void vectorInputsStayByteIdentical() {
@@ -155,11 +156,11 @@ class RagBenchmarkCarrierTest {
     }
     assertEquals(57, preparation.chunkTexts().size(), "切片数（锚点形态）");
     assertEquals(
-        "da7a3ef9850fd563294e57ec1dceda8d43fadcdf7be895a9d01be3654d8cac05",
+        "6004378be098feaf569f74a081a553ad94537679cb4dcbe676137713ac4b8161",
         sha256(indexed.toString()),
         "indexedText 逐字节不变（红线）");
     assertEquals(
-        "79a804d5f06d4a87b1c93b6896b4dc060109a1cd5e077fdbff6080ff615a39a2",
+        "602b873d0e81559785f3bb620b0bbe4cb9ea64a6a895cd687ad1b711aff250ab",
         sha256(embed.toString()),
         "embedText 逐字节不变（红线）");
   }

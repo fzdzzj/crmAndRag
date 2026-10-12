@@ -143,6 +143,9 @@ class RagRealRetrievalBenchmarkIT {
   /** b2-suite-recalibration 任务 2.1：v5 锚点文件名（SUITE_VERSION=4.0 重锚；版本变更必须升配方可推动新锚）。 */
   static final String V5_ANCHOR_FILE_NAME = "baseline-v5.json";
 
+  /** clear-onboard-2-left-fragment 任务 2.2：v6 锚点文件名（SUITE_VERSION=5.0 重锚；版本变更必须升配方可推动新锚）。 */
+  static final String V6_ANCHOR_FILE_NAME = "baseline-v6.json";
+
   /** 本轮 evaluateCase 采集的取证旁路（不进 CaseScore）。 */
   private final List<ForensicCase> forensicCases = new ArrayList<>();
 
@@ -258,6 +261,7 @@ class RagRealRetrievalBenchmarkIT {
     // （首次真跑产出前文件缺席 → 整体跳过，锚点校验不因本卡变红）
     validateAgainstV4Anchor(outPath, report);
     validateAgainstV5Anchor(outPath, report);
+    validateAgainstV6Anchor(outPath, report);
     writeBaselineReport(outPath, report.toJson(), run);
     System.out.println("[rag-benchmark] 基线已落盘（合并写，保留非本 run 的顶层段）: " + outPath.toAbsolutePath());
     System.out.println("[rag-benchmark] metrics=" + report.metrics());
@@ -420,7 +424,7 @@ class RagRealRetrievalBenchmarkIT {
     String merged = mergeBaselineJson(existing, reportJson, run);
     // fix-citation-grading-overlap 任务 4.2：v4 锚点产物落盘登记 scoringVersion=v2；
     // 其他产物不带该键——旧锚点文件即使被重写也永不获得新键（SHA256 锚面零噪声）。
-    if (isV4AnchorTarget(outPath) || isV5AnchorTarget(outPath)) {
+    if (isV4AnchorTarget(outPath) || isV5AnchorTarget(outPath) || isV6AnchorTarget(outPath)) {
       merged = withScoringVersionRegistration(merged);
     }
     Path parent = outPath.toAbsolutePath().getParent();
@@ -488,6 +492,13 @@ class RagRealRetrievalBenchmarkIT {
     return outPath != null
         && outPath.getFileName() != null
         && V5_ANCHOR_FILE_NAME.equals(outPath.getFileName().toString());
+  }
+
+  /** clear-onboard-2-left-fragment 任务 2.2：产物路径是否指向 v6 锚点（仅文件名判定，v6=升版 5.0 重锚产物）。 */
+  static boolean isV6AnchorTarget(Path outPath) {
+    return outPath != null
+        && outPath.getFileName() != null
+        && V6_ANCHOR_FILE_NAME.equals(outPath.getFileName().toString());
   }
 
   /**
@@ -589,6 +600,59 @@ class RagRealRetrievalBenchmarkIT {
         report.metrics().caseCount(),
         anchorMetrics.path("caseCount").asInt(-1),
         "v5 锚点 caseCount 与本轮不一致——过滤跑（-Drag.benchmark.only）产物禁止当锚点覆盖");
+    assertV4AnchorFloor(
+        "meanCitationPrecision（v2 多块承载口径）",
+        report.metrics().meanCitationPrecision(),
+        requireV4AnchorRatio(anchorMetrics, "meanCitationPrecision"),
+        outPath);
+    assertV4AnchorFloor(
+        "meanRecallAtK（同文件登记值）",
+        report.metrics().meanRecallAtK(),
+        requireV4AnchorRatio(anchorMetrics, "meanRecallAtK"),
+        outPath);
+    assertV4AnchorFloor(
+        "meanAnswerConsistency（同文件登记值）",
+        report.metrics().meanAnswerConsistency(),
+        requireV4AnchorRatio(anchorMetrics, "meanAnswerConsistency"),
+        outPath);
+  }
+
+  /**
+   * clear-onboard-2-left-fragment 任务 2.2：v6 锚点对账（升版 5.0 重锚）。
+   *
+   * <p>与 v5 对账同构（参照 RagBenchmarkV5AnchorValidationTest 先例）：产物文件名 = {@link #V6_ANCHOR_FILE_NAME}
+   * 且文件在场时才对账，否则静默跳过；验证 scoringVersion=v2、suiteVersion 与本轮一致（5.0）、caseCount=63，三项均值按 与版本同文件登记值 ×
+   * {@link #V4_ANCHOR_FLOOR_RATIO} 对账。复用 assertV4AnchorFloor/requireV4AnchorRatio（计算一致）。
+   */
+  static void validateAgainstV6Anchor(Path outPath, Report report) {
+    if (report == null || !isV6AnchorTarget(outPath) || !Files.isRegularFile(outPath)) {
+      return;
+    }
+    JsonNode anchor;
+    try {
+      anchor = MAPPER.readTree(Files.readString(outPath, StandardCharsets.UTF_8));
+    } catch (Exception exception) {
+      throw new AssertionError(
+          "v6 锚点 JSON 读不出来，拒绝在未对账时覆盖：" + outPath + "；" + exception.getMessage() + "；", exception);
+    }
+    assertTrue(anchor.isObject(), "v6 锚点根节点不是 JSON 对象：" + outPath);
+    assertTrue(
+        V4_SCORING_VERSION.equals(anchor.path("scoringVersion").asText(null)),
+        "v6 锚点 scoringVersion 登记缺失或不是 "
+            + V4_SCORING_VERSION
+            + "（现值"
+            + anchor.path("scoringVersion").asText("")
+            + "）——多块承载口径锚点必须带登记字段，拒绝静默对账");
+    assertEquals(
+        report.suiteVersion(),
+        anchor.path("suiteVersion").asText(""),
+        "v6 锚点 suiteVersion 与本轮报告不一致（套件变更必须先升版重锚，禁止跨版本对账）");
+    JsonNode anchorMetrics = anchor.path("metrics");
+    assertTrue(anchorMetrics.isObject(), "v6 锚点缺 metrics 段：" + outPath);
+    assertEquals(
+        report.metrics().caseCount(),
+        anchorMetrics.path("caseCount").asInt(-1),
+        "v6 锚点 caseCount 与本轮不一致——过滤跑（-Drag.benchmark.only）产物禁止当锚点覆盖");
     assertV4AnchorFloor(
         "meanCitationPrecision（v2 多块承载口径）",
         report.metrics().meanCitationPrecision(),

@@ -98,7 +98,9 @@ class RagBenchmarkDataPreparerTest {
     List<RagBenchmarkCase> suite = RagBenchmarkSuite.standard();
     assertEquals(63, suite.size(), "v3.0 基准集总条数必须为 63");
     assertEquals(
-        "4.0", RagBenchmarkSuite.SUITE_VERSION, "b2-suite-recalibration：SUITE_VERSION 必须为 4.0");
+        "5.0",
+        RagBenchmarkSuite.SUITE_VERSION,
+        "clear-onboard-2-left-fragment：SUITE_VERSION 必须为 5.0");
     Map<Category, Long> categoryCounts =
         suite.stream()
             .collect(Collectors.groupingBy(RagBenchmarkCase::category, Collectors.counting()));
@@ -321,11 +323,40 @@ class RagBenchmarkDataPreparerTest {
   }
 
   /**
+   * clear-onboard-2-left-fragment 任务 2.1：customer-onboard-2 左残段（原 L7 段首标记被 320/40 滑窗切点撕裂）随任务 1.2
+   * 标记位移清除——对齐 T-15 断言反转型先例：零撕裂事件 + 锚归点顺应 + 锚块字面承载分级标准文本。
+   */
+  @Test
+  void tornMarkerOnb2LeftFragmentCleared() {
+    InMemoryVectorStore store = new InMemoryVectorStore();
+    RagBenchmarkDataPreparer.Preparation preparation =
+        RagBenchmarkDataPreparer.prepare(
+            store, RagBenchmarkDataPreparerTest::fakeEmbed, EVAL_KB_ID);
+
+    List<RagBenchmarkDataPreparer.TornMarkerEvent> torn = preparation.tornMarkers();
+    assertTrue(
+        torn.stream().noneMatch(e -> "customer-onboard-2".equals(e.goldId())),
+        "clear-onboard-2：customer-onboard-2 不得再有撕裂事件（左残段零检出）: " + torn);
+
+    assertEquals(
+        "customer-sop-2",
+        preparation.goldenToChunkId().get("customer-onboard-2"),
+        "onb-2 锚应归至客户分级标准主体块 customer-sop-2");
+    String anchorText =
+        preparation.chunks().stream()
+            .filter(c -> c.chunkId().equals("customer-sop-2"))
+            .map(RagBenchmarkDataPreparer.BenchmarkChunk::text)
+            .findFirst()
+            .orElseThrow();
+    assertTrue(anchorText.contains("客户分级标准"), "customer-onboard-2 锚块须字面承载「客户分级标准」: " + anchorText);
+  }
+
+  /**
    * harden-gold-marker-tearing 任务 1.1：零行为变更锁 + 检出零误报。
    *
    * <p>右残段<b>不剥</b>：剥离会改 indexedText/embedText → 向量输入变 → baseline-v3 锚点漂移（属 B2 升版
-   * 受控校准范畴，本卡不碰）。本测试锁现行剥离/归点行为不因检出实现而漂移，并锁撕裂事件只登记在 customer-sop 语料（探针实测 2026-10-11：全 15 份语料中撕裂仅
-   * customer-sop 一家，其余 14 份零登记）。
+   * 受控校准范畴，本卡不碰）。本测试锁现行剥离/归点行为不因检出实现而漂移，并锁撕裂事件整仓零检出（clear-onboard-2-left-fragment 任务 2.1：onb-2
+   * 标记位移后 customer-sop 撕裂亦消除，探针实测 2026-10-12：全 15 份语料 tornMarkers() 零登记）。
    */
   @Test
   void tornMarkerDetectionKeepsIndexingBehaviorUntouched() {
@@ -334,6 +365,9 @@ class RagBenchmarkDataPreparerTest {
         RagBenchmarkDataPreparer.prepare(
             store, RagBenchmarkDataPreparerTest::fakeEmbed, EVAL_KB_ID);
 
+    assertTrue(
+        preparation.tornMarkers().isEmpty(),
+        "clear-onboard-2：标记位移后整仓 15 份语料零撕裂事件: " + preparation.tornMarkers());
     // b2-suite-recalibration 任务 1.2/1.4：T-15 标记移动后 RIGHT 残段不再泄漏进索引用文本，
     // customer-sop-3 索引用文本不再以 customer-onboard-3】 开头（向量输入双钉相应刷新）。
     String sop3Text =
