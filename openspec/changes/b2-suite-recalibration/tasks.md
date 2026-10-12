@@ -4,25 +4,35 @@
 
 ## 任务组 1 · 升版与 fixtures 校准
 
-- [ ] 1.1 SUITE_VERSION 3.0→4.0（RagBenchmarkSuite 常量 + javadoc 升版说明）
-- [ ] 1.2 T-15 移标记：`【GOLD:customer-onboard-3】` 移至报备句主体段（customer-sop-3 excerpt），标记与被标内容完整同块；PreparerTest 撕裂现场用例反转为零撕裂断言（右/左残段零检出），原「右残段未剥离」零行为锁同步调整
-- [ ] 1.3 B2 八例黄金补标：逐例按取证 §3 支撑判定补入真实支撑块（T-01 扩写归档段 / TB-01 全 4 区 / TB-08、TB-09 排除论证非命中行 / TB-10、TB-11 补充论点 / M-01 比较列举 / M-04 跨题归属），每例补标留一行依据注释（取证报告案例号）
-- [ ] 1.4 向量输入 SHA256 双钉更新（T-15 语料标记位置变化）；fixtures 案例名/人名/数字零新增零改动（只动既有案例的黄金集与标记位）
+- [x] 1.1 SUITE_VERSION 3.0→4.0（RagBenchmarkSuite 常量 + javadoc 升版说明）
+      补勾依据（2026-10-12 指导侧代笔）：提交 efb6ffb（SUITE_VERSION="4.0" + javadoc 升版，复核报告② L31/36 实测）
+- [x] 1.2 T-15 移标记：`【GOLD:customer-onboard-3】` 移至报备句主体段（customer-sop-3 excerpt），标记与被标内容完整同块；PreparerTest 撕裂现场用例反转为零撕裂断言（右/左残段零检出），原「右残段未剥离」零行为锁同步调整
+      补勾依据（2026-10-12 指导侧代笔）：提交 efb6ffb + 复核②实测（fixture 标记移报备句前同块、CarrierTest 锚归点 customer-sop-3、PreparerTest 零撕裂断言反转）
+- [x] 1.3 B2 八例黄金补标：逐例按取证 §3 支撑判定补入真实支撑块（T-01 扩写归档段 / TB-01 全 4 区 / TB-08、TB-09 排除论证非命中行 / TB-10、TB-11 补充论点 / M-01 比较列举 / M-04 跨题归属），每例补标留一行依据注释（取证报告案例号）
+      补勾依据（2026-10-12 指导侧代笔）：提交 efb6ffb——八例逐例对照取证 §3 各留依据注释（复核②实测 T-01/TB-01/TB-08/TB-09/TB-10/TB-11/M-01/M-04）
+- [x] 1.4 向量输入 SHA256 双钉更新（T-15 语料标记位置变化）；fixtures 案例名/人名/数字零新增零改动（只动既有案例的黄金集与标记位）
+      补勾依据（2026-10-12 指导侧代笔）：提交 efb6ffb——双钉 da7a3ef9…/79a804d5… 为 CarrierTest L158/162 真实断言（复核②③ surefire 复跑验证）；fixtures 零新增（复核①双射 12 文件实证）
 
 ## 任务组 2 · V5 锚点与校验增量
 
-- [ ] 2.1 锚点校验增量支持 v5（对齐 V4AnchorValidationTest 先例：SUITE_VERSION=4.0 登记逻辑 + v3/v4/v5 三锚并存）
-- [ ] 2.2 单测：补标八例 + T-15 的黄金集断言（Preparation 层，零外呼）；SUITE_VERSION=4.0 断言
+- [x] 2.1 锚点校验增量支持 v5（对齐 V4AnchorValidationTest 先例：SUITE_VERSION=4.0 登记逻辑 + v3/v4/v5 三锚并存）
+      补勾依据（2026-10-12 指导侧代笔）：提交 751d081——V5AnchorValidationTest 三锚并存对齐 V4 先例（复核②实测）
+- [x] 2.2 单测：补标八例 + T-15 的黄金集断言（Preparation 层，零外呼）；SUITE_VERSION=4.0 断言
+      补勾依据（2026-10-12 指导侧代笔）：提交 751d081——Preparation 层黄金断言 + SUITE_VERSION=4.0 断言，surefire 1151 复跑全绿（复核②③）
 
 ## 任务组 3 · 门禁（零外呼）
 
-- [ ] 3.1 全量 mvn -B -ntp test 0 失败（surefire 只增）；四静态顺序跑（禁并发）；三守卫；check-test-baseline 只读（如需 --update 先 DASHSCOPE_API_KEY="" 全量真跑 failsafe 刷新口径，一次只增）；merge-gate 8/8
+- [x] 3.1 全量 mvn -B -ntp test 0 失败（surefire 只增）；四静态顺序跑（禁并发）；三守卫；check-test-baseline 只读（如需 --update 先 DASHSCOPE_API_KEY="" 全量真跑 failsafe 刷新口径，一次只增）；merge-gate 8/8
+      补勾依据（2026-10-12 指导侧代笔）：提交 2b12e93（基线 --update 只增 1140→1151）+ 复核③独立复跑实测：mvn test 1151/0/0/0、四静态各 0、check-test-baseline exit 0、merge-gate 8/8
 
 ## 任务组 4 · 真跑重锚（RAG_BENCHMARK_REAL=1，owner 授权）
 
-- [ ] 4.1 63 例全量单轮真跑（DASHSCOPE_API_KEY 真值 + RAG_BENCHMARK_REAL=1），产出 baseline-v5.json（SUITE_VERSION=4.0 登记）
-- [ ] 4.2 v4→v5 指标对比报告：修正九例（8+1）citP 应改善、T-15 脱离 0 分态；未触碰例 recall/MRR/ansC 逐位不动（或解释漂移）；recall 因黄金面扩大允许合理下降并逐例归因
-- [ ] 4.3 门禁复跑 + 停步回报（真跑 raw、成本、对比表）
+- [x] 4.1 63 例全量单轮真跑（DASHSCOPE_API_KEY 真值 + RAG_BENCHMARK_REAL=1），产出 baseline-v5.json（SUITE_VERSION=4.0 登记）
+      补勾依据（2026-10-12 指导侧代笔）：提交 bbc847c——baseline-v5.json 落锚（复核④证据审计不重复执行：caseCount 63 / suiteVersion 4.0 / scoringVersion v2 / 293s·61786 tokens 成本留痕）
+- [x] 4.2 v4→v5 指标对比报告：修正九例（8+1）citP 应改善、T-15 脱离 0 分态；未触碰例 recall/MRR/ansC 逐位不动（或解释漂移）；recall 因黄金面扩大允许合理下降并逐例归因
+      补勾依据（2026-10-12 指导侧代笔）：提交 bbc847c——复核④对拍：citP 0.9243→0.9730、逐例漂移恰 8 例与归因吻合、T-15 脱离历史 0 分态（v2=0.333/v3=0/v4=0）
+- [x] 4.3 门禁复跑 + 停步回报（真跑 raw、成本、对比表）
+      补勾依据（2026-10-12 指导侧代笔）：复核③门禁独立复跑留证 + 执行停步回报在案（真跑 raw/成本/对比表）；本笔为合并前置补尾
 ## §0 执行留痕
 
 执行方：DSH 执行子 agent；日期：2026-10-12；分支：feature/b2-suite-recalibration（权威树
@@ -40,3 +50,9 @@ D:\code\crmAndRag-merge-add-knowledge-admin-api）。
    未触碰；如需整仓零撕裂需另立卡处置。
 4. **回归基线刷新**：黄金面扩大致 recall@5 0.8413→0.8386（recall 分母扩大合理下降），RagQualityRegressionTest
    经 -Drag.baseline.regen=true 一次性刷新 fixtureRegression 段（suiteVersion=4.0）。
+5. **补尾代笔披露（2026-10-12）**：补尾指令经 owner 两轮转达后执行 agent 无响应（指导侧 45s 轮询 10 分钟双实测超时），
+   owner 授权指导侧代笔本笔补勾——全部依据取自独立复核报告（A 档全量复核留证）与本分支既有提交，
+   未新增实施内容；代笔事实同步记入 logbook §85。
+6. **申报勘误**：docs/rag-quality/baseline-v1.json 的 fixtureRegression 段随 SUITE_VERSION 3.0→4.0 由
+   -Drag.baseline.regen=true 确定性再生成（recallAt5 0.8413→0.8386 / MRR 0.6839→0.7116，复核①已独立复现）——
+   停步回报漏列该文件，补申报。
