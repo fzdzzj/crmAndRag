@@ -3,9 +3,14 @@ package com.slz.crm.server.service.impl;
 import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.pojo.entity.PromptTemplateEntity;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -30,6 +35,8 @@ final class PromptTemplateNestingSupport {
   /** {@code {{> code}}} 引用语法：双大括号、{@code >}、空白、引用 code、可选空白、双大括号。 */
   private static final Pattern REFERENCE = Pattern.compile("\\{\\{>\\s+([^{}\\s]+?)\\s*}}");
 
+  private PromptTemplateNestingSupport() {}
+
   /** 顶层/子模板 code → 子模板当前版本实体；不存在返回 null（缺失/停用语义由本类统一判定）。 */
   @FunctionalInterface
   interface TemplateResolver {
@@ -37,21 +44,84 @@ final class PromptTemplateNestingSupport {
   }
 
   /** content 是否含任意 {@code {{> code}}} 嵌套引用（无则模板走既有字节等价路径）。 */
-  boolean containsNesting(String content) {
+  static boolean containsNesting(String content) {
     return content != null && REFERENCE.matcher(content).find();
   }
 
-  /** 抽取 content 中引用的全部 code（去重保序）；无引用返回空集。用于 create/update 非阻断 WARN 钩子。 */
-  Set<String> referencedCodes(String content) {
-    Set<String> codes = new LinkedHashSet<>();
-    if (content == null) {
-      return codes;
+  /**
+   * render 完整编排（两遍法）：无嵌套走既有单层路径逐字节零变化；有嵌套先骨架展开并累积主+各层子 variables 并集，再按并集校验 （required
+   * 并集强制）与占位符替换。零真实外呼。
+   *
+   * @param template 主模板（已确认启用态）
+   * @param provided 渲染变量键值表
+   * @param resolver 子模板解析接缝（当前启用版本）
+   * @param renderSupport {@link PromptTemplateRenderSupport}（变量解析/校验/替换复用，保持薄）
+   */
+  static String renderContent(
+      PromptTemplateEntity template,
+      Map<String, String> provided,
+      TemplateResolver resolver,
+      PromptTemplateRenderSupport renderSupport) {
+    List<PromptTemplateRenderSupport.PromptTemplateVariable> definitions;
+    String contentToRender;
+    if (!containsNesting(template.getContent())) {
+      definitions = renderSupport.parseVariableDefinitions(template.getVariables());
+      contentToRender = template.getContent();
+    } else {
+      definitions =
+          new ArrayList<>(renderSupport.parseVariableDefinitions(template.getVariables()));
+      contentToRender =
+          expandSkeleton(
+              template.getCode(),
+              template.getContent(),
+              resolver,
+              renderSupport::parseVariableDefinitions,
+              definitions,
+              new ArrayDeque<>());
     }
-    Matcher m = REFERENCE.matcher(content);
-    while (m.find()) {
-      codes.add(m.group(1));
+    renderSupport.rejectUndefined(definitions, provided);
+    renderSupport.rejectMissingRequired(definitions, provided);
+    return renderSupport.replacePlaceholders(contentToRender, provided);
+  }
+
+  /** 抽取 content 中引用的全部 code（去重保序）；无引用返回空集。用于 create/update 非阻断 WARN 钩子。 */
+  static Set<String> referencedCodes(String content) {
+    Set<String> codes = new LinkedHashSet<>();
+    if (content != null) {
+      Matcher m = REFERENCE.matcher(content);
+      while (m.find()) {
+        codes.add(m.group(1));
+      }
     }
     return codes;
+  }
+
+  /** 返回 content 引用的 code 中当前缺失者（resolver 返回 null 即缺失），供 create/update 非阻断 WARN 留痕。 */
+  static Set<String> missingReferences(String content, TemplateResolver resolver) {
+    Set<String> missing = new LinkedHashSet<>();
+    for (String ref : referencedCodes(content)) {
+      if (resolver.resolve(ref) == null) {
+        missing.add(ref);
+      }
+    }
+    return missing;
+  }
+
+  /** create/update 非阻断 WARN：content 引用 code 当前缺失时记 JUL WARN（含模板 id 与缺失 code），不阻断保存。 */
+  static void warnMissingReferences(
+      Long templateId, String templateCode, String content, TemplateResolver resolver) {
+    Set<String> missing = missingReferences(content, resolver);
+    if (!missing.isEmpty()) {
+      Logger.getLogger(PromptTemplateNestingSupport.class.getName())
+          .warning(
+              "提示词模板(id="
+                  + templateId
+                  + ", code="
+                  + templateCode
+                  + ") content 引用不存在的子模板 code="
+                  + missing
+                  + "（前向引用合法，保存放行）");
+    }
   }
 
   /**
@@ -64,7 +134,7 @@ final class PromptTemplateNestingSupport {
    * @param unionDefinitions 变量定义并集累积桶（调用方传入，主模板定义入桶后由本方法追加各层子模板定义）
    * @return 骨架展开后的文本：{@code {{> }} } 引用已全替换，仅剩 {@code {{var}}} 占位符层叠待变量替换（第二遍）
    */
-  String expandSkeleton(
+  static String expandSkeleton(
       String rootCode,
       String content,
       TemplateResolver resolver,
@@ -76,7 +146,7 @@ final class PromptTemplateNestingSupport {
   }
 
   /** 递归展开内核：{@code depth} 为当前层嵌套深度（主模板为 0，每层 {{> }} 引用 +1）。 */
-  private String expandRecursive(
+  private static String expandRecursive(
       String rootCode,
       String content,
       TemplateResolver resolver,

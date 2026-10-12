@@ -23,8 +23,6 @@ import com.slz.crm.server.mapper.PromptTemplateHistoryMapper;
 import com.slz.crm.server.mapper.PromptTemplateMapper;
 import com.slz.crm.server.service.PromptTemplateService;
 import java.time.LocalDateTime;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,10 +50,6 @@ public class PromptTemplateServiceImpl
   private static final String OP_STATUS = "STATUS";
   private static final String OP_REVERT = "REVERT";
 
-  /** 非阻断嵌套引用缺失告警日志（add-prompt-template-nesting 任务 1.3）。 */
-  private static final java.util.logging.Logger NESTING_LOG =
-      java.util.logging.Logger.getLogger(PromptTemplateServiceImpl.class.getName());
-
   @Autowired private PromptTemplateHistoryMapper promptTemplateHistoryMapper;
 
   @Autowired private PromptTemplateFeedbackMapper promptTemplateFeedbackMapper;
@@ -63,8 +57,6 @@ public class PromptTemplateServiceImpl
   @Autowired private ObjectMapper objectMapper;
 
   private PromptTemplateRenderSupport renderSupport;
-
-  private PromptTemplateNestingSupport nestingSupport;
 
   private PromptTemplateVoAssembler voAssembler;
 
@@ -77,13 +69,6 @@ public class PromptTemplateServiceImpl
       renderSupport = new PromptTemplateRenderSupport(objectMapper);
     }
     return renderSupport;
-  }
-
-  private PromptTemplateNestingSupport nestingSupport() {
-    if (nestingSupport == null) {
-      nestingSupport = new PromptTemplateNestingSupport();
-    }
-    return nestingSupport;
   }
 
   private PromptTemplateHistorySupport historySupport() {
@@ -166,7 +151,8 @@ public class PromptTemplateServiceImpl
     entity.setCreatedBy(operator);
     entity.setUpdatedBy(operator);
     save(entity);
-    warnIfReferencedTemplateMissing(entity.getId(), dto.getCode(), entity.getContent());
+    PromptTemplateNestingSupport.warnMissingReferences(
+        entity.getId(), dto.getCode(), entity.getContent(), this::findTemplateByCode);
 
     historySupport().append(entity.getId(), 1, entity.getContent(), variables, OP_CREATE, operator);
     return entity.getId();
@@ -191,7 +177,8 @@ public class PromptTemplateServiceImpl
     existing.setUpdatedBy(operator);
     existing.setUpdatedAt(LocalDateTime.now());
     updateById(existing);
-    warnIfReferencedTemplateMissing(existing.getId(), existing.getCode(), existing.getContent());
+    PromptTemplateNestingSupport.warnMissingReferences(
+        existing.getId(), existing.getCode(), existing.getContent(), this::findTemplateByCode);
 
     historySupport()
         .append(
@@ -264,37 +251,16 @@ public class PromptTemplateServiceImpl
   @Override
   public PromptTemplateRenderVO render(PromptTemplateRenderDTO dto) {
     PromptTemplateEntity template = resolveEnabledTemplate(dto);
-    Map<String, String> provided = dto.getVariables() == null ? Map.of() : dto.getVariables();
-    PromptTemplateNestingSupport nesting = nestingSupport();
-
+    // 两遍法编排收敛于 PromptTemplateNestingSupport（无嵌套逐字节走既有路径；含嵌套先骨架展开再并集校验替换）
     PromptTemplateRenderVO vo = new PromptTemplateRenderVO();
+    vo.setContent(
+        PromptTemplateNestingSupport.renderContent(
+            template,
+            dto.getVariables() == null ? Map.of() : dto.getVariables(),
+            this::findTemplateByCode,
+            renderSupport()));
     vo.setVersion(template.getVersion());
     vo.setCode(template.getCode());
-
-    // 无嵌套引用：逐字节走既有单层替换路径（回归锁，content 无 {{> }} 的模板零变化）
-    if (!nesting.containsNesting(template.getContent())) {
-      List<PromptTemplateRenderSupport.PromptTemplateVariable> definitions =
-          renderSupport().parseVariableDefinitions(template.getVariables());
-      renderSupport().rejectUndefined(definitions, provided);
-      renderSupport().rejectMissingRequired(definitions, provided);
-      vo.setContent(renderSupport().replacePlaceholders(template.getContent(), provided));
-      return vo;
-    }
-
-    // 有嵌套引用：先骨架展开（递归解析各层子模板当前启用版本，累积变量并集），再按并集校验并替换（两遍法）
-    List<PromptTemplateRenderSupport.PromptTemplateVariable> unionDefinitions =
-        new ArrayList<>(renderSupport().parseVariableDefinitions(template.getVariables()));
-    String expandedContent =
-        nesting.expandSkeleton(
-            template.getCode(),
-            template.getContent(),
-            this::findTemplateByCode,
-            renderSupport()::parseVariableDefinitions,
-            unionDefinitions,
-            new ArrayDeque<>());
-    renderSupport().rejectUndefined(unionDefinitions, provided);
-    renderSupport().rejectMissingRequired(unionDefinitions, provided);
-    vo.setContent(renderSupport().replacePlaceholders(expandedContent, provided));
     return vo;
   }
 
@@ -328,29 +294,6 @@ public class PromptTemplateServiceImpl
         new LambdaQueryWrapper<PromptTemplateEntity>()
             .eq(PromptTemplateEntity::getCode, code)
             .last("LIMIT 1"));
-  }
-
-  /**
-   * create/update 非阻断 WARN（add-prompt-template-nesting 任务 1.3）：content 引用的 {{> code}} 当前缺失时打 JUL
-   * WARN（含模板 id 与缺失 code），不阻断保存——前向引用合法（可先建父后建子），仅留痕便于排查坏引用。
-   */
-  private void warnIfReferencedTemplateMissing(
-      Long templateId, String templateCode, String content) {
-    if (!nestingSupport().containsNesting(content)) {
-      return;
-    }
-    for (String ref : nestingSupport().referencedCodes(content)) {
-      if (findTemplateByCode(ref) == null) {
-        NESTING_LOG.warning(
-            "提示词模板(id="
-                + templateId
-                + ", code="
-                + templateCode
-                + ") content 引用不存在的子模板 code="
-                + ref
-                + "（前向引用合法，保存放行）");
-      }
-    }
   }
 
   // ===== 回滚 =====
