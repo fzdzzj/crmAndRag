@@ -51,6 +51,7 @@ import com.slz.crm.pojo.entity.PaymentRecordEntity;
 import com.slz.crm.pojo.entity.PermissionsEntity;
 import com.slz.crm.pojo.entity.ProjectFileEntity;
 import com.slz.crm.pojo.entity.PromptTemplateEntity;
+import com.slz.crm.pojo.entity.PromptTemplateFeedbackEntity;
 import com.slz.crm.pojo.entity.PromptTemplateHistoryEntity;
 import com.slz.crm.pojo.entity.RoleEntity;
 import com.slz.crm.pojo.entity.RolePermissionsEntity;
@@ -81,7 +82,7 @@ import org.springframework.core.type.filter.AnnotationTypeFilter;
  * TableInfoHelper#initTableInfo} 走运行期同一套映射 （{@code @TableId} 计入、{@code @TableField} 显式列名优先、{@code
  * exist=false} 排除、驼峰转下划线）， 不做正则解析 Java 源码。
  *
- * <p><b>登记清单</b>：{@link #ENTITY_REGISTRY} 为 55 张实体表权威清单；扫描结果与登记不一致即抛错—— 新实体必须同步登记，防止漏审。
+ * <p><b>登记清单</b>：{@link #ENTITY_REGISTRY} 为 56 张实体表权威清单；扫描结果与登记不一致即抛错—— 新实体必须同步登记，防止漏审。
  */
 public final class SchemaDriftAuditor {
 
@@ -89,8 +90,8 @@ public final class SchemaDriftAuditor {
   private static final String SCAN_BASE_PACKAGE = "com.slz.crm";
 
   /**
-   * 实体登记清单（表名 → 实体类，按表名升序）：pojo/entity 40 + knowledge/entity 9 + platform 9 = 58（本卡新增
-   * prompt_template、prompt_template_history）。
+   * 实体登记清单（表名 → 实体类，按表名升序）：共 56 张实体表，其中 pojo 39 / knowledge 9 / platform 8（本卡新增
+   * prompt_template、prompt_template_history（前卡）、prompt_template_feedback）。
    */
   public static final Map<String, Class<?>> ENTITY_REGISTRY = buildRegistry();
 
@@ -260,6 +261,7 @@ public final class SchemaDriftAuditor {
     registry.put("platform_token_usage", PlatformTokenUsageEntity.class);
     registry.put("project_file", ProjectFileEntity.class);
     registry.put("prompt_template", PromptTemplateEntity.class);
+    registry.put("prompt_template_feedback", PromptTemplateFeedbackEntity.class);
     registry.put("prompt_template_history", PromptTemplateHistoryEntity.class);
     registry.put("role_permissions", RolePermissionsEntity.class);
     registry.put("sales_opportunity", SalesOpportunityEntity.class);

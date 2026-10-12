@@ -1551,6 +1551,54 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+  /promptTemplate/{id}/revert:
+    post:
+      tags:
+      - prompt-template-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptTemplateRevertDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+  /promptTemplate/{id}/feedback:
+    post:
+      tags:
+      - prompt-template-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptTemplateFeedbackDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
   /promptTemplate/update:
     post:
       tags:
@@ -3522,6 +3570,38 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListPromptTemplateHistoryVO"
+  /promptTemplate/{id}/feedback/list:
+    get:
+      tags:
+      - prompt-template-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: pageNum
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 10
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPagePromptTemplateFeedbackVO"
   /promptTemplate/page:
     get:
       tags:
@@ -6439,6 +6519,26 @@ components:
             type: integer
             format: int64
           uniqueItems: true
+    PromptTemplateRevertDTO:
+      type: object
+      properties:
+        targetVersion:
+          type: integer
+          format: int32
+        expectedVersion:
+          type: integer
+          format: int32
+    PromptTemplateFeedbackDTO:
+      type: object
+      properties:
+        version:
+          type: integer
+          format: int32
+        score:
+          type: integer
+          format: int32
+        comment:
+          type: string
     PromptTemplateDTO:
       type: object
       properties:
@@ -8327,6 +8427,9 @@ components:
         version:
           type: integer
           format: int32
+        sourceVersion:
+          type: integer
+          format: int32
         content:
           type: string
         variables:
@@ -8351,6 +8454,77 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PromptTemplateHistoryVO"
+    PagePromptTemplateFeedbackVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/PromptTemplateFeedbackVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    PromptTemplateFeedbackVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        templateId:
+          type: integer
+          format: int64
+        version:
+          type: integer
+          format: int32
+        score:
+          type: integer
+          format: int32
+        comment:
+          type: string
+        operator:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+    ResultPagePromptTemplateFeedbackVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PagePromptTemplateFeedbackVO"
     PagePromptTemplateVO:
       type: object
       properties:

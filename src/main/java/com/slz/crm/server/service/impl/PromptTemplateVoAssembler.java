@@ -6,9 +6,9 @@ import com.slz.crm.pojo.vo.PromptTemplateHistoryVO;
 import com.slz.crm.pojo.vo.PromptTemplateVO;
 
 /**
- * 提示词模板实体 → VO 装配协作类（add-prompt-template-admin 任务 2.3）。
+ * 提示词模板实体 → VO 装配协作类（add-prompt-template-admin 任务 2.3 / prompt-template-enhance 任务 2.3）。
  *
- * <p>纯函数协作：把 {@link PromptTemplateEntity}/{@link PromptTemplateHistoryEntity} 复制为展示 VO， 从 {@link
+ * <p>纯函数协作：把 {@link PromptTemplateEntity}/{@link PromptTemplateHistoryEntity} 复制为展示 VO，从 {@link
  * PromptTemplateServiceImpl} 抽出以收敛类规模（与 AssistRequest 拆分同构）。
  */
 final class PromptTemplateVoAssembler {
@@ -36,6 +36,7 @@ final class PromptTemplateVoAssembler {
     vo.setId(entity.getId());
     vo.setTemplateId(entity.getTemplateId());
     vo.setVersion(entity.getVersion());
+    vo.setSourceVersion(entity.getSourceVersion());
     vo.setContent(entity.getContent());
     vo.setVariables(entity.getVariables());
     vo.setOperation(entity.getOperation());

@@ -9,12 +9,16 @@ import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.dto.PromptTemplateDTO;
+import com.slz.crm.pojo.dto.PromptTemplateFeedbackDTO;
 import com.slz.crm.pojo.dto.PromptTemplateRenderDTO;
+import com.slz.crm.pojo.dto.PromptTemplateRevertDTO;
 import com.slz.crm.pojo.entity.PromptTemplateEntity;
 import com.slz.crm.pojo.entity.PromptTemplateHistoryEntity;
+import com.slz.crm.pojo.vo.PromptTemplateFeedbackVO;
 import com.slz.crm.pojo.vo.PromptTemplateHistoryVO;
 import com.slz.crm.pojo.vo.PromptTemplateRenderVO;
 import com.slz.crm.pojo.vo.PromptTemplateVO;
+import com.slz.crm.server.mapper.PromptTemplateFeedbackMapper;
 import com.slz.crm.server.mapper.PromptTemplateHistoryMapper;
 import com.slz.crm.server.mapper.PromptTemplateMapper;
 import com.slz.crm.server.service.PromptTemplateService;
@@ -26,12 +30,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 提示词模板服务实现（add-prompt-template-admin 任务 2.1/2.2）。
+ * 提示词模板服务实现（add-prompt-template-admin 任务 2.1/2.2 + prompt-template-enhance 任务 2.1/2.2）。
  *
- * <p><b>事务口径</b>：写路径（create/update/delete/changeStatus）在公共入口方法上标 {@code @Transactional}， 删除在同事务先删
- * history 再删主表。渲染（render）为只读纯 Java 组装，零真实外呼。<br>
- * <b>乐观锁</b>：update 携带 {@code expectedVersion}，与当前 version 不符即抛版本冲突业务异常，防并发覆盖。<br>
- * <b>版本语义</b>：内容变更（create/update）版本 +1 并落历史；启停用（changeStatus）不改版本、历史落 STATUS。<br>
+ * <p><b>事务口径</b>：写路径（create/update/delete/changeStatus/revert/addFeedback）在公共入口方法上标
+ * {@code @Transactional}， 删除在同事务先删 history 再删主表。渲染（render）为只读纯 Java 组装，零真实外呼。<br>
+ * <b>乐观锁</b>：update/revert 携带 {@code expectedVersion}，与当前 version 不符即抛版本冲突业务异常，防并发覆盖。<br>
+ * <b>版本语义</b>：内容变更（create/update/revert）版本 +1 并落历史；启停用（changeStatus）不改版本、历史落 STATUS。<br>
+ * <b>回滚语义</b>：revert 取目标历史版本 content+variables 作新版本落档，history 落 operation=REVERT 并记 source_version
+ * （被回滚的目标版本号），源历史快照不动、审计链完整。<br>
  * <b>variables 校验</b>：create/update 经 Jackson 解析，坏 JSON 即拒；render 校验 required 缺失与未定义变量。
  */
 @Service
@@ -42,8 +48,11 @@ public class PromptTemplateServiceImpl
   private static final String OP_CREATE = "CREATE";
   private static final String OP_UPDATE = "UPDATE";
   private static final String OP_STATUS = "STATUS";
+  private static final String OP_REVERT = "REVERT";
 
   @Autowired private PromptTemplateHistoryMapper promptTemplateHistoryMapper;
+
+  @Autowired private PromptTemplateFeedbackMapper promptTemplateFeedbackMapper;
 
   @Autowired private ObjectMapper objectMapper;
 
@@ -51,11 +60,31 @@ public class PromptTemplateServiceImpl
 
   private PromptTemplateVoAssembler voAssembler;
 
+  private PromptTemplateFeedbackSupport feedbackSupport;
+
+  private PromptTemplateHistorySupport historySupport;
+
   private PromptTemplateRenderSupport renderSupport() {
     if (renderSupport == null) {
       renderSupport = new PromptTemplateRenderSupport(objectMapper);
     }
     return renderSupport;
+  }
+
+  private PromptTemplateHistorySupport historySupport() {
+    if (historySupport == null) {
+      historySupport = new PromptTemplateHistorySupport(promptTemplateHistoryMapper);
+    }
+    return historySupport;
+  }
+
+  private PromptTemplateFeedbackSupport feedbackSupport() {
+    if (feedbackSupport == null) {
+      feedbackSupport =
+          new PromptTemplateFeedbackSupport(
+              promptTemplateFeedbackMapper, promptTemplateHistoryMapper);
+    }
+    return feedbackSupport;
   }
 
   private PromptTemplateVoAssembler voAssembler() {
@@ -81,14 +110,18 @@ public class PromptTemplateServiceImpl
     if (pageSize == null || pageSize <= 0) {
       pageSize = 10;
     }
-    LambdaQueryWrapper<PromptTemplateEntity> wrapper = new LambdaQueryWrapper<>();
-    wrapper
-        .like(code != null && !code.isBlank(), PromptTemplateEntity::getCode, code)
-        .like(name != null && !name.isBlank(), PromptTemplateEntity::getName, name)
-        .eq(category != null && !category.isBlank(), PromptTemplateEntity::getCategory, category)
-        .eq(status != null, PromptTemplateEntity::getStatus, status)
-        .orderByDesc(PromptTemplateEntity::getId);
-    Page<PromptTemplateEntity> entityPage = this.page(new Page<>(pageNum, pageSize), wrapper);
+    Page<PromptTemplateEntity> entityPage =
+        this.page(
+            new Page<>(pageNum, pageSize),
+            new LambdaQueryWrapper<PromptTemplateEntity>()
+                .like(code != null && !code.isBlank(), PromptTemplateEntity::getCode, code)
+                .like(name != null && !name.isBlank(), PromptTemplateEntity::getName, name)
+                .eq(
+                    category != null && !category.isBlank(),
+                    PromptTemplateEntity::getCategory,
+                    category)
+                .eq(status != null, PromptTemplateEntity::getStatus, status)
+                .orderByDesc(PromptTemplateEntity::getId));
     Page<PromptTemplateVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize());
     voPage.setTotal(entityPage.getTotal());
     voPage.setRecords(entityPage.getRecords().stream().map(voAssembler()::toVo).toList());
@@ -119,7 +152,7 @@ public class PromptTemplateServiceImpl
     entity.setUpdatedBy(operator);
     save(entity);
 
-    appendHistory(entity.getId(), 1, entity.getContent(), variables, OP_CREATE, operator);
+    historySupport().append(entity.getId(), 1, entity.getContent(), variables, OP_CREATE, operator);
     return entity.getId();
   }
 
@@ -143,8 +176,9 @@ public class PromptTemplateServiceImpl
     existing.setUpdatedAt(LocalDateTime.now());
     updateById(existing);
 
-    appendHistory(
-        existing.getId(), nextVersion, existing.getContent(), variables, OP_UPDATE, operator);
+    historySupport()
+        .append(
+            existing.getId(), nextVersion, existing.getContent(), variables, OP_UPDATE, operator);
     return true;
   }
 
@@ -177,23 +211,22 @@ public class PromptTemplateServiceImpl
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "状态只能为 0（启用）或 1（停用）");
     }
     PromptTemplateEntity existing = requireById(id);
-    boolean unchanged = existing.getStatus() != null && existing.getStatus().equals(status);
-    Boolean result = Boolean.TRUE;
-    if (!unchanged) {
+    if (existing.getStatus() == null || !existing.getStatus().equals(status)) {
       Long operator = currentUserId();
       existing.setStatus(status);
       existing.setUpdatedBy(operator);
       existing.setUpdatedAt(LocalDateTime.now());
       updateById(existing);
-      appendHistory(
-          existing.getId(),
-          existing.getVersion(),
-          existing.getContent(),
-          existing.getVariables(),
-          OP_STATUS,
-          operator);
+      historySupport()
+          .append(
+              existing.getId(),
+              existing.getVersion(),
+              existing.getContent(),
+              existing.getVariables(),
+              OP_STATUS,
+              operator);
     }
-    return result;
+    return true;
   }
 
   // ===== 历史 =====
@@ -247,6 +280,44 @@ public class PromptTemplateServiceImpl
     return template;
   }
 
+  // ===== 回滚 =====
+
+  @Override
+  @Transactional(rollbackFor = Exception.class)
+  public Integer revert(Long id, PromptTemplateRevertDTO dto) {
+    PromptTemplateEntity existing = requireById(id);
+    Long operator = currentUserId();
+    int nextVersion = historySupport().applyRevert(existing, dto);
+    existing.setUpdatedBy(operator);
+    existing.setUpdatedAt(LocalDateTime.now());
+    updateById(existing);
+    historySupport()
+        .append(
+            existing.getId(),
+            nextVersion,
+            existing.getContent(),
+            existing.getVariables(),
+            OP_REVERT,
+            operator,
+            dto.getTargetVersion());
+    return nextVersion;
+  }
+
+  // ===== 反馈（委托 PromptTemplateFeedbackSupport，收敛类规模） =====
+
+  @Override
+  @Transactional(rollbackFor = Exception.class)
+  public Boolean addFeedback(Long id, PromptTemplateFeedbackDTO dto) {
+    requireById(id);
+    return feedbackSupport().addFeedback(id, dto, currentUserId());
+  }
+
+  @Override
+  public Page<PromptTemplateFeedbackVO> listFeedback(Long id, Integer pageNum, Integer pageSize) {
+    requireById(id);
+    return feedbackSupport().listFeedback(id, pageNum, pageSize);
+  }
+
   // ===== 私有工具 =====
 
   private PromptTemplateEntity requireById(Long id) {
@@ -273,24 +344,6 @@ public class PromptTemplateServiceImpl
         > 0) {
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "提示词模板编码已存在");
     }
-  }
-
-  private void appendHistory(
-      Long templateId,
-      Integer version,
-      String content,
-      String variables,
-      String operation,
-      Long operator) {
-    PromptTemplateHistoryEntity history = new PromptTemplateHistoryEntity();
-    history.setTemplateId(templateId);
-    history.setVersion(version);
-    history.setContent(content);
-    history.setVariables(variables);
-    history.setOperation(operation);
-    history.setOperator(operator);
-    history.setOperatedAt(LocalDateTime.now());
-    promptTemplateHistoryMapper.insert(history);
   }
 
   /** 取当前登录用户ID；无登录上下文返回 null（单返回，避免 generic catch）。 */
