@@ -61,12 +61,11 @@ class RagBenchmarkCarrierTest {
   void tornMarkerSemanticBodyChunkIsCarried() {
     RagBenchmarkDataPreparer.Preparation preparation = prepare();
     String anchor = preparation.goldenToChunkId().get("customer-onboard-3");
-    assertEquals("customer-sop-2", anchor, "T-15 归点（零行为变更，harden-gold-marker-tearing 在案）");
+    // b2-suite-recalibration 任务 1.2：T-15 标记移至报备句主体段（customer-sop-3）后，锚归点顺应从 customer-sop-2 移至
+    // customer-sop-3；承载集含锚点块。
+    assertEquals("customer-sop-3", anchor, "T-15 归点应为 customer-sop-3（包含报备句主体）");
     Set<String> carriers = preparation.goldenToCarrierChunkIds().get("customer-onboard-3");
-    assertTrue(carriers.contains("customer-sop-2"), "锚点块必须在承载集内: " + carriers);
-    assertTrue(
-        carriers.contains("customer-sop-3"),
-        "语义主体块 customer-sop-3 必须承载黄金句（区间规则自然涵盖撕裂场景）: " + carriers);
+    assertTrue(carriers.contains("customer-sop-3"), "锚点块必须在承载集内: " + carriers);
   }
 
   /** 零误报形态：句尾远离切分边界的黄金，承载集恰为锚点单块（防承载集虚增拉低 citP 判别力）。 */
@@ -156,11 +155,11 @@ class RagBenchmarkCarrierTest {
     }
     assertEquals(57, preparation.chunkTexts().size(), "切片数（锚点形态）");
     assertEquals(
-        "f51a8ae431b86a571d3d12eca8c3bbfe0ce6794c71aa6003b8ef4fd9ce8bf4a3",
+        "da7a3ef9850fd563294e57ec1dceda8d43fadcdf7be895a9d01be3654d8cac05",
         sha256(indexed.toString()),
         "indexedText 逐字节不变（红线）");
     assertEquals(
-        "e929b8319405ef81969a5e5e65bf5c7624f94013055dc38a2279b5af7803679c",
+        "79a804d5f06d4a87b1c93b6896b4dc060109a1cd5e077fdbff6080ff615a39a2",
         sha256(embed.toString()),
         "embedText 逐字节不变（红线）");
   }

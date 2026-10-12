@@ -92,15 +92,13 @@ class RagBenchmarkDataPreparerTest {
   }
 
   @Test
-  void expandedSuiteV3SizeAndCategoryBreakdown() {
+  void suiteSizeAndVersionAfterRecalibration() {
     // 扩容后基准集规模与分类配比（expand-rag-benchmark 任务 3.1 54；expand-rag-benchmark-mismatch
     // 任务 2.3 升 v3.0 63）：六类 17/13/6/14/4/9
     List<RagBenchmarkCase> suite = RagBenchmarkSuite.standard();
     assertEquals(63, suite.size(), "v3.0 基准集总条数必须为 63");
     assertEquals(
-        "3.0",
-        RagBenchmarkSuite.SUITE_VERSION,
-        "expand-rag-benchmark-mismatch：SUITE_VERSION 必须为 3.0");
+        "4.0", RagBenchmarkSuite.SUITE_VERSION, "b2-suite-recalibration：SUITE_VERSION 必须为 4.0");
     Map<Category, Long> categoryCounts =
         suite.stream()
             .collect(Collectors.groupingBy(RagBenchmarkCase::category, Collectors.counting()));
@@ -300,36 +298,26 @@ class RagBenchmarkDataPreparerTest {
         RagBenchmarkDataPreparer.prepare(
             store, RagBenchmarkDataPreparerTest::fakeEmbed, EVAL_KB_ID);
 
+    // b2-suite-recalibration 任务 1.2：T-15 标记移至报备句主体段后，customer-onboard-3 撕裂消除
+    // ——右/左残段零检出，锚归点 = customer-sop-3（含报备句主体）。
     List<RagBenchmarkDataPreparer.TornMarkerEvent> torn = preparation.tornMarkers();
+    assertTrue(
+        torn.stream().noneMatch(e -> "customer-onboard-3".equals(e.goldId())),
+        "b2-suite-recalibration：customer-onboard-3 不得再有任何撕裂事件（右/左残段零检出）: " + torn);
 
-    // RIGHT 事件：右残段所在 chunkId=customer-sop-3，归点对照=customer-sop-2（归点与语义主体分离的机械证据）
-    RagBenchmarkDataPreparer.TornMarkerEvent right =
-        torn.stream()
-            .filter(
-                e ->
-                    e.direction() == RagBenchmarkDataPreparer.TornMarkerEvent.Direction.RIGHT
-                        && "customer-onboard-3".equals(e.goldId()))
-            .findFirst()
-            .orElse(null);
-    assertTrue(right != null, "T-15 右残段必须被检出（customer-onboard-3）: " + torn);
-    assertEquals("customer-sop-3", right.tornChunkId(), "右残段所在 chunkId");
-    assertEquals("customer-sop-2", right.alignedChunkId(), "归点对照 chunkId");
     assertEquals(
-        "customer-onboard-3】", right.matchedFragment(), "右残段精确形态（实测校准：sop-3 剥离前原文开头 19 字符）");
-
-    // LEFT 事件：customer-sop 语料的左残段（FRAGMENT 命中中非完整标记覆盖区间者）
-    RagBenchmarkDataPreparer.TornMarkerEvent left =
-        torn.stream()
-            .filter(
-                e ->
-                    e.direction() == RagBenchmarkDataPreparer.TornMarkerEvent.Direction.LEFT
-                        && e.tornChunkId().startsWith("customer-sop-"))
+        "customer-sop-3",
+        preparation.goldenToChunkId().get("customer-onboard-3"),
+        "T-15 锚应归至报备句主体块 customer-sop-3");
+    String anchorText =
+        preparation.chunks().stream()
+            .filter(c -> c.chunkId().equals("customer-sop-3"))
+            .map(RagBenchmarkDataPreparer.BenchmarkChunk::text)
             .findFirst()
-            .orElse(null);
-    assertTrue(left != null, "customer-sop 语料必须存在左残段事件: " + torn);
-    assertEquals("customer-sop-1", left.tornChunkId(), "左残段所在 chunkId（实测校准：sop-1 尾部）");
-    assertEquals("customer-onb", left.goldId(), "左残段 goldId 尽力解析（实测校准：部分 id）");
-    assertEquals("【GOLD:customer-onb", left.matchedFragment(), "左残段精确形态（实测校准：18 字符无闭合）");
+            .orElseThrow();
+    assertTrue(
+        anchorText.contains("战略客户合同的终审通过后需报备集团客户部"),
+        "customer-onboard-3 锚块须字面承载报备句: " + anchorText);
   }
 
   /**
@@ -346,24 +334,18 @@ class RagBenchmarkDataPreparerTest {
         RagBenchmarkDataPreparer.prepare(
             store, RagBenchmarkDataPreparerTest::fakeEmbed, EVAL_KB_ID);
 
-    // 锁剥离行为：sop-3 索引文本仍以右残段开头（右残段不剥——改了就是向量输入漂移）
+    // b2-suite-recalibration 任务 1.2/1.4：T-15 标记移动后 RIGHT 残段不再泄漏进索引用文本，
+    // customer-sop-3 索引用文本不再以 customer-onboard-3】 开头（向量输入双钉相应刷新）。
     String sop3Text =
         preparation.chunks().stream()
             .filter(c -> c.chunkId().equals("customer-sop-3"))
             .map(RagBenchmarkDataPreparer.BenchmarkChunk::text)
             .findFirst()
             .orElseThrow();
+    assertFalse(
+        sop3Text.startsWith("customer-onboard-3】"),
+        "b2-suite-recalibration：customer-sop-3 索引用文本不得再以右残段开头: " + sop3Text);
     assertTrue(
-        sop3Text.startsWith("customer-onboard-3】"), "零行为变更锁：sop-3 索引文本必须仍以右残段开头: " + sop3Text);
-
-    // 锁归点：customer-onboard-3 归点仍为完整命中块 customer-sop-2
-    assertEquals(
-        "customer-sop-2", preparation.goldenToChunkId().get("customer-onboard-3"), "零行为变更锁：归点规则未漂");
-
-    // 零误报：撕裂事件只登记在 customer-sop 语料（其余 14 份零登记）
-    assertTrue(
-        preparation.tornMarkers().stream()
-            .allMatch(e -> e.tornChunkId().startsWith("customer-sop-")),
-        "其余 14 份语料零登记（实测撕裂仅 customer-sop 一家）: " + preparation.tornMarkers());
+        sop3Text.contains("战略客户合同的终审通过后需报备集团客户部"), "customer-sop-3 索引用文本应含报备句主体: " + sop3Text);
   }
 }
