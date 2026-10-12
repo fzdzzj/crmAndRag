@@ -28,7 +28,7 @@ import org.testcontainers.containers.MySQLContainer;
  * Flyway 全量迁移 IT（task18：真 MySQL 验证库结构唯一真相源）。
  *
  * <p>动机：单元测试与 H2 上下文冒烟都用 auto-table/ddl-auto，<b>从不执行 Flyway 脚本</b>； 而 V1 含 MySQL 专有 DDL（{@code
- * generated always as(if(...))stored}）H2 无法解析。 因此全部迁移脚本（V1/V3/V4/V4_1/V5/V6/V21-V34）能否在真 MySQL
+ * generated always as(if(...))stored}）H2 无法解析。 因此全部迁移脚本（V1/V3/V4/V4_1/V5/V6/V21-V35）能否在真 MySQL
  * 上按序无撞号跑通，只能靠本 IT。方法顺序由 @Order 强制：migrate 用例先行，其余断言用例依赖其建库结果（add-dynamic-config-key-tier-acl 任务
  * 1.4； V34 断言见 prompt-template-enhance 任务 1.2）。
  *
@@ -43,7 +43,7 @@ class FlywayMigrationIT {
       new TreeSet<>(
           List.of(
               "1", "3", "4", "4.1", "5", "6", "21", "22", "23", "24", "25", "26", "27", "28", "29",
-              "30", "31", "32", "33", "34"));
+              "30", "31", "32", "33", "34", "35"));
 
   /** 跨 lane 关键表抽样：确认各号段 DDL 真的建出了表（V1/V3/V4/V5/V6）。 */
   private static final List<String> SPOT_CHECK_TABLES =
@@ -255,6 +255,31 @@ class FlywayMigrationIT {
           ddl.matches("(?s).*`source_version` int DEFAULT NULL.*")
               || ddl.matches("(?s).*`source_version` int(11) DEFAULT NULL.*"),
           "V34 应在 prompt_template_history 扩出可空 source_version 列，实际 DDL：" + ddl);
+    }
+  }
+
+  /**
+   * V35 断言（aichat-prompt-template-integration 任务 1.2）：AiChat 运行时模板种子落库—— aichat-system-prompt /
+   * aichat-session-title 两 code 存在、content 非空、status=0 启用态。
+   */
+  @Test
+  @Order(7)
+  void aiChatPromptTemplateSeedInsertedAndEnabled() throws Exception {
+    assumeTrue(mysql != null, "Docker 不可用时本用例随类跳过");
+    try (Connection connection =
+            DriverManager.getConnection(
+                mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
+        Statement statement = connection.createStatement()) {
+      for (String code : List.of("aichat-system-prompt", "aichat-session-title")) {
+        ResultSet rs =
+            statement.executeQuery(
+                "SELECT content, status FROM prompt_template WHERE code = '" + code + "'");
+        assertTrue(rs.next(), "V35 应种入模板 " + code);
+        String content = rs.getString(1);
+        int status = rs.getInt(2);
+        assertTrue(content != null && !content.isBlank(), "V35 模板 " + code + " content 不应为空");
+        assertEquals(0, status, "V35 模板 " + code + " 应为启用态 status=0");
+      }
     }
   }
 

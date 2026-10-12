@@ -102,6 +102,18 @@ class AiSsePayloadWriter {
       List<AiReferenceCollector.Reference> references,
       List<SourceReference> sources,
       List<Integer> citations) {
+    return toAuditJson(model, promptVersion, null, costMs, usage, references, sources, citations);
+  }
+
+  public String toAuditJson(
+      String model,
+      String promptVersion,
+      String promptSource,
+      long costMs,
+      Usage usage,
+      List<AiReferenceCollector.Reference> references,
+      List<SourceReference> sources,
+      List<Integer> citations) {
     Map<String, Object> data = new LinkedHashMap<>();
     data.put("model", model);
     data.put("promptVersion", promptVersion);
@@ -118,6 +130,9 @@ class AiSsePayloadWriter {
     }
     if (citations != null && !citations.isEmpty()) {
       data.put("citations", citations);
+    }
+    if (promptSource != null) {
+      data.put("promptSource", promptSource);
     }
     return writeJson(data);
   }

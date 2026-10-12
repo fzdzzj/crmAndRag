@@ -197,6 +197,19 @@ public class AiChatSseEventWriter {
         model, promptVersion, costMs, usage, references, sources, citations);
   }
 
+  public String toAuditJson(
+      String model,
+      String promptVersion,
+      String promptSource,
+      long costMs,
+      Usage usage,
+      List<AiReferenceCollector.Reference> references,
+      List<SourceReference> sources,
+      List<Integer> citations) {
+    return payloads.toAuditJson(
+        model, promptVersion, promptSource, costMs, usage, references, sources, citations);
+  }
+
   public String toReferencesJson(List<AiReferenceCollector.Reference> references) {
     return payloads.toReferencesJson(references);
   }
