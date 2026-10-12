@@ -28,9 +28,12 @@ public final class RagBenchmarkSuite {
    * 基准集版本：写入每份 {@code RagQualityReport.Report}，跨变更比较时先核对版本一致。 v1.0 = add-rag-quality-baseline 落地的
    * 18 条初始集；v2.0 = expand-rag-benchmark 扩容的 54 条（TEXT 17 / TABLE 13 / IMAGE 6 / LEXICAL 14 / EDGE
    * 4），与 v1.0 不可直接比较；v3.0 = 新增 MISMATCH 失配组 9 条（63 条：TEXT 17 / TABLE 13 / IMAGE 6 / LEXICAL 14 /
-   * EDGE 4 / MISMATCH 9，expand-rag-benchmark-mismatch 任务 2.3），激活卡以 baseline-v3.json 为关态基线对照。
+   * EDGE 4 / MISMATCH 9，expand-rag-benchmark-mismatch 任务 2.3）；v4.0 = b2-suite-recalibration 受控校准：B2
+   * 八例 黄金补标（T-01/TB-01/TB-08/TB-09/TB-10/TB-11/M-01/M-04 按 citation-forensics-v4 §3 补入真实支撑块）+ T-15
+   * 锚修正 （customer-onboard-3 标记移至报备句主体段，撕裂消除），新锚点 {@code docs/rag-quality/baseline-v5.json}。任一版本跨版本
+   * <b>不可直接比较</b>，只与同版报告对比（比较前先核对报告 suiteVersion）。
    */
-  public static final String SUITE_VERSION = "3.0";
+  public static final String SUITE_VERSION = "4.0";
 
   private RagBenchmarkSuite() {}
 
@@ -44,7 +47,9 @@ public final class RagBenchmarkSuite {
             "T-01",
             Category.TEXT,
             "销售合同审批流程是怎样的",
-            Set.of("sales-flow-1", "sales-flow-2"),
+            // b2-suite-recalibration 任务 1.3：取证 citation-forensics-v4 §3.1 T-01 B2——答案扩写归档段引真实支撑
+            // sales-flow-3（归档要求），补入黄金
+            Set.of("sales-flow-1", "sales-flow-2", "sales-flow-3"),
             List.of("提交", "审批", "归档"),
             true),
         new RagBenchmarkCase(
@@ -167,7 +172,8 @@ public final class RagBenchmarkSuite {
             "TB-01",
             Category.TABLE,
             "第三季度各区域销售额",
-            Set.of("sales-q3-华东", "sales-q3-华北"),
+            // b2-suite-recalibration 任务 1.3：取证 §3.2 TB-01 B2——问"各区域"，答案四行逐一引用，补全 4 区为黄金
+            Set.of("sales-q3-华东", "sales-q3-华北", "sales-q3-华南", "sales-q3-西南"),
             List.of("华东", "华北"),
             true),
         new RagBenchmarkCase(
@@ -218,26 +224,37 @@ public final class RagBenchmarkSuite {
             "TB-08",
             Category.TABLE,
             "Q3 销售额在 800 万到 1000 万之间的区域有哪些",
-            Set.of("sales-q3-华北", "sales-q3-华南"),
+            // b2-suite-recalibration 任务 1.3：取证 §3.2 TB-08 B2——排除论证引非命中行（华东 1280/西南 640 超/低于区间），补入黄金
+            Set.of("sales-q3-华北", "sales-q3-华南", "sales-q3-华东", "sales-q3-西南"),
             List.of("华北", "华南"),
             true),
         new RagBenchmarkCase(
             "TB-09",
             Category.TABLE,
             "折扣率超过 15% 的折扣申请要走什么审批",
-            Set.of("price-discount-1", "price-discount-2"),
+            // b2-suite-recalibration 任务 1.3：取证 §3.2 TB-09 B2——答案补充段（超底价/低于成本价审批）引决策树图注
+            // price-flow-diagram，补入黄金
+            Set.of("price-discount-1", "price-discount-2", "price-flow-diagram"),
             List.of("价格委员会", "复核"),
             true),
         new RagBenchmarkCase(
             "TB-10",
             Category.TABLE,
             "计划工时超过 2 人时的维保项有哪些",
-            Set.of("maint-xr500-q", "maint-kq9000-m"),
+            // b2-suite-recalibration 任务 1.3：取证 §3.2 TB-10 B2——XR-500 年度 16 人时标注漏项 + ZB-220
+            // 排除论证，补入黄金
+            Set.of("maint-xr500-q", "maint-kq9000-m", "maint-xr500-y", "maint-zb220-m"),
             List.of("XR-500", "KQ-9000"),
             true),
         // ---- TABLE 新增：聚合比较 ×3（expand-rag-benchmark 任务 2.1） ----
         new RagBenchmarkCase(
-            "TB-11", Category.TABLE, "Q3 哪个区域销售额最高", Set.of("sales-q3-华东"), List.of("华东"), true),
+            // b2-suite-recalibration 任务 1.3：取证 §3.2 TB-11 B2——比较列举需引全部比较项方能得"华东最高"，四区全补黄金
+            "TB-11",
+            Category.TABLE,
+            "Q3 哪个区域销售额最高",
+            Set.of("sales-q3-华东", "sales-q3-华北", "sales-q3-华南", "sales-q3-西南"),
+            List.of("华东"),
+            true),
         new RagBenchmarkCase(
             "TB-12",
             Category.TABLE,
@@ -375,7 +392,8 @@ public final class RagBenchmarkSuite {
             "M-01",
             Category.MISMATCH,
             "货都卖出去一个多月了钱还没到账，有没有什么办法先把钱挪回来用",
-            Set.of("jargon-factoring"),
+            // b2-suite-recalibration 任务 1.3：取证 §3.4 M-01 B2——答案给两种融资工具引 M-03 的贴现块（跨题归属），补入黄金
+            Set.of("jargon-factoring", "jargon-discount"),
             List.of("应收账款保理", "转让融资", "提前回笼"),
             true),
         new RagBenchmarkCase(
@@ -396,7 +414,8 @@ public final class RagBenchmarkSuite {
             "M-04",
             Category.MISMATCH,
             "三号车间那台专门把铁板接到一起的机器，隔多久要做一回保养",
-            Set.of("eq-041"),
+            // b2-suite-recalibration 任务 1.3：取证 §3.4 M-04 B2——答案对比句引 XR-500 年度维保（跨题归属），补入黄金
+            Set.of("eq-041", "maint-xr500-y"),
             List.of("数控焊接机", "两周一次点检", "清理焊渣"),
             true),
         new RagBenchmarkCase(
