@@ -424,6 +424,23 @@ class PromptTemplateServiceTest {
     assertEquals(ErrorCode.PARAM_FORMAT_ERROR.getCode(), ex.getCode());
   }
 
+  // ===== 嵌套引用保存（add-prompt-template-nesting 任务 1.3） =====
+
+  @Test
+  @DisplayName("创建：content 引用缺失子模板 code 前向引用保存放行（不阻断、非阻断 WARN）")
+  void createAllowsForwardReferenceToMissingChild() {
+    doReturn(0L).when(service).count(any(LambdaQueryWrapper.class));
+    doReturn(true).when(service).save(any(PromptTemplateEntity.class));
+    // findTemplateByCode 默认返回 null（缺 stub）→ WARN 分支命入，不阻断保存
+    doReturn(null).when(service).findTemplateByCode("ghost");
+
+    PromptTemplateDTO dto = dtoOf("tpl", "名称", "正文 {{> ghost}} 结尾", null);
+    service.create(dto); // 前向引用合法，不应抛异常（mock save 不回填 id 也无需断言返回值）
+
+    verify(service).save(any(PromptTemplateEntity.class));
+    verify(service).findTemplateByCode("ghost"); // WARN 钩子确实查过一次
+  }
+
   // ===== 启停用不改版本 =====
 
   @Test
