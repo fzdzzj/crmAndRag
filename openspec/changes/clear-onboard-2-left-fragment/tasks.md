@@ -8,6 +8,7 @@
 - baseline-v5.json 及历史锚（v3/v4）与全部既有锚点文件禁改；移标记后既有双钉（da7a3ef9…/79a804d5…）必红必刷新。
 - 勾选哈希留痕规则：勾选行下一行 6 空格缩进「补勾依据」+ 可独立复跑命令与哈希。
 - 停步点：四组全完 + 门禁留证 = 停步回报，不合并不 push（A 档：执行自跑全量 + 指导侧逐格核验 + owner 亲派复核 agent）。
+- 申报（合入前补，owner 授权指导侧代补，2026-10-13）：baseline-v1.json 的 fixtureRegression 段随任务 1.4 `-Drag.baseline.regen=true` 连带刷新（generatedAt + suiteVersion 4.0→5.0 两键，`git diff master...HEAD -- docs/rag-quality/baseline-v1.json` 仅此二行）——停步回报偏差披露漏列；A 档复核专项三重确认（升版迫使 regen 必然 / b2 先例同型「停步回报漏列→补申报」/ 还原即红：requireSame(suiteVersion) 硬绑常量，回退 "4.0" 必红）。判定：升版构造性必要连带，保留。
 
 ## 任务组 1 · 升版与移标记
 
