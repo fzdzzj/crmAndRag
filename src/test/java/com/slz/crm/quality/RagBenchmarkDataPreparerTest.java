@@ -348,4 +348,33 @@ class RagBenchmarkDataPreparerTest {
     assertTrue(
         sop3Text.contains("战略客户合同的终审通过后需报备集团客户部"), "customer-sop-3 索引用文本应含报备句主体: " + sop3Text);
   }
+
+  /**
+   * b2-suite-recalibration 任务 2.2：八例补标 id 在 Preparation 层全部对齐到真实入库 chunk（零外呼）。
+   * 逐例取证支撑：citation-forensics-v4 §3 T-01/TB-01/TB-08/TB-09/TB-10/TB-11/M-01/M-04。
+   */
+  @Test
+  void recalibrationGoldSupplementsAlignToRealChunks() {
+    InMemoryVectorStore store = new InMemoryVectorStore();
+    RagBenchmarkDataPreparer.Preparation preparation =
+        RagBenchmarkDataPreparer.prepare(
+            store, RagBenchmarkDataPreparerTest::fakeEmbed, EVAL_KB_ID);
+
+    java.util.List<String> supplemented =
+        java.util.List.of(
+            "sales-flow-3", // T-01 扩写归档段
+            "sales-q3-华南", // TB-01 补全 4 区
+            "sales-q3-西南", // TB-01 补全 4 区
+            "sales-q3-华东", // TB-08 排除论证非命中行
+            "price-flow-diagram", // TB-09 补充论点（决策树图注）
+            "maint-xr500-y", // TB-10 XR-500 年度漏项
+            "maint-zb220-m", // TB-10 排除论证
+            "jargon-discount", // M-01 跨题归属（贴现块）
+            "maint-xr500-y"); // M-04 跨题归属（XR-500 年度维保）
+    for (String goldId : supplemented) {
+      assertTrue(
+          preparation.goldenToChunkId().containsKey(goldId),
+          "补标 id 必须对齐到真实入库 chunk: " + goldId + "，现有=" + preparation.goldenToChunkId().keySet());
+    }
+  }
 }
