@@ -151,6 +151,8 @@ public class PromptTemplateServiceImpl
     entity.setCreatedBy(operator);
     entity.setUpdatedBy(operator);
     save(entity);
+    PromptTemplateNestingSupport.warnMissingReferences(
+        entity.getId(), dto.getCode(), entity.getContent(), this::findTemplateByCode);
 
     historySupport().append(entity.getId(), 1, entity.getContent(), variables, OP_CREATE, operator);
     return entity.getId();
@@ -175,6 +177,8 @@ public class PromptTemplateServiceImpl
     existing.setUpdatedBy(operator);
     existing.setUpdatedAt(LocalDateTime.now());
     updateById(existing);
+    PromptTemplateNestingSupport.warnMissingReferences(
+        existing.getId(), existing.getCode(), existing.getContent(), this::findTemplateByCode);
 
     historySupport()
         .append(
@@ -247,14 +251,14 @@ public class PromptTemplateServiceImpl
   @Override
   public PromptTemplateRenderVO render(PromptTemplateRenderDTO dto) {
     PromptTemplateEntity template = resolveEnabledTemplate(dto);
-    Map<String, String> provided = dto.getVariables() == null ? Map.of() : dto.getVariables();
-    List<PromptTemplateRenderSupport.PromptTemplateVariable> definitions =
-        renderSupport().parseVariableDefinitions(template.getVariables());
-    renderSupport().rejectUndefined(definitions, provided);
-    renderSupport().rejectMissingRequired(definitions, provided);
-
+    // 两遍法编排收敛于 PromptTemplateNestingSupport（无嵌套逐字节走既有路径；含嵌套先骨架展开再并集校验替换）
     PromptTemplateRenderVO vo = new PromptTemplateRenderVO();
-    vo.setContent(renderSupport().replacePlaceholders(template.getContent(), provided));
+    vo.setContent(
+        PromptTemplateNestingSupport.renderContent(
+            template,
+            dto.getVariables() == null ? Map.of() : dto.getVariables(),
+            this::findTemplateByCode,
+            renderSupport()));
     vo.setVersion(template.getVersion());
     vo.setCode(template.getCode());
     return vo;
@@ -278,6 +282,18 @@ public class PromptTemplateServiceImpl
       throw new BaseException(ErrorCode.NOT_ENABLED, "提示词模板已停用");
     }
     return template;
+  }
+
+  /**
+   * 按 code 取模板当前版本（add-prompt-template-nesting 任务 1.1 渲染嵌套解析接缝）。主模板解析走 {@link
+   * #resolveEnabledTemplate}，嵌套子模板经本接缝取当前启用版本（含停用/缺失，由 {@link PromptTemplateNestingSupport}
+   * 统一判语义）；不存在返回 null。
+   */
+  public PromptTemplateEntity findTemplateByCode(String code) {
+    return getOne(
+        new LambdaQueryWrapper<PromptTemplateEntity>()
+            .eq(PromptTemplateEntity::getCode, code)
+            .last("LIMIT 1"));
   }
 
   // ===== 回滚 =====
