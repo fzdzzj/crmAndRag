@@ -36,25 +36,28 @@ final class PromptTemplateSlotSupport {
    * Map（含空表）代表「本次执行槽位注入」——所有标记均被消费（未提供 key → 空串）。
    */
   static String replaceSlots(String content, Map<String, String> slots) {
-    if (content == null || !containsSlot(content)) {
-      return content == null ? "" : content;
-    }
-    if (slots == null) {
-      return content; // 未做槽位注入：标记保留，供注入模式判定
-    }
-    Matcher m = SLOT.matcher(content);
-    StringBuilder sb = new StringBuilder(content.length());
-    int last = 0;
-    while (m.find()) {
-      String key = m.group(1);
-      sb.append(content, last, m.start());
-      String value = slots.get(key);
-      if (value != null) {
-        sb.append(value);
+    String result;
+    if (content == null) {
+      result = "";
+    } else if (!containsSlot(content) || slots == null) {
+      // 无槽位标记逐字节返回；slots=null（未做注入）标记保留供注入模式判定
+      result = content;
+    } else {
+      Matcher m = SLOT.matcher(content);
+      StringBuilder sb = new StringBuilder(content.length());
+      int last = 0;
+      while (m.find()) {
+        String key = m.group(1);
+        sb.append(content, last, m.start());
+        String value = slots.get(key);
+        if (value != null) {
+          sb.append(value);
+        }
+        last = m.end();
       }
-      last = m.end();
+      sb.append(content, last, content.length());
+      result = sb.toString();
     }
-    sb.append(content, last, content.length());
-    return sb.toString();
+    return result;
   }
 }

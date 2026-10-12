@@ -16,7 +16,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
@@ -93,9 +92,6 @@ public class AiChatPromptService {
     return applyPromptBudget(messages);
   }
 
-  /** 槽位标记前缀：模板态 content 含任一 {@code {{#slot:}} 即判定走注入模式（add-prompt-template-slots 任务 2.1）。 */
-  private static final String SLOT_PREFIX = "{{#slot:";
-
   /**
    * 将持久记忆注入系统提示词；加工品缺失时不改变原 system prompt（add-prompt-template-slots 任务 2.1/2.3）。
    *
@@ -104,15 +100,15 @@ public class AiChatPromptService {
    */
   private String buildSystemPrompt(AiConversationMemoryEntity memory, boolean clarifyRequired) {
     String skeleton = resolveSystemSkeleton();
-    if (containsSlotMarker(skeleton)) {
-      return renderInjectSlots(memory, clarifyRequired, skeleton);
+    String result;
+    if (PromptSystemPromptSegments.containsSlot(skeleton)) {
+      result = renderInjectSlots(memory, clarifyRequired, skeleton);
+    } else {
+      result =
+          PromptSystemPromptSegments.appendDynamicSections(
+              skeleton, shortQuestionRewriter, memory, clarifyRequired);
     }
-    return appendDynamicSections(skeleton, memory, clarifyRequired);
-  }
-
-  /** 生效骨架是否含任意槽位标记（判定注入模式；回退静态文本天然不含，恒走旧追加路径）。 */
-  private boolean containsSlotMarker(String skeleton) {
-    return skeleton != null && skeleton.contains(SLOT_PREFIX);
+    return result;
   }
 
   /**
@@ -123,62 +119,27 @@ public class AiChatPromptService {
    */
   private String renderInjectSlots(
       AiConversationMemoryEntity memory, boolean clarifyRequired, String skeletonWithMarkers) {
+    String result;
     if (promptTemplateService == null) {
-      return appendDynamicSections(skeletonWithMarkers, memory, clarifyRequired);
-    }
-    Map<String, String> slots = buildSlots(memory, clarifyRequired);
-    String injected = renderTemplateContent(SYSTEM_PROMPT_TEMPLATE_CODE, slots);
-    if (injected == null || injected.isBlank()) {
-      // 注入 render 失败 → WARN 已在 renderTemplateContent 登记，回退静态 + 旧追加路径
-      return appendDynamicSections(systemPrompt, memory, clarifyRequired);
-    }
-    return injected;
-  }
-
-  /** 旧追加路径（逐字节回归锁基准）：在骨架尾部按固定顺序拼接四动态段；无槽位模板/回退态唯一路径（add-prompt-template-slots 任务 2.1/2.3）。 */
-  private String appendDynamicSections(
-      String skeleton, AiConversationMemoryEntity memory, boolean clarifyRequired) {
-    StringBuilder memoryBlock = new StringBuilder(skeleton);
-    if (memory != null) {
-      if (memory.getIntent() != null && !memory.getIntent().isBlank()) {
-        memoryBlock.append("\n\n【当前意图】").append(memory.getIntent().trim());
-      }
-      if (memory.getFacts() != null
-          && !memory.getFacts().isBlank()
-          && !"[]".equals(memory.getFacts().trim())) {
-        memoryBlock.append("\n\n【已确认事实】").append(memory.getFacts().trim());
-      }
-      if (memory.getSummary() != null && !memory.getSummary().isBlank()) {
-        memoryBlock.append("\n\n【历史摘要】").append(memory.getSummary().trim());
+      result =
+          PromptSystemPromptSegments.appendDynamicSections(
+              skeletonWithMarkers, shortQuestionRewriter, memory, clarifyRequired);
+    } else {
+      String injected =
+          renderTemplateContent(
+              SYSTEM_PROMPT_TEMPLATE_CODE,
+              PromptSystemPromptSegments.buildSlots(
+                  memory, clarifyRequired, shortQuestionRewriter));
+      if (injected == null || injected.isBlank()) {
+        // 注入 render 失败 → WARN 已在 renderTemplateContent 登记，回退静态 + 旧追加路径
+        result =
+            PromptSystemPromptSegments.appendDynamicSections(
+                systemPrompt, shortQuestionRewriter, memory, clarifyRequired);
+      } else {
+        result = injected;
       }
     }
-    if (clarifyRequired) {
-      memoryBlock.append(shortQuestionRewriter.clarifyPrompt());
-    }
-    return memoryBlock.toString();
-  }
-
-  /** 组装 slots 四件 map：值含标题与 \n\n 间距（等价旧追加逐字节），条件空不置入。 */
-  private Map<String, String> buildSlots(
-      AiConversationMemoryEntity memory, boolean clarifyRequired) {
-    Map<String, String> slots = new LinkedHashMap<>();
-    if (memory != null) {
-      if (memory.getIntent() != null && !memory.getIntent().isBlank()) {
-        slots.put("currentIntent", "\n\n【当前意图】" + memory.getIntent().trim());
-      }
-      if (memory.getFacts() != null
-          && !memory.getFacts().isBlank()
-          && !"[]".equals(memory.getFacts().trim())) {
-        slots.put("confirmedFacts", "\n\n【已确认事实】" + memory.getFacts().trim());
-      }
-      if (memory.getSummary() != null && !memory.getSummary().isBlank()) {
-        slots.put("historySummary", "\n\n【历史摘要】" + memory.getSummary().trim());
-      }
-    }
-    if (clarifyRequired) {
-      slots.put("clarify", shortQuestionRewriter.clarifyPrompt());
-    }
-    return slots;
+    return result;
   }
 
   /** 取本次生效的系统提示词骨架：模板态 render 优先，任何异常回退启动期静态文本（aichat-prompt-template-integration 任务 2.1）。 */
