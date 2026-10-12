@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.DisplayName;
@@ -194,7 +195,137 @@ class AiChatPromptServiceTest {
     assertThat(systemCaptor.getValue()).isEqualTo(readClasspath(TITLE_PROMPT_PATH));
   }
 
+  // ===== 槽位双模式注入（add-prompt-template-slots 任务 2.1/2.3） =====
+
+  /** V37 标记骨架 = 静态骨架尾部附四槽位标记；静态骨架复用 classpath 文件（其尾部含换行符）。 */
+  private static final String SLOT_MARKER_TAIL =
+      "{{#slot:currentIntent}}{{#slot:confirmedFacts}}{{#slot:historySummary}}{{#slot:clarify}}";
+
+  @Test
+  @DisplayName("注入模式：标记态骨架 → 组装 slots 交 render 替换，返回注入成品")
+  void buildSystemPrompt_injectsSlotValuesOnMarkerTemplate() {
+    String skeleton = readClasspath(SYSTEM_PROMPT_PATH);
+    PromptTemplateService templateService = mock(PromptTemplateService.class);
+    // 首次 render（骨架检测，slots=null）返回含标记骨架；二次 render（注入，slots 非 null）返回注入成品
+    when(templateService.render(any()))
+        .thenAnswer(
+            invocation -> {
+              PromptTemplateRenderDTO dto = invocation.getArgument(0);
+              Map<String, String> slots = dto.getSlots();
+              if (slots == null) {
+                return renderVo(skeleton + SLOT_MARKER_TAIL);
+              }
+              String injected = skeleton + SLOT_MARKER_TAIL;
+              for (Map.Entry<String, String> e : slots.entrySet()) {
+                injected = injected.replace("{{#slot:" + e.getKey() + "}}", e.getValue());
+              }
+              return renderVo(injected);
+            });
+    AiChatPromptService service = newLoadedService();
+    wireTemplate(service, templateService);
+    wireShortQuestionRewriter(service);
+
+    AiConversationMemoryEntity memory = new AiConversationMemoryEntity();
+    memory.setIntent("跟进A");
+    memory.setFacts("已确认XYZ");
+    memory.setSummary("历史B");
+    String prompt = invokeBuildSystemPrompt(service, memory, true);
+
+    String expect =
+        skeleton
+            + "\n\n【当前意图】跟进A\n\n【已确认事实】已确认XYZ\n\n【历史摘要】历史B"
+            + "\n\n【澄清要求】用户问题缺少必要锚点，回答前必须先列出候选选项请用户确认，不要猜测业务对象。";
+    assertThat(prompt).isEqualTo(expect);
+    assertThat(service.getPromptSource()).isEqualTo(PromptSource.TEMPLATE);
+    // 注入 render 确实携 slots（复用同一 DTO）
+    ArgumentCaptor<PromptTemplateRenderDTO> captor =
+        ArgumentCaptor.forClass(PromptTemplateRenderDTO.class);
+    verify(templateService, org.mockito.Mockito.times(2)).render(captor.capture());
+    assertThat(captor.getAllValues().get(1).getSlots())
+        .containsEntry("currentIntent", "\n\n【当前意图】跟进A");
+  }
+
+  @Test
+  @DisplayName("注入模式：marker 骨架但动态段全空 → 槽位替换为空串，输出即静态骨架")
+  void buildSystemPrompt_injectionWithAllSectionsEmpty() {
+    String skeleton = readClasspath(SYSTEM_PROMPT_PATH);
+    PromptTemplateService templateService = mock(PromptTemplateService.class);
+    when(templateService.render(any()))
+        .thenAnswer(
+            invocation -> {
+              PromptTemplateRenderDTO dto = invocation.getArgument(0);
+              if (dto.getSlots() == null) {
+                return renderVo(skeleton + SLOT_MARKER_TAIL); // 骨架检测：标记保留
+              }
+              return renderVo(skeleton); // 注入（slots 空表非 null）→ 标记全部替换为空串 → 静态骨架
+            });
+    AiChatPromptService service = newLoadedService();
+    wireTemplate(service, templateService);
+    wireShortQuestionRewriter(service);
+
+    AiConversationMemoryEntity memory = new AiConversationMemoryEntity(); // 全空
+    String prompt = invokeBuildSystemPrompt(service, memory, false);
+
+    assertThat(prompt).isEqualTo(skeleton);
+  }
+
+  @Test
+  @DisplayName("回归锁：无标记模板（V35/静态）走旧追加路径逐字节不变（memory 分支 + clarify 分支）")
+  void buildSystemPrompt_legacyAppendWithoutMarkers() {
+    String skeleton = readClasspath(SYSTEM_PROMPT_PATH);
+    PromptTemplateService templateService = mock(PromptTemplateService.class);
+    when(templateService.render(any())).thenReturn(renderVo(skeleton)); // 无标记（slots=null）
+    AiChatPromptService service = newLoadedService();
+    wireTemplate(service, templateService);
+    wireShortQuestionRewriter(service);
+
+    AiConversationMemoryEntity memory = new AiConversationMemoryEntity();
+    memory.setIntent("意图A");
+    memory.setSummary("历史B");
+    String prompt = invokeBuildSystemPrompt(service, memory, true);
+
+    // 旧追加路径逐字节：骨架 + 段（facts 空不追加）+ clarify
+    String expect =
+        skeleton
+            + "\n\n【当前意图】意图A\n\n【历史摘要】历史B"
+            + "\n\n【澄清要求】用户问题缺少必要锚点，回答前必须先列出候选选项请用户确认，不要猜测业务对象。";
+    assertThat(prompt).isEqualTo(expect);
+    // 只 render 一次（无标记不进注入二次渲染）
+    verify(templateService, org.mockito.Mockito.times(1)).render(any());
+  }
+
+  @Test
+  @DisplayName("回退链：无标记静态回退态走旧追加路径（恒不入注入模式）")
+  void buildSystemPrompt_fallbackStaticStillAppendsLegacy() {
+    // render 抛异常 → resolveSystemSkeleton 回退静态文本（无标记），旧追加路径逐字节
+    PromptTemplateService templateService = mock(PromptTemplateService.class);
+    when(templateService.render(any())).thenThrow(new IllegalStateException("probe"));
+    AiChatPromptService service = newLoadedService();
+    wireTemplate(service, templateService);
+
+    AiConversationMemoryEntity memory = new AiConversationMemoryEntity();
+    memory.setIntent("意图A");
+    String prompt = invokeBuildSystemPrompt(service, memory, false);
+
+    String expect = readClasspath(SYSTEM_PROMPT_PATH) + "\n\n【当前意图】意图A";
+    assertThat(prompt).isEqualTo(expect);
+    assertThat(service.getPromptSource()).isEqualTo(PromptSource.FALLBACK);
+  }
+
   // ===== 测试工具 =====
+
+  /** 经反射调用私有 buildSystemPrompt 并携带 memory/clarify（槽位双模式测试用）。 */
+  private String invokeBuildSystemPrompt(
+      AiChatPromptService service, AiConversationMemoryEntity memory, boolean clarifyRequired) {
+    Method method =
+        ReflectionUtils.findMethod(
+            AiChatPromptService.class,
+            "buildSystemPrompt",
+            AiConversationMemoryEntity.class,
+            boolean.class);
+    ReflectionUtils.makeAccessible(method);
+    return (String) ReflectionUtils.invokeMethod(method, service, memory, clarifyRequired);
+  }
 
   private AiChatPromptService newLoadedService() {
     AiChatPromptService service = new AiChatPromptService();
@@ -204,6 +335,13 @@ class AiChatPromptServiceTest {
 
   private void wireTemplate(AiChatPromptService service, PromptTemplateService templateService) {
     ReflectionTestUtils.setField(service, "promptTemplateService", templateService);
+  }
+
+  /** 装配 shortQuestionRewriter mock（返回真实 CLARIFY_PROMPT 常量，供 clarify 分支断言逐字节）。 */
+  private void wireShortQuestionRewriter(AiChatPromptService service) {
+    AiShortQuestionRewriter rewriter = mock(AiShortQuestionRewriter.class);
+    when(rewriter.clarifyPrompt()).thenReturn("\n\n【澄清要求】用户问题缺少必要锚点，回答前必须先列出候选选项请用户确认，不要猜测业务对象。");
+    ReflectionTestUtils.setField(service, "shortQuestionRewriter", rewriter);
   }
 
   /** 经反射调用私有 buildSystemPrompt；memory 全字段为空 → 返回值即静态骨架（不含动态追加段）。 */

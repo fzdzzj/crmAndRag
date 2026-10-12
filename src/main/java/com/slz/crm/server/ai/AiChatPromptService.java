@@ -17,6 +17,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -91,31 +92,59 @@ public class AiChatPromptService {
     return applyPromptBudget(messages);
   }
 
-  /** 将持久记忆注入系统提示词；加工品缺失时不改变原 system prompt。 */
+  /**
+   * 将持久记忆注入系统提示词；加工品缺失时不改变原 system prompt（add-prompt-template-slots 任务 2.1/2.3）。
+   *
+   * <p><b>双模式运行时判定</b>：生效骨架含任一 {@code {{#slot:}} 标记 → 注入模式——组装 slots 四件 map 交由 render 链替换（停用
+   * 尾部追加）；无标记（含回退静态文本）→ 旧追加路径逐字节保留。任一异常均按既有 WARN+回退链兜底。
+   */
   private String buildSystemPrompt(AiConversationMemoryEntity memory, boolean clarifyRequired) {
-    StringBuilder memoryBlock = new StringBuilder(resolveSystemSkeleton());
-    if (memory != null) {
-      if (memory.getIntent() != null && !memory.getIntent().isBlank()) {
-        memoryBlock.append("\n\n【当前意图】").append(memory.getIntent().trim());
-      }
-      if (memory.getFacts() != null
-          && !memory.getFacts().isBlank()
-          && !"[]".equals(memory.getFacts().trim())) {
-        memoryBlock.append("\n\n【已确认事实】").append(memory.getFacts().trim());
-      }
-      if (memory.getSummary() != null && !memory.getSummary().isBlank()) {
-        memoryBlock.append("\n\n【历史摘要】").append(memory.getSummary().trim());
+    String skeleton = resolveSystemSkeleton();
+    String result;
+    if (PromptSystemPromptSegments.containsSlot(skeleton)) {
+      result = renderInjectSlots(memory, clarifyRequired, skeleton);
+    } else {
+      result =
+          PromptSystemPromptSegments.appendDynamicSections(
+              skeleton, shortQuestionRewriter, memory, clarifyRequired);
+    }
+    return result;
+  }
+
+  /**
+   * 注入模式：把动态段四件（当前意图/已确认事实/历史摘要/澄清）组装为 slots 键值表再经 render 链替换槽位标记，输出整段成品提示词。
+   *
+   * <p>promptVersion 口径不动——由 {@link #resolveSystemSkeleton} 记录生效骨架 sha256（含标记文本、不含 slot 值，D7）； 注入
+   * render 任何异常 WARN 后回退静态 + 旧追加路径（不断聊天主链路）。
+   */
+  private String renderInjectSlots(
+      AiConversationMemoryEntity memory, boolean clarifyRequired, String skeletonWithMarkers) {
+    String result;
+    if (promptTemplateService == null) {
+      result =
+          PromptSystemPromptSegments.appendDynamicSections(
+              skeletonWithMarkers, shortQuestionRewriter, memory, clarifyRequired);
+    } else {
+      String injected =
+          renderTemplateContent(
+              SYSTEM_PROMPT_TEMPLATE_CODE,
+              PromptSystemPromptSegments.buildSlots(
+                  memory, clarifyRequired, shortQuestionRewriter));
+      if (injected == null || injected.isBlank()) {
+        // 注入 render 失败 → WARN 已在 renderTemplateContent 登记，回退静态 + 旧追加路径
+        result =
+            PromptSystemPromptSegments.appendDynamicSections(
+                systemPrompt, shortQuestionRewriter, memory, clarifyRequired);
+      } else {
+        result = injected;
       }
     }
-    if (clarifyRequired) {
-      memoryBlock.append(shortQuestionRewriter.clarifyPrompt());
-    }
-    return memoryBlock.toString();
+    return result;
   }
 
   /** 取本次生效的系统提示词骨架：模板态 render 优先，任何异常回退启动期静态文本（aichat-prompt-template-integration 任务 2.1）。 */
   private String resolveSystemSkeleton() {
-    String templateContent = renderTemplateContent(SYSTEM_PROMPT_TEMPLATE_CODE);
+    String templateContent = renderTemplateContent(SYSTEM_PROMPT_TEMPLATE_CODE, null);
     String effective = templateContent == null ? systemPrompt : templateContent;
     applyEffectiveSource(
         effective, templateContent == null ? PromptSource.FALLBACK : PromptSource.TEMPLATE);
@@ -124,24 +153,26 @@ public class AiChatPromptService {
 
   /** 取本次生效的标题提示词：模板态 render 优先，异常回退启动期静态文本（任务 2.2）。 */
   private String resolveTitlePrompt() {
-    String templateContent = renderTemplateContent(TITLE_PROMPT_TEMPLATE_CODE);
+    String templateContent = renderTemplateContent(TITLE_PROMPT_TEMPLATE_CODE, null);
     return templateContent == null ? titlePrompt : templateContent;
   }
 
   /**
-   * 调用模板服务渲染无变量骨架（任务 2.1/2.2）。
+   * 调用模板服务渲染骨架（任务 2.1/2.2 + add-prompt-template-slots 任务 2.1）。
    *
    * <p>回退链红线：模板不存在/停用/变量拒绝/任何运行时异常，一律 WARN 后返回 null 交由调用方回退静态文本，
-   * 绝不让模板态异常中断聊天主链路（D2）。本卡零变量，variables 固定为空表。
+   * 绝不让模板态异常中断聊天主链路（D2）。本卡零变量，variables 固定为空表；{@code slots} 为 null 时不替换槽位标记（供注入模式 判定），非 null
+   * 时执行槽位注入。
    */
   @SuppressWarnings("PMD.AvoidCatchingGenericException") // 模板态任何异常都必须回退静态文本，不断聊天主链路（D2）
-  private String renderTemplateContent(String code) {
+  private String renderTemplateContent(String code, Map<String, String> slots) {
     String content = null;
     if (promptTemplateService != null) {
       try {
         PromptTemplateRenderDTO dto = new PromptTemplateRenderDTO();
         dto.setCode(code);
         dto.setVariables(Collections.emptyMap());
+        dto.setSlots(slots);
         PromptTemplateRenderVO rendered = promptTemplateService.render(dto);
         content = rendered == null ? null : rendered.getContent();
         if (content == null || content.isBlank()) {

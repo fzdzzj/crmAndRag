@@ -251,12 +251,13 @@ public class PromptTemplateServiceImpl
   @Override
   public PromptTemplateRenderVO render(PromptTemplateRenderDTO dto) {
     PromptTemplateEntity template = resolveEnabledTemplate(dto);
-    // 两遍法编排收敛于 PromptTemplateNestingSupport（无嵌套逐字节走既有路径；含嵌套先骨架展开再并集校验替换）
+    // 两遍法编排收敛于 PromptTemplateNestingSupport（无嵌套逐字节走既有路径；含嵌套先骨架展开再并集校验替换，末段槽位替换）
     PromptTemplateRenderVO vo = new PromptTemplateRenderVO();
     vo.setContent(
         PromptTemplateNestingSupport.renderContent(
             template,
             dto.getVariables() == null ? Map.of() : dto.getVariables(),
+            dto.getSlots(),
             this::findTemplateByCode,
             renderSupport()));
     vo.setVersion(template.getVersion());

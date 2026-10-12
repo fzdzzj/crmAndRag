@@ -49,17 +49,22 @@ final class PromptTemplateNestingSupport {
   }
 
   /**
-   * render 完整编排（两遍法）：无嵌套走既有单层路径逐字节零变化；有嵌套先骨架展开并累积主+各层子 variables 并集，再按并集校验 （required
-   * 并集强制）与占位符替换。零真实外呼。
+   * render 完整编排（两遍法 + 槽位）：无嵌套走既有单层路径逐字节零变化；有嵌套先骨架展开并累积主+各层子 variables 并集，再按并集校验 （required
+   * 并集强制）与占位符替换，末段做槽位替换。零真实外呼。
+   *
+   * <p><b>次序</b>：嵌套展开 → 变量校验/替换 → 槽位替换（槽位值中的 {{var}} 不被二次替换，实测定见任务 §0）。槽位 key 独立于
+   * variables，不参与未定义/必填校验。
    *
    * @param template 主模板（已确认启用态）
    * @param provided 渲染变量键值表
+   * @param slots 槽位键值表（可 null/空）
    * @param resolver 子模板解析接缝（当前启用版本）
    * @param renderSupport {@link PromptTemplateRenderSupport}（变量解析/校验/替换复用，保持薄）
    */
   static String renderContent(
       PromptTemplateEntity template,
       Map<String, String> provided,
+      Map<String, String> slots,
       TemplateResolver resolver,
       PromptTemplateRenderSupport renderSupport) {
     List<PromptTemplateRenderSupport.PromptTemplateVariable> definitions;
@@ -78,10 +83,19 @@ final class PromptTemplateNestingSupport {
               renderSupport::parseVariableDefinitions,
               definitions,
               new ArrayDeque<>());
+      dedupDefinitionsByName(definitions);
     }
     renderSupport.rejectUndefined(definitions, provided);
     renderSupport.rejectMissingRequired(definitions, provided);
-    return renderSupport.replacePlaceholders(contentToRender, provided);
+    String withVariables = renderSupport.replacePlaceholders(contentToRender, provided);
+    return PromptTemplateSlotSupport.replaceSlots(withVariables, slots);
+  }
+
+  /** 变量并集按 name 去重（MINOR②）：钻石引用下同一公共子模板被多处引用，其变量定义会并入并集多次，此处保留首次出现项防重复校验/重复报缺。 */
+  static void dedupDefinitionsByName(
+      List<PromptTemplateRenderSupport.PromptTemplateVariable> definitions) {
+    Set<String> seen = new java.util.LinkedHashSet<>();
+    definitions.removeIf(d -> !seen.add(d.getName() == null ? "" : d.getName()));
   }
 
   /** 抽取 content 中引用的全部 code（去重保序）；无引用返回空集。用于 create/update 非阻断 WARN 钩子。 */
