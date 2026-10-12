@@ -280,6 +280,46 @@ class PromptTemplateServiceTest {
     assertEquals(content, vo.getContent());
   }
 
+  @Test
+  @DisplayName("种子渲染回归：V36 骨架含 {{> agent-common-discipline}} render 输出含公共段展开")
+  void renderV36SeedExecutorExpandsDiscipline() {
+    PromptTemplateEntity common =
+        template(
+            3L,
+            "agent-common-discipline",
+            0,
+            1,
+            "## 铁律（违反即越权）\n{{redLines}}\n",
+            "[{\"name\":\"redLines\",\"required\":true,\"description\":\"铁律清单\"}]");
+    String executorV36Content =
+        "# {{worktree}} / {{cardName}} 执行任务书\n\n"
+            + "## 角色\n你是执行子 agent。\n"
+            + "{{> agent-common-discipline}}\n"
+            + "## 门禁\n{{gates}}\n";
+    PromptTemplateEntity executor =
+        template(
+            1L,
+            "agent-executor-brief",
+            0,
+            2,
+            executorV36Content,
+            "[{\"name\":\"worktree\",\"required\":true},{\"name\":\"cardName\",\"required\":true},{\"name\":\"gates\",\"required\":true},{\"name\":\"redLines\",\"required\":true}]");
+    // 嵌套解析：回到 getOne 命中主模板，findTemplateByCode 命中公共子模板
+    doReturn(executor).when(service).getOne(any(LambdaQueryWrapper.class));
+    doReturn(common).when(service).findTemplateByCode("agent-common-discipline");
+
+    PromptTemplateRenderDTO dto = new PromptTemplateRenderDTO();
+    dto.setCode("agent-executor-brief");
+    dto.setVariables(
+        Map.of("worktree", "/w", "cardName", "卡", "gates", "mvn test", "redLines", "零外呼"));
+
+    var vo = service.render(dto);
+    String rendered = vo.getContent();
+    assertTrue(rendered.contains("## 铁律（违反即越权）\n零外呼\n"), "展开后应含公共纪律段（已替代占位）");
+    assertTrue(rendered.contains("## 门禁\nmvn test\n"), "占位保留并替换");
+    assertFalse(rendered.contains("{{> agent-common-discipline}}"), "引用应已被展开替换不残留");
+  }
+
   // ===== 版本递增与乐观锁 =====
 
   @Test

@@ -43,7 +43,7 @@ class FlywayMigrationIT {
       new TreeSet<>(
           List.of(
               "1", "3", "4", "4.1", "5", "6", "21", "22", "23", "24", "25", "26", "27", "28", "29",
-              "30", "31", "32", "33", "34", "35"));
+              "30", "31", "32", "33", "34", "35", "36"));
 
   /** 跨 lane 关键表抽样：确认各号段 DDL 真的建出了表（V1/V3/V4/V5/V6）。 */
   private static final List<String> SPOT_CHECK_TABLES =
@@ -280,6 +280,60 @@ class FlywayMigrationIT {
         assertTrue(content != null && !content.isBlank(), "V35 模板 " + code + " content 不应为空");
         assertEquals(0, status, "V35 模板 " + code + " 应为启用态 status=0");
       }
+    }
+  }
+
+  /**
+   * V36 断言（add-prompt-template-nesting 任务 2.2）：嵌套引用种子落库——agent-common-discipline 公共子模板存在、两 agent 骨架
+   * content 已嵌入 {{> agent-common-discipline}} 且 version+1、公共子模板与两骨架 history 快照就位。
+   */
+  @Test
+  @Order(8)
+  void promptTemplateNestingSeedInsertedAndEmbedded() throws Exception {
+    assumeTrue(mysql != null, "Docker 不可用时本用例随类跳过");
+    try (Connection connection =
+            DriverManager.getConnection(
+                mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
+        Statement statement = connection.createStatement()) {
+      // 公共子模板存在且启用
+      ResultSet common =
+          statement.executeQuery(
+              "SELECT content, status, version FROM prompt_template WHERE code = 'agent-common-discipline'");
+      assertTrue(common.next(), "V36 应种入公共子模板 agent-common-discipline");
+      assertEquals(0, common.getInt(2), "公共子模板应为启用态 status=0");
+      assertEquals(1, common.getInt(3), "公共子模板应为 version=1");
+      String commonContent = common.getString(1);
+      assertTrue(
+          commonContent.contains("{{redLines}}"), "公共子模板应含 {{redLines}} 占位，实际：" + commonContent);
+
+      // 两骨架 content 已嵌入引用且 version+1（V33 为 version=1 → V36 后 version=2）
+      for (String code : List.of("agent-executor-brief", "agent-reviewer-brief")) {
+        ResultSet rs =
+            statement.executeQuery(
+                "SELECT content, version FROM prompt_template WHERE code = '" + code + "'");
+        assertTrue(rs.next(), "V36 应更新骨架 " + code);
+        assertEquals(2, rs.getInt(2), "V36 后 " + code + " 应为 version=2");
+        String content = rs.getString(1);
+        assertTrue(
+            content.contains("{{> agent-common-discipline}}"),
+            "V36 后 " + code + " content 应嵌入嵌套引用，实际：" + content);
+      }
+
+      // history 快照：公共子模板 CREATE + 两骨架 UPDATE 各就位
+      ResultSet historyUpdate =
+          statement.executeQuery(
+              "SELECT COUNT(*) FROM prompt_template_history h JOIN prompt_template t"
+                  + " ON h.template_id = t.id WHERE t.code IN ('agent-executor-brief',"
+                  + " 'agent-reviewer-brief') AND h.version = 2 AND h.operation = 'UPDATE'");
+      assertTrue(historyUpdate.next(), "history UPDATE 计数行缺失");
+      assertEquals(2, historyUpdate.getLong(1), "两骨架各落一笔 version=2 UPDATE 快照");
+      ResultSet historyCreate =
+          statement.executeQuery(
+              "SELECT COUNT(*) FROM prompt_template_history h JOIN prompt_template t"
+                  + " ON h.template_id = t.id WHERE t.code = 'agent-common-discipline'"
+                  + " AND h.version = 1 AND h.operation = 'CREATE'");
+      assertTrue(historyCreate.next(), "history CREATE 计数行缺失");
+      assertEquals(1, historyCreate.getLong(1), "公共子模板落一笔 version=1 CREATE 快照");
     }
   }
 
