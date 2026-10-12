@@ -28,5 +28,6 @@
 - 任务组 3：红测先行留痕（主树 work/aichat-prompt-template-integration/red-first-evidence.md；raw Tests run: 12, Failures: 2, Errors: 0，两红为模板态用例）。转绿后 AiChatPromptServiceTest Tests run: 12, Failures: 0。全量 mvn -B -ntp test：Tests run: 1140, Failures: 0, Errors: 0, Skipped: 0，BUILD SUCCESS（基线 1131 → +9）。bash scripts/merge-gate.sh 默认序 8/8 全绿（unit/spotbugs/pmd/baseline/frontend-unit/hook/bijection/pmd-baseline），GATE_EXIT=0。Docker 在线（29.6.2）真跑：FlywayMigrationIT 7 / PermissionCoverageAuditIT 2 / SchemaDriftAuditIT 1，合计 Tests run: 10, Failures: 0，BUILD SUCCESS。
 - 偏差披露：
   1. 回退链 WARN 用类内既有 slf4j log.warn（同 WARN 级别语义），未引入 java.util.logging（JUL）新 logger——避免给 @Slf4j 类加异构日志依赖；语义与卡面「WARN 含 code 与异常信息」一致。
-  2. 种子 content 行尾：本机运行时 prompt txt 经 classpath 读出为 CRLF（.gitattributes canonical LF / core.autocrlf=true），V35 INSERT 用 \r\n 显式转义以与本机运行时逐字节一致；等价锁测试对两侧做行尾归一（normalizeEol）以兼容 CI/LF 检出。
+  2. 种子 content 行尾：种子 content 用 \n 显式转义，\n 对齐 canonical LF 与生产态（.gitattributes eol=lf + Linux 部署），复核 MINOR-1 修正；等价锁测试对两侧做行尾归一（normalizeEol）以兼容检出差异。
   3. 8 参重载参数位：promptSource 紧随 promptVersion（model, version, source, costMs, usage, references, sources, citations），7 参公共 API 原样保留并委托到 8 参。
+  4. fixture 修正期间一次编译失败：promptSource 一度置签名末位致 String→long 类型报错，改回紧随 promptVersion 后即修正；终态无残留（编译全绿）。
