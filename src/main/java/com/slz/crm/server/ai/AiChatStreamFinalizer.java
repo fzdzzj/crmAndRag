@@ -292,6 +292,7 @@ class AiChatStreamFinalizer {
           eventWriter.toAuditJson(
               effectiveModel,
               promptService.getPromptVersion(),
+              promptService.getPromptSource().name(),
               System.currentTimeMillis() - context.roundStart(),
               usage,
               references,

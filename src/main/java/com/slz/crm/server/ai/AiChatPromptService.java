@@ -1,10 +1,13 @@
 package com.slz.crm.server.ai;
 
+import com.slz.crm.pojo.dto.PromptTemplateRenderDTO;
 import com.slz.crm.pojo.entity.AiConversationMemoryEntity;
 import com.slz.crm.pojo.entity.AiMessageEntity;
+import com.slz.crm.pojo.vo.PromptTemplateRenderVO;
 import com.slz.crm.server.properties.AiProperties;
 import com.slz.crm.server.service.AiConversationMemoryService;
 import com.slz.crm.server.service.AiMessageService;
+import com.slz.crm.server.service.PromptTemplateService;
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.io.InputStream;
@@ -32,6 +35,8 @@ public class AiChatPromptService {
 
   private static final String SYSTEM_PROMPT_PATH = "prompts/system-prompt.txt";
   private static final String TITLE_PROMPT_PATH = "prompts/session-title.txt";
+  private static final String SYSTEM_PROMPT_TEMPLATE_CODE = "aichat-system-prompt";
+  private static final String TITLE_PROMPT_TEMPLATE_CODE = "aichat-session-title";
 
   @Autowired private AiProperties aiProperties;
 
@@ -44,6 +49,10 @@ public class AiChatPromptService {
   /** 短问改写只影响检索/模型输入，不改变 ai_message 中的用户原文。 */
   @Autowired private AiShortQuestionRewriter shortQuestionRewriter;
 
+  /** 提示词模板服务：运行时模板态渲染入口；渲染异常时回退类路径静态文本（aichat-prompt-template-integration 任务 2.1）。 */
+  @Autowired(required = false)
+  private PromptTemplateService promptTemplateService;
+
   /** 提示词总字符闸门；历史超限时按最旧优先丢弃，必要 system/user 不裁剪。 */
   @Value("${ai.prompt-max-chars:3400}")
   private int promptMaxChars = 3400;
@@ -51,6 +60,9 @@ public class AiChatPromptService {
   private String systemPrompt;
   private String titlePrompt;
   private String promptVersion;
+
+  /** 最近一次系统提示词构建的生效来源（模板态/回退态），供流终观测面读取（任务 2.3 / D6）。 */
+  private PromptSource promptSource = PromptSource.FALLBACK;
 
   @PostConstruct
   void loadPrompts() {
@@ -81,7 +93,7 @@ public class AiChatPromptService {
 
   /** 将持久记忆注入系统提示词；加工品缺失时不改变原 system prompt。 */
   private String buildSystemPrompt(AiConversationMemoryEntity memory, boolean clarifyRequired) {
-    StringBuilder memoryBlock = new StringBuilder(systemPrompt);
+    StringBuilder memoryBlock = new StringBuilder(resolveSystemSkeleton());
     if (memory != null) {
       if (memory.getIntent() != null && !memory.getIntent().isBlank()) {
         memoryBlock.append("\n\n【当前意图】").append(memory.getIntent().trim());
@@ -101,6 +113,60 @@ public class AiChatPromptService {
     return memoryBlock.toString();
   }
 
+  /** 取本次生效的系统提示词骨架：模板态 render 优先，任何异常回退启动期静态文本（aichat-prompt-template-integration 任务 2.1）。 */
+  private String resolveSystemSkeleton() {
+    String templateContent = renderTemplateContent(SYSTEM_PROMPT_TEMPLATE_CODE);
+    String effective = templateContent == null ? systemPrompt : templateContent;
+    applyEffectiveSource(
+        effective, templateContent == null ? PromptSource.FALLBACK : PromptSource.TEMPLATE);
+    return effective;
+  }
+
+  /** 取本次生效的标题提示词：模板态 render 优先，异常回退启动期静态文本（任务 2.2）。 */
+  private String resolveTitlePrompt() {
+    String templateContent = renderTemplateContent(TITLE_PROMPT_TEMPLATE_CODE);
+    return templateContent == null ? titlePrompt : templateContent;
+  }
+
+  /**
+   * 调用模板服务渲染无变量骨架（任务 2.1/2.2）。
+   *
+   * <p>回退链红线：模板不存在/停用/变量拒绝/任何运行时异常，一律 WARN 后返回 null 交由调用方回退静态文本，
+   * 绝不让模板态异常中断聊天主链路（D2）。本卡零变量，variables 固定为空表。
+   */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 模板态任何异常都必须回退静态文本，不断聊天主链路（D2）
+  private String renderTemplateContent(String code) {
+    String content = null;
+    if (promptTemplateService != null) {
+      try {
+        PromptTemplateRenderDTO dto = new PromptTemplateRenderDTO();
+        dto.setCode(code);
+        dto.setVariables(Collections.emptyMap());
+        PromptTemplateRenderVO rendered = promptTemplateService.render(dto);
+        content = rendered == null ? null : rendered.getContent();
+        if (content == null || content.isBlank()) {
+          log.warn("提示词模板渲染结果为空，回退静态文本: code={}", code);
+          content = null;
+        }
+      } catch (RuntimeException e) {
+        log.warn("提示词模板渲染失败，回退静态文本: code={}", code, e);
+        content = null;
+      }
+    }
+    return content;
+  }
+
+  /**
+   * 按最终生效骨架刷新 promptVersion 与生效来源（任务 2.3 / D5 / D6）。
+   *
+   * <p>口径：promptVersion 始终取最终生效内容的 sha256 前 8 字节——模板被编辑后每次 render 都用实际生效骨架重算， 不做惰性单值缓存，避免版本滞后（D5
+   * 最小侵入方案：在构建点即时重算）。
+   */
+  private void applyEffectiveSource(String skeleton, PromptSource source) {
+    this.promptVersion = sha256Prefix(skeleton);
+    this.promptSource = source;
+  }
+
   private AiMessageEntity findLastUserQuestion(Long sessionId) {
     // listRecentContextMessages 返回 id 倒序，因此第一条用户消息就是最近用户问。
     return aiMessageService.listRecentContextMessages(sessionId, 2).stream()
@@ -114,7 +180,13 @@ public class AiChatPromptService {
     String result;
     try {
       String title =
-          chatClientBuilder.build().prompt().system(titlePrompt).user(userMessage).call().content();
+          chatClientBuilder
+              .build()
+              .prompt()
+              .system(resolveTitlePrompt())
+              .user(userMessage)
+              .call()
+              .content();
       result = title == null ? null : AiThinkTagStripper.strip(title).trim();
     } catch (Exception e) {
       log.warn("生成会话标题失败", e);
@@ -125,6 +197,17 @@ public class AiChatPromptService {
 
   public String getPromptVersion() {
     return promptVersion;
+  }
+
+  /** 最近一次系统提示词构建的生效来源：TEMPLATE=模板态命中 / FALLBACK=回退静态文本（任务 2.3 / D6）。 */
+  public PromptSource getPromptSource() {
+    return promptSource;
+  }
+
+  /** 提示词生效来源枚举（任务 2.3 / D6）：模板态（render 成功）或回退态（类路径静态文本）。 */
+  public enum PromptSource {
+    TEMPLATE,
+    FALLBACK
   }
 
   private List<Message> loadHistory(Long sessionId) {
