@@ -311,4 +311,84 @@ class PromptTemplateControllerIT extends AbstractMySqlIT {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.code").value(1));
   }
+
+  // ===== add-prompt-template-nesting：嵌套引用渲染端到端 =====
+
+  @Test
+  @DisplayName("808+809：子模板嵌套引用渲染端到端（{{> code}} 展开 + 变量并集强制）")
+  void nestingRenderEndToEndExpandsChildAndEnforcesUnion() throws Exception {
+    String token = seedToken(26L, 207L, true, true);
+
+    // 1) 建子模板 it-nest-child（含 {{childVar}}，required 声明）
+    String childBody =
+        "{\"code\":\"it-nest-child\",\"name\":\"嵌套子模板\",\"content\":\"纪律条款：{{childVar}}\","
+            + "\"variables\":\"[{\\\"name\\\":\\\"childVar\\\",\\\"required\\\":true,"
+            + "\\\"description\\\":\\\"纪律变量\\\"}]\"}";
+    mockMvc
+        .perform(
+            post("/promptTemplate/create")
+                .header("token", token)
+                .content(childBody)
+                .contentType("application/json"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(1));
+
+    // 2) 建父模板 it-nest-parent，content 引用 {{> it-nest-child}} + 自身 {{task}}
+    String parentBody =
+        "{\"code\":\"it-nest-parent\",\"name\":\"嵌套父模板\",\"content\":\"执行 {{task}}\\n先看：\\n{{> it-nest-child}}\","
+            + "\"variables\":\"[{\\\"name\\\":\\\"task\\\",\\\"required\\\":true,"
+            + "\\\"description\\\":\\\"任务\\\"}]\"}";
+    mockMvc
+        .perform(
+            post("/promptTemplate/create")
+                .header("token", token)
+                .content(parentBody)
+                .contentType("application/json"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(1));
+
+    // 3) 渲染父模板：并提供主+子变量并集 → 展开 + 替换
+    mockMvc
+        .perform(
+            post("/promptTemplate/render")
+                .header("token", token)
+                .content(
+                    "{\"code\":\"it-nest-parent\",\"variables\":{\"task\":\"巡检\",\"childVar\":\"零外呼\"}}")
+                .contentType("application/json"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(1))
+        .andExpect(jsonPath("$.data.content").value("执行 巡检\n先看：\n纪律条款：零外呼"))
+        .andExpect(jsonPath("$.data.version").value(1));
+
+    // 4) 缺子模板必填变量 → 并集强制 PARAM_REQUIRED（50008）
+    mockMvc
+        .perform(
+            post("/promptTemplate/render")
+                .header("token", token)
+                .content("{\"code\":\"it-nest-parent\",\"variables\":{\"task\":\"巡检\"}}")
+                .contentType("application/json"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(50008));
+
+    // 5) 循环引用（父引父）→ PARAM_FORMAT_ERROR（50002）
+    String cycleBody =
+        "{\"code\":\"it-nest-cycle\",\"name\":\"环\",\"content\":\"自环 {{> it-nest-cycle}}\","
+            + "\"variables\":\"[]\"}";
+    mockMvc
+        .perform(
+            post("/promptTemplate/create")
+                .header("token", token)
+                .content(cycleBody)
+                .contentType("application/json"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(1));
+    mockMvc
+        .perform(
+            post("/promptTemplate/render")
+                .header("token", token)
+                .content("{\"code\":\"it-nest-cycle\",\"variables\":{}}")
+                .contentType("application/json"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(50002));
+  }
 }
