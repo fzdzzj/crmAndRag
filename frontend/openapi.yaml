@@ -6569,6 +6569,10 @@ components:
           type: object
           additionalProperties:
             type: string
+        slots:
+          type: object
+          additionalProperties:
+            type: string
     PromptTemplateRenderVO:
       type: object
       properties:
