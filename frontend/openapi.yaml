@@ -2195,6 +2195,17 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultDocumentIngestionResult"
+  /knowledge/customer/reingest:
+    post:
+      tags:
+      - knowledge-admin-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultReingestResult"
   /invoice/info/query:
     post:
       tags:
@@ -7108,6 +7119,28 @@ components:
           type: string
         data:
           $ref: "#/components/schemas/DocumentIngestionResult"
+    ReingestResult:
+      type: object
+      properties:
+        total:
+          type: integer
+          format: int32
+        success:
+          type: integer
+          format: int32
+        failure:
+          type: integer
+          format: int32
+    ResultReingestResult:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/ReingestResult"
     InvoiceInfoVO:
       type: object
       properties:
