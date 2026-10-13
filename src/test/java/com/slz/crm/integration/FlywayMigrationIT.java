@@ -43,7 +43,7 @@ class FlywayMigrationIT {
       new TreeSet<>(
           List.of(
               "1", "3", "4", "4.1", "5", "6", "21", "22", "23", "24", "25", "26", "27", "28", "29",
-              "30", "31", "32", "33", "34", "35", "36", "37"));
+              "30", "31", "32", "33", "34", "35", "36", "37", "38"));
 
   /** 跨 lane 关键表抽样：确认各号段 DDL 真的建出了表（V1/V3/V4/V5/V6）。 */
   private static final List<String> SPOT_CHECK_TABLES =
@@ -381,6 +381,55 @@ class FlywayMigrationIT {
                   + " AND h.version = 2 AND h.operation = 'UPDATE'");
       assertTrue(history.next(), "history UPDATE 计数行缺失");
       assertEquals(1, history.getLong(1), "aichat-system-prompt 应落一笔 version=2 UPDATE 快照");
+    }
+  }
+
+  /**
+   * V38 断言（add-customer-semantic-retrieval 任务 1.4）：aichat-system-prompt content 尾部已追加
+   * retrievedContext 槽位标记、version 升为 3（V37 为 version=2）、生效态 status=0 未变； aichat-session-title
+   * 零改动；history 落一笔 version=3 UPDATE 快照。
+   */
+  @Test
+  @Order(10)
+  void aichatSystemPromptRetrievalSlotMarkerAppendedAndVersionBumped() throws Exception {
+    assumeTrue(mysql != null, "Docker 不可用时本用例随类跳过");
+    try (Connection connection =
+            DriverManager.getConnection(
+                mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
+        Statement statement = connection.createStatement()) {
+      ResultSet rs =
+          statement.executeQuery(
+              "SELECT content, version, status FROM prompt_template WHERE code ="
+                  + " 'aichat-system-prompt'");
+      assertTrue(rs.next(), "V38 应更新 aichat-system-prompt 模板");
+      String content = rs.getString(1);
+      assertEquals(3, rs.getInt(2), "V38 后 aichat-system-prompt 应为 version=3");
+      assertEquals(0, rs.getInt(3), "V38 不应改变启用态 status=0");
+      // 五槽位标记按现顺序就位：V37 四标记 + retrievedContext（标记=可自定义开关/调序点）
+      String tail =
+          "{{#slot:currentIntent}}{{#slot:confirmedFacts}}{{#slot:historySummary}}{{#slot:clarify}}"
+              + "{{#slot:retrievedContext}}";
+      assertTrue(
+          content.endsWith(tail),
+          "V38 应在 content 尾部追加 retrievedContext 槽位标记，实际尾部："
+              + content.substring(Math.max(0, content.length() - 170)));
+
+      // aichat-session-title 零改动：不得嵌入任何槽位标记
+      ResultSet titleRs =
+          statement.executeQuery(
+              "SELECT content FROM prompt_template WHERE code = 'aichat-session-title'");
+      assertTrue(titleRs.next(), "aichat-session-title 应存在");
+      assertTrue(
+          !titleRs.getString(1).contains("{{#slot:"), "V38 不应改动 aichat-session-title content");
+
+      // history UPDATE 快照：version=3 一笔
+      ResultSet history =
+          statement.executeQuery(
+              "SELECT COUNT(*) FROM prompt_template_history h JOIN prompt_template t"
+                  + " ON h.template_id = t.id WHERE t.code = 'aichat-system-prompt'"
+                  + " AND h.version = 3 AND h.operation = 'UPDATE'");
+      assertTrue(history.next(), "history UPDATE 计数行缺失");
+      assertEquals(1, history.getLong(1), "aichat-system-prompt 应落一笔 version=3 UPDATE 快照");
     }
   }
 

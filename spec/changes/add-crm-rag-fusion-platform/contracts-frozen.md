@@ -136,3 +136,4 @@
 - **2026-09-10 · 修正轮3（架构批准，base 待实现）**：C 报工具回调请求仍走 Spring AI 通用路径（`ModelCallOptions` 未定义 tools 翻译）→ `ModelCallOptions` 承载 toolCallbacks/toolContext；`ModelProviderImpl` 有工具走 Spring AI 工具执行环、`enable_thinking` 尽力而为（工具优先）；C 收回权宜、工具请求全经 ModelProvider 且 usage 不漏计。
 
 - **2026-09-10 · 修正轮3落地（base）**：+`ModelCallOptions.toolCallbacks/toolContext`（Spring AI ToolCallback）+`hasTools()`；`applyOptions` 设 toolCallbacks→Spring AI tool loop 自动触发；stream+tools 走 Spring AI path（thinking 尽力而为，不为 thinking 破坏 tool loop）；314 测试全绿。
+- **2026-10-13 · add-customer-semantic-retrieval 受控解冻（owner 拍板 D3）**：`SourceReference.sourceType` 语义扩展支持业务来源——`type=CUSTOMER`、`documentId`=客户主键、`filename`=company_name，复用现有字段零结构改动，SSE `sources` payload 结构零改动；spec 增量登记 `openspec/changes/add-customer-semantic-retrieval/specs/knowledge-rag/spec-delta.md`（fix-citation-grading-overlap B1 先例）。

@@ -24,6 +24,9 @@ public class QdrantProperties {
   /** 向量集合名。 */
   private String collection = "knowledge_chunk";
 
+  /** 业务实体向量集合名（add-customer-semantic-retrieval 任务 1.3；与 knowledge_chunk 同维度建制）。 */
+  private String crmEntityCollection = "crm_entity";
+
   /** 向量维度，必须与 embedding 模型一致。 */
   private int dimensions = 1024;
 

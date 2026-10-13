@@ -9,7 +9,10 @@ package com.slz.crm.platform.contract;
  * <p>高亮协议：前端收到 {@code references} 事件后，用 {@code payload.citations} 里的编号集 匹配答案内联 {@code [n]}，再按
  * {@code pageNo}（PDF）/ {@code rowIndex}（Excel）定位。
  *
- * @param sourceType 来源类型：{@code pdf|docx|txt|md|excel|image|manual} 等，小写
+ * @param sourceType 来源类型：{@code pdf|docx|txt|md|excel|image|manual} 等，小写； 业务实体来源为 {@code
+ *     CUSTOMER}（add-customer-semantic-retrieval 受控解冻 2026-10-13：
+ *     documentId=客户主键、filename=company_name，复用现有字段零结构改动，SSE payload 结构零改动； spec 增量见
+ *     openspec/changes/add-customer-semantic-retrieval/specs/knowledge-rag/spec-delta.md）
  * @param route 检索路由：{@code vector|keyword|hybrid|ocr}（便于评测归因）
  * @param filename 展示用文件名（含扩展名，不含路径）
  * @param documentId 文档主键
