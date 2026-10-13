@@ -2,12 +2,14 @@ package com.slz.crm.unit.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.knowledge.ingestion.CustomerIngestionService;
 import com.slz.crm.pojo.ao.RoleAO;
@@ -19,6 +21,7 @@ import com.slz.crm.server.mapper.CustomerCompanyMapper;
 import com.slz.crm.server.mapper.CustomerContactMapper;
 import com.slz.crm.server.service.BusinessRecordAccessService;
 import com.slz.crm.server.service.DataConvertService;
+import com.slz.crm.server.service.SalesOpportunityService;
 import com.slz.crm.server.service.impl.CustomerContactServiceImpl;
 import java.util.List;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -27,7 +30,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
@@ -37,9 +39,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
  * 客户联系人服务语义 hook 单元测试（add-customer-contact-retrieval 任务 1.4）。
  *
  * <p>覆盖联系人 CRUD 增删改（含软删）事务提交后触发所属 company 重摄取：复用 {@link
- * CustomerSemanticHookSupport#runAfterCommit}（无事务测试上下文「无同步→立即同步」分支）→ 回查所属公司完整实体 →
- * {@link CustomerIngestionService#ingest}；以及无 embedding 配置（customerIngestionService 未装配）时静默降级不致
- * 既有 IT 失败。全部零外呼（mock 桩）。
+ * CustomerSemanticHookSupport#runAfterCommit}（无事务测试上下文「无同步→立即同步」分支）→ 回查所属公司完整实体 → {@link
+ * CustomerIngestionService#ingest}；以及无 embedding 配置（customerIngestionService 未装配）时静默降级不致 既有 IT
+ * 失败。全部零外呼（mock 桩）。
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("客户联系人服务语义 hook")
@@ -55,9 +57,15 @@ class CustomerContactServiceImplTest {
   @Mock private CustomerContactMapper customerContactMapper;
   @Mock private DataConvertService dataConvertService;
   @Mock private BusinessRecordAccessService businessRecordAccessService;
+  @Mock private SalesOpportunityService salesOpportunityService;
   @Mock private CustomerIngestionService customerIngestionService;
 
   @Spy @InjectMocks private CustomerContactServiceImpl contactService;
+
+  /** 显式注入 baseMapper（Mockito 对 ServiceImpl 泛型 baseMapper 字段注入不可靠，反射定位声明类覆写）。 */
+  private void injectBaseMapper() {
+    setField(contactService, "baseMapper", customerContactMapper, ServiceImpl.class);
+  }
 
   @AfterEach
   void clearCurrentUser() {
@@ -82,6 +90,7 @@ class CustomerContactServiceImplTest {
   @DisplayName("新增联系人后事务提交触发所属公司重摄取")
   void insertTriggersParentCompanyReingest() {
     authenticateAs(1L);
+    injectBaseMapper();
     when(customerCompanyMapper.selectById(501L)).thenReturn(fullCompany(501L));
     when(customerContactMapper.insert(any(CustomerContactEntity.class)))
         .thenAnswer(
@@ -104,7 +113,11 @@ class CustomerContactServiceImplTest {
   @DisplayName("软删联系人后事务提交触发所属公司重摄取（联系人出语义段）")
   void softDeleteTriggersParentCompanyReingest() {
     authenticateAs(1L);
-    when(contactService.getById(9L)).thenReturn(contactEntity(9L, 502L));
+    injectBaseMapper();
+    // getById 走 baseMapper.selectById；updateBatchById 走 MyBatis-Plus 批处理器需 Spring 事务资源（纯单测无），
+    // @Spy 桩掉该重载避开；软删后重摄取所属公司仍应触发
+    when(customerContactMapper.selectById(9L)).thenReturn(contactEntity(9L, 502L));
+    doReturn(true).when(contactService).updateBatchById(any());
     when(customerCompanyMapper.selectById(502L)).thenReturn(fullCompany(502L));
 
     int count = contactService.deleteOrRecoverByIds(List.of(9L), true);
@@ -118,8 +131,13 @@ class CustomerContactServiceImplTest {
   @DisplayName("customerIngestionService 未装配（无 embedding 测试环境）hook 静默跳过不致失败")
   void missingIngestionServiceSkipsHookQuietly() {
     authenticateAs(1L);
-    // 将 spy 的 customerIngestionService 置空，模拟无 embedding 依赖装配的测试环境
-    setField(contactService, "customerIngestionService", null);
+    injectBaseMapper();
+    // 将已注入的 customerIngestionService 置空，模拟无 embedding 依赖装配的测试环境
+    setField(
+        contactService,
+        "customerIngestionService",
+        null,
+        com.slz.crm.server.service.impl.CustomerContactServiceImpl.class);
     when(customerContactMapper.insert(any(CustomerContactEntity.class)))
         .thenAnswer(
             invocation -> {
@@ -144,10 +162,10 @@ class CustomerContactServiceImplTest {
     return c;
   }
 
-  /** 反射写字段（@Spy/@InjectMocks 装配后可覆写受注入字段）。 */
-  private void setField(Object target, String name, Object value) {
+  /** 反射写字段（定位到指定声明类，兼容 {@code @Spy} 子类与 ServiceImpl 泛型 baseMapper）。 */
+  private void setField(Object target, String name, Object value, Class<?> declaringClass) {
     try {
-      java.lang.reflect.Field field = target.getClass().getSuperclass().getDeclaredField(name);
+      java.lang.reflect.Field field = declaringClass.getDeclaredField(name);
       field.setAccessible(true);
       field.set(target, value);
     } catch (Exception e) {

@@ -117,8 +117,7 @@ class CustomerSemanticTextSupportTest {
     String segment = CustomerSemanticTextSupport.buildContactSegment(contacts);
 
     assertEquals(
-        "联系人: 张伟（技术负责人，13900000111，zhangwei@slz.com）；李娜（销售总监，13900000333，lina@slz.com）",
-        segment);
+        "联系人: 张伟（技术负责人，13900000111，zhangwei@slz.com）；李娜（销售总监，13900000333，lina@slz.com）", segment);
   }
 
   @Test
@@ -134,7 +133,8 @@ class CustomerSemanticTextSupportTest {
   void contactSegmentLimitsToFive() {
     List<CustomerContactEntity> contacts =
         java.util.stream.LongStream.rangeClosed(1, 8)
-            .mapToObj(i -> contact(i, "联系人" + i, "职位" + i, "1390000" + i, "p" + i + "@slz.com", false))
+            .mapToObj(
+                i -> contact(i, "联系人" + i, "职位" + i, "1390000" + i, "p" + i + "@slz.com", false))
             .toList();
 
     String segment = CustomerSemanticTextSupport.buildContactSegment(contacts);
@@ -158,8 +158,7 @@ class CustomerSemanticTextSupportTest {
     String withContact = CustomerSemanticTextSupport.buildSemanticText(company, contacts);
     String base = CustomerSemanticTextSupport.buildSemanticText(company);
 
-    assertEquals(
-        base + "；联系人: 张伟（销售总监，13800138001，zhangwei@slz.com）", withContact);
+    assertEquals(base + "；联系人: 张伟（销售总监，13800138001，zhangwei@slz.com）", withContact);
     assertEquals(base, CustomerSemanticTextSupport.buildSemanticText(company, null));
     assertEquals(base, CustomerSemanticTextSupport.buildSemanticText(company, List.of()));
   }

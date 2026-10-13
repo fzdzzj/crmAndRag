@@ -27,9 +27,8 @@ import org.springframework.stereotype.Service;
  *
  * <p>ownerDeptId 为 owner_id 反查 sys_user.dept_id 的反范式缓存（DEPT 档过滤依赖）；owner 不存在时 该键缺省。
  *
- * <p>联系人附属语义段（add-customer-contact-retrieval 任务 1.2）：单条摄取时查所属 contact 列表（is_deleted=0、
- * 按 id 升序、上限 5 人）拼入语义文本；customerContactMapper 缺失（部分评测/单测场景注入 null）时跳过联系人段、
- * 仅拼公司文本，payload 与 pointId 派生规则零改动。
+ * <p>联系人附属语义段（add-customer-contact-retrieval 任务 1.2）：单条摄取时查所属 contact 列表（is_deleted=0、 按 id 升序、上限 5
+ * 人）拼入语义文本；customerContactMapper 缺失（部分评测/单测场景注入 null）时跳过联系人段、 仅拼公司文本，payload 与 pointId 派生规则零改动。
  */
 @Slf4j
 @Service
@@ -68,7 +67,8 @@ public class CustomerIngestionService {
     if (entity == null || entity.getId() == null) {
       throw new IllegalArgumentException("客户公司实体或 id 不能为空");
     }
-    String text = CustomerSemanticTextSupport.buildSemanticText(entity, loadContacts(entity.getId()));
+    String text =
+        CustomerSemanticTextSupport.buildSemanticText(entity, loadContacts(entity.getId()));
     if (text.isBlank()) {
       throw new IllegalArgumentException("客户公司语义文本为空，跳过嵌入（id=" + entity.getId() + "）");
     }
@@ -87,8 +87,7 @@ public class CustomerIngestionService {
 
   /**
    * 加载公司所属联系人列表（add-customer-contact-retrieval 任务 1.2）：is_deleted=0、按 id 升序、上限 5 人
-   * （防语义膨胀保险丝）。customerContactMapper 缺失（评测/单测注入 null）返回空列表——跳过联系人段，payload 与
-   * pointId 派生规则零改动。
+   * （防语义膨胀保险丝）。customerContactMapper 缺失（评测/单测注入 null）返回空列表——跳过联系人段，payload 与 pointId 派生规则零改动。
    *
    * @param companyId 客户公司主键
    * @return 有序联系人列表（可能为空）

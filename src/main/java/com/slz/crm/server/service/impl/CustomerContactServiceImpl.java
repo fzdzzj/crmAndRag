@@ -217,8 +217,7 @@ public class CustomerContactServiceImpl
     }
 
     // 物理删除前先收集受影响公司 id（删除后无法反查 company_id，用于联系人段重摄取）
-    List<CustomerContactEntity> doomed =
-        customerContactMapper.selectBatchIds(idList);
+    List<CustomerContactEntity> doomed = customerContactMapper.selectBatchIds(idList);
     List<Long> companyIds = distinctCompanyIds(doomed);
 
     // 1. 删除客户联系人备注表数据
@@ -443,7 +442,8 @@ public class CustomerContactServiceImpl
   }
 
   /**
-   * 提取联系人列表所属公司 id 去重集合（add-customer-contact-retrieval 任务 1.3；null/空返回空集合）。 用于批量重摄取去重，避免同一公司重复 upsert。
+   * 提取联系人列表所属公司 id 去重集合（add-customer-contact-retrieval 任务 1.3；null/空返回空集合）。 用于批量重摄取去重，避免同一公司重复
+   * upsert。
    *
    * @param contacts 联系人列表（可为 null/空）
    * @return 去重后的公司 id 集合（保序去重，LinkedHashSet 语义）
@@ -462,8 +462,8 @@ public class CustomerContactServiceImpl
   }
 
   /**
-   * 所属公司语义向量同步闸（add-customer-contact-retrieval 任务 1.3）：依赖未装配（部分单测场景）整体跳过； 事务与异常语义委托
-   * {@link CustomerSemanticHookSupport#runAfterCommit}。无 embedding 配置的测试环境静默降级、不致既有 IT 失败。
+   * 所属公司语义向量同步闸（add-customer-contact-retrieval 任务 1.3）：依赖未装配（部分单测场景）整体跳过； 事务与异常语义委托 {@link
+   * CustomerSemanticHookSupport#runAfterCommit}。无 embedding 配置的测试环境静默降级、不致既有 IT 失败。
    *
    * @param scene 场景描述（日志定位用）
    * @param action 向量同步动作

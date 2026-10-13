@@ -69,7 +69,11 @@ class CustomerIngestionServiceTest {
   void setUp() {
     service =
         new CustomerIngestionService(
-            embeddingService, vectorStore, userMapper, customerCompanyMapper, customerContactMapper);
+            embeddingService,
+            vectorStore,
+            userMapper,
+            customerCompanyMapper,
+            customerContactMapper);
   }
 
   private CustomerCompanyEntity entity(long id, String companyName, Long ownerId) {

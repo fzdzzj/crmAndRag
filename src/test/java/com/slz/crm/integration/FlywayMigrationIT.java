@@ -470,9 +470,9 @@ class FlywayMigrationIT {
   }
 
   /**
-   * V40 断言（add-customer-contact-retrieval 任务 2.2）：客户联系人演示种子落库——240 行（1001-1120 每家 2 人）、
-   * 显式 id 从 20001 起避开 init_data.sql 测试种子（id=1）、全部 is_deleted=0、company_id 外键命中既有 V39 客户、
-   * mobile 全局唯一、职位分布覆盖关键岗位（销售/技术/采购/运营），供「联系人作客户附属语义段」检索使用。
+   * V40 断言（add-customer-contact-retrieval 任务 2.2）：客户联系人演示种子落库——240 行（1001-1120 每家 2 人）、 显式 id 从
+   * 20001 起避开 init_data.sql 测试种子（id=1）、全部 is_deleted=0、company_id 外键命中既有 V39 客户、 mobile
+   * 全局唯一、职位分布覆盖关键岗位（销售/技术/采购/运营），供「联系人作客户附属语义段」检索使用。
    */
   @Test
   @Order(12)
