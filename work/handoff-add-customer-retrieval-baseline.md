@@ -1,4 +1,4 @@
-# §0 留痕 —— add-customer-retrieval-baseline（交接快照，未跟踪）
+# §0 留痕 —— add-customer-retrieval-baseline（交接快照，已随 005143a 提交 tracked）
 
 > 分支 feature/add-customer-retrieval-baseline（自 master@a2f629c 检出）。tasks 全勾与依据见 openspec/changes/add-customer-retrieval-baseline/tasks.md。
 
@@ -27,7 +27,7 @@
 - 3.1/3.2 CustomerRetrievalBenchmarkIT（failsafe IT）：RAG_BENCHMARK_REAL=1 + DASHSCOPE_API_KEY 双门控 Assumptions 跳过；固定 16 行 customer 语料经生产摄取链（CustomerIngestionService）真嵌入；真 BusinessRetrievalService + ALL 档数据范围桩（权限面不混入质量评测）；10 例（C-01~C-07 语义匹配 行业/规模/区域 + C-08~C-10 词汇失配 同义不同词，对齐 MISMATCH 口径）；判卷复用 RagQualityEvaluator（recall/MRR/hit）；独立编号不并入知识库 63 例 fixture，SUITE_VERSION 不动。
 - 3.3 customer 面首跑（2026-10-13 17:23，真跑）：**caseCount=10，meanRecallAtK=1.0，MRR=1.0，hitRate=1.0（10/10 全中），meanPrecisionAtK=0.2**（每例 1/5，符合单金锚预期），failureRate=0。报告 docs/rag-quality/customer-baseline-v1.json（CUSTOMER-SUITE-1.0，**不锚 fixture**，D2 观察期）。
   - 词汇失配 3 例（C-08 扫地机器人↔家用清洁机器人 / C-09 跨境电商ERP↔跨境贸易管理软件 / C-10 注塑模具↔塑料成型模具）全部 top-1 召回——语义桥接有效。
-- 3.4 知识库面回归：RagRealRetrievalBenchmarkIT 真跑（63 例，SUITE 5.0），输出 scratch 文件 docs/rag-quality/kb-regression-v1.json，逐例对照 baseline-v6.json —— 漂移结论见下文。
+- 3.4 知识库面回归：RagRealRetrievalBenchmarkIT 真跑（63 例，SUITE 5.0），输出回归对拍文件 docs/rag-quality/kb-regression-v1.json（已随 005143a 提交 tracked），逐例对照 baseline-v6.json —— 漂移结论见下文。
 
 ## 4. 知识库面漂移对拍结论（3.4，真跑完成 2026-10-13 17:35）
 
@@ -36,9 +36,9 @@
 - **逐例漂移**：63 例 recall 逐例零漂移（Δrecall=0 全部）；8 例有 citP/ansC 微小抖动（±0.05~0.33，LLM 非确定性判卷/引用生成所致，非检索回退）：T-03/T-11/T-12/T-14/TB-08/M-01/M-02/M-04。
 - **结论：add-customer-semantic-retrieval 合入后知识库面零回退**（recall 逐例一致、聚合均值全部在 5% 房风内）；本轮为旁证性回归跑，baseline-v6 锚定语义零改动。
 
-## 5. 门禁与收尾（组 4，待回填）
+## 5. 门禁与收尾（组 4，复核留证回填）
 
-- 全量 mvn -B -ntp test：0 失败（surefire [N] 例，较基线只增不减）。
+- 全量 mvn -B -ntp clean verify：surefire 1225/0/0/0（与基线持平，只增不减）。
 - 四静态：checkstyle 0 / spotless 0 / spotbugs 0 / pmd 0。
 - 三守卫：pmd-baseline / spotbugs-bijection / test-baseline。
 - merge-gate 8/8。
@@ -51,3 +51,8 @@
 - C. **本地 boot 覆盖三项运行参数**（不落盘、不改代码/配置）：SPRING_AI_DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com（修预存配置怪癖：application.yml 的 spring.ai.dashscope.base-url=compatible-mode/v1 使原生 DashScopeApi 拼出 compatible-mode/v1/api/v1/... 404，属既有配置缺陷，回埋/评测均需原生 base）；KNOWLEDGE_STORAGE_PROVIDER=in-memory（免 MinIO）；MANAGEMENT_ENDPOINT_HEALTH_VALIDATE_GROUP_MEMBERSHIP=false（in-memory 存储下 readiness 组 minio 成员缺席）。
 - D. **native 与 compatible-mode 向量空间不可比**（实测同文本 cos≈0.40）：生产检索与回埋均走原生端点，系统内部一致；仅手工冒烟脚本曾误用 compatible-mode（已改用同源原生嵌入）。评测链路（benchmark IT）自建 provider 走原生 base，与生产一致。
 - E. 前端零改动（裁决假设 4 遵守）；已锚知识库 SUITE 5.0 / baseline-v6 fixture 零改动；既有迁移 V1-V38 零改动。
+
+## 7. 代笔披露（2026-10-13）
+
+- 本文件 3 处文档级 minor（L1「未跟踪」措辞、§3.4「scratch」措辞、§5 surefire [N] 占位符与「待回填」标题）由指导主 agent 代笔收口（owner 授权，b2 卡 42fb2f7 先例）；依据全部取自 A 档复核留证（work/tmp/acrb-review/ verify.log：surefire 1225/0/0/0 + failsafe 113/0/0/7），零新增实施。
+- 可选第 4 项 minor（真跑 LOG 归档对齐 citation-forensics-v4 先例）未采纳：复核判定不阻塞，raw 已在 work/tmp/acrb-review/ 留证。
