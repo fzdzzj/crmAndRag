@@ -30,9 +30,9 @@ import org.mockito.ArgumentCaptor;
 /**
  * 业务数据检索权限闸矩阵（add-customer-semantic-retrieval 任务 3.1 红测先行）。
  *
- * <p>六场景全覆盖：归属人可检 / SELF 同事检索不到 / DEPT 上司可检下属 / 管理员 ALL 全可检 / NONE 级零外发（零 embed 零 search）/ TAGE
- * 绑定与共享 union 不漏；另含 DEPT_AND_CHILD 子树、编号接续、去重截断与降级链。向量库以 mock 承接：权限闸的正确性体现在
- * VectorSearchRequest.filter 的档位组合上（Qdrant metadata 等值过滤，B4 冻结约定）。
+ * <p>场景全覆盖：归属人可检 / SELF 同事检索不到（且不补 TAGE）/ DEPT 上司可检下属（且补 TAGE 标签资源）/ 管理员 ALL 全可检 / NONE 级零外发（零
+ * embed 零 search）/ TAGE 与共享 union 不漏 / DEPT_AND_CHILD 子树 union 且补 TAGE；另含编号接续、去重截断与 降级链。向量库以 mock
+ * 承接：权限闸的正确性体现在 VectorSearchRequest.filter 的档位组合上（Qdrant metadata 等值过滤，B4 冻结约定）。
  */
 class BusinessRetrievalServiceTest {
 
@@ -145,6 +145,8 @@ class BusinessRetrievalServiceTest {
     ArgumentCaptor<VectorSearchRequest> captor = ArgumentCaptor.forClass(VectorSearchRequest.class);
     verify(vectorStore).search(captor.capture());
     assertThat(captor.getValue().filter()).containsEntry("ownerUserId", 43L);
+    // SELF 档不补 TAGE：SQL 层 SELF 无 tage，补召回会越权扩大（页面一致性锚定）
+    verify(dataScopeService, never()).getTageResourceIds(any(), any());
   }
 
   @Test
@@ -287,17 +289,53 @@ class BusinessRetrievalServiceTest {
   }
 
   @Test
-  @DisplayName("DEPT 档不补查 TAGE 绑定（与 canReadResource 同源，防越权扩大）")
-  void retrieve_deptDoesNotSupplementTage() {
+  @DisplayName("DEPT 档补查 TAGE 绑定：与页面列表 SQL 超集不变量一致，不漏标签资源客户")
+  void retrieve_deptSupplementsTageBindings() {
     stubLevel(DataScopeLevel.DEPT);
+    when(dataScopeService.getTageResourceIds(3L, RESOURCE_TYPE)).thenReturn(List.of(304L));
     when(dataScopeService.getSharedResourceIds(10L, 3L, RESOURCE_TYPE)).thenReturn(List.of());
-    when(vectorStore.search(any())).thenReturn(List.of());
+    when(vectorStore.search(any()))
+        .thenReturn(
+            List.of(hit("chunk-dept", 305L, 0.8D, "丙公司")),
+            List.of(hit("chunk-tage", 304L, 0.85D, "丁公司")));
 
-    service.retrieve(
-        new BusinessRetrievalPort.BusinessRetrievalQuery("客户", userContext(10L, 3L, 11L), 5, 1));
+    BusinessRetrievalPort.BusinessRetrievalResult result =
+        service.retrieve(
+            new BusinessRetrievalPort.BusinessRetrievalQuery(
+                "客户", userContext(10L, 3L, 11L), 5, 1));
 
-    verify(dataScopeService, never()).getTageResourceIds(any(), any());
-    verify(vectorStore, org.mockito.Mockito.times(1)).search(any());
+    assertThat(result.hitCount()).isEqualTo(2);
+    assertThat(result.sources())
+        .extracting(SourceReference::documentId)
+        .containsExactly("304", "305");
+    ArgumentCaptor<VectorSearchRequest> captor = ArgumentCaptor.forClass(VectorSearchRequest.class);
+    verify(vectorStore, org.mockito.Mockito.times(2)).search(captor.capture());
+    assertThat(captor.getAllValues().get(0).filter()).containsEntry("ownerDeptId", 11L);
+    assertThat(captor.getAllValues().get(1).filter()).containsEntry("resourceId", 304L);
+  }
+
+  @Test
+  @DisplayName("DEPT_AND_CHILD 档补查 TAGE 绑定：子树 union 之外仍 union 标签资源")
+  void retrieve_deptAndChildSupplementsTageBindings() {
+    stubLevel(DataScopeLevel.DEPT_AND_CHILD);
+    when(sysDeptMapper.selectList(any())).thenReturn(List.of());
+    when(dataScopeService.getTageResourceIds(3L, RESOURCE_TYPE)).thenReturn(List.of(306L));
+    when(dataScopeService.getSharedResourceIds(10L, 3L, RESOURCE_TYPE)).thenReturn(List.of());
+    when(vectorStore.search(any()))
+        .thenReturn(
+            List.of(hit("chunk-dept", 301L, 0.9D, "甲公司")),
+            List.of(hit("chunk-tage", 306L, 0.6D, "戊公司")));
+
+    BusinessRetrievalPort.BusinessRetrievalResult result =
+        service.retrieve(
+            new BusinessRetrievalPort.BusinessRetrievalQuery(
+                "客户", userContext(10L, 3L, 11L), 5, 1));
+
+    assertThat(result.hitCount()).isEqualTo(2);
+    ArgumentCaptor<VectorSearchRequest> captor = ArgumentCaptor.forClass(VectorSearchRequest.class);
+    verify(vectorStore, org.mockito.Mockito.times(2)).search(captor.capture());
+    assertThat(captor.getAllValues().get(0).filter()).containsEntry("ownerDeptId", 11L);
+    assertThat(captor.getAllValues().get(1).filter()).containsEntry("resourceId", 306L);
   }
 
   @Test

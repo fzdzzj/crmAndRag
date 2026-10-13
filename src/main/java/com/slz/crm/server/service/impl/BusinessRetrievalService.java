@@ -26,13 +26,15 @@ import org.springframework.stereotype.Service;
  * 客户业务数据语义检索服务（add-customer-semantic-retrieval 任务 3.1）。
  *
  * <p>实现 {@link BusinessRetrievalPort}：权限闸档位（NONE 零外发 / SELF / DEPT / DEPT_AND_CHILD / ALL）+ 补充召回，对齐
- * {@code DataScopeService#getHighestDataScopeLevel} 与 {@code canReadResource}
- * 的冻结语义（resourceType=customer_company）；向量检索落 {@code crm_entity} 集合（{@link CrmEntityVectorStore}）。
+ * {@code DataScopeService#getHighestDataScopeLevel} 与页面列表 SQL（{@code
+ * DataScopeServiceImpl#addDeptScopeCondition}）的冻结语义（resourceType=customer_company）；向量检索落 {@code
+ * crm_entity} 集合（{@link CrmEntityVectorStore}）。
  *
- * <p>权限闸口径（与页面 SQL / 单条判权同源）：NONE→空返回零外发（不 embed 不 search）；ALL→仅 entityType filter；
- * SELF/TAGE→ownerUserId=本人；DEPT→ownerDeptId=本部门；DEPT_AND_CHILD→子树逐 deptId union（{@link
- * DataScopeDepartmentResolver}）； TAGE 补充召回仅 TAGE 档（镜像 canReadResource，DEPT/SELF 不补防越权扩大）；共享补充召回对全部非
- * ALL 档恒开。
+ * <p>权限闸口径（与页面列表 SQL 同源，owner 锚定「页面看得到的检索得到」）：NONE→空返回零外发（不 embed 不 search）；ALL→仅 entityType
+ * filter；SELF/TAGE→ownerUserId=本人；DEPT→ownerDeptId=本部门；DEPT_AND_CHILD→子树逐 deptId union（{@link
+ * DataScopeDepartmentResolver}）；TAGE 补充召回对 TAGE/DEPT/DEPT_AND_CHILD 档恒开（对齐 {@code
+ * DataScopeServiceImpl#addDeptScopeCondition} 的「部门归属 OR 标签资源 OR 显式共享」超集不变量，DEPT 档不因档位收窄 TAGE 可见
+ * 范围；SELF 档不补——SQL 层 SELF 无 tage）；共享补充召回对全部非 ALL 档恒开。
  *
  * <p>安全红线：无权 customer 绝不出现在检索结果；检索链路任何异常按空返回降级，不阻断 AiChat 主答。
  */
@@ -125,8 +127,11 @@ public class BusinessRetrievalService implements BusinessRetrievalPort {
           hits.addAll(search(query, vector, deptFilter(deptId)));
         }
       }
-      if (level == DataScopeLevel.TAGE) {
-        // TAGE 补充召回：仅 TAGE 档（镜像 canReadResource；DEPT/SELF 不补防越权扩大）
+      if (level == DataScopeLevel.TAGE
+          || level == DataScopeLevel.DEPT
+          || level == DataScopeLevel.DEPT_AND_CHILD) {
+        // TAGE 补充召回：TAGE/DEPT/DEPT_AND_CHILD 档恒开——对齐页面列表 SQL「部门归属 OR 标签资源 OR 显式共享」
+        // 超集不变量（DataScopeServiceImpl#addDeptScopeCondition）；SELF 不补（SQL 层 SELF 无 tage）
         for (Long resourceId : dataScopeService.getTageResourceIds(user.roleId(), RESOURCE_TYPE)) {
           hits.addAll(search(query, vector, resourceFilter(resourceId)));
         }
