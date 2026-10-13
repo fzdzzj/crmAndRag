@@ -71,14 +71,17 @@ class KnowledgeChunkControllerIT extends AbstractMySqlIT {
     jdbcTemplate.update(
         "INSERT INTO role_permissions (role_id, permissions_id) VALUES (?, ?)", ROLE_ID, 803L);
     jdbcTemplate.update(
-        "INSERT INTO sys_user (id, password, real_name, phone, email, role_id, status, create_time) "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, NOW())",
+        // dept_id 必填：KnowledgeChunkController.currentUser 的 UserContext 构造要求 deptId>0，
+        // 否则回退桥抛 TOKEN_ERROR(10001)。
+        "INSERT INTO sys_user (id, password, real_name, phone, email, role_id, dept_id, status, create_time) "
+            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())",
         USER_ID,
         "e10adc3949ba59abbe56e057f20f883e",
         "chunk-reader-user",
         "13900000803",
         "chunk803@slz.com",
         ROLE_ID,
+        1L,
         1);
     jdbcTemplate.update(
         "INSERT INTO knowledge_base (id, name, display_name, owner_user_id, visibility, is_deleted) "
