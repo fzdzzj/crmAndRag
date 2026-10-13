@@ -427,9 +427,9 @@ class FlywayMigrationIT {
   }
 
   /**
-   * V39 断言（add-customer-retrieval-baseline 任务 1.1/1.2）：演示种子落库且权限四档归属齐备——
-   * 120 行演示客户（owner 覆盖 6 名演示销售员）、4 个演示部门带 leader_id、演示销售角色 roleId=5 存在、
-   * 608 已授 roleId=5（FlywayMigrationIT Order2 守卫的"业务角色全量获 608"在 V39 后仍成立）。
+   * V39 断言（add-customer-retrieval-baseline 任务 1.1/1.2）：演示种子落库且权限四档归属齐备—— 120 行演示客户（owner 覆盖 6
+   * 名演示销售员）、4 个演示部门带 leader_id、演示销售角色 roleId=5 存在、 608 已授 roleId=5（FlywayMigrationIT Order2
+   * 守卫的"业务角色全量获 608"在 V39 后仍成立）。
    */
   @Test
   @Order(11)
