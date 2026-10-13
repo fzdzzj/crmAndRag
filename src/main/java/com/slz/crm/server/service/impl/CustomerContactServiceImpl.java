@@ -12,6 +12,7 @@ import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.AOTOExcelUntil;
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.common.untils.ForeignKeyDeleteUtil;
+import com.slz.crm.knowledge.ingestion.CustomerIngestionService;
 import com.slz.crm.pojo.dto.CustomerContactDTO;
 import com.slz.crm.pojo.dto.CustomerContactRemarkDTO;
 import com.slz.crm.pojo.entity.CustomerContactEntity;
@@ -41,6 +42,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
+@SuppressWarnings("PMD.NcssCount")
+// 豁免理由（add-customer-contact-retrieval 任务 4.1）：本类聚合 20+ 个联系人 CRUD/查询/导入/生日提醒方法，NCSS 随
+// 联系人语义重摄取横切（5 处 reingest 触发 + 注入依赖）刚越过类级 150 报告线；再拆分会牺牲高内聚。
+// 注：本处为全仓唯一 NcssCount 类级 suppression，无同类先例（CustomerSemanticHookSupport 走拆分方案，其 L28
+// 豁免系 AvoidCatchingGenericException；A 档复核 MINOR-2 更正原「对齐先例」表述）。
 public class CustomerContactServiceImpl
     extends ServiceImpl<CustomerContactMapper, CustomerContactEntity>
     implements CustomerContactService {
@@ -67,6 +73,10 @@ public class CustomerContactServiceImpl
 
   @Autowired private BusinessRecordAccessService businessRecordAccessService;
 
+  /** 所属公司语义摄取（add-customer-contact-retrieval 任务 1.3 hook 依赖；缺失时 hook 整体跳过）。 */
+  @Autowired(required = false)
+  private CustomerIngestionService customerIngestionService;
+
   @Override
   @Transactional(rollbackFor = Exception.class)
   public int list(MultipartFile file) {
@@ -90,6 +100,10 @@ public class CustomerContactServiceImpl
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
+
+    // add-customer-contact-retrieval 任务 1.3：Excel 导入路径——导入后所属公司重摄取（联系人入语义段）
+    CustomerContactReingestSupport.reingestForContacts(
+        "导入客户联系人", dataList, customerIngestionService, customerCompanyMapper);
 
     return dataList.size();
   }
@@ -125,6 +139,10 @@ public class CustomerContactServiceImpl
       }
     }
 
+    // add-customer-contact-retrieval 任务 1.3：修改路径——受影响所属公司批量重摄取（联系人字段入语义段）
+    CustomerContactReingestSupport.reingestForContacts(
+        "修改客户联系人", dataList, customerIngestionService, customerCompanyMapper);
+
     return list.size();
   }
 
@@ -151,6 +169,12 @@ public class CustomerContactServiceImpl
       created.setId(entity.getId());
       created.setName(entity.getName());
     }
+    // add-customer-contact-retrieval 任务 1.3：新增路径——所属公司重摄取（新增联系人入语义段）
+    CustomerContactReingestSupport.reingestAfterCommit(
+        "新增客户联系人",
+        entity.getCompanyId() == null ? List.of() : List.of(entity.getCompanyId()),
+        customerIngestionService,
+        customerCompanyMapper);
     return created;
   }
 
@@ -186,6 +210,10 @@ public class CustomerContactServiceImpl
       salesOpportunityService.cascadeDeleteByContactIds(idList);
     }
 
+    // add-customer-contact-retrieval 任务 1.3：软删/恢复路径——受影响所属公司重摄取（软删联系人出语义段）
+    CustomerContactReingestSupport.reingestForContacts(
+        "软删/恢复客户联系人", dataList, customerIngestionService, customerCompanyMapper);
+
     return dataList.size();
   }
 
@@ -198,6 +226,9 @@ public class CustomerContactServiceImpl
       throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
 
+    // 物理删除前先收集受影响公司 id（删除后无法反查 company_id，用于联系人段重摄取）
+    List<CustomerContactEntity> doomed = customerContactMapper.selectBatchIds(idList);
+
     // 1. 删除客户联系人备注表数据
     LambdaQueryWrapper<CustomerContactRemarkEntity> queryWrapper = new LambdaQueryWrapper<>();
     queryWrapper.in(CustomerContactRemarkEntity::getContactId, idList);
@@ -208,7 +239,16 @@ public class CustomerContactServiceImpl
     foreignKeyDeleteUtil.deleteCascade(CustomerContactEntity.class, idList, 2);
 
     // 3. 物理删除联系人本身
-    return customerContactMapper.deleteBatchIds(idList);
+    int deleted = customerContactMapper.deleteBatchIds(idList);
+
+    // add-customer-contact-retrieval 任务 1.3：物理删除路径——受影响所属公司重摄取（删除联系人出语义段）
+    CustomerContactReingestSupport.reingestAfterCommit(
+        "物理删除客户联系人",
+        CustomerContactReingestSupport.distinctCompanyIds(doomed),
+        customerIngestionService,
+        customerCompanyMapper);
+
+    return deleted;
   }
 
   @Privacy

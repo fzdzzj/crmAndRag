@@ -16,8 +16,10 @@ import com.slz.crm.knowledge.embedding.EmbeddingService;
 import com.slz.crm.knowledge.vector.CrmEntityVectorStore;
 import com.slz.crm.platform.contract.VectorRecord;
 import com.slz.crm.pojo.entity.CustomerCompanyEntity;
+import com.slz.crm.pojo.entity.CustomerContactEntity;
 import com.slz.crm.pojo.entity.UserEntity;
 import com.slz.crm.server.mapper.CustomerCompanyMapper;
+import com.slz.crm.server.mapper.CustomerContactMapper;
 import com.slz.crm.server.mapper.UserMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -47,6 +49,8 @@ class CustomerIngestionServiceTest {
   static void initTableInfo() {
     TableInfoHelper.initTableInfo(
         new MapperBuilderAssistant(new MybatisConfiguration(), ""), CustomerCompanyEntity.class);
+    TableInfoHelper.initTableInfo(
+        new MapperBuilderAssistant(new MybatisConfiguration(), ""), CustomerContactEntity.class);
   }
 
   @Mock private EmbeddingService embeddingService;
@@ -57,13 +61,19 @@ class CustomerIngestionServiceTest {
 
   @Mock private CustomerCompanyMapper customerCompanyMapper;
 
+  @Mock private CustomerContactMapper customerContactMapper;
+
   private CustomerIngestionService service;
 
   @BeforeEach
   void setUp() {
     service =
         new CustomerIngestionService(
-            embeddingService, vectorStore, userMapper, customerCompanyMapper);
+            embeddingService,
+            vectorStore,
+            userMapper,
+            customerCompanyMapper,
+            customerContactMapper);
   }
 
   private CustomerCompanyEntity entity(long id, String companyName, Long ownerId) {
@@ -138,6 +148,68 @@ class CustomerIngestionServiceTest {
     ArgumentCaptor<VectorRecord> captor = ArgumentCaptor.forClass(VectorRecord.class);
     verify(vectorStore).upsert(captor.capture());
     assertFalse(captor.getValue().metadata().containsKey("ownerDeptId"));
+  }
+
+  @Test
+  @DisplayName("ingest：所属联系人列表拼入语义文本（形如 联系人: 姓名（职位，手机，email））")
+  void ingestAppendsContactSegmentToSemanticText() {
+    CustomerContactEntity contact = new CustomerContactEntity();
+    contact.setId(11L);
+    contact.setCompanyId(101L);
+    contact.setName("张伟");
+    contact.setPosition("销售总监");
+    contact.setMobile("13800138011");
+    contact.setEmail("zhangwei@slz.com");
+    contact.setIsDeleted(false);
+    when(customerContactMapper.selectList(any())).thenReturn(List.of(contact));
+    when(embeddingService.embed(anyString())).thenReturn(STUB_VECTOR);
+
+    service.ingest(entity(101L, "示例科技有限公司", null));
+
+    ArgumentCaptor<VectorRecord> captor = ArgumentCaptor.forClass(VectorRecord.class);
+    verify(vectorStore).upsert(captor.capture());
+    VectorRecord record = captor.getValue();
+    assertTrue(record.text().contains("公司名称: 示例科技有限公司"));
+    assertTrue(record.text().contains("；联系人: 张伟（销售总监，13800138011，zhangwei@slz.com）"));
+    // pointId 派生与 payload 规则零改动
+    assertEquals(expectedPointId(101L), record.id());
+    assertEquals("CUSTOMER_COMPANY", record.metadata().get("entityType"));
+  }
+
+  @Test
+  @DisplayName("ingest：customerContactMapper 缺失（评测注入 null）→ 跳过联系人段、仅拼公司文本")
+  void ingestWithoutContactMapperOmitsContactSegment() {
+    CustomerIngestionService noContactMapper =
+        new CustomerIngestionService(
+            embeddingService, vectorStore, userMapper, customerCompanyMapper, null);
+    when(embeddingService.embed(anyString())).thenReturn(STUB_VECTOR);
+
+    noContactMapper.ingest(entity(101L, "示例科技有限公司", null));
+
+    ArgumentCaptor<VectorRecord> captor = ArgumentCaptor.forClass(VectorRecord.class);
+    verify(vectorStore).upsert(captor.capture());
+    String text = captor.getValue().text();
+    assertTrue(text.contains("公司名称: 示例科技有限公司"));
+    org.junit.jupiter.api.Assertions.assertFalse(text.contains("联系人"));
+  }
+
+  @Test
+  @DisplayName("ingest：全部联系人被软删 → 联系人段为空、文本不含软删联系人")
+  void ingestSkipsSoftDeletedContacts() {
+    CustomerContactEntity deleted = new CustomerContactEntity();
+    deleted.setId(11L);
+    deleted.setCompanyId(101L);
+    deleted.setName("已删联系人");
+    deleted.setIsDeleted(true);
+    when(customerContactMapper.selectList(any())).thenReturn(List.of(deleted));
+    when(embeddingService.embed(anyString())).thenReturn(STUB_VECTOR);
+
+    service.ingest(entity(101L, "示例科技有限公司", null));
+
+    ArgumentCaptor<VectorRecord> captor = ArgumentCaptor.forClass(VectorRecord.class);
+    verify(vectorStore).upsert(captor.capture());
+    org.junit.jupiter.api.Assertions.assertFalse(captor.getValue().text().contains("已删联系人"));
+    assertTrue(captor.getValue().text().contains("公司名称: 示例科技有限公司"));
   }
 
   @Test

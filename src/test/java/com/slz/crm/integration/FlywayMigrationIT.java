@@ -43,7 +43,7 @@ class FlywayMigrationIT {
       new TreeSet<>(
           List.of(
               "1", "3", "4", "4.1", "5", "6", "21", "22", "23", "24", "25", "26", "27", "28", "29",
-              "30", "31", "32", "33", "34", "35", "36", "37", "38", "39"));
+              "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40"));
 
   /** 跨 lane 关键表抽样：确认各号段 DDL 真的建出了表（V1/V3/V4/V5/V6）。 */
   private static final List<String> SPOT_CHECK_TABLES =
@@ -466,6 +466,54 @@ class FlywayMigrationIT {
                   + " AND is_deleted = b'0'");
       assertTrue(grant.next(), "V39 角色权限计数行缺失");
       assertEquals(1, grant.getLong(1), "V39 应授 roleId=5 权限 608（Order2 业务角色全量守卫）");
+    }
+  }
+
+  /**
+   * V40 断言（add-customer-contact-retrieval 任务 2.2）：客户联系人演示种子落库——240 行（1001-1120 每家 2 人）、 显式 id 从
+   * 20001 起避开 init_data.sql 测试种子（id=1）、全部 is_deleted=0、company_id 外键命中既有 V39 客户、 mobile
+   * 全局唯一、职位分布覆盖关键岗位（销售/技术/采购/运营），供「联系人作客户附属语义段」检索使用。
+   */
+  @Test
+  @Order(12)
+  void customerContactDemoSeedInsertedForAllV39Customers() throws Exception {
+    assumeTrue(mysql != null, "Docker 不可用时本用例随类跳过");
+    try (Connection connection =
+            DriverManager.getConnection(
+                mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
+        Statement statement = connection.createStatement()) {
+      ResultSet contacts =
+          statement.executeQuery(
+              "SELECT COUNT(*), COUNT(DISTINCT company_id), COUNT(DISTINCT mobile),"
+                  + " SUM(CASE WHEN is_deleted = 0 THEN 1 ELSE 0 END)"
+                  + " FROM customer_contact WHERE id BETWEEN 20001 AND 20240");
+      assertTrue(contacts.next(), "V40 联系人计数行缺失");
+      assertEquals(240, contacts.getLong(1), "V40 应种入 240 行客户联系人");
+      assertEquals(120, contacts.getLong(2), "V40 联系人应覆盖全部 120 家 V39 演示客户（每家 ≥1）");
+      assertEquals(240, contacts.getLong(3), "V40 联系人 mobile 应全局唯一（idx_mobile 约束）");
+      assertEquals(240, contacts.getLong(4), "V40 联系人应全部 is_deleted=0（侵入解读语义段）");
+
+      // 每家客户恰 2 名联系人（对称 V39 每家 2 人，也验证不触检索附段 5 人上限）
+      ResultSet perCompany =
+          statement.executeQuery(
+              "SELECT company_id, COUNT(*) FROM customer_contact WHERE id BETWEEN 20001 AND 20240"
+                  + " GROUP BY company_id HAVING COUNT(*) <> 2");
+      assertTrue(!perCompany.next(), "存在公司联系人数量不为 2——V40 应每家恰 2 人");
+
+      // 联系人外键公司存在（company_id 命中 customer_company 1001-1120）
+      ResultSet orphans =
+          statement.executeQuery(
+              "SELECT COUNT(*) FROM customer_contact cc LEFT JOIN customer_company cm"
+                  + " ON cc.company_id = cm.id WHERE cc.id BETWEEN 20001 AND 20240"
+                  + " AND (cm.id IS NULL OR cm.is_deleted = 1)");
+      assertTrue(orphans.next() && orphans.getLong(1) == 0, "V40 联系人外键公司缺失或公司已删");
+
+      // 职位分布抽查：关键岗位均被覆盖（销售/技术/采购/运营 语义面）
+      ResultSet positions =
+          statement.executeQuery(
+              "SELECT COUNT(DISTINCT position) FROM customer_contact WHERE id BETWEEN 20001 AND 20240"
+                  + " AND position IN ('销售总监','技术负责人','采购经理','运营总监','总经理','财务负责人')");
+      assertTrue(positions.next() && positions.getLong(1) >= 3, "V40 职位分布应覆盖 ≥3 个关键岗位");
     }
   }
 
