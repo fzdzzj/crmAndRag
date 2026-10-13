@@ -55,7 +55,7 @@
 > 接手披露：任务组 1-3 与本文件 §1-6 由原执行会话完成（至 8bb8972）；任务组 4 的 clean verify 由原会话 20:50 启动，收割实测结果、三守卫、基线 --update、merge-gate、tasks 勾格与 §7 补全由接手会话（owner 指令「接手」）完成。
 
 - 全量 `mvn -B -ntp -o clean verify`（默认 scope 无 opt-in，work/verify-clean.log）：surefire **1236 / 0 / 0 / 0**（↑ 自 acrb 基线 1225，净增 11 = 拼装/摄取/hook 新单测）、failsafe **114 / 0 / 0 / 7**（↑ 113，FlywayMigrationIT @Order(12) V40 断言 +1），BUILD SUCCESS（21:01:32）。
-- 四静态（verify 内顺序实测）：checkstyle **0 violations**；spotless **968 files clean / 0 needs changes**；spotbugs **BugInstance size is 0**；pmd:check 通过（0 违规——OnlyOneReturn 单出口收敛 + CustomerContactServiceImpl 类级 NcssCount 豁免 L45，对齐 CustomerSemanticHookSupport 先例）。
+- 四静态（verify 内顺序实测）：checkstyle **0 violations**；spotless **968 files clean / 0 needs changes**；spotbugs **BugInstance size is 0**；pmd:check 通过（0 违规——OnlyOneReturn 单出口收敛 + CustomerContactServiceImpl 类级 NcssCount 豁免 L45——全仓唯一 NcssCount suppression，无同类先例；原「对齐先例」表述有误（CustomerSemanticHookSupport 走拆分方案，其 L28 豁免系 AvoidCatchingGenericException，A 档复核 MINOR-2 已更正）。
 - 三守卫（work/guards.log）：**PMD_BASELINE_OK**（实测 0 == 登记 0 == pom 阈值 0）/ **BIJECTION_OK**（12 条豁免 == 12 条 High）/ check-test-baseline 通过（surefire 194/1236 ≥ 193/1225、failsafe 30/114 ≥ 30/113、skipped 7 ≤ 7）。
-- 基线 --update（surefire 净增 11 触发）：**1225→1236 / 113→114**，source-revision=8bb8972 干净哈希，measured-at=2026-10-13T13:03:23Z。
+- 基线 --update（surefire 净增 11 触发）：**1225→1236 / 113→114**，source-revision=a440181（树净重打戳，measured-at=2026-10-13T14:02:01Z）。更正（A 档复核 MAJOR-1）：原记「8bb8972 干净哈希 @13:03:23Z」为 --update 首跑输出，已提交文件实际被 85 秒后复跑覆盖为 8bb8972-dirty@13:04:48Z（复跑时基线文件自染脏，diff-index 必带 -dirty）；修正笔于树净 @a440181 重打戳更正，数值经复核无误，详见 tasks §4.2 更正行与 work/tmp/ccr-review/review-verdict.md。
 - merge-gate **8/8**：unit / spotbugs / pmd / baseline / frontend-unit（179 例）/ hook / bijection / pmd-baseline 全 PASS（work/merge-gate.log，结论行「以上输出可作为合入证据」）。

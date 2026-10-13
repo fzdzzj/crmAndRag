@@ -44,8 +44,9 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 @SuppressWarnings("PMD.NcssCount")
 // 豁免理由（add-customer-contact-retrieval 任务 4.1）：本类聚合 20+ 个联系人 CRUD/查询/导入/生日提醒方法，NCSS 随
-// 联系人语义重摄取横切（5 处 reingest 触发 + 注入依赖）刚越过类级 150 报告线；再拆分会牺牲高内聚，对齐既有
-// CustomerSemanticHookSupport 同级 suppression 先例（PMD NcssCount 类级豁免，行为等价）。
+// 联系人语义重摄取横切（5 处 reingest 触发 + 注入依赖）刚越过类级 150 报告线；再拆分会牺牲高内聚。
+// 注：本处为全仓唯一 NcssCount 类级 suppression，无同类先例（CustomerSemanticHookSupport 走拆分方案，其 L28
+// 豁免系 AvoidCatchingGenericException；A 档复核 MINOR-2 更正原「对齐先例」表述）。
 public class CustomerContactServiceImpl
     extends ServiceImpl<CustomerContactMapper, CustomerContactEntity>
     implements CustomerContactService {
