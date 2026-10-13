@@ -13,7 +13,6 @@ import com.slz.crm.knowledge.ingestion.CustomerIngestionService;
 import com.slz.crm.pojo.dto.CustomerCompanyDTO;
 import com.slz.crm.pojo.dto.CustomerMergeDTO;
 import com.slz.crm.pojo.entity.CustomerCompanyEntity;
-import com.slz.crm.pojo.excel.GetCustomerCompanyExcel;
 import com.slz.crm.pojo.vo.CustomerCompanyVO;
 import com.slz.crm.pojo.vo.GroupResultVO;
 import com.slz.crm.server.annotation.Privacy;
@@ -37,8 +36,6 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 @Slf4j
@@ -387,73 +384,39 @@ public class CustomerCompanyServiceImpl
     if (pageNum == null || pageSize == null) {
       throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
-
     Page<CustomerCompanyEntity> page = new Page<>(pageNum, pageSize);
-
-    LambdaQueryWrapper<CustomerCompanyEntity> wrapper = new LambdaQueryWrapper<>();
-
-    CustomerCompanySupport.likeIfNotBlank(
-        wrapper, CustomerCompanyEntity::getCompanyName, customerCompanyDTO.getCompanyName());
-    CustomerCompanySupport.likeIfNotBlank(
-        wrapper, CustomerCompanyEntity::getIndustry, customerCompanyDTO.getIndustry());
-    CustomerCompanySupport.eqIfNotBlank(
-        wrapper, CustomerCompanyEntity::getCustomerType, customerCompanyDTO.getCustomerType());
-    CustomerCompanySupport.likeIfNotBlank(
-        wrapper, CustomerCompanyEntity::getBelongGroup, customerCompanyDTO.getBelongGroup());
-    CustomerCompanySupport.likeIfNotBlank(
-        wrapper, CustomerCompanyEntity::getDept, customerCompanyDTO.getDept());
-    CustomerCompanySupport.likeIfNotBlank(
-        wrapper, CustomerCompanyEntity::getAddress, customerCompanyDTO.getAddress());
-    CustomerCompanySupport.likeIfNotBlank(
-        wrapper, CustomerCompanyEntity::getPhone, customerCompanyDTO.getPhone());
-    CustomerCompanySupport.likeIfNotBlank(
-        wrapper, CustomerCompanyEntity::getWebsite, customerCompanyDTO.getWebsite());
-    CustomerCompanySupport.likeIfNotBlank(
-        wrapper, CustomerCompanyEntity::getDescription, customerCompanyDTO.getDescription());
-    if (customerCompanyDTO.getIsDeleted() != null) {
-      wrapper.eq(CustomerCompanyEntity::getIsDeleted, customerCompanyDTO.getIsDeleted());
-    }
-    return CustomerCompanySupport.toVoPage(page(page, wrapper), dataConvertService);
+    // wrapper 装配拆入 QuerySupport（add-customer-semantic-retrieval 任务 4.3 NcssCount，行为等价）
+    return CustomerCompanySupport.toVoPage(
+        page(page, CustomerCompanyQuerySupport.customQueryWrapper(customerCompanyDTO)),
+        dataConvertService);
   }
 
   @Override
   public GroupResultVO groupByCustomerCompany(String field) {
-
-    // 检查字段是否有效
-    if (!Arrays.asList("industry", "customerType", "ownerId").contains(field)) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR);
-    }
-
-    LambdaQueryWrapper<CustomerCompanyEntity> queryWrapper = new LambdaQueryWrapper<>();
-    queryWrapper.eq(CustomerCompanyEntity::getIsDeleted, false);
-
-    List<CustomerCompanyEntity> entities = customerCompanyMapper.selectList(queryWrapper);
-
+    // 校验与 wrapper 装配拆入 QuerySupport（add-customer-semantic-retrieval 任务 4.3 NcssCount，行为等价）
+    List<CustomerCompanyEntity> entities =
+        customerCompanyMapper.selectList(CustomerCompanyQuerySupport.groupFieldQuery(field));
     return CustomerCompanySupport.buildGroupResult(entities, field, dataConvertService);
   }
 
   @Override
   public byte[] template() {
-    List<GetCustomerCompanyExcel> customerCompanyExcels = new ArrayList<>();
-    customerCompanyExcels.add(new GetCustomerCompanyExcel());
-    return aotoExcelUntil.AOTOExcelByStream(
-        customerCompanyExcels, "customer_company_template.xlsx");
+    return CustomerCompanyQuerySupport.buildTemplateBytes(aotoExcelUntil);
   }
 
   @Override
   public Page<CustomerCompanyVO> findCompanyByGroup(
       String belongGroup, Integer pageNum, Integer pageSize) {
-    LambdaQueryWrapper<CustomerCompanyEntity> wrapper = new LambdaQueryWrapper<>();
-    wrapper
-        .like(CustomerCompanyEntity::getBelongGroup, belongGroup)
-        .eq(CustomerCompanyEntity::getIsDeleted, false);
     return CustomerCompanySupport.toVoPage(
-        page(new Page<>(pageNum, pageSize), wrapper), dataConvertService);
+        page(
+            new Page<>(pageNum, pageSize),
+            CustomerCompanyQuerySupport.belongGroupQuery(belongGroup)),
+        dataConvertService);
   }
 
   /**
-   * 语义向量同步闸（add-customer-semantic-retrieval 任务 2.3）：事务激活时注册 afterCommit（提交后才同步，
-   * 回滚不写向量），无事务立即同步。向量侧任何异常 WARN 不阻断业务主流程（全量回埋端点兜底）； 依赖未装配（部分单测场景）整体跳过。
+   * 语义向量同步闸（add-customer-semantic-retrieval 任务 2.3）：依赖未装配（部分单测场景）整体跳过； 事务与异常语义委托 {@link
+   * CustomerSemanticHookSupport#runAfterCommit}（任务 4.3 NcssCount 拆分）。
    *
    * @param scene 场景描述（日志定位用）
    * @param action 向量同步动作
@@ -462,25 +425,7 @@ public class CustomerCompanyServiceImpl
     if (customerIngestionService == null) {
       return;
     }
-    Runnable guarded =
-        () -> {
-          try {
-            action.run();
-          } catch (Exception e) {
-            log.warn("客户语义向量同步失败（{}），可由全量回埋端点兜底", scene, e);
-          }
-        };
-    if (TransactionSynchronizationManager.isSynchronizationActive()) {
-      TransactionSynchronizationManager.registerSynchronization(
-          new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-              guarded.run();
-            }
-          });
-    } else {
-      guarded.run();
-    }
+    CustomerSemanticHookSupport.runAfterCommit(scene, action);
   }
 
   /**
@@ -489,12 +434,7 @@ public class CustomerCompanyServiceImpl
    * @param id 客户公司主键
    */
   private void reingestById(Long id) {
-    CustomerCompanyEntity full = getById(id);
-    if (full == null || Boolean.TRUE.equals(full.getIsDeleted())) {
-      customerIngestionService.deleteByCompanyId(id);
-      return;
-    }
-    customerIngestionService.ingest(full);
+    CustomerSemanticHookSupport.reingestById(id, customerIngestionService, this::getById);
   }
 
   /**

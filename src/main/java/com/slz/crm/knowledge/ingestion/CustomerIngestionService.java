@@ -95,11 +95,12 @@ public class CustomerIngestionService {
 
   /** owner_id 反查 sys_user.dept_id（反范式缓存）；owner 为空或查无此人返回 null。 */
   private Long resolveOwnerDeptId(Long ownerId) {
-    if (ownerId == null) {
-      return null;
+    Long result = null;
+    if (ownerId != null) {
+      UserEntity owner = userMapper.selectById(ownerId);
+      result = owner == null ? null : owner.getDeptId();
     }
-    UserEntity owner = userMapper.selectById(ownerId);
-    return owner == null ? null : owner.getDeptId();
+    return result;
   }
 
   /**
@@ -119,6 +120,9 @@ public class CustomerIngestionService {
    *
    * @return 回埋结果
    */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException")
+  // 豁免理由（add-customer-semantic-retrieval 任务 4.3）：回埋契约=单条失败计数不中断，失败类型不可枚举
+  // （嵌入外呼/向量库/拼文本均可能抛非受检异常），逐条 catch Exception 记失败计数由端点返回，不吞中断语义。
   public ReingestResult reingestAll() {
     int total = 0;
     int success = 0;
