@@ -254,7 +254,7 @@ class CustomerRetrievalBenchmarkIT {
 
     // 1) 语料经生产摄取链真嵌入（CustomerIngestionService 拼文本/建 payload/upsert 全复用；owner 置空避免 mapper 依赖）
     CustomerIngestionService ingestion =
-        new CustomerIngestionService(embeddingService, entityStore, null, null);
+        new CustomerIngestionService(embeddingService, entityStore, null, null, null);
     long tokenMeter = 0L;
     long charMeter = 0L;
     for (CorpusRow row : CORPUS) {

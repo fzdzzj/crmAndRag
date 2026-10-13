@@ -5,8 +5,10 @@ import com.slz.crm.knowledge.embedding.EmbeddingService;
 import com.slz.crm.knowledge.vector.CrmEntityVectorStore;
 import com.slz.crm.platform.contract.VectorRecord;
 import com.slz.crm.pojo.entity.CustomerCompanyEntity;
+import com.slz.crm.pojo.entity.CustomerContactEntity;
 import com.slz.crm.pojo.entity.UserEntity;
 import com.slz.crm.server.mapper.CustomerCompanyMapper;
+import com.slz.crm.server.mapper.CustomerContactMapper;
 import com.slz.crm.server.mapper.UserMapper;
 import java.util.HashMap;
 import java.util.List;
@@ -16,14 +18,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
- * 客户公司语义摄取服务（add-customer-semantic-retrieval 任务 2.1 / 2.2）。
+ * 客户公司语义摄取服务（add-customer-semantic-retrieval 任务 2.1 / 2.2；add-customer-contact-retrieval 任务 1.2）。
  *
- * <p>单条链路：拼语义文本（{@link CustomerSemanticTextSupport}）→ EmbeddingService.embed →
+ * <p>单条链路：拼语义文本（{@link CustomerSemanticTextSupport}，含所属联系人附属语义段）→ EmbeddingService.embed →
  * CrmEntityVectorStore.upsert（crm_entity 集合）。payload 五键对齐冻结 metadata 约定（B4）：
  * entityType(String→keyword)、resourceId/ownerUserId/ownerDeptId(Long→long match)、companyName(String
  * 补充键)； null 值不入 payload（键缺失即无值，过滤时自然不命中）。
  *
  * <p>ownerDeptId 为 owner_id 反查 sys_user.dept_id 的反范式缓存（DEPT 档过滤依赖）；owner 不存在时 该键缺省。
+ *
+ * <p>联系人附属语义段（add-customer-contact-retrieval 任务 1.2）：单条摄取时查所属 contact 列表（is_deleted=0、
+ * 按 id 升序、上限 5 人）拼入语义文本；customerContactMapper 缺失（部分评测/单测场景注入 null）时跳过联系人段、
+ * 仅拼公司文本，payload 与 pointId 派生规则零改动。
  */
 @Slf4j
 @Service
@@ -47,11 +53,14 @@ public class CustomerIngestionService {
 
   private final CustomerCompanyMapper customerCompanyMapper;
 
+  /** 联系人来源（add-customer-contact-retrieval 任务 1.2；缺失时跳过联系人段，payload/pointId 规则不变）。 */
+  private final CustomerContactMapper customerContactMapper;
+
   /** 全量回埋结果（任务 2.2 端点返回）：total=扫描条数、success/failure=摄取成功/失败计数。 */
   public record ReingestResult(int total, int success, int failure) {}
 
   /**
-   * 单条摄取：拼语义文本 → 嵌入 → upsert crm_entity。失败直接抛出（调用方 hook 捕获 WARN 不阻断业务， 回埋端点兜底）。
+   * 单条摄取：拼语义文本（含联系人段）→ 嵌入 → upsert crm_entity。失败直接抛出（调用方 hook 捕获 WARN 不阻断业务， 回埋端点兜底）。
    *
    * @param entity 客户公司实体（需含 id 与语义字段）
    */
@@ -59,7 +68,7 @@ public class CustomerIngestionService {
     if (entity == null || entity.getId() == null) {
       throw new IllegalArgumentException("客户公司实体或 id 不能为空");
     }
-    String text = CustomerSemanticTextSupport.buildSemanticText(entity);
+    String text = CustomerSemanticTextSupport.buildSemanticText(entity, loadContacts(entity.getId()));
     if (text.isBlank()) {
       throw new IllegalArgumentException("客户公司语义文本为空，跳过嵌入（id=" + entity.getId() + "）");
     }
@@ -74,6 +83,26 @@ public class CustomerIngestionService {
             text,
             vector,
             buildPayload(entity, ownerDeptId)));
+  }
+
+  /**
+   * 加载公司所属联系人列表（add-customer-contact-retrieval 任务 1.2）：is_deleted=0、按 id 升序、上限 5 人
+   * （防语义膨胀保险丝）。customerContactMapper 缺失（评测/单测注入 null）返回空列表——跳过联系人段，payload 与
+   * pointId 派生规则零改动。
+   *
+   * @param companyId 客户公司主键
+   * @return 有序联系人列表（可能为空）
+   */
+  private List<CustomerContactEntity> loadContacts(Long companyId) {
+    if (customerContactMapper == null || companyId == null) {
+      return List.of();
+    }
+    return customerContactMapper.selectList(
+        new LambdaQueryWrapper<CustomerContactEntity>()
+            .eq(CustomerContactEntity::getCompanyId, companyId)
+            .eq(CustomerContactEntity::getIsDeleted, false)
+            .orderByAsc(CustomerContactEntity::getId)
+            .last("LIMIT " + CustomerSemanticTextSupport.CONTACT_SEGMENT_MAX));
   }
 
   /** payload 五键（任务 2.1）：null 值不入键（键缺失即无值，过滤时自然不命中）。 */
