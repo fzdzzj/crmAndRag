@@ -15,23 +15,23 @@
 
 ## 任务组 2 · 前端来源渲染与文档查看抽屉
 
-- [ ] 2.1 `useAiChat` sources 消费：sources case 实装（payload 数组入 currentAssistantMsg.sources），ChatMessage 模型扩展 sources 字段（unknown 安全类型）；references 既有链路零改动
-      依据：（执行留痕）
-- [ ] 2.2 `AiAssistantDrawer` 来源标签：知识库来源（sourceType≠CUSTOMER 且有 documentId）渲染来源标签（filename + pageNo/chunkIndex 徽标 + relevanceScore），点击打开文档查看抽屉并定位；CUSTOMER 源点击跳客户详情页（既有路由）；CONTRACT 业务引用保留既有跳转；答案内联 [n] 点击锚定对应来源（citations 编号已在 references payload）
-      依据：（执行留痕）
-- [ ] 2.3 `KnowledgeDocumentDrawer` 组件：按 documentId 分页拉 chunk 列表（任务 1.3 端点）、chunkIndex 升序渲染、scrollIntoView 定位到命中块 + excerpt 段内匹配高亮 + 命中块标记（pageNo 有值显示页码）；抽屉关闭不销毁会话状态
-      依据：（执行留痕）
-- [ ] 2.4 前端质量：pnpm lint:check + type-check:check 零错误（本地实测留痕）
-      依据：（执行留痕）
+- [x] 2.1 `useAiChat` sources 消费：sources case 实装（payload 数组入 currentAssistantMsg.sources），ChatMessage 模型扩展 sources 字段（unknown 安全类型）；references 既有链路零改动
+      依据：`frontend/src/hooks/useAiChat.ts` 加 `sources?: unknown[]` + 实装 `case 'sources'`（数组入 `currentAssistantMsg.sources`）；references case 零改动
+- [x] 2.2 `AiAssistantDrawer` 来源标签：知识库来源（sourceType≠CUSTOMER 且有 documentId）渲染来源标签（filename + pageNo/chunkIndex 徽标 + relevanceScore），点击打开文档查看抽屉并定位；CUSTOMER 源点击跳客户详情页（既有路由）；CONTRACT 业务引用保留既有跳转；答案内联 [n] 点击锚定对应来源（citations 编号已在 references payload）
+      依据：`frontend/src/components/ai/AiAssistantDrawer.vue`：KB 源标签（filename+pageNo/chunkIndex+relevanceScore）→ 开抽屉；CUSTOMER_COMPANY: 源 → `/client/list?filters.id=`；CONTRACT 既有跳转保留；[n] 锚定 references[n-1]/sources[n-1]
+- [x] 2.3 `KnowledgeDocumentDrawer` 组件：按 documentId 分页拉 chunk 列表（任务 1.3 端点）、chunkIndex 升序渲染、scrollIntoView 定位到命中块 + excerpt 段内匹配高亮 + 命中块标记（pageNo 有值显示页码）；抽屉关闭不销毁会话状态
+      依据：`frontend/src/components/ai/KnowledgeDocumentDrawer.vue`（新，~300 行）：`GET /knowledge/documents/{id}/chunks` 分页拉取、升序、`scrollIntoView` 定位 + safe `<mark>` excerpt 高亮、v-model 开态独立于 AI 会话
+- [x] 2.4 前端质量：pnpm lint:check + type-check:check 零错误（本地实测留痕）
+      依据：`pnpm lint:check` exit 0（0 error 0 warning）；`pnpm type-check:check` exit 0
 
 ## 任务组 3 · 首页仪表盘与待办
 
-- [ ] 3.1 生日清单端点：`GET /customer/contact/birthdays`（当前用户数据权限口径下的联系人未来 N 天生日清单，N=BirthdayReminderProperties.days 默认），enabled=false 时与既有单联系人端点同语义（NOT_ENABLED）；权限随 CustomerContactController 既有口径；单测覆盖（范围计算/数据权限过滤/未启用）
-      依据：（执行留痕）
-- [ ] 3.2 `(dashboard)/index.page.vue` 仪表盘：移除空壳跳转行为，改为真仪表盘——统计卡片区（POST /dataStatistics/summary 本月范围 6 指标 + GET /dataStatistics/opportunityStageDistribution echarts 图）+ 待办区三列表（我的待审批：GET /sales/stage approvalStatus=[0]+当前用户为审批人；我的任务：POST /contactTask/query 当前用户+未完成；联系人生日：任务 3.1 端点）；各卡片点击跳对应业务页；无 501 权限统计区隐藏（待办区不受影响）
-      依据：（执行留痕）
-- [ ] 3.3 前端质量：pnpm lint:check + type-check:check 零错误（本地实测留痕）
-      依据：（执行留痕）
+- [x] 3.1 生日清单端点：`GET /customer/contact/birthdays`（当前用户数据权限口径下的联系人未来 N 天生日清单，N=BirthdayReminderProperties.days 默认），enabled=false 时与既有单联系人端点同语义（NOT_ENABLED）；权限随 CustomerContactController 既有口径；单测覆盖（范围计算/数据权限过滤/未启用）
+      依据：`CustomerContactController` `GET /contact/birthdays` @RequirePermission(CUSTOMER_QUERY_CONTACT)（控制器基路径为 `/contact`，故端点路径为 /contact/birthdays，偏差已披露）；`CustomerContactServiceImpl#getUpcomingBirthdays` 复用 `search` 同款 `@Privacy`+`selectList(LambdaQueryWrapper)` 数据范围注入，未启用抛 NOT_ENABLED；`CustomerContactBirthdaysServiceTest` 3 用例绿（范围/N 天窗口/未启用）
+- [x] 3.2 `(dashboard)/index.page.vue` 仪表盘：移除空壳跳转行为，改为真仪表盘——统计卡片区（POST /dataStatistics/summary 本月范围 6 指标 + GET /dataStatistics/opportunityStageDistribution echarts 图）+ 待办区三列表（我的待审批：GET /sales/stage approvalStatus=[0]+当前用户为审批人；我的任务：POST /contactTask/query 当前用户+未完成；联系人生日：任务 3.1 端点）；各卡片点击跳对应业务页；无 501 权限统计区隐藏（待办区不受影响）
+      依据：`frontend/src/pages/(dashboard)/index.page.vue` 重写为真仪表盘（移除 redirect）；统计区 gate `report:REPORT_VIEW_REPORT`（501），待办区不受影响；三列表 + echarts pie（useEChart）
+- [x] 3.3 前端质量：pnpm lint:check + type-check:check 零错误（本地实测留痕）
+      依据：`pnpm lint:check` exit 0；`pnpm type-check:check` exit 0
 
 ## 任务组 4 · 门禁与收尾
 

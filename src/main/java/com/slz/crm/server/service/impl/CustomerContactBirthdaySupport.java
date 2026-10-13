@@ -50,6 +50,34 @@ final class CustomerContactBirthdaySupport {
     return result;
   }
 
+  /**
+   * 收集联系人在未来 N 天内的生日项（本人/亲属，add-source-citation-and-dashboard 任务 3.1）：复用 {@link
+   * #collectBirthdayInfos} 的日期计算语义，并按配置天数过滤只保留 {@code 0 <= daysUntil <= reminderDays} 的项。
+   *
+   * @param entity 联系人实体（调用方已确认存在且未删除）
+   * @param today 当前日期
+   * @param reminderDays 提前提醒天数（配置项）
+   * @param remarkMapper 备注 Mapper
+   * @return 未来 N 天内生日项列表，无则返回空列表
+   */
+  static List<BirthdayInfoDTO> collectUpcomingBirthdays(
+      CustomerContactEntity entity,
+      LocalDate today,
+      int reminderDays,
+      CustomerContactRemarkMapper remarkMapper) {
+    String contactName = entity.getName();
+    List<CustomerContactRemarkEntity> remarks = remarkMapper.selectByContactId(entity.getId());
+    List<BirthdayInfoDTO> result = List.of();
+    if (remarks != null && !remarks.isEmpty()) {
+      List<BirthdayInfoDTO> birthdayInfos = collectBirthdayInfos(contactName, remarks, today);
+      result =
+          birthdayInfos.stream()
+              .filter(info -> info.getDaysUntil() >= 0 && info.getDaysUntil() <= reminderDays)
+              .toList();
+    }
+    return result;
+  }
+
   /** 从备注中筛选本人/亲属生日项并计算今年 upcoming 日期与剩余天数 */
   private static List<BirthdayInfoDTO> collectBirthdayInfos(
       String contactName, List<CustomerContactRemarkEntity> remarks, LocalDate today) {
