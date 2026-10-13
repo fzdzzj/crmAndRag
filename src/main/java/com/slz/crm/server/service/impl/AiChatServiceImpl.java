@@ -1,8 +1,10 @@
 package com.slz.crm.server.service.impl;
 
+import com.slz.crm.common.enumeration.DataScopeLevel;
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.platform.contract.AssistantChatRequest;
 import com.slz.crm.platform.contract.ModelProvider;
+import com.slz.crm.platform.contract.UserContext;
 import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.entity.AiChatImageEntity;
 import com.slz.crm.pojo.entity.AiMessageEntity;
@@ -228,20 +230,28 @@ public class AiChatServiceImpl implements AiChatService {
       // 接管只顶替注册表；旧流在下一个 shouldAbort 检查点协作退出，此处不需要旧流句柄。
 
       String message = request.message();
-      List<Message> messages = promptService.buildMessages(finalSessionId, message);
-      imageContext.ifPresent(
-          context ->
-              messages.add(
-                  1, new SystemMessage(AiChatResumeSupport.toImageContextPrompt(context))));
+      // 任务 3.2（add-customer-semantic-retrieval）：记忆读取/短问改写一次完成 → 双源检索 → 槽位化消息组装
+      AiChatPromptService.PreparedTurn prepared =
+          promptService.prepareTurn(finalSessionId, message);
       AiChatKnowledgeRetrievalService.RetrievalOutcome retrieval =
           knowledgeRetrievalService == null
               ? AiChatKnowledgeRetrievalService.RetrievalOutcome.empty()
               : knowledgeRetrievalService.retrieve(
-                  AiChatResumeSupport.lastUserMessage(messages),
+                  prepared.rewrittenQuery(),
                   userId,
                   imageVector,
-                  request.useKnowledgeBase());
-      if (retrieval.context() != null && !retrieval.context().isBlank()) {
+                  request.useKnowledgeBase(),
+                  toUserContext(currentUser));
+      AiChatPromptService.PreparedMessages preparedMessages =
+          promptService.buildMessages(finalSessionId, prepared, retrieval.context());
+      List<Message> messages = preparedMessages.messages();
+      imageContext.ifPresent(
+          context ->
+              messages.add(
+                  1, new SystemMessage(AiChatResumeSupport.toImageContextPrompt(context))));
+      if (!preparedMessages.retrievalContextInjected()
+          && retrieval.context() != null
+          && !retrieval.context().isBlank()) {
         messages.add(imageContext.isPresent() ? 2 : 1, new SystemMessage(retrieval.context()));
       }
       aiMessageService.saveMessage(finalSessionId, "user", "text", message, null);
@@ -294,6 +304,25 @@ public class AiChatServiceImpl implements AiChatService {
     } finally {
       takeoverLock.unlock();
     }
+  }
+
+  /**
+   * 用户身份快照（add-customer-semantic-retrieval 任务 3.2）：userId/roleId/deptId 任一缺失返回 null
+   * （业务检索段跳过，主答走纯知识库路径）；dataScope 由业务检索实现内现查（getHighestDataScopeLevel 同源）。
+   */
+  private UserContext toUserContext(RoleAO user) {
+    UserContext result;
+    if (user == null
+        || user.getId() == null
+        || user.getRoleId() == null
+        || user.getDeptId() == null) {
+      result = null;
+    } else {
+      result =
+          new UserContext(
+              user.getId(), user.getRoleId(), user.getDeptId(), DataScopeLevel.NONE, null);
+    }
+    return result;
   }
 
   private void generateTitleAsync(

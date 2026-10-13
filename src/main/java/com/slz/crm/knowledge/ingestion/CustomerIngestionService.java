@@ -30,8 +30,11 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class CustomerIngestionService {
 
-  /** payload entityType 固定值（冻结 metadata 约定：String→keyword match）。 */
-  static final String ENTITY_TYPE = "CUSTOMER_COMPANY";
+  /**
+   * payload entityType 固定值（冻结 metadata 约定：String→keyword match）； 任务 3.1 起改
+   * public——业务检索实现（BusinessRetrievalService）同源引用，防双处字面量漂移。
+   */
+  public static final String ENTITY_TYPE = "CUSTOMER_COMPANY";
 
   /** 全量回埋批大小（id 游标分页）。 */
   private static final int REINGEST_BATCH_SIZE = 200;

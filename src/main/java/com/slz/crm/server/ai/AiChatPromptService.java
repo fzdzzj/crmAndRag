@@ -78,19 +78,54 @@ public class AiChatPromptService {
     promptVersion = sha256Prefix(systemPrompt);
   }
 
-  public List<Message> buildMessages(Long sessionId, String message) {
-    List<Message> messages = new ArrayList<>();
+  /**
+   * 单轮准备（add-customer-semantic-retrieval 任务 3.2）：记忆读取与短问改写一次完成，
+   * 供检索（rewrittenQuery）与消息组装（memory/clarify）两段复用，消除旧 buildMessages 内联链与检索 query 取值的耦合。
+   */
+  public PreparedTurn prepareTurn(Long sessionId, String message) {
     AiConversationMemoryEntity memory =
         conversationMemoryService == null
             ? null
             : conversationMemoryService.findBySessionId(sessionId);
     AiShortQuestionRewriter.RewrittenQuestion rewritten =
         shortQuestionRewriter.rewrite(message, memory, findLastUserQuestion(sessionId));
-    messages.add(new SystemMessage(buildSystemPrompt(memory, rewritten.clarifyRequired())));
-    messages.addAll(loadHistory(sessionId));
-    messages.add(new UserMessage(rewritten.query()));
-    return applyPromptBudget(messages);
+    return new PreparedTurn(sessionId, memory, rewritten.clarifyRequired(), rewritten.query());
   }
+
+  /**
+   * 消息组装（任务 3.2/3.3）：system prompt（含检索上下文注入判定）→ 历史 → 本轮用户消息（改写后）→ 预算裁剪。
+   *
+   * <p>{@code retrievalContextInjected}=true 表示检索上下文已随槽位注入 system prompt（任务 3.3）， 调用方不再追加检索
+   * SystemMessage；false 表示走旧追加路径（回退态/无标记模板），由调用方按旧方式插入 SystemMessage（逐字节同旧行为）。
+   */
+  public PreparedMessages buildMessages(
+      Long sessionId, PreparedTurn prepared, String retrievalContext) {
+    SystemPromptBuild build =
+        buildSystemPrompt(prepared.memory(), prepared.clarifyRequired(), retrievalContext);
+    List<Message> messages = new ArrayList<>();
+    messages.add(new SystemMessage(build.prompt()));
+    messages.addAll(loadHistory(sessionId));
+    messages.add(new UserMessage(prepared.rewrittenQuery()));
+    boolean injected =
+        build.slotInjected() && retrievalContext != null && !retrievalContext.isBlank();
+    return new PreparedMessages(applyPromptBudget(messages), injected);
+  }
+
+  /** 系统提示词构建结果（任务 3.3）：{@code slotInjected}=true 表示检索上下文已随槽位注入成品提示词。 */
+  record SystemPromptBuild(String prompt, boolean slotInjected) {}
+
+  /** 单轮准备结果（任务 3.2）：memory/clarifyRequired 供系统提示词组装，rewrittenQuery 供检索与用户消息。 */
+  public record PreparedTurn(
+      Long sessionId,
+      AiConversationMemoryEntity memory,
+      boolean clarifyRequired,
+      String rewrittenQuery) {}
+
+  /**
+   * 消息组装结果（任务 3.3）：{@code retrievalContextInjected}=true 表示检索上下文已随槽位注入系统提示词， 调用方不再以 SystemMessage
+   * 方式插入检索上下文。
+   */
+  public record PreparedMessages(List<Message> messages, boolean retrievalContextInjected) {}
 
   /**
    * 将持久记忆注入系统提示词；加工品缺失时不改变原 system prompt（add-prompt-template-slots 任务 2.1/2.3）。
@@ -98,15 +133,18 @@ public class AiChatPromptService {
    * <p><b>双模式运行时判定</b>：生效骨架含任一 {@code {{#slot:}} 标记 → 注入模式——组装 slots 四件 map 交由 render 链替换（停用
    * 尾部追加）；无标记（含回退静态文本）→ 旧追加路径逐字节保留。任一异常均按既有 WARN+回退链兜底。
    */
-  private String buildSystemPrompt(AiConversationMemoryEntity memory, boolean clarifyRequired) {
+  private SystemPromptBuild buildSystemPrompt(
+      AiConversationMemoryEntity memory, boolean clarifyRequired, String retrievalContext) {
     String skeleton = resolveSystemSkeleton();
-    String result;
+    SystemPromptBuild result;
     if (PromptSystemPromptSegments.containsSlot(skeleton)) {
-      result = renderInjectSlots(memory, clarifyRequired, skeleton);
+      result = renderInjectSlots(memory, clarifyRequired, skeleton, retrievalContext);
     } else {
       result =
-          PromptSystemPromptSegments.appendDynamicSections(
-              skeleton, shortQuestionRewriter, memory, clarifyRequired);
+          new SystemPromptBuild(
+              PromptSystemPromptSegments.appendDynamicSections(
+                  skeleton, shortQuestionRewriter, memory, clarifyRequired),
+              false);
     }
     return result;
   }
@@ -117,26 +155,34 @@ public class AiChatPromptService {
    * <p>promptVersion 口径不动——由 {@link #resolveSystemSkeleton} 记录生效骨架 sha256（含标记文本、不含 slot 值，D7）； 注入
    * render 任何异常 WARN 后回退静态 + 旧追加路径（不断聊天主链路）。
    */
-  private String renderInjectSlots(
-      AiConversationMemoryEntity memory, boolean clarifyRequired, String skeletonWithMarkers) {
-    String result;
+  private SystemPromptBuild renderInjectSlots(
+      AiConversationMemoryEntity memory,
+      boolean clarifyRequired,
+      String skeletonWithMarkers,
+      String retrievalContext) {
+    SystemPromptBuild result;
     if (promptTemplateService == null) {
       result =
-          PromptSystemPromptSegments.appendDynamicSections(
-              skeletonWithMarkers, shortQuestionRewriter, memory, clarifyRequired);
+          new SystemPromptBuild(
+              PromptSystemPromptSegments.appendDynamicSections(
+                  skeletonWithMarkers, shortQuestionRewriter, memory, clarifyRequired),
+              false);
     } else {
       String injected =
           renderTemplateContent(
               SYSTEM_PROMPT_TEMPLATE_CODE,
               PromptSystemPromptSegments.buildSlots(
-                  memory, clarifyRequired, shortQuestionRewriter));
+                  memory, clarifyRequired, shortQuestionRewriter, retrievalContext));
       if (injected == null || injected.isBlank()) {
-        // 注入 render 失败 → WARN 已在 renderTemplateContent 登记，回退静态 + 旧追加路径
+        // 注入 render 失败 → WARN 已在 renderTemplateContent 登记，回退静态 + 旧追加路径（检索上下文走 SystemMessage
+        // 旧追加，injected=false）
         result =
-            PromptSystemPromptSegments.appendDynamicSections(
-                systemPrompt, shortQuestionRewriter, memory, clarifyRequired);
+            new SystemPromptBuild(
+                PromptSystemPromptSegments.appendDynamicSections(
+                    systemPrompt, shortQuestionRewriter, memory, clarifyRequired),
+                false);
       } else {
-        result = injected;
+        result = new SystemPromptBuild(injected, true);
       }
     }
     return result;

@@ -316,7 +316,12 @@ class AiChatServiceImplTest {
 
     AiChatPromptService promptSpy = org.mockito.Mockito.spy(promptService);
     ReflectionTestUtils.setField(service, "promptService", promptSpy);
-    doReturn(List.of()).when(promptSpy).buildMessages(9L, "你好");
+    doReturn(new AiChatPromptService.PreparedTurn(9L, null, false, "你好"))
+        .when(promptSpy)
+        .prepareTurn(9L, "你好");
+    doReturn(new AiChatPromptService.PreparedMessages(List.of(), false))
+        .when(promptSpy)
+        .buildMessages(eq(9L), any(AiChatPromptService.PreparedTurn.class), any());
     AiMessageEntity saved = new AiMessageEntity();
     saved.setId(88L);
     when(aiMessageService.saveMessage(9L, "user", "text", "你好", null)).thenReturn(saved);
@@ -329,7 +334,10 @@ class AiChatServiceImplTest {
     invokeDoStreamChat(currentUser, 9L, "你好", emitter);
 
     org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(promptSpy, aiMessageService);
-    inOrder.verify(promptSpy).buildMessages(9L, "你好");
+    inOrder.verify(promptSpy).prepareTurn(9L, "你好");
+    inOrder
+        .verify(promptSpy)
+        .buildMessages(eq(9L), any(AiChatPromptService.PreparedTurn.class), any());
     inOrder.verify(aiMessageService).saveMessage(9L, "user", "text", "你好", null);
   }
 
@@ -351,7 +359,12 @@ class AiChatServiceImplTest {
     when(aiToolRegistry.getPermittedToolCallbacks(currentUser)).thenReturn(List.of());
     AiChatPromptService promptSpy = org.mockito.Mockito.spy(promptService);
     ReflectionTestUtils.setField(service, "promptService", promptSpy);
-    doReturn(List.of()).when(promptSpy).buildMessages(9L, "补充说明");
+    doReturn(new AiChatPromptService.PreparedTurn(9L, null, false, "补充说明"))
+        .when(promptSpy)
+        .prepareTurn(9L, "补充说明");
+    doReturn(new AiChatPromptService.PreparedMessages(List.of(), false))
+        .when(promptSpy)
+        .buildMessages(eq(9L), any(AiChatPromptService.PreparedTurn.class), any());
     AiMessageEntity savedUser = new AiMessageEntity();
     savedUser.setId(89L);
     when(aiMessageService.saveMessage(9L, "user", "text", "补充说明", null)).thenReturn(savedUser);
@@ -365,7 +378,10 @@ class AiChatServiceImplTest {
 
     assertThat(oldStream.isFinished()).isFalse();
     org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(promptSpy);
-    inOrder.verify(promptSpy).buildMessages(9L, "补充说明");
+    inOrder.verify(promptSpy).prepareTurn(9L, "补充说明");
+    inOrder
+        .verify(promptSpy)
+        .buildMessages(eq(9L), any(AiChatPromptService.PreparedTurn.class), any());
   }
 
   @Test
@@ -386,7 +402,12 @@ class AiChatServiceImplTest {
     when(aiToolRegistry.getPermittedToolCallbacks(currentUser)).thenReturn(List.of());
     AiChatPromptService promptSpy = org.mockito.Mockito.spy(promptService);
     ReflectionTestUtils.setField(service, "promptService", promptSpy);
-    doReturn(List.of()).when(promptSpy).buildMessages(9L, "补充说明");
+    doReturn(new AiChatPromptService.PreparedTurn(9L, null, false, "补充说明"))
+        .when(promptSpy)
+        .prepareTurn(9L, "补充说明");
+    doReturn(new AiChatPromptService.PreparedMessages(List.of(), false))
+        .when(promptSpy)
+        .buildMessages(eq(9L), any(AiChatPromptService.PreparedTurn.class), any());
     AiMessageEntity savedUser = new AiMessageEntity();
     savedUser.setId(89L);
     when(aiMessageService.saveMessage(9L, "user", "text", "补充说明", null)).thenReturn(savedUser);
