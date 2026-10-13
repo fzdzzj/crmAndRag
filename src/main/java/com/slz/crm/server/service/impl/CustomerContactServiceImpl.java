@@ -42,6 +42,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
+@SuppressWarnings("PMD.NcssCount")
+// 豁免理由（add-customer-contact-retrieval 任务 4.1）：本类聚合 20+ 个联系人 CRUD/查询/导入/生日提醒方法，NCSS 随
+// 联系人语义重摄取横切（5 处 reingest 触发 + 注入依赖）刚越过类级 150 报告线；再拆分会牺牲高内聚，对齐既有
+// CustomerSemanticHookSupport 同级 suppression 先例（PMD NcssCount 类级豁免，行为等价）。
 public class CustomerContactServiceImpl
     extends ServiceImpl<CustomerContactMapper, CustomerContactEntity>
     implements CustomerContactService {
@@ -97,7 +101,8 @@ public class CustomerContactServiceImpl
     }
 
     // add-customer-contact-retrieval 任务 1.3：Excel 导入路径——导入后所属公司重摄取（联系人入语义段）
-    reingestAfterCommit("导入客户联系人", distinctCompanyIds(dataList));
+    CustomerContactReingestSupport.reingestForContacts(
+        "导入客户联系人", dataList, customerIngestionService, customerCompanyMapper);
 
     return dataList.size();
   }
@@ -134,7 +139,8 @@ public class CustomerContactServiceImpl
     }
 
     // add-customer-contact-retrieval 任务 1.3：修改路径——受影响所属公司批量重摄取（联系人字段入语义段）
-    reingestAfterCommit("修改客户联系人", distinctCompanyIds(dataList));
+    CustomerContactReingestSupport.reingestForContacts(
+        "修改客户联系人", dataList, customerIngestionService, customerCompanyMapper);
 
     return list.size();
   }
@@ -163,9 +169,11 @@ public class CustomerContactServiceImpl
       created.setName(entity.getName());
     }
     // add-customer-contact-retrieval 任务 1.3：新增路径——所属公司重摄取（新增联系人入语义段）
-    if (entity.getCompanyId() != null) {
-      reingestAfterCommit("新增客户联系人", List.of(entity.getCompanyId()));
-    }
+    CustomerContactReingestSupport.reingestAfterCommit(
+        "新增客户联系人",
+        entity.getCompanyId() == null ? List.of() : List.of(entity.getCompanyId()),
+        customerIngestionService,
+        customerCompanyMapper);
     return created;
   }
 
@@ -202,7 +210,8 @@ public class CustomerContactServiceImpl
     }
 
     // add-customer-contact-retrieval 任务 1.3：软删/恢复路径——受影响所属公司重摄取（软删联系人出语义段）
-    reingestAfterCommit("软删/恢复客户联系人", distinctCompanyIds(dataList));
+    CustomerContactReingestSupport.reingestForContacts(
+        "软删/恢复客户联系人", dataList, customerIngestionService, customerCompanyMapper);
 
     return dataList.size();
   }
@@ -218,7 +227,6 @@ public class CustomerContactServiceImpl
 
     // 物理删除前先收集受影响公司 id（删除后无法反查 company_id，用于联系人段重摄取）
     List<CustomerContactEntity> doomed = customerContactMapper.selectBatchIds(idList);
-    List<Long> companyIds = distinctCompanyIds(doomed);
 
     // 1. 删除客户联系人备注表数据
     LambdaQueryWrapper<CustomerContactRemarkEntity> queryWrapper = new LambdaQueryWrapper<>();
@@ -233,7 +241,11 @@ public class CustomerContactServiceImpl
     int deleted = customerContactMapper.deleteBatchIds(idList);
 
     // add-customer-contact-retrieval 任务 1.3：物理删除路径——受影响所属公司重摄取（删除联系人出语义段）
-    reingestAfterCommit("物理删除客户联系人", companyIds);
+    CustomerContactReingestSupport.reingestAfterCommit(
+        "物理删除客户联系人",
+        CustomerContactReingestSupport.distinctCompanyIds(doomed),
+        customerIngestionService,
+        customerCompanyMapper);
 
     return deleted;
   }
@@ -439,68 +451,5 @@ public class CustomerContactServiceImpl
               customerContactRemarkMapper);
     }
     return result;
-  }
-
-  /**
-   * 提取联系人列表所属公司 id 去重集合（add-customer-contact-retrieval 任务 1.3；null/空返回空集合）。 用于批量重摄取去重，避免同一公司重复
-   * upsert。
-   *
-   * @param contacts 联系人列表（可为 null/空）
-   * @return 去重后的公司 id 集合（保序去重，LinkedHashSet 语义）
-   */
-  private List<Long> distinctCompanyIds(List<CustomerContactEntity> contacts) {
-    if (contacts == null || contacts.isEmpty()) {
-      return List.of();
-    }
-    Set<Long> companyIds = new LinkedHashSet<>();
-    for (CustomerContactEntity c : contacts) {
-      if (c.getCompanyId() != null) {
-        companyIds.add(c.getCompanyId());
-      }
-    }
-    return new ArrayList<>(companyIds);
-  }
-
-  /**
-   * 所属公司语义向量同步闸（add-customer-contact-retrieval 任务 1.3）：依赖未装配（部分单测场景）整体跳过； 事务与异常语义委托 {@link
-   * CustomerSemanticHookSupport#runAfterCommit}。无 embedding 配置的测试环境静默降级、不致既有 IT 失败。
-   *
-   * @param scene 场景描述（日志定位用）
-   * @param action 向量同步动作
-   */
-  private void runAfterCommit(String scene, Runnable action) {
-    if (customerIngestionService == null) {
-      return;
-    }
-    CustomerSemanticHookSupport.runAfterCommit(scene, action);
-  }
-
-  /**
-   * 回查完整公司实体后 upsert 语义向量（DTO 部分字段更新场景防丢字段；公司缺失或已删转删向量）。 仅可在 runAfterCommit 的 action 内调用（异常由闸捕获）。
-   *
-   * @param companyId 所属公司主键
-   */
-  private void reingestById(Long companyId) {
-    CustomerSemanticHookSupport.reingestById(
-        companyId, customerIngestionService, customerCompanyMapper::selectById);
-  }
-
-  /**
-   * 联系人 CRUD 变更后的公司重摄取入口（add-customer-contact-retrieval 任务 1.3）：对去重后的受影响公司逐一 回查后 upsert。
-   *
-   * @param scene 场景描述
-   * @param companyIds 受影响公司 id 集合（可为空）
-   */
-  private void reingestAfterCommit(String scene, List<Long> companyIds) {
-    if (companyIds == null || companyIds.isEmpty()) {
-      return;
-    }
-    runAfterCommit(
-        scene,
-        () -> {
-          for (Long companyId : companyIds) {
-            reingestById(companyId);
-          }
-        });
   }
 }

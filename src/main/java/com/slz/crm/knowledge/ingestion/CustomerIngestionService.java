@@ -93,15 +93,17 @@ public class CustomerIngestionService {
    * @return 有序联系人列表（可能为空）
    */
   private List<CustomerContactEntity> loadContacts(Long companyId) {
-    if (customerContactMapper == null || companyId == null) {
-      return List.of();
+    List<CustomerContactEntity> result = List.of();
+    if (customerContactMapper != null && companyId != null) {
+      result =
+          customerContactMapper.selectList(
+              new LambdaQueryWrapper<CustomerContactEntity>()
+                  .eq(CustomerContactEntity::getCompanyId, companyId)
+                  .eq(CustomerContactEntity::getIsDeleted, false)
+                  .orderByAsc(CustomerContactEntity::getId)
+                  .last("LIMIT " + CustomerSemanticTextSupport.CONTACT_SEGMENT_MAX));
     }
-    return customerContactMapper.selectList(
-        new LambdaQueryWrapper<CustomerContactEntity>()
-            .eq(CustomerContactEntity::getCompanyId, companyId)
-            .eq(CustomerContactEntity::getIsDeleted, false)
-            .orderByAsc(CustomerContactEntity::getId)
-            .last("LIMIT " + CustomerSemanticTextSupport.CONTACT_SEGMENT_MAX));
+    return result;
   }
 
   /** payload 五键（任务 2.1）：null 值不入键（键缺失即无值，过滤时自然不命中）。 */

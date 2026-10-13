@@ -86,19 +86,18 @@ final class CustomerSemanticTextSupport {
   static String buildSemanticText(
       CustomerCompanyEntity entity, List<CustomerContactEntity> contacts) {
     String base = buildSemanticText(entity);
-    if (contacts == null || contacts.isEmpty()) {
-      return base;
+    String contactSegment =
+        (contacts == null || contacts.isEmpty()) ? "" : buildContactSegment(contacts);
+    String result = base;
+    if (!contactSegment.isEmpty()) {
+      StringBuilder sb = new StringBuilder(base);
+      if (sb.length() > 0) {
+        sb.append("；");
+      }
+      sb.append(contactSegment);
+      result = sb.toString();
     }
-    StringBuilder sb = new StringBuilder(base);
-    String contactSegment = buildContactSegment(contacts);
-    if (contactSegment.isEmpty()) {
-      return base;
-    }
-    if (sb.length() > 0) {
-      sb.append("；");
-    }
-    sb.append(contactSegment);
-    return sb.toString();
+    return result;
   }
 
   /**
@@ -109,47 +108,52 @@ final class CustomerSemanticTextSupport {
    * @return 联系人段文本；无可展示联系人返回空串
    */
   static String buildContactSegment(List<CustomerContactEntity> contacts) {
-    if (contacts == null) {
-      return "";
-    }
     List<CustomerContactEntity> filtered =
-        contacts.stream()
-            .filter(Objects::nonNull)
-            .filter(c -> !Boolean.TRUE.equals(c.getIsDeleted()))
-            .sorted(Comparator.comparing(CustomerContactEntity::getId))
-            .limit(CONTACT_SEGMENT_MAX)
-            .toList();
-    if (filtered.isEmpty()) {
-      return "";
-    }
-    StringBuilder sb = new StringBuilder("联系人: ");
-    boolean first = true;
-    for (CustomerContactEntity c : filtered) {
-      if (!first) {
-        sb.append("；");
+        contacts == null
+            ? List.of()
+            : contacts.stream()
+                .filter(Objects::nonNull)
+                .filter(c -> !Boolean.TRUE.equals(c.getIsDeleted()))
+                .sorted(Comparator.comparing(CustomerContactEntity::getId))
+                .limit(CONTACT_SEGMENT_MAX)
+                .toList();
+    StringBuilder sb = new StringBuilder();
+    if (!filtered.isEmpty()) {
+      sb.append("联系人: ");
+      boolean first = true;
+      for (CustomerContactEntity c : filtered) {
+        if (!first) {
+          sb.append("；");
+        }
+        first = false;
+        sb.append(c.getName());
+        sb.append("（");
+        appendSegmentParts(sb, c);
+        sb.append('）');
       }
-      first = false;
-      sb.append(c.getName());
-      sb.append("（");
-      boolean hasInner = false;
-      hasInner |= appendSegmentPart(sb, hasInner, c.getPosition());
-      hasInner |= appendSegmentPart(sb, hasInner, c.getMobile());
-      hasInner |= appendSegmentPart(sb, hasInner, c.getEmail());
-      sb.append('）');
     }
     return sb.toString();
   }
 
-  /** 联系人段内非空字段以「，」连接并追加；返回是否追加了内容（用于括号内分隔）。 */
+  /** 联系人段内非空字段以「，」连接并追加（职位/手机/email 三缺一或齐）。 */
+  private static void appendSegmentParts(StringBuilder sb, CustomerContactEntity c) {
+    boolean hasInner = false;
+    hasInner = appendSegmentPart(sb, hasInner, c.getPosition());
+    hasInner = appendSegmentPart(sb, hasInner, c.getMobile());
+    appendSegmentPart(sb, hasInner, c.getEmail());
+  }
+
+  /** 追加单个非空字段（首个不前置「，」），返回当前是否已有内容。 */
   private static boolean appendSegmentPart(StringBuilder sb, boolean hasInner, String value) {
-    if (value == null || value.isBlank()) {
-      return hasInner;
+    boolean result = hasInner;
+    if (value != null && !value.isBlank()) {
+      if (hasInner) {
+        sb.append('，');
+      }
+      sb.append(value.trim());
+      result = true;
     }
-    if (hasInner) {
-      sb.append('，');
-    }
-    sb.append(value.trim());
-    return true;
+    return result;
   }
 
   /** 非空白即追加「label: value」（分隔符「；」仅在本非首位时前置）。 */
