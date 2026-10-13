@@ -3,6 +3,8 @@ package com.slz.crm.server.ai;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -14,11 +16,14 @@ import com.slz.crm.pojo.dto.PromptTemplateRenderDTO;
 import com.slz.crm.pojo.entity.AiConversationMemoryEntity;
 import com.slz.crm.pojo.vo.PromptTemplateRenderVO;
 import com.slz.crm.server.ai.AiChatPromptService.PromptSource;
+import com.slz.crm.server.properties.AiProperties;
+import com.slz.crm.server.service.AiMessageService;
 import com.slz.crm.server.service.PromptTemplateService;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -312,9 +317,90 @@ class AiChatPromptServiceTest {
     assertThat(service.getPromptSource()).isEqualTo(PromptSource.FALLBACK);
   }
 
+  // ===== 检索上下文槽位注入（add-customer-semantic-retrieval 任务 3.3） =====
+
+  @Test
+  @DisplayName("任务 3.3：槽位模式检索上下文随系统提示词注入，injected=true")
+  void buildMessages_slotModeInjectsRetrievalContext() {
+    String skeleton = readClasspath(SYSTEM_PROMPT_PATH);
+    PromptTemplateService templateService = mock(PromptTemplateService.class);
+    when(templateService.render(any()))
+        .thenAnswer(
+            invocation -> {
+              PromptTemplateRenderDTO dto = invocation.getArgument(0);
+              if (dto.getSlots() == null) {
+                return renderVo(skeleton + SLOT_MARKER_TAIL + "{{#slot:retrievedContext}}");
+              }
+              String injected = skeleton + SLOT_MARKER_TAIL + "{{#slot:retrievedContext}}";
+              for (Map.Entry<String, String> e : dto.getSlots().entrySet()) {
+                injected = injected.replace("{{#slot:" + e.getKey() + "}}", e.getValue());
+              }
+              return renderVo(injected);
+            });
+    AiChatPromptService service = newLoadedService();
+    wireTemplate(service, templateService);
+    wireShortQuestionRewriter(service);
+    wireMessageInfrastructure(service);
+
+    AiChatPromptService.PreparedTurn prepared = service.prepareTurn(9L, "客户问题");
+    String retrievalContext = "【业务数据检索】……\n\n[1] 公司名称： 甲公司";
+
+    AiChatPromptService.PreparedMessages preparedMessages =
+        service.buildMessages(9L, prepared, retrievalContext);
+
+    assertThat(preparedMessages.retrievalContextInjected()).isTrue();
+    assertThat(preparedMessages.messages().get(0).getText()).contains(retrievalContext);
+    ArgumentCaptor<PromptTemplateRenderDTO> captor =
+        ArgumentCaptor.forClass(PromptTemplateRenderDTO.class);
+    verify(templateService, org.mockito.Mockito.times(2)).render(captor.capture());
+    assertThat(captor.getAllValues().get(1).getSlots())
+        .containsEntry("retrievedContext", retrievalContext);
+  }
+
+  @Test
+  @DisplayName("任务 3.3 回归锁：无标记模板（旧追加路径）不注入检索上下文，injected=false")
+  void buildMessages_legacyAppendDoesNotInjectRetrievalContext() {
+    String skeleton = readClasspath(SYSTEM_PROMPT_PATH);
+    PromptTemplateService templateService = mock(PromptTemplateService.class);
+    when(templateService.render(any())).thenReturn(renderVo(skeleton)); // 无标记（slots=null）
+    AiChatPromptService service = newLoadedService();
+    wireTemplate(service, templateService);
+    wireShortQuestionRewriter(service);
+    wireMessageInfrastructure(service);
+
+    AiChatPromptService.PreparedTurn prepared = service.prepareTurn(9L, "客户问题");
+
+    AiChatPromptService.PreparedMessages preparedMessages =
+        service.buildMessages(9L, prepared, "【业务数据检索】片段");
+
+    assertThat(preparedMessages.retrievalContextInjected()).isFalse();
+    assertThat(preparedMessages.messages().get(0).getText()).doesNotContain("【业务数据检索】");
+    assertThat(preparedMessages.messages().get(preparedMessages.messages().size() - 1).getText())
+        .isEqualTo("改写后问题");
+  }
+
+  @Test
+  @DisplayName("任务 3.3 回归锁：回退态（render 异常）不注入检索上下文，injected=false")
+  void buildMessages_fallbackStateDoesNotInjectRetrievalContext() {
+    PromptTemplateService templateService = mock(PromptTemplateService.class);
+    when(templateService.render(any())).thenThrow(new IllegalStateException("probe"));
+    AiChatPromptService service = newLoadedService();
+    wireTemplate(service, templateService);
+    wireShortQuestionRewriter(service);
+    wireMessageInfrastructure(service);
+
+    AiChatPromptService.PreparedTurn prepared = service.prepareTurn(9L, "客户问题");
+
+    AiChatPromptService.PreparedMessages preparedMessages =
+        service.buildMessages(9L, prepared, "【业务数据检索】片段");
+
+    assertThat(preparedMessages.retrievalContextInjected()).isFalse();
+    assertThat(preparedMessages.messages().get(0).getText()).doesNotContain("【业务数据检索】");
+  }
+
   // ===== 测试工具 =====
 
-  /** 经反射调用私有 buildSystemPrompt 并携带 memory/clarify（槽位双模式测试用）。 */
+  /** 经反射调用私有 buildSystemPrompt 并携带 memory/clarify（槽位双模式测试用；任务 3.3 起三参签名取 prompt 段）。 */
   private String invokeBuildSystemPrompt(
       AiChatPromptService service, AiConversationMemoryEntity memory, boolean clarifyRequired) {
     Method method =
@@ -322,9 +408,12 @@ class AiChatPromptServiceTest {
             AiChatPromptService.class,
             "buildSystemPrompt",
             AiConversationMemoryEntity.class,
-            boolean.class);
+            boolean.class,
+            String.class);
     ReflectionUtils.makeAccessible(method);
-    return (String) ReflectionUtils.invokeMethod(method, service, memory, clarifyRequired);
+    return ((AiChatPromptService.SystemPromptBuild)
+            ReflectionUtils.invokeMethod(method, service, memory, clarifyRequired, null))
+        .prompt();
   }
 
   private AiChatPromptService newLoadedService() {
@@ -337,11 +426,21 @@ class AiChatPromptServiceTest {
     ReflectionTestUtils.setField(service, "promptTemplateService", templateService);
   }
 
-  /** 装配 shortQuestionRewriter mock（返回真实 CLARIFY_PROMPT 常量，供 clarify 分支断言逐字节）。 */
+  /** 装配 shortQuestionRewriter mock（clarify 常量 + rewrite 桩，供槽位注入与 prepareTurn 链路）。 */
   private void wireShortQuestionRewriter(AiChatPromptService service) {
     AiShortQuestionRewriter rewriter = mock(AiShortQuestionRewriter.class);
     when(rewriter.clarifyPrompt()).thenReturn("\n\n【澄清要求】用户问题缺少必要锚点，回答前必须先列出候选选项请用户确认，不要猜测业务对象。");
+    when(rewriter.rewrite(any(), any(), any()))
+        .thenReturn(new AiShortQuestionRewriter.RewrittenQuestion("改写后问题", false));
     ReflectionTestUtils.setField(service, "shortQuestionRewriter", rewriter);
+  }
+
+  /** 装配消息基建 mock：findLastUserQuestion/loadHistory 走空历史（槽位注入链路测试用）。 */
+  private void wireMessageInfrastructure(AiChatPromptService service) {
+    AiMessageService aiMessageService = mock(AiMessageService.class);
+    when(aiMessageService.listRecentContextMessages(anyLong(), anyInt())).thenReturn(List.of());
+    ReflectionTestUtils.setField(service, "aiMessageService", aiMessageService);
+    ReflectionTestUtils.setField(service, "aiProperties", new AiProperties());
   }
 
   /** 经反射调用私有 buildSystemPrompt；memory 全字段为空 → 返回值即静态骨架（不含动态追加段）。 */
@@ -352,9 +451,12 @@ class AiChatPromptServiceTest {
             AiChatPromptService.class,
             "buildSystemPrompt",
             AiConversationMemoryEntity.class,
-            boolean.class);
+            boolean.class,
+            String.class);
     ReflectionUtils.makeAccessible(method);
-    return (String) ReflectionUtils.invokeMethod(method, service, memory, false);
+    return ((AiChatPromptService.SystemPromptBuild)
+            ReflectionUtils.invokeMethod(method, service, memory, false, null))
+        .prompt();
   }
 
   private void assertFallback(RuntimeException renderFailure) {

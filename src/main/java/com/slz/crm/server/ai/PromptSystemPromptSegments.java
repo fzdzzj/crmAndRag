@@ -26,14 +26,20 @@ final class PromptSystemPromptSegments {
   }
 
   /**
-   * 组装槽位四件 map：值含标题与 {@code \n\n} 间距、条件空不置入（与 {@link #appendDynamicSections} 同条件，逐字节等价）。
+   * 组装槽位 map：值含标题与 {@code \n\n} 间距、条件空不置入（与 {@link #appendDynamicSections} 同条件，逐字节等价）。
+   *
+   * <p>任务 3.3（add-customer-semantic-retrieval）：新增 {@code retrievedContext}
+   * 槽位——检索上下文成品随槽位注入系统提示词（空检索=空串， 槽位替换后标记不留残影）；旧追加路径不消费本槽位（其检索上下文由 dispatchChatStream 以
+   * SystemMessage 插入，逐字节不变）。
    *
    * @param rewriter 澄清提示来源（clarify 槽位值即 {@code rewriter.clarifyPrompt()}）
+   * @param retrievalContext 检索上下文成品（业务+知识库段），null/空表示本轮零命中
    */
   static Map<String, String> buildSlots(
       AiConversationMemoryEntity memory,
       boolean clarifyRequired,
-      AiShortQuestionRewriter rewriter) {
+      AiShortQuestionRewriter rewriter,
+      String retrievalContext) {
     Map<String, String> slots = new LinkedHashMap<>();
     if (memory != null) {
       if (memory.getIntent() != null && !memory.getIntent().isBlank()) {
@@ -51,6 +57,8 @@ final class PromptSystemPromptSegments {
     if (clarifyRequired) {
       slots.put("clarify", rewriter.clarifyPrompt());
     }
+    // 任务 3.3（add-customer-semantic-retrieval）：检索上下文成品槽位——空检索=空串，槽位替换后标记不留残影
+    slots.put("retrievedContext", retrievalContext == null ? "" : retrievalContext);
     return slots;
   }
 

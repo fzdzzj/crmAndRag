@@ -18,6 +18,7 @@ import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.AOTOExcelUntil;
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.common.untils.ForeignKeyDeleteUtil;
+import com.slz.crm.knowledge.ingestion.CustomerIngestionService;
 import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.dto.CustomerCompanyDTO;
 import com.slz.crm.pojo.entity.CustomerCompanyEntity;
@@ -65,6 +66,8 @@ class CustomerCompanyServiceImplTest {
   @Mock private SalesOpportunityService salesOpportunityService;
   @Mock private ContractOrderItemService contractOrderItemService;
   @Mock private DataConvertService dataConvertService;
+
+  @Mock private CustomerIngestionService customerIngestionService;
 
   @Spy @InjectMocks private CustomerCompanyServiceImpl customerCompanyService;
 
@@ -185,5 +188,70 @@ class CustomerCompanyServiceImplTest {
                         && wrapper.getSqlSegment().contains("dept")));
     verify(customerCompanyService)
         .save(argThat(entity -> ((CustomerCompanyEntity) entity).getDept() == null));
+  }
+
+  // ---------------- add-customer-semantic-retrieval 任务 2.3：语义向量 hook 触发路径 ----------------
+
+  @Test
+  @DisplayName("新增成功后回查完整实体并 upsert 语义向量")
+  void addTriggersSemanticIngestAfterSave() {
+    authenticateAs(1L);
+    when(customerCompanyMapper.selectCount(any())).thenReturn(0L);
+    doAnswer(
+            invocation -> {
+              invocation.getArgument(0, CustomerCompanyEntity.class).setId(301L);
+              return true;
+            })
+        .when(customerCompanyService)
+        .save(any(CustomerCompanyEntity.class));
+    CustomerCompanyEntity full = new CustomerCompanyEntity();
+    full.setId(301L);
+    full.setCompanyName("回查公司");
+    full.setIsDeleted(false);
+    // spy 的 getById 依赖 ServiceImpl.baseMapper 注入，直接 stub spy 方法绕开
+    doReturn(full).when(customerCompanyService).getById(301L);
+
+    CustomerCompanyVO created = customerCompanyService.add(companyDto("回查公司", null));
+
+    assertEquals(301L, created.getId());
+    verify(customerIngestionService).ingest(full);
+  }
+
+  @Test
+  @DisplayName("向量摄取异常不阻断新增主流程（WARN 降级，回埋端点兜底）")
+  void addSurvivesIngestionFailure() {
+    authenticateAs(1L);
+    when(customerCompanyMapper.selectCount(any())).thenReturn(0L);
+    doAnswer(
+            invocation -> {
+              invocation.getArgument(0, CustomerCompanyEntity.class).setId(302L);
+              return true;
+            })
+        .when(customerCompanyService)
+        .save(any(CustomerCompanyEntity.class));
+    CustomerCompanyEntity full = new CustomerCompanyEntity();
+    full.setId(302L);
+    full.setCompanyName("降级公司");
+    full.setIsDeleted(false);
+    doReturn(full).when(customerCompanyService).getById(302L);
+    doThrow(new RuntimeException("向量库不可用"))
+        .when(customerIngestionService)
+        .ingest(any(CustomerCompanyEntity.class));
+
+    CustomerCompanyVO created = customerCompanyService.add(companyDto("降级公司", null));
+
+    assertEquals(302L, created.getId());
+    verify(customerIngestionService).ingest(full);
+  }
+
+  @Test
+  @DisplayName("级联逻辑删除后连带删除语义向量")
+  void logicalDeleteCascadesVectorRemoval() {
+    when(foreignKeyDeleteUtil.logicalDeleteByCascade(CustomerCompanyEntity.class, 9L))
+        .thenReturn(1);
+
+    customerCompanyService.logicalDeleteById(9L);
+
+    verify(customerIngestionService).deleteByCompanyId(9L);
   }
 }

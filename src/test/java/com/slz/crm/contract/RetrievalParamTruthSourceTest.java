@@ -13,6 +13,7 @@ import com.slz.crm.knowledge.retrieval.KnowledgeRetrievalServiceImpl;
 import com.slz.crm.platform.config.DynamicConfigKeyRegistry;
 import com.slz.crm.platform.contract.DynamicConfigService;
 import com.slz.crm.server.ai.AiChatKnowledgeRetrievalService;
+import com.slz.crm.server.ai.port.BusinessRetrievalPort;
 import com.slz.crm.server.ai.port.KnowledgeRetrievalPort;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -103,10 +104,12 @@ class RetrievalParamTruthSourceTest {
     when(portProvider.getIfAvailable()).thenReturn(port);
     ObjectProvider<DynamicConfigService> configProvider = mock(ObjectProvider.class);
     when(configProvider.getIfAvailable()).thenReturn(null);
+    ObjectProvider<BusinessRetrievalPort> businessProvider = mock(ObjectProvider.class);
+    when(businessProvider.getIfAvailable()).thenReturn(null);
     when(port.retrieve(any())).thenReturn(KnowledgeRetrievalPort.RetrievalResult.empty());
 
     AiChatKnowledgeRetrievalService service =
-        new AiChatKnowledgeRetrievalService(portProvider, configProvider);
+        new AiChatKnowledgeRetrievalService(portProvider, configProvider, businessProvider);
     service.retrieve("真相源门禁问题", 42L, null, true);
 
     ArgumentCaptor<KnowledgeRetrievalPort.RetrievalQuery> captor =
@@ -177,8 +180,10 @@ class RetrievalParamTruthSourceTest {
     when(portProvider.getIfAvailable()).thenReturn(port);
     ObjectProvider<DynamicConfigService> configProvider = mock(ObjectProvider.class);
     when(configProvider.getIfAvailable()).thenReturn(null);
+    ObjectProvider<BusinessRetrievalPort> businessProvider = mock(ObjectProvider.class);
+    when(businessProvider.getIfAvailable()).thenReturn(null);
     when(port.retrieve(any())).thenReturn(KnowledgeRetrievalPort.RetrievalResult.empty());
-    new AiChatKnowledgeRetrievalService(portProvider, configProvider)
+    new AiChatKnowledgeRetrievalService(portProvider, configProvider, businessProvider)
         .retrieve("问题", 42L, null, true);
     ArgumentCaptor<KnowledgeRetrievalPort.RetrievalQuery> captor =
         ArgumentCaptor.forClass(KnowledgeRetrievalPort.RetrievalQuery.class);

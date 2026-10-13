@@ -3,13 +3,13 @@ package com.slz.crm.platform.contract;
 /**
  * 知识库来源引用（冻结契约，Lane B 填充，Lane C 下发，档 B 页级高亮依赖）。
  *
- * <p>为什么必须带 {@code chunkIndex/pageNo/chunkId}： RAG 原实现只回传
- * filename/documentId/excerpt/score，页码只落在日志里， PDF 又把整页 merge 后再切块，导致前端无法定位到页/段（D15 明确要求补齐锚点）。
+ * <p>页/段锚点（chunkIndex/pageNo/chunkId）与高亮协议背景见 D15；前端用 payload.citations 编号集匹配 答案内联 {@code [n]}，按
+ * pageNo（PDF）/ rowIndex（Excel）定位。
  *
- * <p>高亮协议：前端收到 {@code references} 事件后，用 {@code payload.citations} 里的编号集 匹配答案内联 {@code [n]}，再按
- * {@code pageNo}（PDF）/ {@code rowIndex}（Excel）定位。
- *
- * @param sourceType 来源类型：{@code pdf|docx|txt|md|excel|image|manual} 等，小写
+ * @param sourceType 来源类型：{@code pdf|docx|txt|md|excel|image|manual} 等，小写；业务实体来源为 {@code
+ *     CUSTOMER}（add-customer-semantic-retrieval 受控解冻 2026-10-13：documentId=客户主键、
+ *     filename=company_name，复用现有字段零结构改动；spec 增量见
+ *     openspec/changes/add-customer-semantic-retrieval/specs/knowledge-rag/spec-delta.md）
  * @param route 检索路由：{@code vector|keyword|hybrid|ocr}（便于评测归因）
  * @param filename 展示用文件名（含扩展名，不含路径）
  * @param documentId 文档主键

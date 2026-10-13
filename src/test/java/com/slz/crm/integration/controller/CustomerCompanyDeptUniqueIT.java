@@ -4,10 +4,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.integration.AbstractMySqlIT;
+import com.slz.crm.knowledge.embedding.EmbeddingService;
 import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.dto.CustomerCompanyDTO;
 import com.slz.crm.server.service.CustomerCompanyService;
@@ -18,11 +21,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.jdbc.Sql;
 
 /** 客户公司"公司名+部门"唯一约束集成测试： 并发新增由数据库唯一索引兜底，软删后重建允许、恢复冲突被拦截。 */
@@ -33,6 +38,18 @@ class CustomerCompanyDeptUniqueIT extends AbstractMySqlIT {
   @Autowired private CustomerCompanyService customerCompanyService;
 
   @Autowired private JdbcTemplate jdbcTemplate;
+
+  /**
+   * 零外呼闸（add-customer-semantic-retrieval 任务 4.2）：本类无 @Transactional（真实提交），客户新增/恢复 提交后触发语义
+   * hook（afterCommit → embed）；桩掉 EmbeddingService 防 DashScope 占位 key 真实外呼， 桩向量使 hook 全链路（in-memory
+   * upsert）照常走通，不改变本类的唯一约束验证语义。
+   */
+  @MockitoBean private EmbeddingService embeddingService;
+
+  @BeforeEach
+  void stubEmbeddingForHook() {
+    when(embeddingService.embed(any(String.class))).thenReturn(new float[1024]);
+  }
 
   @AfterEach
   void cleanupTestData() {

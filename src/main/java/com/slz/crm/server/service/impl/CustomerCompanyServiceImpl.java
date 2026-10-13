@@ -9,10 +9,10 @@ import com.slz.crm.common.untils.AOTOExcelUntil;
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.common.untils.ForeignKeyDeleteUtil;
 import com.slz.crm.common.untils.ValidationUtils;
+import com.slz.crm.knowledge.ingestion.CustomerIngestionService;
 import com.slz.crm.pojo.dto.CustomerCompanyDTO;
 import com.slz.crm.pojo.dto.CustomerMergeDTO;
 import com.slz.crm.pojo.entity.CustomerCompanyEntity;
-import com.slz.crm.pojo.excel.GetCustomerCompanyExcel;
 import com.slz.crm.pojo.vo.CustomerCompanyVO;
 import com.slz.crm.pojo.vo.GroupResultVO;
 import com.slz.crm.server.annotation.Privacy;
@@ -66,6 +66,10 @@ public class CustomerCompanyServiceImpl
 
   @Autowired private BusinessRecordAccessService businessRecordAccessService;
 
+  /** 客户语义向量摄取（add-customer-semantic-retrieval 任务 2.3 hook 依赖；缺失时 hook 整体跳过）。 */
+  @Autowired(required = false)
+  private CustomerIngestionService customerIngestionService;
+
   @Override
   public CustomerCompanyVO add(CustomerCompanyDTO customerCompanyDTO) {
 
@@ -111,6 +115,10 @@ public class CustomerCompanyServiceImpl
       // 并发写数据库唯一约束 uk_company_name_dept 兑底（正常路径已由 Java 判重拦截）
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "公司名称与部门组合已存在，请勿重复添加");
     }
+    if (result != null) {
+      // add-customer-semantic-retrieval 任务 2.3：新增成功同步 upsert 语义向量
+      reingestAfterCommit(customerCompanyEntity.getId(), "新增客户公司");
+    }
     return result;
   }
 
@@ -151,6 +159,16 @@ public class CustomerCompanyServiceImpl
         // 并发/重复导入时数据库唯一约束兑底
         throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "导入数据中公司名称与部门组合已存在，请勿重复导入");
       }
+      // add-customer-semantic-retrieval 任务 2.3：导入成功批量 upsert 语义向量
+      // （dataList 为非终态局部变量，lambda 捕获需 effectively final 别名）
+      List<CustomerCompanyEntity> importedList = dataList;
+      runAfterCommit(
+          "导入客户公司",
+          () -> {
+            for (CustomerCompanyEntity imported : importedList) {
+              reingestById(imported.getId());
+            }
+          });
       result = dataList.size();
     }
     return result;
@@ -171,6 +189,15 @@ public class CustomerCompanyServiceImpl
 
     updateBatchById(customerCompanyEntityList);
 
+    // add-customer-semantic-retrieval 任务 2.3：更新成功批量刷新语义向量（回查完整实体防 DTO 部分字段丢键）
+    runAfterCommit(
+        "批量更新客户公司",
+        () -> {
+          for (CustomerCompanyEntity updated : customerCompanyEntityList) {
+            reingestById(updated.getId());
+          }
+        });
+
     return customerCompanyEntityList.size();
   }
 
@@ -189,6 +216,19 @@ public class CustomerCompanyServiceImpl
       // 恢复时正常记录中已存在同公司同部门，数据库唯一约束兑底
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "恢复失败：公司名称与部门组合已存在正常记录中");
     }
+
+    // add-customer-semantic-retrieval 任务 2.3：删除(isRecover=true→is_deleted=1)连带删向量；恢复回查后 upsert
+    runAfterCommit(
+        "删除/恢复客户公司",
+        () -> {
+          for (Long id : idList) {
+            if (Boolean.TRUE.equals(isRecover)) {
+              customerIngestionService.deleteByCompanyId(id);
+            } else {
+              reingestById(id);
+            }
+          }
+        });
 
     return idList.size();
   }
@@ -212,7 +252,11 @@ public class CustomerCompanyServiceImpl
     foreignKeyDeleteUtil.deleteCascade(CustomerCompanyEntity.class, idList, 1);
 
     // 2. 物理删除公司本身
-    return customerCompanyMapper.deleteBatchIds(idList);
+    int deleted = customerCompanyMapper.deleteBatchIds(idList);
+
+    // add-customer-semantic-retrieval 任务 2.3：物理删除连带删向量
+    runAfterCommit("物理删除客户公司", () -> idList.forEach(customerIngestionService::deleteByCompanyId));
+    return deleted;
   }
 
   @Override
@@ -231,13 +275,20 @@ public class CustomerCompanyServiceImpl
     // 级联删除销售机会
     salesOpportunityService.cascadeDeleteByCompanyId(id);
 
+    // add-customer-semantic-retrieval 任务 2.3：逻辑删除连带删向量（本方法无事务，立即同步）
+    runAfterCommit("逻辑删除客户公司", () -> customerIngestionService.deleteByCompanyId(id));
+
     return true;
   }
 
   @Override
   @Transactional(rollbackFor = Exception.class)
   public Integer logicalDeleteById(Long id) {
-    return foreignKeyDeleteUtil.logicalDeleteByCascade(CustomerCompanyEntity.class, id);
+    Integer deleted = foreignKeyDeleteUtil.logicalDeleteByCascade(CustomerCompanyEntity.class, id);
+    // add-customer-semantic-retrieval 任务 2.3：级联逻辑删除连带删向量（batchLogicalDeleteByIds 循环
+    // 复用本 hook，同一事务逐个注册 afterCommit，不再单独挂批量 hook 避免重复删除）
+    runAfterCommit("级联逻辑删除客户公司", () -> customerIngestionService.deleteByCompanyId(id));
+    return deleted;
   }
 
   @Override
@@ -284,6 +335,11 @@ public class CustomerCompanyServiceImpl
   public Boolean merge(CustomerMergeDTO customerMergeDTO) {
     CustomerCompanySupport.applyMerge(
         customerMergeDTO, customerCompanyMapper, customerMergeLogMapper);
+    // add-customer-semantic-retrieval 任务 2.3：被合并方已标 is_deleted=1，连带删向量（目标公司不变不重嵌）
+    Long mergedCompanyId = customerMergeDTO.getMergedCompanyId();
+    if (mergedCompanyId != null) {
+      runAfterCommit("合并客户公司", () -> customerIngestionService.deleteByCompanyId(mergedCompanyId));
+    }
     return true;
   }
 
@@ -328,67 +384,66 @@ public class CustomerCompanyServiceImpl
     if (pageNum == null || pageSize == null) {
       throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
-
     Page<CustomerCompanyEntity> page = new Page<>(pageNum, pageSize);
-
-    LambdaQueryWrapper<CustomerCompanyEntity> wrapper = new LambdaQueryWrapper<>();
-
-    CustomerCompanySupport.likeIfNotBlank(
-        wrapper, CustomerCompanyEntity::getCompanyName, customerCompanyDTO.getCompanyName());
-    CustomerCompanySupport.likeIfNotBlank(
-        wrapper, CustomerCompanyEntity::getIndustry, customerCompanyDTO.getIndustry());
-    CustomerCompanySupport.eqIfNotBlank(
-        wrapper, CustomerCompanyEntity::getCustomerType, customerCompanyDTO.getCustomerType());
-    CustomerCompanySupport.likeIfNotBlank(
-        wrapper, CustomerCompanyEntity::getBelongGroup, customerCompanyDTO.getBelongGroup());
-    CustomerCompanySupport.likeIfNotBlank(
-        wrapper, CustomerCompanyEntity::getDept, customerCompanyDTO.getDept());
-    CustomerCompanySupport.likeIfNotBlank(
-        wrapper, CustomerCompanyEntity::getAddress, customerCompanyDTO.getAddress());
-    CustomerCompanySupport.likeIfNotBlank(
-        wrapper, CustomerCompanyEntity::getPhone, customerCompanyDTO.getPhone());
-    CustomerCompanySupport.likeIfNotBlank(
-        wrapper, CustomerCompanyEntity::getWebsite, customerCompanyDTO.getWebsite());
-    CustomerCompanySupport.likeIfNotBlank(
-        wrapper, CustomerCompanyEntity::getDescription, customerCompanyDTO.getDescription());
-    if (customerCompanyDTO.getIsDeleted() != null) {
-      wrapper.eq(CustomerCompanyEntity::getIsDeleted, customerCompanyDTO.getIsDeleted());
-    }
-    return CustomerCompanySupport.toVoPage(page(page, wrapper), dataConvertService);
+    // wrapper 装配拆入 QuerySupport（add-customer-semantic-retrieval 任务 4.3 NcssCount，行为等价）
+    return CustomerCompanySupport.toVoPage(
+        page(page, CustomerCompanyQuerySupport.customQueryWrapper(customerCompanyDTO)),
+        dataConvertService);
   }
 
   @Override
   public GroupResultVO groupByCustomerCompany(String field) {
-
-    // 检查字段是否有效
-    if (!Arrays.asList("industry", "customerType", "ownerId").contains(field)) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR);
-    }
-
-    LambdaQueryWrapper<CustomerCompanyEntity> queryWrapper = new LambdaQueryWrapper<>();
-    queryWrapper.eq(CustomerCompanyEntity::getIsDeleted, false);
-
-    List<CustomerCompanyEntity> entities = customerCompanyMapper.selectList(queryWrapper);
-
+    // 校验与 wrapper 装配拆入 QuerySupport（add-customer-semantic-retrieval 任务 4.3 NcssCount，行为等价）
+    List<CustomerCompanyEntity> entities =
+        customerCompanyMapper.selectList(CustomerCompanyQuerySupport.groupFieldQuery(field));
     return CustomerCompanySupport.buildGroupResult(entities, field, dataConvertService);
   }
 
   @Override
   public byte[] template() {
-    List<GetCustomerCompanyExcel> customerCompanyExcels = new ArrayList<>();
-    customerCompanyExcels.add(new GetCustomerCompanyExcel());
-    return aotoExcelUntil.AOTOExcelByStream(
-        customerCompanyExcels, "customer_company_template.xlsx");
+    return CustomerCompanyQuerySupport.buildTemplateBytes(aotoExcelUntil);
   }
 
   @Override
   public Page<CustomerCompanyVO> findCompanyByGroup(
       String belongGroup, Integer pageNum, Integer pageSize) {
-    LambdaQueryWrapper<CustomerCompanyEntity> wrapper = new LambdaQueryWrapper<>();
-    wrapper
-        .like(CustomerCompanyEntity::getBelongGroup, belongGroup)
-        .eq(CustomerCompanyEntity::getIsDeleted, false);
     return CustomerCompanySupport.toVoPage(
-        page(new Page<>(pageNum, pageSize), wrapper), dataConvertService);
+        page(
+            new Page<>(pageNum, pageSize),
+            CustomerCompanyQuerySupport.belongGroupQuery(belongGroup)),
+        dataConvertService);
+  }
+
+  /**
+   * 语义向量同步闸（add-customer-semantic-retrieval 任务 2.3）：依赖未装配（部分单测场景）整体跳过； 事务与异常语义委托 {@link
+   * CustomerSemanticHookSupport#runAfterCommit}（任务 4.3 NcssCount 拆分）。
+   *
+   * @param scene 场景描述（日志定位用）
+   * @param action 向量同步动作
+   */
+  private void runAfterCommit(String scene, Runnable action) {
+    if (customerIngestionService == null) {
+      return;
+    }
+    CustomerSemanticHookSupport.runAfterCommit(scene, action);
+  }
+
+  /**
+   * 回查完整实体后 upsert 语义向量（DTO 部分字段更新场景防丢字段）；实体缺失或已删转删向量。 仅可在 runAfterCommit 的 action 内调用（异常由闸捕获）。
+   *
+   * @param id 客户公司主键
+   */
+  private void reingestById(Long id) {
+    CustomerSemanticHookSupport.reingestById(id, customerIngestionService, this::getById);
+  }
+
+  /**
+   * 新增场景 hook：回查完整实体（DTO 可能未含全部语义字段）后 upsert。
+   *
+   * @param id 新增实体主键
+   * @param scene 场景描述
+   */
+  private void reingestAfterCommit(Long id, String scene) {
+    runAfterCommit(scene, () -> reingestById(id));
   }
 }

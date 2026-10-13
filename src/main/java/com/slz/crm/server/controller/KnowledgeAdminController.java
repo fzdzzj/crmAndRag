@@ -4,6 +4,7 @@ import com.slz.crm.common.annotation.RequirePermission;
 import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.result.Result;
 import com.slz.crm.knowledge.document.DocumentIngestionResult;
+import com.slz.crm.knowledge.ingestion.CustomerIngestionService;
 import com.slz.crm.pojo.dto.KnowledgeAdminRetrievalRequest;
 import com.slz.crm.pojo.vo.KnowledgeAdminRetrievalResponse;
 import com.slz.crm.pojo.vo.KnowledgeBaseVO;
@@ -29,6 +30,8 @@ import org.springframework.web.multipart.MultipartFile;
 public class KnowledgeAdminController {
 
   private final KnowledgeAdminService knowledgeAdminService;
+
+  private final CustomerIngestionService customerIngestionService;
 
   /** per-KB 检索策略写端（字段注入以保持既有单参构造；端点统一挂 900 权限）。 */
   @Autowired(required = false)
@@ -133,5 +136,14 @@ public class KnowledgeAdminController {
       throw new IllegalStateException("per-KB 策略写服务未装配");
     }
     return kbStrategyWriteService;
+  }
+
+  // ---------------- add-customer-semantic-retrieval 任务 2.2：客户语义全量回埋 ----------------
+
+  /** 客户语义全量回埋（POST，权限 900 复用先例）：分页游标重嵌 is_deleted=0 全量客户公司， 返回成功/失败计数（单条失败不中断）。 */
+  @PostMapping("/customer/reingest")
+  @RequirePermission(PermissionOperates.KNOWLEDGE_ADMIN_MANAGE)
+  public Result<CustomerIngestionService.ReingestResult> reingestCustomers() {
+    return Result.success(customerIngestionService.reingestAll());
   }
 }
