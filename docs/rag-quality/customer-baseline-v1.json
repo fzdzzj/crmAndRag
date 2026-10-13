@@ -1,0 +1,98 @@
+{
+  "suiteVersion" : "CUSTOMER-SUITE-1.0",
+  "generatedAt" : "2026-10-13T09:23:00.900563200Z",
+  "corpusSize" : 16,
+  "topK" : 5,
+  "contextScope" : "ALL（权限面不混入质量评测）",
+  "suiteNote" : "customer 用例独立编号 C-01~C-10，不并入知识库 63 例 fixture，SUITE_VERSION 不动；D2 首跑不锚",
+  "metrics" : {
+    "caseCount" : 10,
+    "meanRecallAtK" : 1.0,
+    "meanPrecisionAtK" : 0.19999999999999998,
+    "mrr" : 1.0,
+    "hitRate" : 1.0,
+    "corpusEmbeddingTotalTokens" : 0,
+    "corpusEmbeddingChars" : 1778
+  },
+  "cases" : [ {
+    "id" : "C-01",
+    "category" : "TEXT",
+    "question" : "苏州工业园区做五轴精密数控机床的高端装备制造客户有哪些",
+    "expectedChunkIds" : [ "CUSTOMER_COMPANY:2001" ],
+    "recallAtK" : 1.0,
+    "reciprocalRank" : 1.0,
+    "hit" : true
+  }, {
+    "id" : "C-02",
+    "category" : "TEXT",
+    "question" : "杭州做医院信息化系统的医疗健康企业",
+    "expectedChunkIds" : [ "CUSTOMER_COMPANY:2002" ],
+    "recallAtK" : 1.0,
+    "reciprocalRank" : 1.0,
+    "hit" : true
+  }, {
+    "id" : "C-03",
+    "category" : "TEXT",
+    "question" : "深圳南山做支付清算的金融科技公司",
+    "expectedChunkIds" : [ "CUSTOMER_COMPANY:2003" ],
+    "recallAtK" : 1.0,
+    "reciprocalRank" : 1.0,
+    "hit" : true
+  }, {
+    "id" : "C-04",
+    "category" : "TEXT",
+    "question" : "宁波做储能电站系统集成的企业",
+    "expectedChunkIds" : [ "CUSTOMER_COMPANY:2004" ],
+    "recallAtK" : 1.0,
+    "reciprocalRank" : 1.0,
+    "hit" : true
+  }, {
+    "id" : "C-05",
+    "category" : "TEXT",
+    "question" : "五百人以上规模的仓储分拣自动化物流供应商",
+    "expectedChunkIds" : [ "CUSTOMER_COMPANY:2005" ],
+    "recallAtK" : 1.0,
+    "reciprocalRank" : 1.0,
+    "hit" : true
+  }, {
+    "id" : "C-06",
+    "category" : "TEXT",
+    "question" : "合肥做激光切割焊接设备的厂商",
+    "expectedChunkIds" : [ "CUSTOMER_COMPANY:2009" ],
+    "recallAtK" : 1.0,
+    "reciprocalRank" : 1.0,
+    "hit" : true
+  }, {
+    "id" : "C-07",
+    "category" : "TEXT",
+    "question" : "广州做生鲜冷链配送的物流公司",
+    "expectedChunkIds" : [ "CUSTOMER_COMPANY:2011" ],
+    "recallAtK" : 1.0,
+    "reciprocalRank" : 1.0,
+    "hit" : true
+  }, {
+    "id" : "C-08",
+    "category" : "MISMATCH",
+    "question" : "找能做扫地机器人整机的代工工厂",
+    "expectedChunkIds" : [ "CUSTOMER_COMPANY:2006" ],
+    "recallAtK" : 1.0,
+    "reciprocalRank" : 1.0,
+    "hit" : true
+  }, {
+    "id" : "C-09",
+    "category" : "MISMATCH",
+    "question" : "跨境电商ERP软件哪家做得成熟",
+    "expectedChunkIds" : [ "CUSTOMER_COMPANY:2007" ],
+    "recallAtK" : 1.0,
+    "reciprocalRank" : 1.0,
+    "hit" : true
+  }, {
+    "id" : "C-10",
+    "category" : "MISMATCH",
+    "question" : "需要一家能开注塑模具的供应商",
+    "expectedChunkIds" : [ "CUSTOMER_COMPANY:2008" ],
+    "recallAtK" : 1.0,
+    "reciprocalRank" : 1.0,
+    "hit" : true
+  } ]
+}
