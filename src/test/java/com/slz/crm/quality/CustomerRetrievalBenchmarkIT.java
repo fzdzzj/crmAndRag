@@ -22,9 +22,11 @@ import com.slz.crm.platform.contract.UserContext;
 import com.slz.crm.platform.model.ModelProviderImpl;
 import com.slz.crm.platform.model.ModelProviderProperties;
 import com.slz.crm.pojo.ao.RoleAO;
+import com.slz.crm.pojo.entity.CustomerContactEntity;
 import com.slz.crm.quality.RagQualityReport.CaseOutcome;
 import com.slz.crm.quality.RagQualityReport.Report;
 import com.slz.crm.server.ai.port.BusinessRetrievalPort;
+import com.slz.crm.server.mapper.CustomerContactMapper;
 import com.slz.crm.server.service.DataScopeService;
 import com.slz.crm.server.service.impl.BusinessRetrievalService;
 import java.io.IOException;
@@ -75,7 +77,7 @@ class CustomerRetrievalBenchmarkIT {
       "https://dashscope.aliyuncs.com/compatible-mode/v1";
 
   /** customer 评测套件独立版本号（不并入知识库 SUITE_VERSION，独立编号）。 */
-  private static final String CUSTOMER_SUITE_VERSION = "CUSTOMER-SUITE-1.0";
+  private static final String CUSTOMER_SUITE_VERSION = "CUSTOMER-SUITE-2.0";
 
   /** 评测上下文（ALL 档桩依赖 userId/roleId/deptId 三元组，取值不影响检索）。 */
   private static final long EVAL_USER_ID = 99002L;
@@ -83,22 +85,37 @@ class CustomerRetrievalBenchmarkIT {
   /** recall@k / precision@k / MRR 的截断排名 = 生产默认 topK（对齐知识库基准）。 */
   private static final int TOP_K = 5;
 
-  /** customer 首跑报告默认落盘路径；可用 {@code -Drag.customer.benchmark.out} 覆盖。 */
+  /** customer 评测报告默认落盘路径（v2；v1 报告保留不动）；可用 {@code -Drag.customer.benchmark.out} 覆盖。 */
   private static final Path DEFAULT_REPORT_PATH =
-      Path.of("docs", "rag-quality", "customer-baseline-v1.json");
+      Path.of("docs", "rag-quality", "customer-baseline-v2.json");
 
   private static final String OUT_PROP = "rag.customer.benchmark.out";
 
-  /** 语料行：字段口径对齐 CustomerCompanyEntity（摄取链直接消费）。 */
+  /**
+   * 语料行：字段口径对齐 CustomerCompanyEntity（摄取链直接消费）；contacts 为虚构联系人，经同一生产摄取链
+   * （CustomerIngestionService，customerContactMapper 桩按行喂入）拼入「联系人」附属语义段后真嵌入。
+   */
   private record CorpusRow(
       long id,
       String companyName,
       String industry,
       String address,
       String customerType,
-      String description) {}
+      String description,
+      List<CustomerContactEntity> contacts) {}
 
-  /** 固定语料（16 行；查询相关语义全部落在 行业/地址/描述 字段）。 */
+  /** 单条联系人造书签：姓名/职位/手机/email 入语义段（is_deleted=false 由摄取链过滤保留）。 */
+  private static CustomerContactEntity contact(String name, String position, String mobile) {
+    CustomerContactEntity c = new CustomerContactEntity();
+    c.setName(name);
+    c.setPosition(position);
+    c.setMobile(mobile);
+    c.setEmail(name + "@demo.slz.com");
+    c.setIsDeleted(false);
+    return c;
+  }
+
+  /** 固定语料（16 行；查询相关语义落在 行业/地址/描述 与联系人附属段；2001-2006 带虚构联系人）。 */
   private static final List<CorpusRow> CORPUS =
       List.of(
           new CorpusRow(
@@ -107,114 +124,130 @@ class CustomerRetrievalBenchmarkIT {
               "高端装备制造",
               "江苏省苏州市工业园区",
               "直销",
-              "主营五轴精密数控机床与加工中心的研发制造，年营收约1亿以上，为航空航天与汽车模具行业提供高精度加工装备"),
+              "主营五轴精密数控机床与加工中心的研发制造，年营收约1亿以上，为航空航天与汽车模具行业提供高精度加工装备",
+              List.of(contact("周建华", "技术负责人", "13912340001"))),
           new CorpusRow(
               2002L,
               "杭州云栖医疗软件有限公司",
               "医疗健康",
               "浙江省杭州市余杭区",
               "直销",
-              "专注医院信息化系统与区域医疗平台建设，提供HIS/EMR等核心软件产品，服务三级医院超百家"),
+              "专注医院信息化系统与区域医疗平台建设，提供HIS/EMR等核心软件产品，服务三级医院超百家",
+              List.of(contact("吴晓芸", "产品总监", "13912340002"))),
           new CorpusRow(
               2003L,
               "深圳前海慧科金融科技有限公司",
               "金融科技",
               "广东省深圳市南山区",
               "直销",
-              "为持牌金融机构提供风控建模与支付清算系统，团队规模200-500人，总部位于深圳前海"),
+              "为持牌金融机构提供风控建模与支付清算系统，团队规模200-500人，总部位于深圳前海",
+              List.of(contact("林志强", "采购经理", "13912340003"))),
           new CorpusRow(
               2004L,
               "宁波东方储能科技有限公司",
               "新能源与储能",
               "浙江省宁波市北仑区",
               "直销",
-              "从事电化学储能电站的系统集成与运营，承接电网侧调频调峰项目，具备百兆瓦级交付能力"),
+              "从事电化学储能电站的系统集成与运营，承接电网侧调频调峰项目，具备百兆瓦级交付能力",
+              List.of(contact("陈志刚", "销售总监", "13912345678"))),
           new CorpusRow(
               2005L,
               "无锡智链物流科技有限公司",
               "智慧物流",
               "江苏省无锡市新吴区",
               "直销",
-              "研发仓储分拣机器人与柔性输送系统，团队规模500-1000人，为电商与快递客户提供自动化分拣解决方案"),
+              "研发仓储分拣机器人与柔性输送系统，团队规模500-1000人，为电商与快递客户提供自动化分拣解决方案",
+              List.of(contact("郑晓峰", "供应链总监", "13912340005"))),
           new CorpusRow(
               2006L,
               "佛山瑞升清洁机器人有限公司",
               "高端装备制造",
               "广东省佛山市顺德区",
               "代理",
-              "主营家用清洁机器人整机研发与销售，产品覆盖扫拖一体机型，渠道以电商直销为主"),
+              "主营家用清洁机器人整机研发与销售，产品覆盖扫拖一体机型，渠道以电商直销为主",
+              List.of(contact("黄国栋", "渠道经理", "13912340006"))),
           new CorpusRow(
               2007L,
               "上海跨贸云软件有限公司",
               "软件与信息服务",
               "上海市浦东新区",
               "直销",
-              "提供跨境贸易管理软件与海外仓结算系统，帮助出口企业完成订单、物流、清关全链路数字化"),
+              "提供跨境贸易管理软件与海外仓结算系统，帮助出口企业完成订单、物流、清关全链路数字化",
+              List.of()),
           new CorpusRow(
               2008L,
               "东莞华塑模具科技有限公司",
               "高端装备制造",
               "广东省东莞市松山湖",
               "代理",
-              "塑料成型模具专业制造商，覆盖汽车内外饰件与家电壳体模具，具备模流分析与试模验证能力"),
+              "塑料成型模具专业制造商，覆盖汽车内外饰件与家电壳体模具，具备模流分析与试模验证能力",
+              List.of()),
           new CorpusRow(
               2009L,
               "合肥中科激光技术有限公司",
               "高端装备制造",
               "安徽省合肥市高新区",
               "直销",
-              "研发高功率激光切割设备与激光焊接工作站，年营收约2000-5000万，服务钣金加工行业客户"),
+              "研发高功率激光切割设备与激光焊接工作站，年营收约2000-5000万，服务钣金加工行业客户",
+              List.of()),
           new CorpusRow(
               2010L,
               "天津海工重型装备有限公司",
               "高端装备制造",
               "天津市滨海新区",
               "直销",
-              "制造港口起重机械与海洋工程重型装备，团队规模1000人以上，承接大型钢结构总包项目"),
+              "制造港口起重机械与海洋工程重型装备，团队规模1000人以上，承接大型钢结构总包项目",
+              List.of()),
           new CorpusRow(
               2011L,
               "广州岭南生鲜供应链有限公司",
               "智慧物流",
               "广东省广州市天河区",
               "直销",
-              "专注生鲜冷链配送与城配网络建设，覆盖华南区域商超与餐饮客户，自有冷链车队五百余台"),
+              "专注生鲜冷链配送与城配网络建设，覆盖华南区域商超与餐饮客户，自有冷链车队五百余台",
+              List.of()),
           new CorpusRow(
               2012L,
               "北京恒远数据安全有限公司",
               "软件与信息服务",
               "北京市海淀区",
               "直销",
-              "提供数据脱敏、审计与合规检测软件，服务金融与政务客户，通过等保三级测评"),
+              "提供数据脱敏、审计与合规检测软件，服务金融与政务客户，通过等保三级测评",
+              List.of()),
           new CorpusRow(
               2013L,
               "上海安吉汽车零部件有限公司",
               "高端装备制造",
               "上海市嘉定区",
               "直销",
-              "汽车底盘与传动系统零部件供应商，为整车厂提供转向节与差速器壳体等精密铸件"),
+              "汽车底盘与传动系统零部件供应商，为整车厂提供转向节与差速器壳体等精密铸件",
+              List.of()),
           new CorpusRow(
               2014L,
               "成都蜀锦智能穿戴有限公司",
               "互联网科技",
               "四川省成都市高新区",
               "直销",
-              "研发智能手表与运动健康监测设备，团队规模50-200人，主打千元级大众市场"),
+              "研发智能手表与运动健康监测设备，团队规模50-200人，主打千元级大众市场",
+              List.of()),
           new CorpusRow(
               2015L,
               "青岛海岳风电叶片有限公司",
               "新能源与储能",
               "山东省青岛市黄岛区",
               "直销",
-              "制造大型风电叶片与塔筒法兰，年营收约5000万-1亿，配套海上风电项目交付"),
+              "制造大型风电叶片与塔筒法兰，年营收约5000万-1亿，配套海上风电项目交付",
+              List.of()),
           new CorpusRow(
               2016L,
               "武汉光谷半导体材料有限公司",
               "互联网科技",
               "湖北省武汉市东湖高新区",
               "直销",
-              "生产半导体硅片与湿电子化学品，服务晶圆代工厂，洁净车间产能持续扩建中"));
+              "生产半导体硅片与湿电子化学品，服务晶圆代工厂，洁净车间产能持续扩建中",
+              List.of()));
 
-  /** 10 例 customer 检索用例：C-01~C-07 语义匹配（行业/规模/区域），C-08~C-10 词汇失配（同义不同词）。 */
+  /** 15 例 customer 检索用例：C-01~C-10 沿用 v1（语义匹配 + 词汇失配），C-11~C-15 联系人线索（姓名/职位/手机/组合/职位同义失配）。 */
   private static List<RagBenchmarkCase> suite() {
     List<RagBenchmarkCase> cases = new ArrayList<>();
     cases.add(caseOf("C-01", RagBenchmarkCase.Category.TEXT, "苏州工业园区做五轴精密数控机床的高端装备制造客户有哪些", 2001L));
@@ -228,6 +261,15 @@ class CustomerRetrievalBenchmarkIT {
     cases.add(caseOf("C-08", RagBenchmarkCase.Category.MISMATCH, "找能做扫地机器人整机的代工工厂", 2006L));
     cases.add(caseOf("C-09", RagBenchmarkCase.Category.MISMATCH, "跨境电商ERP软件哪家做得成熟", 2007L));
     cases.add(caseOf("C-10", RagBenchmarkCase.Category.MISMATCH, "需要一家能开注塑模具的供应商", 2008L));
+    // C-11~C-15 联系人线索（add-customer-contact-retrieval 任务 3.4）：expectedChunkIds 仍为
+    // CUSTOMER_COMPANY:{id}
+    cases.add(caseOf("C-11", RagBenchmarkCase.Category.TEXT, "周建华是哪家公司的技术对接人", 2001L));
+    cases.add(caseOf("C-12", RagBenchmarkCase.Category.TEXT, "高端装备制造客户的技术负责人负责哪家公司的技术对接", 2001L));
+    cases.add(
+        caseOf("C-13", RagBenchmarkCase.Category.TEXT, "客户联系人手机号 13912345678 对接的是哪家储能公司", 2004L));
+    cases.add(caseOf("C-14", RagBenchmarkCase.Category.TEXT, "深圳的林志强在哪家金融科技公司", 2003L));
+    // 职位同义词汇失配：负责人「渠道经理」↔ 查询「经销商渠道对接人」
+    cases.add(caseOf("C-15", RagBenchmarkCase.Category.MISMATCH, "佛山哪家公司有负责经销商渠道的对接人", 2006L));
     return cases;
   }
 
@@ -253,18 +295,22 @@ class CustomerRetrievalBenchmarkIT {
     CrmEntityVectorStore entityStore = new CrmEntityVectorStore(store);
 
     // 1) 语料经生产摄取链真嵌入（CustomerIngestionService 拼文本/建 payload/upsert 全复用；owner 置空避免 mapper 依赖）
+    // 联系人来源用 in-memory 桩（按语料行返回虚构联系人，摄入同一条生产链的「联系人」附属语义段后真嵌入）
+    CustomerContactMapper contactMapper = org.mockito.Mockito.mock(CustomerContactMapper.class);
     CustomerIngestionService ingestion =
-        new CustomerIngestionService(embeddingService, entityStore, null, null, null);
+        new CustomerIngestionService(embeddingService, entityStore, null, null, contactMapper);
     long tokenMeter = 0L;
     long charMeter = 0L;
     for (CorpusRow row : CORPUS) {
+      org.mockito.Mockito.when(contactMapper.selectList(org.mockito.ArgumentMatchers.any()))
+          .thenReturn(row.contacts());
       ingestion.ingest(toEntity(row));
       // token 计量：embedWithUsage 单独一遍（生产 ingest 内部 embed() 不回流 usage，评测计量属授权外呼）
-      ModelCallResult<float[]> measured = embeddingService.embedWithUsage(textOf(row));
+      ModelCallResult<float[]> measured = embeddingService.embedWithUsage(semanticTextOf(row));
       if (measured.totalTokens() != null) {
         tokenMeter += measured.totalTokens();
       }
-      charMeter += textOf(row).length();
+      charMeter += semanticTextOf(row).length();
     }
     System.out.println(
         "[rag-benchmark] customer 语料入库完成：corpus="
@@ -368,8 +414,8 @@ class CustomerRetrievalBenchmarkIT {
     return entity;
   }
 
-  /** 与 CustomerSemanticTextSupport 同口径的语义文本（仅用于 token 计量，字段为语料行承载）。 */
-  private String textOf(CorpusRow row) {
+  /** 与生产摄取链完全同口径的语义文本（含联系人附属段，仅用于 token/char 计量）。 */
+  private String semanticTextOf(CorpusRow row) {
     StringBuilder sb = new StringBuilder();
     appendField(sb, "公司名称", row.companyName());
     appendField(sb, "所属行业", row.industry());
@@ -377,7 +423,44 @@ class CustomerRetrievalBenchmarkIT {
     appendField(sb, "公司地址", row.address());
     appendField(sb, "公司描述", row.description());
     appendField(sb, "客户等级", String.valueOf(5));
+    appendContactSegment(sb, row.contacts());
     return sb.toString();
+  }
+
+  /** 复刻 CustomerSemanticTextSupport 联系人段口径：「联系人: 姓名（职位，手机，email）」，多人以「；」连接。 */
+  private static void appendContactSegment(
+      StringBuilder sb, java.util.List<CustomerContactEntity> contacts) {
+    if (contacts == null || contacts.isEmpty()) {
+      return;
+    }
+    if (sb.length() > 0) {
+      sb.append("；");
+    }
+    sb.append("联系人: ");
+    boolean first = true;
+    for (CustomerContactEntity c : contacts) {
+      if (!first) {
+        sb.append("；");
+      }
+      first = false;
+      sb.append(c.getName()).append("（");
+      boolean inner = false;
+      inner = appendPart(sb, inner, c.getPosition());
+      inner = appendPart(sb, inner, c.getMobile());
+      appendPart(sb, inner, c.getEmail());
+      sb.append('）');
+    }
+  }
+
+  private static boolean appendPart(StringBuilder sb, boolean inner, String value) {
+    if (value == null || value.isBlank()) {
+      return inner;
+    }
+    if (inner) {
+      sb.append('，');
+    }
+    sb.append(value.trim());
+    return true;
   }
 
   private static void appendField(StringBuilder sb, String label, String value) {
@@ -400,7 +483,9 @@ class CustomerRetrievalBenchmarkIT {
     root.put("corpusSize", CORPUS.size());
     root.put("topK", TOP_K);
     root.put("contextScope", "ALL（权限面不混入质量评测）");
-    root.put("suiteNote", "customer 用例独立编号 C-01~C-10，不并入知识库 63 例 fixture，SUITE_VERSION 不动；D2 首跑不锚");
+    root.put(
+        "suiteNote",
+        "customer 用例独立编号 C-01~C-15（v1 的 C-01~C-10 保留 + C-11~C-15 联系人线索），不并入知识库 63 例 fixture，SUITE_VERSION 不动；CUSTOMER-SUITE-2.0 不锚，v1 报告保留不动");
     ObjectNode metrics = root.putObject("metrics");
     metrics.put("caseCount", report.metrics().caseCount());
     metrics.put("meanRecallAtK", report.metrics().meanRecallAtK());
