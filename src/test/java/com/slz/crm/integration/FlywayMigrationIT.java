@@ -43,7 +43,7 @@ class FlywayMigrationIT {
       new TreeSet<>(
           List.of(
               "1", "3", "4", "4.1", "5", "6", "21", "22", "23", "24", "25", "26", "27", "28", "29",
-              "30", "31", "32", "33", "34", "35", "36", "37", "38"));
+              "30", "31", "32", "33", "34", "35", "36", "37", "38", "39"));
 
   /** 跨 lane 关键表抽样：确认各号段 DDL 真的建出了表（V1/V3/V4/V5/V6）。 */
   private static final List<String> SPOT_CHECK_TABLES =
@@ -423,6 +423,49 @@ class FlywayMigrationIT {
                   + " AND h.version = 3 AND h.operation = 'UPDATE'");
       assertTrue(history.next(), "history UPDATE 计数行缺失");
       assertEquals(1, history.getLong(1), "aichat-system-prompt 应落一笔 version=3 UPDATE 快照");
+    }
+  }
+
+  /**
+   * V39 断言（add-customer-retrieval-baseline 任务 1.1/1.2）：演示种子落库且权限四档归属齐备——
+   * 120 行演示客户（owner 覆盖 6 名演示销售员）、4 个演示部门带 leader_id、演示销售角色 roleId=5 存在、
+   * 608 已授 roleId=5（FlywayMigrationIT Order2 守卫的"业务角色全量获 608"在 V39 后仍成立）。
+   */
+  @Test
+  @Order(11)
+  void customerDemoSeedInsertedWithFourTierOwnerAttribution() throws Exception {
+    assumeTrue(mysql != null, "Docker 不可用时本用例随类跳过");
+    try (Connection connection =
+            DriverManager.getConnection(
+                mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
+        Statement statement = connection.createStatement()) {
+      ResultSet customers =
+          statement.executeQuery(
+              "SELECT COUNT(*), COUNT(DISTINCT owner_id) FROM customer_company"
+                  + " WHERE is_deleted = 0 AND id BETWEEN 1001 AND 1120");
+      assertTrue(customers.next(), "V39 客户计数行缺失");
+      assertEquals(120, customers.getLong(1), "V39 应种入 120 行未删除演示客户");
+      assertEquals(6, customers.getLong(2), "V39 客户 owner 应覆盖 6 名演示销售员（四档归属数据面）");
+
+      ResultSet depts =
+          statement.executeQuery(
+              "SELECT COUNT(*), COUNT(leader_id) FROM sys_dept WHERE id IN (101, 102, 103, 104)");
+      assertTrue(depts.next(), "V39 部门计数行缺失");
+      assertEquals(4, depts.getLong(1), "V39 应种入 4 个演示部门");
+      assertEquals(4, depts.getLong(2), "V39 演示部门应全部带 leader_id（上司部门可见档依赖）");
+
+      ResultSet role =
+          statement.executeQuery(
+              "SELECT COUNT(*) FROM sys_role WHERE id = 5 AND is_deleted = b'0'");
+      assertTrue(role.next(), "V39 演示角色计数行缺失");
+      assertEquals(1, role.getLong(1), "V39 应种入演示销售角色 roleId=5（is_deleted=0）");
+
+      ResultSet grant =
+          statement.executeQuery(
+              "SELECT COUNT(*) FROM role_permissions WHERE role_id = 5 AND permissions_id = 608"
+                  + " AND is_deleted = b'0'");
+      assertTrue(grant.next(), "V39 角色权限计数行缺失");
+      assertEquals(1, grant.getLong(1), "V39 应授 roleId=5 权限 608（Order2 业务角色全量守卫）");
     }
   }
 
