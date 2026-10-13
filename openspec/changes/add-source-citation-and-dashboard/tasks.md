@@ -35,9 +35,9 @@
 
 ## 任务组 4 · 门禁与收尾
 
-- [ ] 4.1 全量 mvn -B -ntp test 0 失败（surefire 只增不减），checkstyle/spotbugs/spotless/pmd 顺序跑全 0
-      依据：（执行留痕）
-- [ ] 4.2 三守卫（pmd-baseline/bijection/test-baseline）+ merge-gate 8/8；基线 --update 仅当 surefire 净增（树净状态单次跑，MAJOR-1 教训：禁复跑覆盖戳）
-      依据：（执行留痕）
-- [ ] 4.3 tasks 全勾 + 每勾下一行 6 空格依据行 + §0 留痕（SOURCES 发射证据/chunk 端点正反向/生日端点/门禁实测数字/偏差披露），handoff 落 work/handoff-add-source-citation-and-dashboard.md
-      依据：（执行留痕）
+- [x] 4.1 全量 mvn -B -ntp test 0 失败（surefire 只增不减），checkstyle/spotbugs/spotless/pmd 顺序跑全 0
+      依据：`mvn -B -ntp test` 1248 run/0 fail（基线 1236→1248 净增 12）；checkstyle 0 violations / spotless 975 clean / spotbugs BugInstance=0 / pmd 阈值 0，全绿
+- [x] 4.2 三守卫（pmd-baseline/bijection/test-baseline）+ merge-gate 8/8；基线 --update 仅当 surefire 净增（树净状态单次跑，MAJOR-1 教训：禁复跑覆盖戳）
+      依据：pmd-baseline OK（0==0==0）/ bijection OK（12↔12）/ test-baseline 通过；基线 `--update` 单次树净跑 1236→1248、failsafe 114→116（source-revision=2c17f98）；merge-gate 8/8 全 PASS
+- [x] 4.3 tasks 全勾 + 每勾下一行 6 空格依据行 + §0 留痕（SOURCES 发射证据/chunk 端点正反向/生日端点/门禁实测数字/偏差披露），handoff 落 work/handoff-add-source-citation-and-dashboard.md
+      依据：全部 13 格已勾且各带 6 空格依据行；SOURCES 发射证据见 handoff §6（AiChatServiceImpl.java:279-283）、chunk 端点正反向 KnowledgeChunkControllerIT 200/12002、生日端点 CustomerContactBirthdaysServiceTest 3 例、门禁实测数字见 handoff §5（1248/116/0/four-static/merge-gate 8/8）；偏差披露见 handoff §7 五项；handoff 已落 work/handoff-add-source-citation-and-dashboard.md
