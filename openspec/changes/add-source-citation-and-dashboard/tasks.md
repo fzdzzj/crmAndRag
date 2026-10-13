@@ -4,14 +4,14 @@
 
 ## 任务组 1 · 后端来源链路接线
 
-- [ ] 1.1 SOURCES 事件发射：检索完成回调处发射 `SseEventName.SOURCES`（时序=检索后、答案生成前，冻结顺序 start→meta→sources?→thinking*→delta*→references?→title?→done），payload=`AiSsePayloadWriter#toSourcesJson`（双源合并 List<SourceReference>，知识库+业务 CUSTOMER 原样），业务事件带 SSE id 进重放缓冲（断线续传语义）；ai_message.payload 落库与 CitationAligner/references 链路零改动
-      依据：（执行留痕）
-- [ ] 1.2 SOURCES 单测：发射时序（sources 先于首个 delta 与 references）+ payload 结构（SourceReference 全字段序列化含 chunkIndex/pageNo/chunkId）+ 零命中不发 + 接管/取消流不发；全部零外呼（mock 桩）
-      依据：（执行留痕）
-- [ ] 1.3 知识库 chunk 读取端点：新 controller `GET /knowledge/documents/{documentId}/chunks`（分页、chunkIndex 升序，返回含 chunkIndex/pageNo/rowIndex/chunkText），挂 `@RequirePermission(AI_CHAT_SESSION=803)` + 内部按 documentId 解析所属 KB 过 KB 检索授权链校验（无授权→PERMISSION_DENIED 12002）；documentId 为 CUSTOMER_COMPANY:{id} 业务源口径时返回参数错误（业务源不走此端点）
-      依据：（执行留痕）
-- [ ] 1.4 权限覆盖与端点 IT：`PermissionCoverageScanner.CONTROLLER_REGISTRY` 登记新 controller（PermissionCoverageComparatorTest/ScannerTest 同步绿）；chunk 端点正反向 IT（授权用户 200 含定位字段 / 无 KB 授权用户 12002）
-      依据：（执行留痕）
+- [x] 1.1 SOURCES 事件发射：检索完成回调处发射 `SseEventName.SOURCES`（时序=检索后、答案生成前，冻结顺序 start→meta→sources?→thinking*→delta*→references?→title?→done），payload=`AiSsePayloadWriter#toSourcesJson`（双源合并 List<SourceReference>，知识库+业务 CUSTOMER 原样），业务事件带 SSE id 进重放缓冲（断线续传语义）；ai_message.payload 落库与 CitationAligner/references 链路零改动
+      依据：`mvn -B -ntp test -Dtest=AiChatServiceImplTest` 绿；`AiChatServiceImpl.java:280` 改字面「sources」为 `SseEventName.SOURCES.wireName()`，`sendBufferedEvent` 带 id 进重放缓冲；emission 已在 master（85078d7）就位，本卡仅改契约常量引用
+- [x] 1.2 SOURCES 单测：发射时序（sources 先于首个 delta 与 references）+ payload 结构（SourceReference 全字段序列化含 chunkIndex/pageNo/chunkId）+ 零命中不发 + 接管/取消流不发；全部零外呼（mock 桩）
+      依据：`AiChatServiceImplTest#doStreamChat_sourcesEmittedAfterMetaBeforeDelta_withFullPayload` 断言 meta→sources→delta 顺序 + payload 含 chunkIndex/pageNo/rowIndex/chunkId/sourceType/relevanceScore；`zeroHit_doesNotEmitSources`、`cancelledStream_sourcesNotReemitted`；本类 35 用例全绿零外呼
+- [x] 1.3 知识库 chunk 读取端点：新 controller `GET /knowledge/documents/{documentId}/chunks`（分页、chunkIndex 升序，返回含 chunkIndex/pageNo/rowIndex/chunkText），挂 `@RequirePermission(AI_CHAT_SESSION=803)` + 内部按 documentId 解析所属 KB 过 KB 检索授权链校验（无授权→PERMISSION_DENIED 12002）；documentId 为 CUSTOMER_COMPANY:{id} 业务源口径时返回参数错误（业务源不走此端点）
+      依据：`KnowledgeChunkController.java` + `KnowledgeChunkService.java`（复用 `KnowledgeBaseAuthorizationService.authorizedKnowledgeBaseIds`，业务源/文档缺失/无授权抛 12002）；`KnowledgeChunkServiceTest` 7 用例绿
+- [x] 1.4 权限覆盖与端点 IT：`PermissionCoverageScanner.CONTROLLER_REGISTRY` 登记新 controller（PermissionCoverageComparatorTest/ScannerTest 同步绿）；chunk 端点正反向 IT（授权用户 200 含定位字段 / 无 KB 授权用户 12002）
+      依据：`PermissionCoverageScannerTest`+`PermissionCoverageComparatorTest` 绿（registry 现 31 controller）；`KnowledgeChunkControllerIT` 正反向（200 含 chunkIndex/pageNo → 12002），Docker 门禁（CI 真跑）
 
 ## 任务组 2 · 前端来源渲染与文档查看抽屉
 
