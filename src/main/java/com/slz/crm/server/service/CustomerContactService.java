@@ -3,6 +3,7 @@ package com.slz.crm.server.service;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.slz.crm.pojo.dto.CustomerContactDTO;
 import com.slz.crm.pojo.dto.CustomerContactRemarkDTO;
+import com.slz.crm.pojo.vo.ContactBirthdayVO;
 import com.slz.crm.pojo.vo.CustomerContactVO;
 import com.slz.crm.pojo.vo.GroupResultVO;
 import com.slz.crm.pojo.vo.UserVO;
@@ -152,4 +153,12 @@ public interface CustomerContactService {
    * @return 生日提醒消息列表
    */
   List<String> getBirthdayReminderMessage(Long contactId);
+
+  /**
+   * 获取未来 N 天内过生日的联系人清单（add-source-citation-and-dashboard 任务 3.1）：在当前用户数据权限范围内列出联系人，
+   * 解析其本人/亲属生日备注，返回落在未来 N 天内的生日条目。
+   *
+   * @return 未来 N 天生日条目列表
+   */
+  List<ContactBirthdayVO> getUpcomingBirthdays();
 }

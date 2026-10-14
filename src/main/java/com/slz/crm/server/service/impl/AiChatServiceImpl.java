@@ -4,6 +4,7 @@ import com.slz.crm.common.enumeration.DataScopeLevel;
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.platform.contract.AssistantChatRequest;
 import com.slz.crm.platform.contract.ModelProvider;
+import com.slz.crm.platform.contract.SseEventName;
 import com.slz.crm.platform.contract.UserContext;
 import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.entity.AiChatImageEntity;
@@ -275,9 +276,13 @@ public class AiChatServiceImpl implements AiChatService {
               resolveModelName(),
               request.useKnowledgeBase(),
               request.thinking()));
+      // add-source-citation-and-dashboard 任务 1.1：检索完成后、答案生成前发射 SOURCES 事件
+      // （冻结顺序 start→meta→sources?，业务事件带 SSE id 进重放缓冲）；双源合并列表原样经 toSourcesJson 序列化。
       if (retrieval.hasSources()) {
         eventWriter.sendBufferedEvent(
-            activeStream, "sources", eventWriter.toSourcesJson(retrieval.sources()));
+            activeStream,
+            SseEventName.SOURCES.wireName(),
+            eventWriter.toSourcesJson(retrieval.sources()));
       }
 
       List<ToolCallback> toolCallbacks = permittedToolCallbacks(currentUser);

@@ -13,6 +13,7 @@ export interface ChatMessage {
   msgType?: string;
   payload?: unknown;
   references?: unknown[];
+  sources?: unknown[];
   createdTime?: string;
   interrupted?: boolean;
 }
@@ -294,9 +295,16 @@ export function useAiChat() {
             if (refs) currentAssistantMsg.references = refs;
             break;
           }
-          case 'sources':
-            // 可用于知识来源，当前合并到 references
+          case 'sources': {
+            // sources 事件 payload 为原始 JSON 数组（每个元素为知识/Business 来源对象）
+            const sources = Array.isArray(evt.data)
+              ? evt.data
+              : Array.isArray(d?.sources)
+                ? d.sources
+                : null;
+            if (sources) currentAssistantMsg.sources = sources;
             break;
+          }
           case 'title':
             // 标题异步，当前忽略或存
             break;

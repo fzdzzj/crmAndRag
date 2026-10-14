@@ -2,6 +2,7 @@ package com.slz.crm.unit.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -18,6 +19,7 @@ import com.slz.crm.platform.contract.AssistantChatRequest;
 import com.slz.crm.platform.contract.ModelCallOptions;
 import com.slz.crm.platform.contract.ModelProvider;
 import com.slz.crm.platform.contract.SourceReference;
+import com.slz.crm.platform.contract.SseEventName;
 import com.slz.crm.platform.contract.TokenUsageRecord;
 import com.slz.crm.platform.contract.TokenUsageRecorder;
 import com.slz.crm.pojo.ao.RoleAO;
@@ -26,6 +28,7 @@ import com.slz.crm.pojo.entity.AiSessionEntity;
 import com.slz.crm.server.ai.AiAssistantMessageStore;
 import com.slz.crm.server.ai.AiChatImageService;
 import com.slz.crm.server.ai.AiChatImageUnderstandingService;
+import com.slz.crm.server.ai.AiChatKnowledgeRetrievalService;
 import com.slz.crm.server.ai.AiChatMetrics;
 import com.slz.crm.server.ai.AiChatPromptService;
 import com.slz.crm.server.ai.AiChatSseEventWriter;
@@ -102,6 +105,9 @@ class AiChatServiceImplTest {
 
   @Mock private AiChatImageUnderstandingService aiChatImageUnderstandingService;
 
+  /** add-source-citation-and-dashboard 任务 1.2：SOURCES 事件发射用例注入的检索服务 mock */
+  @Mock private AiChatKnowledgeRetrievalService knowledgeRetrievalService;
+
   @Mock private AiRateLimiter aiRateLimiter;
 
   @Mock private AiAssistantMessageStore assistantMessageStore;
@@ -176,6 +182,11 @@ class AiChatServiceImplTest {
     ReflectionTestUtils.setField(streamLifecycle, "aiProperties", aiProperties);
     // 批D拆分后 aiMessageService/promptService/eventWriter 已随职责迁入 AiChatStreamFinalizer，
     // 且构造器已注入同一实例，无需（也不能）再反射注入生命周期字段。
+    // add-source-citation-and-dashboard 任务 1.2：检索 mock 注入后默认返回空检索结果（等价原 null 服务的零命中
+    // 路径），既有用例不受影响；仅 sources 发射用例以显式桩覆盖。
+    lenient()
+        .when(knowledgeRetrievalService.retrieve(any(), any(), any(), anyBoolean(), any()))
+        .thenReturn(AiChatKnowledgeRetrievalService.RetrievalOutcome.empty());
     useRegistry(new AiStreamRegistry());
   }
 
@@ -867,6 +878,149 @@ class AiChatServiceImplTest {
         .contains("\"sourceType\":\"pdf\"")
         .contains("\"pageNo\":2")
         .contains("\"chunkIndex\":4");
+  }
+
+  /**
+   * add-source-citation-and-dashboard 任务 1.2：SOURCES 事件发射时序与 payload 结构。
+   *
+   * <p>走 dispatchChatStream 真实链路：start→meta→sources（检索后、答案前）→delta，断言 sources 先于首个 delta
+   * 发出、全字段序列化（chunkIndex/pageNo/rowIndex/chunkId）进重放缓冲。
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void doStreamChat_sourcesEmittedAfterMetaBeforeDelta_withFullPayload() {
+    RoleAO currentUser = buildUser(42L);
+    BaseUnit.setCurrentRole(currentUser);
+    AiSessionEntity session = new AiSessionEntity();
+    session.setId(9L);
+    session.setTitle("已有会话");
+    when(aiRateLimiter.tryAcquire(42L)).thenReturn(true);
+    when(aiSessionService.getOwnedSession(9L, 42L)).thenReturn(session);
+    when(permissionService.getPermissionList(3L)).thenReturn(List.of());
+    when(aiToolRegistry.getPermittedToolCallbacks(currentUser)).thenReturn(List.of());
+    AiChatPromptService promptSpy = org.mockito.Mockito.spy(promptService);
+    ReflectionTestUtils.setField(service, "promptService", promptSpy);
+    doReturn(new AiChatPromptService.PreparedTurn(9L, null, false, "来源测试"))
+        .when(promptSpy)
+        .prepareTurn(9L, "来源测试");
+    doReturn(new AiChatPromptService.PreparedMessages(new java.util.ArrayList<>(), false))
+        .when(promptSpy)
+        .buildMessages(eq(9L), any(AiChatPromptService.PreparedTurn.class), any());
+    SourceReference source =
+        new SourceReference("pdf", "hybrid", "A.pdf", "doc-a", "chunk-a", 3, 5, 2, "来源片段甲", 0.91D);
+    when(knowledgeRetrievalService.retrieve(any(), any(), any(), anyBoolean(), any()))
+        .thenReturn(
+            // context 置 null，避免触发 dispatchChatStream 对不可变 List 的 add；仅验证 sources 发射链路。
+            new AiChatKnowledgeRetrievalService.RetrievalOutcome(null, List.of(source)));
+    AiMessageEntity savedUser = new AiMessageEntity();
+    savedUser.setId(88L);
+    when(aiMessageService.saveMessage(9L, "user", "text", "来源测试", null)).thenReturn(savedUser);
+    when(chatClientBuilder.build()).thenReturn(chatClient);
+    when(chatClient.prompt()).thenReturn(promptSpec);
+    when(promptSpec.messages(anyList())).thenReturn(promptSpec);
+    when(promptSpec.stream()).thenReturn(streamSpec);
+    ChatResponse response = buildChatResponseWithUsage("答案", 5);
+    when(streamSpec.chatResponse()).thenReturn(Flux.just(response));
+    when(assistantMessageStore.complete(eq(88L), eq("答案"), any(), eq(5))).thenReturn(true);
+
+    invokeDoStreamChat(currentUser, 9L, "来源测试", emitter);
+
+    org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(eventWriter);
+    org.mockito.ArgumentCaptor<String> sourcesCaptor =
+        org.mockito.ArgumentCaptor.forClass(String.class);
+    inOrder
+        .verify(eventWriter)
+        .sendBufferedEvent(
+            any(AiStreamRegistry.ActiveStream.class),
+            eq("meta"),
+            org.mockito.ArgumentMatchers.anyString());
+    inOrder
+        .verify(eventWriter)
+        .sendBufferedEvent(
+            any(AiStreamRegistry.ActiveStream.class),
+            eq(SseEventName.SOURCES.wireName()),
+            sourcesCaptor.capture());
+    inOrder
+        .verify(eventWriter)
+        .sendBufferedEvent(
+            any(AiStreamRegistry.ActiveStream.class),
+            eq("delta"),
+            org.mockito.ArgumentMatchers.anyString());
+    assertThat(sourcesCaptor.getValue())
+        .contains("\"chunkIndex\":3")
+        .contains("\"pageNo\":5")
+        .contains("\"rowIndex\":2")
+        .contains("\"chunkId\":\"chunk-a\"")
+        .contains("\"sourceType\":\"pdf\"")
+        .contains("\"relevanceScore\":0.91");
+  }
+
+  /** add-source-citation-and-dashboard 任务 1.2：零命中（检索无来源）时不得发射 SOURCES 事件。 */
+  @Test
+  void doStreamChat_zeroHit_doesNotEmitSources() {
+    RoleAO currentUser = buildUser(42L);
+    BaseUnit.setCurrentRole(currentUser);
+    AiSessionEntity session = new AiSessionEntity();
+    session.setId(9L);
+    session.setTitle("已有会话");
+    when(aiRateLimiter.tryAcquire(42L)).thenReturn(true);
+    when(aiSessionService.getOwnedSession(9L, 42L)).thenReturn(session);
+    when(permissionService.getPermissionList(3L)).thenReturn(List.of());
+    when(aiToolRegistry.getPermittedToolCallbacks(currentUser)).thenReturn(List.of());
+    AiChatPromptService promptSpy = org.mockito.Mockito.spy(promptService);
+    ReflectionTestUtils.setField(service, "promptService", promptSpy);
+    doReturn(new AiChatPromptService.PreparedTurn(9L, null, false, "零命中"))
+        .when(promptSpy)
+        .prepareTurn(9L, "零命中");
+    doReturn(new AiChatPromptService.PreparedMessages(List.of(), false))
+        .when(promptSpy)
+        .buildMessages(eq(9L), any(AiChatPromptService.PreparedTurn.class), any());
+    when(knowledgeRetrievalService.retrieve(any(), any(), any(), anyBoolean(), any()))
+        .thenReturn(AiChatKnowledgeRetrievalService.RetrievalOutcome.empty());
+    AiMessageEntity savedUser = new AiMessageEntity();
+    savedUser.setId(88L);
+    when(aiMessageService.saveMessage(9L, "user", "text", "零命中", null)).thenReturn(savedUser);
+    when(chatClientBuilder.build()).thenReturn(chatClient);
+    when(chatClient.prompt()).thenReturn(promptSpec);
+    when(promptSpec.messages(anyList())).thenReturn(promptSpec);
+    when(promptSpec.stream()).thenReturn(streamSpec);
+    ChatResponse response = buildChatResponseWithUsage("答案", 5);
+    when(streamSpec.chatResponse()).thenReturn(Flux.just(response));
+    when(assistantMessageStore.complete(eq(88L), eq("答案"), any(), eq(5))).thenReturn(true);
+
+    invokeDoStreamChat(currentUser, 9L, "零命中", emitter);
+
+    verify(eventWriter, never())
+        .sendBufferedEvent(
+            any(AiStreamRegistry.ActiveStream.class),
+            eq(SseEventName.SOURCES.wireName()),
+            org.mockito.ArgumentMatchers.anyString());
+  }
+
+  /** add-source-citation-and-dashboard 任务 1.2：取消/接管流不补发 SOURCES（sources 仅在起始链路发射一次）。 */
+  @Test
+  void cancelledStream_sourcesNotReemitted() {
+    AiStreamRegistry registry = new AiStreamRegistry();
+    useRegistry(registry);
+    AiStreamRegistry.ActiveStream activeStream = new AiStreamRegistry.ActiveStream(9L, emitter);
+    activeStream.setAssistantMessageId(88L);
+    activeStream.getPartialAnswer().append("部分内容");
+    activeStream.setContext(
+        AiChatStreamContext.initial(
+            9L, emitter, List.of(), List.of(), System.currentTimeMillis(), null));
+    registry.register(9L, activeStream);
+    when(assistantMessageStore.complete(eq(88L), eq("部分内容"), eq("{\"interrupted\":true}"), eq(0)))
+        .thenReturn(true);
+
+    boolean cancelled = streamLifecycle.cancel(activeStream, 9L);
+
+    assertThat(cancelled).isTrue();
+    verify(eventWriter).sendBufferedEvent(activeStream, "stopped", "{\"reason\":\"CANCELLED\"}");
+    verify(eventWriter, never())
+        .sendBufferedEvent(
+            any(AiStreamRegistry.ActiveStream.class),
+            eq(SseEventName.SOURCES.wireName()),
+            org.mockito.ArgumentMatchers.anyString());
   }
 
   @Test

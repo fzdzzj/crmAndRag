@@ -6,6 +6,7 @@ import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.result.Result;
 import com.slz.crm.pojo.dto.CustomerCompanyDTO;
 import com.slz.crm.pojo.dto.CustomerContactDTO;
+import com.slz.crm.pojo.vo.ContactBirthdayVO;
 import com.slz.crm.pojo.vo.CustomerContactVO;
 import com.slz.crm.pojo.vo.GroupResultVO;
 import com.slz.crm.pojo.vo.UserVO;
@@ -221,5 +222,17 @@ public class CustomerContactController {
   public Result<List<String>> getBirthdayReminderMessage(@PathVariable Long id) {
     List<String> messages = customerContactService.getBirthdayReminderMessage(id);
     return Result.success(messages);
+  }
+
+  /**
+   * 获取未来 N 天内过生日的联系人清单（add-source-citation-and-dashboard 任务 3.1）。注：卡片原文写作 GET
+   * /customer/contact/birthdays，本控制器基路径为 /contact，故实际端点路径为 /contact/birthdays。
+   *
+   * @return 未来 N 天生日条目列表
+   */
+  @GetMapping("/birthdays")
+  @RequirePermission(PermissionOperates.CUSTOMER_QUERY_CONTACT)
+  public Result<List<ContactBirthdayVO>> getUpcomingBirthdays() {
+    return Result.success(customerContactService.getUpcomingBirthdays());
   }
 }

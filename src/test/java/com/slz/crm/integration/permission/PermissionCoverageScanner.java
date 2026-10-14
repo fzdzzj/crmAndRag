@@ -43,8 +43,8 @@ public final class PermissionCoverageScanner {
   private static final String SCAN_BASE_PACKAGE = "com.slz.crm";
 
   /**
-   * controller 登记清单（简单类名 → 全限定类名，按类名字母序）：server/controller 28 + platform/config 2 = 30（本卡新增
-   * PromptTemplateController）。
+   * controller 登记清单（简单类名 → 全限定类名，按类名字母序）：server/controller 29 + platform/config 2 = 31 （本卡新增
+   * PromptTemplateController、KnowledgeChunkController）。
    */
   public static final Map<String, Class<?>> CONTROLLER_REGISTRY = buildRegistry();
 
@@ -322,6 +322,9 @@ public final class PermissionCoverageScanner {
     registry.put(
         "KnowledgeAdminController",
         clazz("com.slz.crm.server.controller.KnowledgeAdminController"));
+    registry.put(
+        "KnowledgeChunkController",
+        clazz("com.slz.crm.server.controller.KnowledgeChunkController"));
     return Collections.unmodifiableMap(registry);
   }
 

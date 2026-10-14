@@ -13,12 +13,14 @@ import com.slz.crm.common.untils.AOTOExcelUntil;
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.common.untils.ForeignKeyDeleteUtil;
 import com.slz.crm.knowledge.ingestion.CustomerIngestionService;
+import com.slz.crm.pojo.dto.BirthdayInfoDTO;
 import com.slz.crm.pojo.dto.CustomerContactDTO;
 import com.slz.crm.pojo.dto.CustomerContactRemarkDTO;
 import com.slz.crm.pojo.entity.CustomerContactEntity;
 import com.slz.crm.pojo.entity.CustomerContactRemarkEntity;
 import com.slz.crm.pojo.excel.CustomerContactExcel;
 import com.slz.crm.pojo.excel.GetCustomerContactExcel;
+import com.slz.crm.pojo.vo.ContactBirthdayVO;
 import com.slz.crm.pojo.vo.CustomerContactVO;
 import com.slz.crm.pojo.vo.GroupResultVO;
 import com.slz.crm.pojo.vo.UserVO;
@@ -452,5 +454,63 @@ public class CustomerContactServiceImpl
               customerContactRemarkMapper);
     }
     return result;
+  }
+
+  /**
+   * 获取未来 N 天内过生日的联系人清单（add-source-citation-and-dashboard 任务 3.1）：先校验生日提醒是否启用，未启用抛
+   * NOT_ENABLED；随后在当前用户数据权限范围内列出联系人（复用 {@code search} 同款数据范围注入——通过 {@link
+   * CustomerContactMapper#selectList} 携带 {@code LambdaQueryWrapper} 触发 {@code QueryWrapperAspect}
+   * 自动加范围条件）， 对每个联系人委托 {@link CustomerContactBirthdaySupport#collectUpcomingBirthdays} 解析未来 N
+   * 天内的生日备注并装配返回。
+   *
+   * @return 未来 N 天生日条目列表
+   */
+  @Override
+  @Privacy
+  public List<ContactBirthdayVO> getUpcomingBirthdays() {
+    if (!birthdayReminderProperties.isEnabled()) {
+      throw new BaseException(ErrorCode.NOT_ENABLED, "生日提醒功能未启用");
+    }
+    // 复用 search 的数据范围路径：查询携带 LambdaQueryWrapper，由 QueryWrapperAspect 自动注入当前用户数据权限条件，
+    // 只返回当前用户数据范围内的未删除联系人
+    List<CustomerContactEntity> contacts =
+        customerContactMapper.selectList(
+            new LambdaQueryWrapper<CustomerContactEntity>()
+                .eq(CustomerContactEntity::getIsDeleted, false));
+
+    LocalDate today = LocalDate.now();
+    int reminderDays = birthdayReminderProperties.getDays();
+    List<ContactBirthdayVO> result = new ArrayList<>();
+    if (contacts != null) {
+      for (CustomerContactEntity entity : contacts) {
+        if (entity == null || entity.getId() == null) {
+          continue;
+        }
+        List<BirthdayInfoDTO> birthdayInfos =
+            CustomerContactBirthdaySupport.collectUpcomingBirthdays(
+                entity, today, reminderDays, customerContactRemarkMapper);
+        for (BirthdayInfoDTO info : birthdayInfos) {
+          result.add(toContactBirthdayVO(entity, info));
+        }
+      }
+    }
+    return result;
+  }
+
+  /** 把单条生日项装配为对外 VO（add-source-citation-and-dashboard 任务 3.1） */
+  private ContactBirthdayVO toContactBirthdayVO(
+      CustomerContactEntity entity, BirthdayInfoDTO info) {
+    ContactBirthdayVO vo = new ContactBirthdayVO();
+    vo.setContactId(entity.getId());
+    vo.setContactName(entity.getName());
+    vo.setIsSelf(info.getIsSelf());
+    vo.setName(info.getName());
+    vo.setBirthday(info.getBirthday());
+    if (info.getBirthday() != null) {
+      vo.setBirthdayYear(info.getBirthday().getYear());
+    }
+    vo.setDaysUntil(info.getDaysUntil());
+    vo.setUpcomingBirthday(info.getUpcomingBirthday());
+    return vo;
   }
 }
