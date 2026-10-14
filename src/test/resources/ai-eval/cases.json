@@ -279,5 +279,51 @@
     "expectedTool": "queryOpportunity",
     "expectedParams": { "opportunityName": "智能制造 MES" },
     "tags": ["query-tool", "opportunity", "discrimination"]
+  },
+  {
+    "id": "query-system-user-by-name",
+    "utterance": "帮我查一下系统里叫张伟的用户",
+    "expectedTool": "queryUser",
+    "expectedParams": { "realName": "张伟" },
+    "tags": ["query-tool", "system-user"]
+  },
+  {
+    "id": "query-dept-list",
+    "utterance": "看一下公司的组织架构部门列表",
+    "expectedTool": "queryDept",
+    "expectedParams": {},
+    "tags": ["query-tool", "system-dept"]
+  },
+  {
+    "id": "customer-company-detail-by-id",
+    "utterance": "查一下客户公司 55 的档案详情",
+    "expectedTool": "getCustomerCompanyDetail",
+    "expectedParams": { "companyId": 55 },
+    "tags": ["query-tool", "customer"]
+  },
+  {
+    "id": "query-report-contract",
+    "utterance": "统计一下 2026-01-01 到 2026-01-31 的签约合同报表",
+    "expectedTool": "queryReport",
+    "expectedParams": {
+      "reportType": "CONTRACT",
+      "startTime": "2026-01-01 00:00:00",
+      "endTime": "2026-01-31 23:59:59"
+    },
+    "tags": ["query-tool", "report"]
+  },
+  {
+    "id": "discrimination-customer-company-detail",
+    "utterance": "客户公司 55 的详细档案资料是什么？",
+    "expectedTool": "getCustomerCompanyDetail",
+    "expectedParams": { "companyId": 55 },
+    "tags": ["query-tool", "customer", "discrimination"]
+  },
+  {
+    "id": "discrimination-system-user-vs-contact",
+    "utterance": "系统里叫张伟的那个用户账号现在是什么状态？",
+    "expectedTool": "queryUser",
+    "expectedParams": { "realName": "张伟" },
+    "tags": ["query-tool", "system-user", "discrimination"]
   }
 ]

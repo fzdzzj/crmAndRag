@@ -39,8 +39,6 @@ import com.slz.crm.server.service.SalesStageApprovalService;
 import com.slz.crm.server.service.TaskCommentService;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -67,6 +65,7 @@ public class AiQueryToolExecutors {
   private final TaskCommentService taskCommentService;
   private final BusinessActivityService businessActivityService;
   private final SalesStageApprovalService salesStageApprovalService;
+  private final AiExtendedQueryToolExecutors extendedQueryToolExecutors;
 
   public Object executeGetChartData(Map<String, Object> args, ToolContext toolContext)
       throws Exception {
@@ -138,18 +137,7 @@ public class AiQueryToolExecutors {
     Page<SalesOpportunityVO> page =
         salesOpportunityService.getSalesOpportunityByQuery(
             query, toInt(args.get("pageNum"), 1), toInt(args.get("pageSize"), 10));
-
-    List<Map<String, Object>> result = new ArrayList<>();
-    for (SalesOpportunityVO vo : trimPageResult(page.getRecords())) {
-      Map<String, Object> item = new LinkedHashMap<>();
-      item.put("id", vo.getId());
-      item.put("opportunityName", vo.getOpportunityName());
-      item.put("companyName", vo.getCompanyName());
-      item.put("stage", vo.getStage());
-      item.put("amount", vo.getAmount());
-      result.add(item);
-    }
-    return result;
+    return AiExtendedQueryToolExecutors.toOpportunityRows(trimPageResult(page.getRecords()));
   }
 
   public Object executeQueryContact(Map<String, Object> args, ToolContext toolContext) {
@@ -166,16 +154,7 @@ public class AiQueryToolExecutors {
     Integer status = args.get("status") == null ? null : toInt(args.get("status"), 1);
     List<CompanyGroupEntity> groups =
         companyGroupService.list((String) args.get("groupName"), status);
-
-    List<Map<String, Object>> result = new ArrayList<>();
-    for (CompanyGroupEntity group : groups) {
-      Map<String, Object> item = new LinkedHashMap<>();
-      item.put("id", group.getId());
-      item.put("groupName", group.getGroupName());
-      item.put("status", group.getStatus());
-      result.add(item);
-    }
-    return result;
+    return AiExtendedQueryToolExecutors.toCompanyGroupRows(groups);
   }
 
   public Object executeQueryPayment(Map<String, Object> args, ToolContext toolContext) {
@@ -274,6 +253,28 @@ public class AiQueryToolExecutors {
         new Page<>(toInt(args.get("pageNum"), 1), toInt(args.get("pageSize"), 10));
     Page<SalesStageApprovalVO> resultPage = salesStageApprovalService.getPage(page, dto);
     return trimPageResult(resultPage.getRecords());
+  }
+
+  /** extend-ai-query-tools-c 任务 2.1：按条件分页查询系统内部用户；执行细节委派 {@link AiExtendedQueryToolExecutors}。 */
+  public Object executeQueryUser(Map<String, Object> args, ToolContext toolContext) {
+    return extendedQueryToolExecutors.executeQueryUser(args, toolContext);
+  }
+
+  /** extend-ai-query-tools-c 任务 2.2：查询系统组织架构部门列表；执行细节委派 {@link AiExtendedQueryToolExecutors}。 */
+  public Object executeQueryDept(Map<String, Object> args, ToolContext toolContext) {
+    return extendedQueryToolExecutors.executeQueryDept(args, toolContext);
+  }
+
+  /**
+   * extend-ai-query-tools-c 任务 2.3：按客户公司ID查询客户公司档案详情；执行细节委派 {@link AiExtendedQueryToolExecutors}。
+   */
+  public Object executeGetCustomerCompanyDetail(Map<String, Object> args, ToolContext toolContext) {
+    return extendedQueryToolExecutors.executeGetCustomerCompanyDetail(args, toolContext);
+  }
+
+  /** extend-ai-query-tools-c 任务 2.4：查询合同与商机统计报表；执行细节委派 {@link AiExtendedQueryToolExecutors}。 */
+  public Object executeQueryReport(Map<String, Object> args, ToolContext toolContext) {
+    return extendedQueryToolExecutors.executeQueryReport(args, toolContext);
   }
 
   private <T> List<T> trimPageResult(List<T> records) {

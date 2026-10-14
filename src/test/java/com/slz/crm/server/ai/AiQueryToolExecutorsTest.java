@@ -10,13 +10,19 @@ import static org.mockito.Mockito.when;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.slz.crm.pojo.dto.BusinessActivityQueryDTO;
 import com.slz.crm.pojo.dto.ContactTaskDTO;
+import com.slz.crm.pojo.dto.GetUserDTO;
 import com.slz.crm.pojo.dto.SalesStageApprovalDTO;
+import com.slz.crm.pojo.entity.SysDeptEntity;
 import com.slz.crm.pojo.vo.BusinessActivityVO;
 import com.slz.crm.pojo.vo.ContactTaskVO;
 import com.slz.crm.pojo.vo.ContractANDOrderVO;
+import com.slz.crm.pojo.vo.ContractNumVO;
+import com.slz.crm.pojo.vo.CustomerCompanyVO;
 import com.slz.crm.pojo.vo.OpportunityDetailVO;
+import com.slz.crm.pojo.vo.SalesNumVO;
 import com.slz.crm.pojo.vo.SalesStageApprovalVO;
 import com.slz.crm.pojo.vo.TaskCommentVO;
+import com.slz.crm.pojo.vo.UserVO;
 import com.slz.crm.server.service.BusinessActivityService;
 import com.slz.crm.server.service.CompanyGroupService;
 import com.slz.crm.server.service.ContactTaskService;
@@ -27,9 +33,13 @@ import com.slz.crm.server.service.CustomerContactService;
 import com.slz.crm.server.service.DataStatisticsService;
 import com.slz.crm.server.service.InvoiceInfoService;
 import com.slz.crm.server.service.PaymentRecordService;
+import com.slz.crm.server.service.ReportService;
 import com.slz.crm.server.service.SalesOpportunityService;
 import com.slz.crm.server.service.SalesStageApprovalService;
+import com.slz.crm.server.service.SysDeptService;
 import com.slz.crm.server.service.TaskCommentService;
+import com.slz.crm.server.service.UserService;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -40,7 +50,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-/** extend-ai-query-tools 任务 2.7：查询工具执行器单元测试（纯 JVM mock service）。 */
+/**
+ * extend-ai-query-tools 任务 2.7：查询工具执行器单元测试（纯 JVM mock service）。 extend-ai-query-tools-c 任务 2.5：追加 C
+ * 批 4 工具执行器行为单测。
+ */
 @ExtendWith(MockitoExtension.class)
 class AiQueryToolExecutorsTest {
 
@@ -57,11 +70,17 @@ class AiQueryToolExecutorsTest {
   @Mock private TaskCommentService taskCommentService;
   @Mock private BusinessActivityService businessActivityService;
   @Mock private SalesStageApprovalService salesStageApprovalService;
+  @Mock private UserService userService;
+  @Mock private SysDeptService sysDeptService;
+  @Mock private ReportService reportService;
 
   private AiQueryToolExecutors executors;
 
   @BeforeEach
   void setUp() {
+    AiExtendedQueryToolExecutors extendedQueryToolExecutors =
+        new AiExtendedQueryToolExecutors(
+            userService, sysDeptService, customerCompanyService, reportService);
     executors =
         new AiQueryToolExecutors(
             dataStatisticsService,
@@ -76,7 +95,8 @@ class AiQueryToolExecutorsTest {
             contactTaskService,
             taskCommentService,
             businessActivityService,
-            salesStageApprovalService);
+            salesStageApprovalService,
+            extendedQueryToolExecutors);
   }
 
   @Test
@@ -294,5 +314,162 @@ class AiQueryToolExecutorsTest {
     @SuppressWarnings("unchecked")
     List<ContactTaskVO> list = (List<ContactTaskVO>) result;
     assertThat(list).hasSize(10);
+  }
+
+  /** extend-ai-query-tools-c 任务 2.1：executeQueryUser 参数解析与分页裁剪。 */
+  @Test
+  void executeQueryUser_parsesArgumentsAndReturnsPageRecords() {
+    UserVO vo = new UserVO();
+    vo.setId(500L);
+    vo.setRealName("张伟");
+    Page<UserVO> page = new Page<>(2, 5);
+    page.setRecords(List.of(vo));
+
+    when(userService.findPage(any(GetUserDTO.class))).thenReturn(page);
+
+    Map<String, Object> args =
+        Map.of(
+            "realName",
+            "张伟",
+            "phone",
+            "13800000000",
+            "email",
+            "a@b.com",
+            "roleName",
+            "销售",
+            "roleId",
+            5,
+            "status",
+            1,
+            "pageNum",
+            2,
+            "pageSize",
+            5);
+
+    Object result = executors.executeQueryUser(args, null);
+
+    assertThat(result).isInstanceOf(List.class);
+    @SuppressWarnings("unchecked")
+    List<UserVO> list = (List<UserVO>) result;
+    assertThat(list).hasSize(1);
+    assertThat(list.get(0).getRealName()).isEqualTo("张伟");
+
+    ArgumentCaptor<GetUserDTO> captor = ArgumentCaptor.forClass(GetUserDTO.class);
+    verify(userService).findPage(captor.capture());
+    GetUserDTO dto = captor.getValue();
+    assertThat(dto.getRealName()).isEqualTo("张伟");
+    assertThat(dto.getPhone()).isEqualTo("13800000000");
+    assertThat(dto.getEmail()).isEqualTo("a@b.com");
+    assertThat(dto.getRoleName()).isEqualTo("销售");
+    assertThat(dto.getRoleId()).containsExactly(5L);
+    assertThat(dto.getStatus()).containsExactly(1);
+    assertThat(dto.getPageNum()).isEqualTo(2);
+    assertThat(dto.getPageSize()).isEqualTo(5);
+  }
+
+  /** extend-ai-query-tools-c 任务 2.1：缺省分页回退 1/10。 */
+  @Test
+  void executeQueryUser_defaultPaging_fallsBackToFirstPage() {
+    Page<UserVO> page = new Page<>(1, 10);
+    page.setRecords(List.of());
+    when(userService.findPage(any(GetUserDTO.class))).thenReturn(page);
+
+    executors.executeQueryUser(Map.of(), null);
+
+    ArgumentCaptor<GetUserDTO> captor = ArgumentCaptor.forClass(GetUserDTO.class);
+    verify(userService).findPage(captor.capture());
+    GetUserDTO dto = captor.getValue();
+    assertThat(dto.getPageNum()).isEqualTo(1);
+    assertThat(dto.getPageSize()).isEqualTo(10);
+  }
+
+  /** extend-ai-query-tools-c 任务 2.2：默认查询启用部门。 */
+  @Test
+  void executeQueryDept_defaultReturnsEnabledList() {
+    SysDeptEntity dept = new SysDeptEntity();
+    dept.setId(3L);
+    dept.setDeptName("销售部");
+    when(sysDeptService.listEnabled()).thenReturn(List.of(dept));
+
+    Object result = executors.executeQueryDept(Map.of(), null);
+
+    assertThat(result).isInstanceOf(List.class);
+    @SuppressWarnings("unchecked")
+    List<SysDeptEntity> list = (List<SysDeptEntity>) result;
+    assertThat(list).hasSize(1);
+    assertThat(list.get(0).getDeptName()).isEqualTo("销售部");
+    verify(sysDeptService).listEnabled();
+  }
+
+  /** extend-ai-query-tools-c 任务 2.2：includeDisabled=true 查询含停用部门。 */
+  @Test
+  void executeQueryDept_includeDisabled_returnsAllList() {
+    when(sysDeptService.listAll()).thenReturn(List.of());
+
+    Object result = executors.executeQueryDept(Map.of("includeDisabled", true), null);
+
+    assertThat(result).isEqualTo(List.of());
+    verify(sysDeptService).listAll();
+  }
+
+  /** extend-ai-query-tools-c 任务 2.3：客户公司详情正常返回。 */
+  @Test
+  void executeGetCustomerCompanyDetail_validId_callsService() {
+    CustomerCompanyVO vo = new CustomerCompanyVO();
+    vo.setId(55L);
+    when(customerCompanyService.getCompanyDetail(55L)).thenReturn(vo);
+
+    Object result = executors.executeGetCustomerCompanyDetail(Map.of("companyId", 55L), null);
+
+    assertThat(result).isSameAs(vo);
+    verify(customerCompanyService).getCompanyDetail(55L);
+  }
+
+  /** extend-ai-query-tools-c 任务 2.3：companyId 缺失抛参数异常。 */
+  @Test
+  void executeGetCustomerCompanyDetail_missingId_throwsIllegalArgumentException() {
+    assertThatThrownBy(() -> executors.executeGetCustomerCompanyDetail(Map.of(), null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("companyId 不能为空");
+  }
+
+  /** extend-ai-query-tools-c 任务 2.4：CONTRACT 报表走合同统计服务。 */
+  @Test
+  void executeQueryReport_contractType_callsContractReportService() {
+    ContractNumVO vo = ContractNumVO.builder().totalSignContractNum(12L).build();
+    LocalDateTime start = LocalDateTime.of(2026, 1, 1, 0, 0, 0);
+    LocalDateTime end = LocalDateTime.of(2026, 1, 31, 23, 59, 59);
+    when(reportService.getTotalSignContractNum(start, end)).thenReturn(vo);
+
+    Map<String, Object> args =
+        Map.of(
+            "reportType", "CONTRACT",
+            "startTime", "2026-01-01 00:00:00",
+            "endTime", "2026-01-31 23:59:59");
+
+    Object result = executors.executeQueryReport(args, null);
+
+    assertThat(result).isSameAs(vo);
+    verify(reportService).getTotalSignContractNum(start, end);
+  }
+
+  /** extend-ai-query-tools-c 任务 2.4：BUSINESS 报表走商机统计服务。 */
+  @Test
+  void executeQueryReport_businessType_callsBusinessReportService() {
+    SalesNumVO vo = SalesNumVO.builder().totalSalesOpportunityNum(7L).build();
+    when(reportService.getTotalBusinessNum(null, null)).thenReturn(vo);
+
+    Object result = executors.executeQueryReport(Map.of("reportType", "BUSINESS"), null);
+
+    assertThat(result).isSameAs(vo);
+    verify(reportService).getTotalBusinessNum(null, null);
+  }
+
+  /** extend-ai-query-tools-c 任务 2.4：reportType 缺失抛参数异常。 */
+  @Test
+  void executeQueryReport_missingType_throwsIllegalArgumentException() {
+    assertThatThrownBy(() -> executors.executeQueryReport(Map.of(), null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("reportType 不能为空");
   }
 }
