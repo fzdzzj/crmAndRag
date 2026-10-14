@@ -84,7 +84,13 @@ class AiToolRegistryContextTest {
             "queryContact",
             "queryPayment",
             "queryInvoice",
-            "queryCompanyGroup");
+            "queryCompanyGroup",
+            "queryContactTask",
+            "queryTaskComment",
+            "queryBusinessActivity",
+            "getContractDetail",
+            "getOpportunityDetail",
+            "queryStageApproval");
     assertThat(callbacks).hasSize(9);
   }
 
@@ -119,8 +125,56 @@ class AiToolRegistryContextTest {
     assertThat(names).contains("queryCustomerCompany", "queryCompanyGroup");
     assertThat(names)
         .doesNotContain(
-            "queryContract", "getOpportunityStageDistribution", "queryPayment", "queryInvoice");
+            "queryContract",
+            "getOpportunityStageDistribution",
+            "queryPayment",
+            "queryInvoice",
+            "queryContactTask",
+            "queryTaskComment",
+            "queryBusinessActivity",
+            "getContractDetail",
+            "getOpportunityDetail",
+            "queryStageApproval");
     assertThat(callbacks).hasSize(11);
+  }
+
+  /** extend-ai-query-tools 任务 1.3：验证持有对应权限的用户可见新增的 6 个查询工具。 */
+  @Test
+  void userWithExtendedQueryPermissions_seesPermittedTools() {
+    RoleAO taskUser = buildUser(101L, PermissionOperates.TASK_VIEW_TASK);
+    List<String> taskToolNames =
+        registry.getPermittedToolCallbacks(taskUser).stream()
+            .map(cb -> cb.getToolDefinition().name())
+            .toList();
+    assertThat(taskToolNames).contains("queryContactTask", "queryTaskComment");
+
+    RoleAO activityUser = buildUser(102L, PermissionOperates.SALES_VIEW_BUSINESS_ACTIVITY);
+    List<String> activityToolNames =
+        registry.getPermittedToolCallbacks(activityUser).stream()
+            .map(cb -> cb.getToolDefinition().name())
+            .toList();
+    assertThat(activityToolNames).contains("queryBusinessActivity");
+
+    RoleAO contractUser = buildUser(103L, PermissionOperates.SALES_VIEW_CONTRACT);
+    List<String> contractToolNames =
+        registry.getPermittedToolCallbacks(contractUser).stream()
+            .map(cb -> cb.getToolDefinition().name())
+            .toList();
+    assertThat(contractToolNames).contains("getContractDetail", "queryContract");
+
+    RoleAO oppUser = buildUser(104L, PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY);
+    List<String> oppToolNames =
+        registry.getPermittedToolCallbacks(oppUser).stream()
+            .map(cb -> cb.getToolDefinition().name())
+            .toList();
+    assertThat(oppToolNames).contains("getOpportunityDetail", "queryOpportunity");
+
+    RoleAO stageUser = buildUser(105L, PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY_STAGE);
+    List<String> stageToolNames =
+        registry.getPermittedToolCallbacks(stageUser).stream()
+            .map(cb -> cb.getToolDefinition().name())
+            .toList();
+    assertThat(stageToolNames).contains("queryStageApproval");
   }
 
   @Test

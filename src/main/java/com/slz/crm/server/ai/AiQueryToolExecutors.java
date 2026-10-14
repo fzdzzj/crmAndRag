@@ -1,6 +1,8 @@
 package com.slz.crm.server.ai;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.slz.crm.pojo.dto.BusinessActivityQueryDTO;
+import com.slz.crm.pojo.dto.ContactTaskDTO;
 import com.slz.crm.pojo.dto.ContractDTO;
 import com.slz.crm.pojo.dto.CustomerContactDTO;
 import com.slz.crm.pojo.dto.DataStatisticsDTO;
@@ -8,7 +10,11 @@ import com.slz.crm.pojo.dto.InvoiceInfoDTO;
 import com.slz.crm.pojo.dto.OrderDTO;
 import com.slz.crm.pojo.dto.PaymentRecordDTO;
 import com.slz.crm.pojo.dto.SalesOpportunityQueryDTO;
+import com.slz.crm.pojo.dto.SalesStageApprovalDTO;
 import com.slz.crm.pojo.entity.CompanyGroupEntity;
+import com.slz.crm.pojo.entity.SalesStageApprovalEntity;
+import com.slz.crm.pojo.vo.BusinessActivityVO;
+import com.slz.crm.pojo.vo.ContactTaskVO;
 import com.slz.crm.pojo.vo.ContractVO;
 import com.slz.crm.pojo.vo.CustomerCompanyVO;
 import com.slz.crm.pojo.vo.CustomerContactVO;
@@ -16,7 +22,11 @@ import com.slz.crm.pojo.vo.InvoiceInfoVO;
 import com.slz.crm.pojo.vo.OrderVO;
 import com.slz.crm.pojo.vo.PaymentRecordVO;
 import com.slz.crm.pojo.vo.SalesOpportunityVO;
+import com.slz.crm.pojo.vo.SalesStageApprovalVO;
+import com.slz.crm.pojo.vo.TaskCommentVO;
+import com.slz.crm.server.service.BusinessActivityService;
 import com.slz.crm.server.service.CompanyGroupService;
+import com.slz.crm.server.service.ContactTaskService;
 import com.slz.crm.server.service.ContractOrderItemService;
 import com.slz.crm.server.service.ContractService;
 import com.slz.crm.server.service.CustomerCompanyService;
@@ -25,6 +35,8 @@ import com.slz.crm.server.service.DataStatisticsService;
 import com.slz.crm.server.service.InvoiceInfoService;
 import com.slz.crm.server.service.PaymentRecordService;
 import com.slz.crm.server.service.SalesOpportunityService;
+import com.slz.crm.server.service.SalesStageApprovalService;
+import com.slz.crm.server.service.TaskCommentService;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -51,6 +63,10 @@ public class AiQueryToolExecutors {
   private final PaymentRecordService paymentRecordService;
   private final InvoiceInfoService invoiceInfoService;
   private final SalesOpportunityService salesOpportunityService;
+  private final ContactTaskService contactTaskService;
+  private final TaskCommentService taskCommentService;
+  private final BusinessActivityService businessActivityService;
+  private final SalesStageApprovalService salesStageApprovalService;
 
   public Object executeGetChartData(Map<String, Object> args, ToolContext toolContext)
       throws Exception {
@@ -84,9 +100,7 @@ public class AiQueryToolExecutors {
 
   public Object executeQueryOrder(Map<String, Object> args, ToolContext toolContext) {
     OrderDTO dto = new OrderDTO();
-    if (args.get("contractId") != null) {
-      dto.setContractId(((Number) args.get("contractId")).longValue());
-    }
+    dto.setContractId(toLong(args.get("contractId")));
     dto.setProductName((String) args.get("productName"));
     Page<OrderVO> page =
         contractOrderItemService.orderQuery(
@@ -95,7 +109,7 @@ public class AiQueryToolExecutors {
   }
 
   public Object executeGetOrderDetail(Map<String, Object> args, ToolContext toolContext) {
-    return contractOrderItemService.getDetailById(((Number) args.get("orderId")).longValue());
+    return contractOrderItemService.getDetailById(toLong(args.get("orderId")));
   }
 
   public Object executeQueryContract(Map<String, Object> args, ToolContext toolContext) {
@@ -140,9 +154,7 @@ public class AiQueryToolExecutors {
 
   public Object executeQueryContact(Map<String, Object> args, ToolContext toolContext) {
     CustomerContactDTO dto = new CustomerContactDTO();
-    if (args.get("companyId") != null) {
-      dto.setCompanyId(((Number) args.get("companyId")).longValue());
-    }
+    dto.setCompanyId(toLong(args.get("companyId")));
     dto.setName((String) args.get("name"));
     Page<CustomerContactVO> page =
         customerContactService.search(
@@ -168,9 +180,7 @@ public class AiQueryToolExecutors {
 
   public Object executeQueryPayment(Map<String, Object> args, ToolContext toolContext) {
     PaymentRecordDTO dto = new PaymentRecordDTO();
-    if (args.get("contractId") != null) {
-      dto.setContractId(((Number) args.get("contractId")).longValue());
-    }
+    dto.setContractId(toLong(args.get("contractId")));
     Page<PaymentRecordVO> page =
         paymentRecordService.queryPage(
             toInt(args.get("pageNum"), 1), toInt(args.get("pageSize"), 10), dto);
@@ -179,14 +189,91 @@ public class AiQueryToolExecutors {
 
   public Object executeQueryInvoice(Map<String, Object> args, ToolContext toolContext) {
     InvoiceInfoDTO dto = new InvoiceInfoDTO();
-    if (args.get("contractId") != null) {
-      dto.setContractId(((Number) args.get("contractId")).longValue());
-    }
+    dto.setContractId(toLong(args.get("contractId")));
     dto.setInvoiceNo((String) args.get("invoiceNo"));
     Page<InvoiceInfoVO> page =
         invoiceInfoService.queryPage(
             toInt(args.get("pageNum"), 1), toInt(args.get("pageSize"), 10), dto);
     return trimPageResult(page.getRecords());
+  }
+
+  /** extend-ai-query-tools 任务 2.1：按条件分页查询联络任务。 */
+  public Object executeQueryContactTask(Map<String, Object> args, ToolContext toolContext) {
+    ContactTaskDTO dto = new ContactTaskDTO();
+    dto.setAssigneeId(toLong(args.get("assigneeId")));
+    dto.setCompanyId(toLong(args.get("companyId")));
+    dto.setContactId(toLong(args.get("contactId")));
+    dto.setOpportunityId(toLong(args.get("opportunityId")));
+    Page<ContactTaskVO> page =
+        contactTaskService.query(
+            toInt(args.get("pageNum"), 1), toInt(args.get("pageSize"), 10), dto);
+    return trimPageResult(page.getRecords());
+  }
+
+  /** extend-ai-query-tools 任务 2.2：按任务ID分页查询任务评论。 */
+  public Object executeQueryTaskComment(Map<String, Object> args, ToolContext toolContext) {
+    Long taskId = toLong(args.get("taskId"));
+    if (taskId == null) {
+      throw new IllegalArgumentException("taskId 不能为空");
+    }
+    Page<TaskCommentVO> page =
+        taskCommentService.getByTaskId(
+            taskId, toInt(args.get("pageNum"), 1), toInt(args.get("pageSize"), 10));
+    return trimPageResult(page.getRecords());
+  }
+
+  /** extend-ai-query-tools 任务 2.3：查询业务活动（支持按ID查询详情或条件分页查询）。 */
+  public Object executeQueryBusinessActivity(Map<String, Object> args, ToolContext toolContext) {
+    Long rawId = toLong(args.get("activityId") != null ? args.get("activityId") : args.get("id"));
+    Object result;
+    if (rawId != null) {
+      result = businessActivityService.getDetailById(rawId);
+    } else {
+      BusinessActivityQueryDTO dto = new BusinessActivityQueryDTO();
+      dto.setActivityTitle((String) args.get("activityTitle"));
+      dto.setCompanyName((String) args.get("companyName"));
+      dto.setOpportunityName((String) args.get("opportunityName"));
+      dto.setActivityType((String) args.get("activityType"));
+      Page<BusinessActivityVO> page =
+          businessActivityService.businessActivityQuery(
+              toInt(args.get("pageNum"), 1), toInt(args.get("pageSize"), 10), dto);
+      result = trimPageResult(page.getRecords());
+    }
+    return result;
+  }
+
+  /** extend-ai-query-tools 任务 2.4：按合同ID查询合同详情（含订单信息）。 */
+  public Object executeGetContractDetail(Map<String, Object> args, ToolContext toolContext) {
+    Long contractId = toLong(args.get("contractId"));
+    if (contractId == null) {
+      throw new IllegalArgumentException("contractId 不能为空");
+    }
+    return contractService.getDetailById(contractId);
+  }
+
+  /** extend-ai-query-tools 任务 2.5：按商机ID查询商机详情。 */
+  public Object executeGetOpportunityDetail(Map<String, Object> args, ToolContext toolContext) {
+    Long opportunityId = toLong(args.get("opportunityId"));
+    if (opportunityId == null) {
+      throw new IllegalArgumentException("opportunityId 不能为空");
+    }
+    return salesOpportunityService.getOpportunityDetailById(opportunityId);
+  }
+
+  /** extend-ai-query-tools 任务 2.6：按条件分页查询商机阶段推进审批列表。 */
+  public Object executeQueryStageApproval(Map<String, Object> args, ToolContext toolContext) {
+    SalesStageApprovalDTO dto = new SalesStageApprovalDTO();
+    dto.setOpportunityId(toLong(args.get("opportunityId")));
+    Object statusObj = args.get("approvalStatus");
+    if (statusObj instanceof List<?> list) {
+      dto.setApprovalStatus(list.stream().map(v -> ((Number) v).intValue()).toList());
+    } else if (statusObj instanceof Number num) {
+      dto.setApprovalStatus(List.of(num.intValue()));
+    }
+    Page<SalesStageApprovalEntity> page =
+        new Page<>(toInt(args.get("pageNum"), 1), toInt(args.get("pageSize"), 10));
+    Page<SalesStageApprovalVO> resultPage = salesStageApprovalService.getPage(page, dto);
+    return trimPageResult(resultPage.getRecords());
   }
 
   private <T> List<T> trimPageResult(List<T> records) {
@@ -199,5 +286,9 @@ public class AiQueryToolExecutors {
 
   private Integer toInt(Object value, int defaultValue) {
     return value instanceof Number number ? number.intValue() : defaultValue;
+  }
+
+  private Long toLong(Object value) {
+    return value instanceof Number number ? number.longValue() : null;
   }
 }
