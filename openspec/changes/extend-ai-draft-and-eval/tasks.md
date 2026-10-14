@@ -39,11 +39,11 @@
 
 ## 任务组 4 · 门禁与收尾
 
-- [ ] 4.1 全量 `mvn -B -ntp test` 0 失败（基线 1265 只增不减，实测数留痕）；若 surefire 净增则按规约树净单次跑 `check-test-baseline.sh --update` 并随本笔提交
-      依据：
-- [ ] 4.2 四静态顺序跑全 0（checkstyle / spotbugs / spotless / pmd）+ 三守卫（pmd-baseline-check / spotbugs-exclude-staleness-check / check-test-baseline）
-      依据：
-- [ ] 4.3 `scripts/merge-gate.sh` 全绿（Docker 实测在线按 runbook §6 口径；DASHSCOPE_API_KEY 置空）
-      依据：
-- [ ] 4.4 tasks 全勾 + 6 空格依据行；raw 留档 `work/tmp/extend-ai-draft-and-eval/`；handoff 落 `work/handoff-extend-ai-draft-and-eval.md`（含偏差披露节）
-      依据：
+- [x] 4.1 全量 `mvn -B -ntp test` 0 失败（基线 1265 只增不减，实测数留痕）；若 surefire 净增则按规约树净单次跑 `check-test-baseline.sh --update` 并随本笔提交
+      依据：mvn -B -ntp test（DASHSCOPE_API_KEY 置空）退出码 0，surefire Tests run=1280，Failures=0，Errors=0，Skipped=0（基线 1265，净增 15=新增 15 个测试方法：校验器 4+4、执行器 2+2、守卫 3）；按规约树净单次跑 bash scripts/check-test-baseline.sh --update 实测写入 surefire.reports=203/surefire.tests=1280/skipped=0、failsafe 116/7（source-revision=7450a2b），scripts/test-baseline.txt 随本笔提交
+- [x] 4.2 四静态顺序跑全 0（checkstyle / spotbugs / spotless / pmd）+ 三守卫（pmd-baseline-check / spotbugs-exclude-staleness-check / check-test-baseline）
+      依据：四静态顺序跑退出码全 0——checkstyle「You have 0 Checkstyle violations」、spotbugs「BugInstance size is 0」、spotless「988 files clean - 0 needs changes」、pmd 实测 violations=0；三守卫：pmd-baseline-check RESULT=PMD_BASELINE_OK（实测 0 == 登记 0 == pom 阈值 0）、spotbugs-exclude-staleness-check RESULT=BIJECTION_OK（12 条豁免与 12 条 High 一一对应）、check-test-baseline 判定通过（reports=203/tests=1280 达标）
+- [x] 4.3 `scripts/merge-gate.sh` 全绿（Docker 实测在线按 runbook §6 口径；DASHSCOPE_API_KEY 置空）
+      依据：docker info 实测在线（Client 29.6.2，退出码 0）；D:\git\Git\bin\bash.exe 跑 bash scripts/merge-gate.sh --with-verify 退出码 0，9 个子门禁全 PASS——[unit] 1280 全绿、[spotbugs]、[pmd]、[it] failsafe Tests run=116/Skipped=7、[baseline]、[frontend-unit] 17 files/179 tests passed、[hook]、[bijection]、[pmd-baseline]，尾部「== merge-gate 通过：所有已执行的子门禁绿 ==」
+- [x] 4.4 tasks 全勾 + 6 空格依据行；raw 留档 `work/tmp/extend-ai-draft-and-eval/`；handoff 落 `work/handoff-extend-ai-draft-and-eval.md`（含偏差披露节）
+      依据：tasks.md 14 格全勾且每格 6 空格依据行附实测命令+数字；raw 输出留档观察树 work/tmp/extend-ai-draft-and-eval/（checkstyle.log/spotbugs.log/spotless.log/pmd.log/pmd-baseline.log/spotbugs-staleness.log/test-baseline-check.log/merge-gate.log + EVIDENCE.md）；handoff 落观察树 work/handoff-extend-ai-draft-and-eval.md（含偏差披露节：计数断言分两笔落地、双通道字段面口径）
