@@ -28,14 +28,14 @@
 
 ## 任务组 3 · AiEval 评测集同步（19→30+）
 
-- [ ] 3.1 B 批 6 查询工具用例：queryContactTask / queryTaskComment / queryBusinessActivity / getContractDetail / getOpportunityDetail / queryStageApproval 各 ≥1 例（utterance 贴真实销售话术，expectedTool/expectedParams 对齐实现 schema）
-      依据：
-- [ ] 3.2 新 2 草稿工具用例：createContactTaskDraft / createBusinessActivityDraft 各 ≥1 例 + 追问合并链用例（pendingId 补参）≥1 例
-      依据：
-- [ ] 3.3 边界辨析用例 ≥3 例：getContractDetail vs queryContract（详情 vs 列表）、queryContactTask vs queryTaskComment（任务面 vs 评论面）、getOpportunityDetail vs queryOpportunity
-      依据：
-- [ ] 3.4 cases.json 用例 id 全局唯一（kebab-case 语义前缀）、AiEval 既有测试全绿、用例总数实测 ≥30
-      依据：
+- [x] 3.1 B 批 6 查询工具用例：queryContactTask / queryTaskComment / queryBusinessActivity / getContractDetail / getOpportunityDetail / queryStageApproval 各 ≥1 例（utterance 贴真实销售话术，expectedTool/expectedParams 对齐实现 schema）
+      依据：cases.json 实测新增 6 例（contact-task-by-assignee、task-comment-by-id、business-activity-by-company、contract-detail-by-id、opportunity-detail-by-id、stage-approval-pending），expectedParams 对齐 AiToolRegistry schema（queryContactTask.assigneeId、queryTaskComment.taskId 必填、queryStageApproval.approvalStatus 枚举 0/1/2/3、getContractDetail/getOpportunityDetail 按 ID 详情）
+- [x] 3.2 新 2 草稿工具用例：createContactTaskDraft / createBusinessActivityDraft 各 ≥1 例 + 追问合并链用例（pendingId 补参）≥1 例
+      依据：cases.json 实测新增 create-contact-task-draft、create-business-activity-draft、create-business-activity-draft-follow-up（pendingId=pending-2001 补参，追问合并链用例，expectedParams 对齐新草稿 schema 的 companyName/opportunityName 双通道与 activityDuration/remark）
+- [x] 3.3 边界辨析用例 ≥3 例：getContractDetail vs queryContract（详情 vs 列表）、queryContactTask vs queryTaskComment（任务面 vs 评论面）、getOpportunityDetail vs queryOpportunity
+      依据：cases.json 实测新增 6 例 discrimination 标签（3 对 × 2 方向）：contract-detail/list、task-comment/task-surface、opportunity-detail/list，同一实体面「详情 vs 列表/评论」话术对撞覆盖
+- [x] 3.4 cases.json 用例 id 全局唯一（kebab-case 语义前缀）、AiEval 既有测试全绿、用例总数实测 ≥30
+      依据：PowerShell UTF-8 读取实测 cases=34、unique_ids=34（id 全部 kebab-case 语义前缀）、24 工具全覆盖（含 8 新工具）；mvn -B -ntp test -Dtest=AiEvalCaseSetTest,AiEvalRunnerTest,AiEvalMetricsTest 退出码 0（4 tests pass）；AiEvalCaseSetTest 补断言 8 新工具覆盖（≥30 硬断言）
 
 ## 任务组 4 · 门禁与收尾
 
