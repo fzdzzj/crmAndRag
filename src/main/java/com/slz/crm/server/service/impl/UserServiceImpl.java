@@ -15,6 +15,7 @@ import com.slz.crm.pojo.entity.UserEntity;
 import com.slz.crm.pojo.vo.UserOptionVO;
 import com.slz.crm.pojo.vo.UserVO;
 import com.slz.crm.server.annotation.Privacy;
+import com.slz.crm.server.constant.MessageConstant;
 import com.slz.crm.server.mapper.RoleMapper;
 import com.slz.crm.server.mapper.SysDeptMapper;
 import com.slz.crm.server.mapper.UserMapper;
@@ -79,6 +80,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     return JwtUntil.createJWT(jwtProperties.getSecretKey(), jwtProperties.getTtl(), map);
   }
 
+  /**
+   * 添加系统用户（harden-admin-uniqueness-and-hygiene 任务 1.1：终极管理员唯一性防护，禁止添加终极管理员）。
+   *
+   * @param userDTO 用户数据传输对象
+   * @return 生成结果
+   */
   @Override
   public String addUser(UserDTO userDTO) {
 
@@ -86,10 +93,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
       throw new BaseException(ErrorCode.ROLE_NOT_EXISTS.getMessage());
     }
     UserDeptSupport.validateDeptId(userDTO.getDeptId(), sysDeptMapper);
-    // TODO 管理员不能添加管理员
-    //        if(userDTO.getRoleId() == 1){
-    //            throw new BaseException(MessageConstant.MASTER_IS_ONE);
-    //        }
+    // harden-admin-uniqueness-and-hygiene 任务 1.1：终极管理员唯一性防护，禁止添加终极管理员
+    if (Objects.equals(userDTO.getRoleId(), 1L)) {
+      throw new BaseException(MessageConstant.MASTER_IS_ONE);
+    }
     // 判断邮箱格式
     if (!ValidationUtils.isValidEmail(userDTO.getEmail())) {
       throw new BaseException(ErrorCode.EMAIL_FORMAT_ERROR.getMessage());
@@ -204,6 +211,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     return true;
   }
 
+  /**
+   * 更新用户信息（harden-admin-uniqueness-and-hygiene 任务 1.2：终极管理员唯一性防护，禁止修改为终极管理员）。
+   *
+   * @param userDTO 用户数据传输对象
+   * @param id 用户ID
+   */
   @Override
   @CacheEvict(value = "userName", key = "#id")
   public void updateUser(UserDTO userDTO, Long id) {
@@ -231,6 +244,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     if (userDTO.getDeptId() != null) {
       UserDeptSupport.validateDeptId(userDTO.getDeptId(), sysDeptMapper);
       wrapper.set(UserEntity::getDeptId, userDTO.getDeptId());
+    }
+    // harden-admin-uniqueness-and-hygiene 任务 1.2：终极管理员唯一性防护，禁止修改为终极管理员
+    if (userDTO.getRoleId() != null && Objects.equals(userDTO.getRoleId(), 1L)) {
+      throw new BaseException(MessageConstant.MASTER_IS_ONE);
     }
     if (userDTO.getRoleId() != null) {
       wrapper.set(UserEntity::getRoleId, userDTO.getRoleId());
