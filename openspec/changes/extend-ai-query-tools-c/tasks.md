@@ -14,16 +14,16 @@
 
 ## 任务 2 · 执行器实现与单测（AiQueryToolExecutors）
 
-- [ ] 2.1 `executeQueryUser`：调 `UserService.findPage`，解析 realName/phone/email/deptId/roleId/roleName/status/分页 参数，返回经 `trimPageResult` 裁剪的列表
-      依据：AiQueryToolExecutors.executeQueryUser 调 UserService.findPage，单测 executeQueryUser_parsesArgumentsAndReturnsPageRecords 验证参数解析与分页
-- [ ] 2.2 `executeQueryDept`：调 `SysDeptService.listEnabled`（或按 includeDisabled 调 `listAll`），返回部门列表
-      依据：AiQueryToolExecutors.executeQueryDept 调 SysDeptService，单测 executeQueryDept_returnsList 验证部门查询返回
-- [ ] 2.3 `executeGetCustomerCompanyDetail`：companyId 必填校验，调 `CustomerCompanyService.getCompanyDetail`
-      依据：AiQueryToolExecutors.executeGetCustomerCompanyDetail 调 CustomerCompanyService.getCompanyDetail，单测覆盖详情正常返回与 companyId 为空抛错路径
-- [ ] 2.4 `executeQueryReport`：reportType 必填校验（CONTRACT / BUSINESS / OPPORTUNITY），调 `ReportService.getTotalSignContractNum` 或 `getTotalBusinessNum`，支持时间解析
-      依据：AiQueryToolExecutors.executeQueryReport 调 ReportService 对应方法，单测覆盖合同与商机两类报表解析路径
-- [ ] 2.5 新增执行器行为单测（纯 JVM mock service）：每工具至少覆盖正常返回 + 参数解析路径；分页裁剪与查空提示与既有工具模式一致
-      依据：mvn -B -ntp test -Dtest=AiQueryToolExecutorsTest 退出码 0，覆盖正常/异常/裁剪路径
+- [x] 2.1 `executeQueryUser`：调 `UserService.findPage`，解析 realName/phone/email/deptId/roleId/roleName/status/分页 参数，返回经 `trimPageResult` 裁剪的列表
+      依据：AiQueryToolExecutors.executeQueryUser 调 UserService.findPage，单测 executeQueryUser_parsesArgumentsAndReturnsPageRecords 全断言 realName/phone/email/roleName/roleId/status/pageNum/pageSize；deptId 因既有 GetUserDTO 无该字段未暴露（超范围不改 pojo），roleId/status 以列表化传参
+- [x] 2.2 `executeQueryDept`：调 `SysDeptService.listEnabled`（或按 includeDisabled 调 `listAll`），返回部门列表
+      依据：executeQueryDept 按 includeDisabled 分派 SysDeptService.listEnabled / listAll，单测 executeQueryDept_defaultReturnsEnabledList 与 executeQueryDept_includeDisabled_returnsAllList 全绿
+- [x] 2.3 `executeGetCustomerCompanyDetail`：companyId 必填校验，调 `CustomerCompanyService.getCompanyDetail`
+      依据：executeGetCustomerCompanyDetail 调 CustomerCompanyService.getCompanyDetail，单测 executeGetCustomerCompanyDetail_validId_callsService 与 _missingId_throwsIllegalArgumentException（"companyId 不能为空"）全绿
+- [x] 2.4 `executeQueryReport`：reportType 必填校验（CONTRACT / BUSINESS / OPPORTUNITY），调 `ReportService.getTotalSignContractNum` 或 `getTotalBusinessNum`，支持时间解析
+      依据：executeQueryReport 按 reportType 分派 ReportService.getTotalSignContractNum（CONTRACT）/ getTotalBusinessNum（BUSINESS 与 OPPORTUNITY 别名，底层服务仅两方法）；单测 CONTRACT / BUSINESS / 缺失抛错 三例全绿
+- [x] 2.5 新增执行器行为单测（纯 JVM mock service）：每工具至少覆盖正常返回 + 参数解析路径；分页裁剪与查空提示与既有工具模式一致
+      依据：mvn -B -ntp test -Dtest=AiQueryToolExecutorsTest 退出码 0，Tests run: 21, Failures: 0, Errors: 0, Skipped: 0（原 12 例 + 新增 9 例）
 
 ## 任务 3 · 黄金评测集扩展与断言（AiEval）
 
