@@ -78,6 +78,9 @@ class AiQueryToolExecutorsTest {
 
   @BeforeEach
   void setUp() {
+    AiExtendedQueryToolExecutors extendedQueryToolExecutors =
+        new AiExtendedQueryToolExecutors(
+            userService, sysDeptService, customerCompanyService, reportService);
     executors =
         new AiQueryToolExecutors(
             dataStatisticsService,
@@ -93,9 +96,7 @@ class AiQueryToolExecutorsTest {
             taskCommentService,
             businessActivityService,
             salesStageApprovalService,
-            userService,
-            sysDeptService,
-            reportService);
+            extendedQueryToolExecutors);
   }
 
   @Test

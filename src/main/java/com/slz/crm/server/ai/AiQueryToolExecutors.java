@@ -6,7 +6,6 @@ import com.slz.crm.pojo.dto.ContactTaskDTO;
 import com.slz.crm.pojo.dto.ContractDTO;
 import com.slz.crm.pojo.dto.CustomerContactDTO;
 import com.slz.crm.pojo.dto.DataStatisticsDTO;
-import com.slz.crm.pojo.dto.GetUserDTO;
 import com.slz.crm.pojo.dto.InvoiceInfoDTO;
 import com.slz.crm.pojo.dto.OrderDTO;
 import com.slz.crm.pojo.dto.PaymentRecordDTO;
@@ -14,7 +13,6 @@ import com.slz.crm.pojo.dto.SalesOpportunityQueryDTO;
 import com.slz.crm.pojo.dto.SalesStageApprovalDTO;
 import com.slz.crm.pojo.entity.CompanyGroupEntity;
 import com.slz.crm.pojo.entity.SalesStageApprovalEntity;
-import com.slz.crm.pojo.entity.SysDeptEntity;
 import com.slz.crm.pojo.vo.BusinessActivityVO;
 import com.slz.crm.pojo.vo.ContactTaskVO;
 import com.slz.crm.pojo.vo.ContractVO;
@@ -26,7 +24,6 @@ import com.slz.crm.pojo.vo.PaymentRecordVO;
 import com.slz.crm.pojo.vo.SalesOpportunityVO;
 import com.slz.crm.pojo.vo.SalesStageApprovalVO;
 import com.slz.crm.pojo.vo.TaskCommentVO;
-import com.slz.crm.pojo.vo.UserVO;
 import com.slz.crm.server.service.BusinessActivityService;
 import com.slz.crm.server.service.CompanyGroupService;
 import com.slz.crm.server.service.ContactTaskService;
@@ -37,16 +34,11 @@ import com.slz.crm.server.service.CustomerContactService;
 import com.slz.crm.server.service.DataStatisticsService;
 import com.slz.crm.server.service.InvoiceInfoService;
 import com.slz.crm.server.service.PaymentRecordService;
-import com.slz.crm.server.service.ReportService;
 import com.slz.crm.server.service.SalesOpportunityService;
 import com.slz.crm.server.service.SalesStageApprovalService;
-import com.slz.crm.server.service.SysDeptService;
 import com.slz.crm.server.service.TaskCommentService;
-import com.slz.crm.server.service.UserService;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -73,9 +65,7 @@ public class AiQueryToolExecutors {
   private final TaskCommentService taskCommentService;
   private final BusinessActivityService businessActivityService;
   private final SalesStageApprovalService salesStageApprovalService;
-  private final UserService userService;
-  private final SysDeptService sysDeptService;
-  private final ReportService reportService;
+  private final AiExtendedQueryToolExecutors extendedQueryToolExecutors;
 
   public Object executeGetChartData(Map<String, Object> args, ToolContext toolContext)
       throws Exception {
@@ -147,18 +137,7 @@ public class AiQueryToolExecutors {
     Page<SalesOpportunityVO> page =
         salesOpportunityService.getSalesOpportunityByQuery(
             query, toInt(args.get("pageNum"), 1), toInt(args.get("pageSize"), 10));
-
-    List<Map<String, Object>> result = new ArrayList<>();
-    for (SalesOpportunityVO vo : trimPageResult(page.getRecords())) {
-      Map<String, Object> item = new LinkedHashMap<>();
-      item.put("id", vo.getId());
-      item.put("opportunityName", vo.getOpportunityName());
-      item.put("companyName", vo.getCompanyName());
-      item.put("stage", vo.getStage());
-      item.put("amount", vo.getAmount());
-      result.add(item);
-    }
-    return result;
+    return AiExtendedQueryToolExecutors.toOpportunityRows(trimPageResult(page.getRecords()));
   }
 
   public Object executeQueryContact(Map<String, Object> args, ToolContext toolContext) {
@@ -175,16 +154,7 @@ public class AiQueryToolExecutors {
     Integer status = args.get("status") == null ? null : toInt(args.get("status"), 1);
     List<CompanyGroupEntity> groups =
         companyGroupService.list((String) args.get("groupName"), status);
-
-    List<Map<String, Object>> result = new ArrayList<>();
-    for (CompanyGroupEntity group : groups) {
-      Map<String, Object> item = new LinkedHashMap<>();
-      item.put("id", group.getId());
-      item.put("groupName", group.getGroupName());
-      item.put("status", group.getStatus());
-      result.add(item);
-    }
-    return result;
+    return AiExtendedQueryToolExecutors.toCompanyGroupRows(groups);
   }
 
   public Object executeQueryPayment(Map<String, Object> args, ToolContext toolContext) {
@@ -285,66 +255,26 @@ public class AiQueryToolExecutors {
     return trimPageResult(resultPage.getRecords());
   }
 
-  /** extend-ai-query-tools-c 任务 2.1：按条件分页查询系统内部用户。 */
+  /** extend-ai-query-tools-c 任务 2.1：按条件分页查询系统内部用户；执行细节委派 {@link AiExtendedQueryToolExecutors}。 */
   public Object executeQueryUser(Map<String, Object> args, ToolContext toolContext) {
-    GetUserDTO dto = new GetUserDTO();
-    dto.setRealName((String) args.get("realName"));
-    dto.setPhone((String) args.get("phone"));
-    dto.setEmail((String) args.get("email"));
-    dto.setRoleName((String) args.get("roleName"));
-    Object roleIdObj = args.get("roleId");
-    if (roleIdObj instanceof Number number) {
-      dto.setRoleId(List.of(number.longValue()));
-    }
-    Object statusObj = args.get("status");
-    if (statusObj instanceof Number number) {
-      dto.setStatus(List.of(number.intValue()));
-    }
-    dto.setPageNum(toInt(args.get("pageNum"), 1));
-    dto.setPageSize(toInt(args.get("pageSize"), 10));
-    Page<UserVO> page = userService.findPage(dto);
-    return trimPageResult(page.getRecords());
+    return extendedQueryToolExecutors.executeQueryUser(args, toolContext);
   }
 
-  /** extend-ai-query-tools-c 任务 2.2：查询系统组织架构部门列表（可选含停用）。 */
+  /** extend-ai-query-tools-c 任务 2.2：查询系统组织架构部门列表；执行细节委派 {@link AiExtendedQueryToolExecutors}。 */
   public Object executeQueryDept(Map<String, Object> args, ToolContext toolContext) {
-    boolean includeDisabled = Boolean.TRUE.equals(args.get("includeDisabled"));
-    List<SysDeptEntity> depts =
-        includeDisabled ? sysDeptService.listAll() : sysDeptService.listEnabled();
-    return trimPageResult(depts);
+    return extendedQueryToolExecutors.executeQueryDept(args, toolContext);
   }
 
-  /** extend-ai-query-tools-c 任务 2.3：按客户公司ID查询客户公司档案详情。 */
+  /**
+   * extend-ai-query-tools-c 任务 2.3：按客户公司ID查询客户公司档案详情；执行细节委派 {@link AiExtendedQueryToolExecutors}。
+   */
   public Object executeGetCustomerCompanyDetail(Map<String, Object> args, ToolContext toolContext) {
-    Long companyId = toLong(args.get("companyId"));
-    if (companyId == null) {
-      throw new IllegalArgumentException("companyId 不能为空");
-    }
-    return customerCompanyService.getCompanyDetail(companyId);
+    return extendedQueryToolExecutors.executeGetCustomerCompanyDetail(args, toolContext);
   }
 
-  /** extend-ai-query-tools-c 任务 2.4：查询合同与商机统计报表（reportType 必填）。 */
+  /** extend-ai-query-tools-c 任务 2.4：查询合同与商机统计报表；执行细节委派 {@link AiExtendedQueryToolExecutors}。 */
   public Object executeQueryReport(Map<String, Object> args, ToolContext toolContext) {
-    String reportType = (String) args.get("reportType");
-    if (reportType == null || reportType.isBlank()) {
-      throw new IllegalArgumentException("reportType 不能为空，取值 CONTRACT / BUSINESS / OPPORTUNITY");
-    }
-    LocalDateTime startTime =
-        args.get("startTime") == null
-            ? null
-            : LocalDateTime.parse((String) args.get("startTime"), DATE_TIME_FORMAT);
-    LocalDateTime endTime =
-        args.get("endTime") == null
-            ? null
-            : LocalDateTime.parse((String) args.get("endTime"), DATE_TIME_FORMAT);
-    if ("CONTRACT".equalsIgnoreCase(reportType)) {
-      return reportService.getTotalSignContractNum(startTime, endTime);
-    }
-    if ("BUSINESS".equalsIgnoreCase(reportType) || "OPPORTUNITY".equalsIgnoreCase(reportType)) {
-      return reportService.getTotalBusinessNum(startTime, endTime);
-    }
-    throw new IllegalArgumentException(
-        "不支持的 reportType: " + reportType + "，取值 CONTRACT / BUSINESS / OPPORTUNITY");
+    return extendedQueryToolExecutors.executeQueryReport(args, toolContext);
   }
 
   private <T> List<T> trimPageResult(List<T> records) {
