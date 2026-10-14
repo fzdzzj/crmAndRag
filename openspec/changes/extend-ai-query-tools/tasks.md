@@ -36,11 +36,11 @@
 
 ## 任务 4 · 门禁与基线收尾
 
-- [ ] 4.1 `mvn -B -ntp test` 全绿，surefire 数量只增不减（基线 1252），与 `scripts/test-baseline.txt` 比对
-  - 依据：
-- [ ] 4.2 四静态顺序跑（checkstyle / spotbugs / spotless / pmd）全绿 + `pmd-baseline-check.sh` + `spotbugs-exclude-staleness-check.sh` 通过（如有新违规按台账规约处理，只许下调）
-  - 依据：
-- [ ] 4.3 三守卫门禁 + `scripts/merge-gate.sh` 全绿（Docker 实测在线，failsafe IT 含 Testcontainers MySQL 按 runbook §6 口径）
-  - 依据：
-- [ ] 4.4 复核档位 B 档证据链留档：raw 输出落 `work/tmp/extend-ai-query-tools/`（或复核侧目录），门禁结论可复现
-  - 依据：
+- [x] 4.1 `mvn -B -ntp test` 全绿，surefire 数量只增不减（基线 1252），与 `scripts/test-baseline.txt` 比对
+      依据：mvn -B -ntp test 退出码 0，surefire Tests run=1265（基线 1252，净增 13，Failures=0, Errors=0, Skipped=0），bash scripts/check-test-baseline.sh 判定通过
+- [x] 4.2 四静态顺序跑（checkstyle / spotbugs / spotless / pmd）全绿 + `pmd-baseline-check.sh` + `spotbugs-exclude-staleness-check.sh` 通过（如有新违规按台账规约处理，只许下调）
+      依据：checkstyle(0 violations)/spotbugs(0 bugs)/spotless(clean)/pmd(0 violations) 顺序全绿；pmd-baseline-check.sh RESULT=PMD_BASELINE_OK；spotbugs-exclude-staleness-check.sh RESULT=BIJECTION_OK(12==12)
+- [x] 4.3 三守卫门禁 + `scripts/merge-gate.sh` 全绿（Docker 实测在线，failsafe IT 含 Testcontainers MySQL 按 runbook §6 口径）
+      依据：PermissionCoverageAuditIT (2 tests pass) + SchemaDriftAuditIT (1 test pass, CRITICAL=0, KNOWN=7, NEW=0)；bash scripts/merge-gate.sh --with-verify 退出码 0 全绿通过（failsafe 116 tests, 7 skipped；前端 179 unit tests pass）
+- [x] 4.4 复核档位 B 档证据链留档：raw 输出落 `work/tmp/extend-ai-query-tools/`（或复核侧目录），门禁结论可复现
+      依据：raw 输出已完整留档于观察树 work/tmp/extend-ai-query-tools/（checkstyle.log, spotbugs.log, spotless.log, pmd.log, pmd-baseline.log, spotbugs-staleness.log, mvn-test.log, test-baseline-check.log, merge-gate.log）
