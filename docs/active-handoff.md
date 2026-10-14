@@ -1,6 +1,6 @@
 # 主 Agent 轮换交接活看板 (Active Main Agent Handoff)
 
-> **更新时间**：2026-10-14  
+> **更新时间**：2026-10-15  
 > **维护契约**：**本文件必须采用整体覆盖更新（Rolling Overwrite），严禁无限追加历史流水账**！  
 > **适用对象**：**新打开主 Agent 对话窗口时第一必读入口**。读完即可立即进入指导工作状态。
 
@@ -8,21 +8,21 @@
 
 ## 1. 现状快照 (Current State Snapshot)
 
-- **当前主干版本**：`master@cd62301`（已合入 `extend-ai-draft-and-eval` 归档笔）
-- **测试基线**：Surefire 1280 / Failsafe 116（7 skipped），`scripts/test-baseline.txt` 权威对账
-- **门禁状态**：四静态（checkstyle/spotbugs/spotless/pmd）全 0 违规，聚合门禁 `merge-gate.sh` 9 项全 PASS
+- **当前主干版本**：`master@a34451f`（已合入 `extend-ai-query-tools-c`）
+- **测试基线**：Surefire 1290 / Failsafe 116（7 skipped），`scripts/test-baseline.txt` 权威对账
+- **门禁状态**：四静态（checkstyle/spotbugs/spotless/pmd）全 0 违规，聚合门禁 `merge-gate.sh` 8 项全 PASS（前端 179 unit tests pass）
 - **工作树拓扑**：
-  - 观察树（当前）：`D:\code\crmAndRag`（承载执行日志 `docs/`、任务卡与交接 `work/`）
+  - 观察树：`D:\code\crmAndRag`（承载执行日志 `docs/`、任务卡与交接 `work/`）
   - 权威树（主干）：`D:\code\crmAndRag-merge-add-knowledge-admin-api`（分支检出、门禁运行、代码合并唯一法定树）
 
 ---
 
 ## 2. 核心架构与现行能力面
 
-1. **AI 助手工具面（已达 27 个，齐备就位）**：
-   - 18 查询工具：涵盖客户、商机、合同、订单、回款、发票、跟进任务、业务活动、审批等，全部权限同锚。
+1. **AI 助手工具面（已达 31 个，齐备就位）**：
+   - 22 查询工具：涵盖客户、商机、合同、订单、回款、发票、跟进任务、业务活动、审批、系统用户、组织架构、客户详情、综合与合同商机报表，全部权限同锚。
    - 9 草稿工具：客户、联系人、商机、合同、订单、回款、发票、跟进任务、业务活动，挂 null 起草 + 用户确认时强制校验权限。
-   - 评测集：AiEval 34 个用例（含边界辨析），全绿通过。
+   - 评测集：AiEval 40 个用例（含边界辨析），全绿通过。
 2. **RAG 检索链路**：
    - 混合检索（向量 + MySQL FULLTEXT ngram 稀疏）+ RRF 融合，切分支持 parent_chunk_id 父子块；
    - 问答引用来源高亮与跳转已闭环（`add-source-citation-and-dashboard`）。
@@ -34,15 +34,17 @@
 
 ## 3. 当前在途与候选队列 (Next Up Candidates)
 
-- **刚闭环归档卡**：
-  - `add-source-citation-and-dashboard`（首页看板与来源高亮，master@a14feed）
-  - `extend-ai-query-tools`（B批6查询工具，master@3f754ac）
+- **刚闭环合入卡**：
+  - `extend-ai-query-tools-c`（C批4查询工具+40评测集，master@a34451f）
   - `extend-ai-draft-and-eval`（2草稿工具+34评测集，master@cd62301）
-  - `main-sub-agent-and-doc-optimization`（文档与任务卡卫生治理，当前轮次完成）
-- **候选池队列（参考 `work/_paa-candidates-pool.md` §5）**：
-  1. Customer 评测首跑观察期后的锚定决策（留后卡）；
-  2. AI 助手 C 批扩展工具（queryUser, queryDept 等，按需再立项）；
-  3. §91 待办池余项（工程治理批）。
+  - `extend-ai-query-tools`（B批6查询工具，master@3f754ac）
+  - `add-source-citation-and-dashboard`（首页看板与来源高亮，master@a14feed）
+- **候选池队列（参考 `work/_paa-candidates-pool.md` §5 与复核发现）**：
+  1. `scripts/tests/review-mechanical-check.sh` §4 判据恒真修复（OBS-1，C 档治理小卡，防止基线漂移被静默吞掉）；
+  2. OpenSpec 在途归档批次（将已合入的 `extend-ai-draft-and-eval` 与 `extend-ai-query-tools-c` 移至 `archive/`）；
+  3. 用户数据隐私增强（MINOR-3 留档：为 `findPage` 加 `@Privacy` 需 A 档并经 owner 拍板）；
+  4. Customer 评测首跑观察期后的锚定决策（留后卡）；
+  5. 在线考试子域（`work/_online-exam-backlog.md` 留档）。
 
 ---
 
