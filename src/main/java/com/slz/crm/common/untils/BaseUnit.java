@@ -4,7 +4,6 @@ import com.slz.crm.pojo.ao.RoleAO;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
-// TODO 角色测试
 /** 线程工具类 */
 public class BaseUnit {
 

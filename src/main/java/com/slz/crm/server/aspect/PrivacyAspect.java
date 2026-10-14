@@ -120,7 +120,7 @@ public class PrivacyAspect {
               PermissionOperates.PRIVACY_EMAIL_VIEW, permissionsEntityList)) {
             o.email();
           }
-          // TODO更多权限
+          // 说明：当前隐私字段仅 phone/email，新增隐私字段需同步 PRIVACY_*_VIEW 权限与切面分支
 
         });
   }

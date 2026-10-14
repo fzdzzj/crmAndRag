@@ -21,7 +21,6 @@ public class MessageConstant {
   public static final String CHUNK_FILE_ID_ERROR = "CHUNK_FILE_ID_ERROR:文件标识和分片索引不能为空";
   public static final String CHUNK_TOTAL_CHUNKS_ERROR = "CHUNK_TOTAL_CHUNKS_ERROR:文件标识和总分片数不能为空";
   public static final String ID_ERROR = "ID_ERROR:ID错误";
-  // TODO 记得删
   public static final String SERVER_ERROR = "SERVER_ERROR:服务器异常(后端有bug，快去修！！！)";
 
   public static final String PARAM_ERROR = "PARAM_ERROR:参数错误";
