@@ -31,8 +31,8 @@
 
 ## 任务 3 · execution.md 遗留收口（owner 拍板随卡带上）
 
-- [ ] 3.1 观察树 `docs/main-agent-execution.md` 的未提交修改内容经权威树提交收口（将观察树 diff 应用到权威树同名文件后随任务组提交，或首笔独立提交）；收口后观察树 checkout 合并结果时工作树净
-  - 依据：
+- [x] 3.1 观察树 `docs/main-agent-execution.md` 的未提交修改内容经权威树提交收口（将观察树 diff 应用到权威树同名文件后随任务组提交，或首笔独立提交）；收口后观察树 checkout 合并结果时工作树净
+      依据：git diff docs/main-agent-execution.md 与观察树完全对齐，追加门禁分层沉淀说明（2026-10-14 owner 问询沉淀），权威树提交收口
 
 ## 任务 4 · 门禁与基线收尾
 
