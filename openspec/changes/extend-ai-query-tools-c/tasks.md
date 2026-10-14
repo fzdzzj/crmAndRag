@@ -34,11 +34,11 @@
 
 ## 任务 4 · 门禁与基线收尾
 
-- [ ] 4.1 `mvn -B -ntp test` 全绿，surefire 数量只增不减（基线 1280），在树净状态单次执行 `bash scripts/check-test-baseline.sh --update` 更新基线并单独 chore 提交
-      依据：mvn -B -ntp test 退出码 0，surefire 计数如实增长，check-test-baseline.sh 通过且哈希干净
-- [ ] 4.2 四静态顺序跑（checkstyle / spotbugs / spotless / pmd）全绿 + `pmd-baseline-check.sh` + `spotbugs-exclude-staleness-check.sh` 通过
-      依据：checkstyle(0 violations)/spotbugs(0 bugs)/spotless(clean)/pmd(0 violations) 顺序全绿；双射与台账守卫 exit 0
-- [ ] 4.3 三守卫门禁 + `scripts/merge-gate.sh` 全绿（Docker 在线，failsafe 116 tests 与前端 179 unit tests pass）
-      依据：PermissionCoverageAuditIT + SchemaDriftAuditIT 绿，bash scripts/merge-gate.sh --with-verify 退出码 0 全绿
-- [ ] 4.4 复核档位 B 档证据链留档：raw 输出落 `work/tmp/extend-ai-query-tools-c/`
-      依据：raw 完整留档于观察树 work/tmp/extend-ai-query-tools-c/
+- [x] 4.1 `mvn -B -ntp test` 全绿，surefire 数量只增不减（基线 1280），在树净状态单次执行 `bash scripts/check-test-baseline.sh --update` 更新基线并单独 chore 提交
+      依据：mvn -B -ntp test BUILD SUCCESS，Tests run: 1290, Failures: 0, Errors: 0, Skipped: 0（04-full-test.log，1280→1290 只增不减）；树净单次 bash scripts/check-test-baseline.sh --update 写入 Baseline 1280→1290（surefire.tests=1290, source-revision=b23d737），单独 chore 提交 49e8a03
+- [x] 4.2 四静态顺序跑（checkstyle / spotbugs / spotless / pmd）全绿 + `pmd-baseline-check.sh` + `spotbugs-exclude-staleness-check.sh` 通过
+      依据：四静态顺序（04-statics.log）checkstyle 0 Checkstyle violations / spotless 989 files clean（0 needs changes）/ pmd BUILD SUCCESS（violations=0）/ spotbugs BugInstance size 0；守卫 pmd-baseline-check.sh RESULT=PMD_BASELINE_OK（实测 0 == 登记 0 == pom 阈值 0），spotbugs-exclude-staleness-check.sh RESULT=BIJECTION_OK（12 条豁免与 12 条 High 一一对应）
+- [x] 4.3 三守卫门禁 + `scripts/merge-gate.sh` 全绿（Docker 在线，failsafe 116 tests 与前端 179 unit tests pass）
+      依据：bash scripts/merge-gate.sh --with-verify 退出码 0，九子门禁全 PASS（[unit][spotbugs][pmd][it][baseline][frontend-unit][hook][bijection][pmd-baseline]）；surefire 1290 / failsafe 116, Failures: 0, Skipped: 7 / 前端 Vitest 179 passed（17 files）；PermissionCoverageAuditIT（Tests run: 2）与 SchemaDriftAuditIT 均在 [it] 内 0 失败（04-merge-gate.log，Docker 29.6.2 在线）
+- [x] 4.4 复核档位 B 档证据链留档：raw 输出落 `work/tmp/extend-ai-query-tools-c/`
+      依据：raw 完整留档于观察树 work/tmp/extend-ai-query-tools-c/staging/：04-full-test.log（605 KB，mvn test 全量）、04-merge-gate.log（1.57 MB，merge-gate --with-verify 全量）、04-statics.log（四静态），另存改造源文件快照（AiExtendedQueryToolExecutors/AiQueryToolExecutors/AiToolRegistry/cases.json 等）与 tasks-group1/2/3/4.md
