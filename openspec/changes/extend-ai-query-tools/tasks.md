@@ -14,20 +14,20 @@
 
 ## 任务 2 · 执行器实现与单测（AiQueryToolExecutors）
 
-- [ ] 2.1 `executeQueryContactTask`：对齐 ContactTaskService 查询方法，参数含 assigneeId/companyId/contactId/opportunityId/分页
-  - 依据：
-- [ ] 2.2 `executeQueryTaskComment`：taskId 必填，分页可选
-  - 依据：
-- [ ] 2.3 `executeQueryBusinessActivity`：对齐 BusinessActivityService 查询方法
-  - 依据：
-- [ ] 2.4 `executeGetContractDetail`：contractId 必填，调 ContractService 详情方法
-  - 依据：
-- [ ] 2.5 `executeGetOpportunityDetail`：opportunityId 必填，调 SalesOpportunityService 详情方法
-  - 依据：
-- [ ] 2.6 `executeQueryStageApproval`：调 SalesStageApproval 既有列表查询 service
-  - 依据：
-- [ ] 2.7 新增执行器行为单测（纯 JVM mock service）：每工具至少覆盖正常返回 + 参数解析路径；分页裁剪/查空提示与既有工具模式一致
-  - 依据：
+- [x] 2.1 `executeQueryContactTask`：对齐 ContactTaskService 查询方法，参数含 assigneeId/companyId/contactId/opportunityId/分页
+      依据：AiQueryToolExecutors.executeQueryContactTask 调 ContactTaskService.query，单测 executeQueryContactTask_parsesArgumentsAndReturnsPageRecords 验证参数解析与分页
+- [x] 2.2 `executeQueryTaskComment`：taskId 必填，分页可选
+      依据：AiQueryToolExecutors.executeQueryTaskComment 调 TaskCommentService.getByTaskId，单测覆盖正常返回与 taskId 为空抛错路径
+- [x] 2.3 `executeQueryBusinessActivity`：对齐 BusinessActivityService 查询方法
+      依据：AiQueryToolExecutors.executeQueryBusinessActivity 调 BusinessActivityService.getDetailById 与 businessActivityQuery，单测覆盖详情与列表两条路径
+- [x] 2.4 `executeGetContractDetail`：contractId 必填，调 ContractService 详情方法
+      依据：AiQueryToolExecutors.executeGetContractDetail 调 ContractService.getDetailById，单测覆盖详情正常返回与 contractId 为空抛错路径
+- [x] 2.5 `executeGetOpportunityDetail`：opportunityId 必填，调 SalesOpportunityService 详情方法
+      依据：AiQueryToolExecutors.executeGetOpportunityDetail 调 SalesOpportunityService.getOpportunityDetailById，单测覆盖详情正常返回与 opportunityId 为空抛错路径
+- [x] 2.6 `executeQueryStageApproval`：调 SalesStageApproval 既有列表查询 service
+      依据：AiQueryToolExecutors.executeQueryStageApproval 调 SalesStageApprovalService.getPage，单测覆盖状态列表与单状态解析两种路径
+- [x] 2.7 新增执行器行为单测（纯 JVM mock service）：每工具至少覆盖正常返回 + 参数解析路径；分页裁剪/查空提示与既有工具模式一致
+      依据：mvn -B -ntp test -Dtest=AiQueryToolExecutorsTest 退出码 0（12 tests pass，纯 JVM 无外部依赖，覆盖正常/异常/trimPageResult 裁剪路径）
 
 ## 任务 3 · execution.md 遗留收口（owner 拍板随卡带上）
 
