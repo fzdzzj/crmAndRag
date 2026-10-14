@@ -320,6 +320,24 @@ public class AiToolRegistry {
         null,
         draftToolExecutors::executeCreateInvoiceDraft,
         user);
+    add(
+        callbacks,
+        "createContactTaskDraft",
+        "创建跟进任务草稿。跟进任务挂在客户公司下，是销售日常跟进动作的记录。客户双通道：已知客户ID传"
+            + " companyId，只知道名称传 companyName（后端自动解析，多个匹配会追问候选）；不确定时先调用"
+            + " queryCustomerCompany 查出 companyId。字段：taskTitle（必填）、taskContent（任务内容）、taskType（任务类型）、startTime/endTime（格式"
+            + " yyyy-MM-dd"
+            + " HH:mm:ss）、priorityStr（优先级：低/中/高/紧急）、statusStr（状态：未开始/进行中/已完成/已取消）、assigneeId（执行人ID，缺省当前用户）。草稿需要用户确认后才真实创建。参数不全时会返回缺失字段，请据此向用户追问。追问合并时必传"
+            + " pendingId",
+        "{\"type\":\"object\",\"properties\":{\"pendingId\":{\"type\":\"string\",\"description\":\"追问合并时必传\"},\"companyId\":{\"type\":\"integer\",\"description\":\"客户ID，与"
+            + " companyName 二选一\"},\"companyName\":{\"type\":\"string\",\"description\":\"客户名称，与"
+            + " companyId"
+            + " 二选一\"},\"contactId\":{\"type\":\"integer\"},\"opportunityId\":{\"type\":\"integer\"},\"taskTitle\":{\"type\":\"string\"},\"taskContent\":{\"type\":\"string\"},\"taskType\":{\"type\":\"string\"},\"startTime\":{\"type\":\"string\",\"description\":\"yyyy-MM-dd"
+            + " HH:mm:ss\"},\"endTime\":{\"type\":\"string\",\"description\":\"yyyy-MM-dd"
+            + " HH:mm:ss\"},\"priorityStr\":{\"type\":\"string\"},\"statusStr\":{\"type\":\"string\"},\"assigneeId\":{\"type\":\"integer\"}},\"required\":[\"taskTitle\"]}",
+        null,
+        draftToolExecutors::executeCreateContactTaskDraft,
+        user);
   }
 
   private void add(

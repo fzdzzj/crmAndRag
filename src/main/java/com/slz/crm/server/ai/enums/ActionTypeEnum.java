@@ -12,7 +12,9 @@ public enum ActionTypeEnum {
   CREATE_CONTACT("CREATE_CONTACT", PermissionOperates.CUSTOMER_ADD_CONTACT),
   CREATE_OPPORTUNITY("CREATE_OPPORTUNITY", PermissionOperates.SALES_CREATE_SALE_OPPORTUNITY),
   CREATE_PAYMENT("CREATE_PAYMENT", PermissionOperates.FINANCE_RECORD_PAYMENT),
-  CREATE_INVOICE("CREATE_INVOICE", PermissionOperates.FINANCE_RECORD_INVOICE);
+  CREATE_INVOICE("CREATE_INVOICE", PermissionOperates.FINANCE_RECORD_INVOICE),
+  /** extend-ai-draft-and-eval 任务 1.1：跟进任务草稿（确认链 requirePermission 自动映射既有写权限） */
+  CREATE_CONTACT_TASK("CREATE_CONTACT_TASK", PermissionOperates.TASK_CREATE_TASK);
 
   private final String value;
   private final PermissionOperates requiredPermission;

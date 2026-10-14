@@ -73,7 +73,11 @@ class AiToolRegistryContextTest {
 
     assertThat(names)
         .contains(
-            "getChartData", "getStatisticsSummary", "createCustomerDraft", "createContractDraft");
+            "getChartData",
+            "getStatisticsSummary",
+            "createCustomerDraft",
+            "createContractDraft",
+            "createContactTaskDraft");
     assertThat(names)
         .doesNotContain(
             "getOpportunityStageDistribution",
@@ -90,8 +94,9 @@ class AiToolRegistryContextTest {
             "queryBusinessActivity",
             "getContractDetail",
             "getOpportunityDetail",
-            "queryStageApproval");
-    assertThat(callbacks).hasSize(9);
+            "queryStageApproval",
+            "createBusinessActivityDraft");
+    assertThat(callbacks).hasSize(10);
   }
 
   @Test
@@ -135,7 +140,7 @@ class AiToolRegistryContextTest {
             "getContractDetail",
             "getOpportunityDetail",
             "queryStageApproval");
-    assertThat(callbacks).hasSize(11);
+    assertThat(callbacks).hasSize(12);
   }
 
   /** extend-ai-query-tools 任务 1.3：验证持有对应权限的用户可见新增的 6 个查询工具。 */
