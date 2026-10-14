@@ -12,7 +12,7 @@ class AiEvalCaseSetTest {
   void cases_shouldBeUniqueAndCoverCoreToolFamilies() {
     List<AiEvalCase> cases = AiEvalCaseLoader.load();
 
-    assertThat(cases).hasSizeGreaterThanOrEqualTo(30);
+    assertThat(cases).hasSizeGreaterThanOrEqualTo(40);
     assertThat(cases).extracting(AiEvalCase::id).doesNotHaveDuplicates();
     assertThat(cases)
         .extracting(AiEvalCase::expectedTool)
@@ -36,5 +36,9 @@ class AiEvalCaseSetTest {
             "queryStageApproval",
             "createContactTaskDraft",
             "createBusinessActivityDraft");
+    // extend-ai-query-tools-c 任务 3.2：C 批 4 查询工具必须有黄金用例覆盖
+    assertThat(cases)
+        .extracting(AiEvalCase::expectedTool)
+        .contains("queryUser", "queryDept", "getCustomerCompanyDetail", "queryReport");
   }
 }

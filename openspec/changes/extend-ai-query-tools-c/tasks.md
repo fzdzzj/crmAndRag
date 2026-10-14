@@ -27,10 +27,10 @@
 
 ## 任务 3 · 黄金评测集扩展与断言（AiEval）
 
-- [ ] 3.1 `src/test/resources/ai-eval/cases.json` 追加 4 新工具覆盖用例（用户、部门、客户详情、报表）与 2 个边界辨析用例（例如客户列表 vs 详情辨析、系统用户 vs 外部联系人辨析），总用例数达到 40 例
-      依据：git diff src/test/resources/ai-eval/cases.json 实测追加 6 个用例，JSON 语法合法，id 唯一
-- [ ] 3.2 `AiEvalCaseSetTest` 补断言：验证黄金用例集覆盖 4 新工具（queryUser/queryDept/getCustomerCompanyDetail/queryReport），用例总数 ≥ 40 且无重复 id
-      依据：mvn -B -ntp test -Dtest=AiEvalCaseSetTest 退出码 0，断言覆盖新工具与总数
+- [x] 3.1 `src/test/resources/ai-eval/cases.json` 追加 4 新工具覆盖用例（用户、部门、客户详情、报表）与 2 个边界辨析用例（例如客户列表 vs 详情辨析、系统用户 vs 外部联系人辨析），总用例数达到 40 例
+      依据：cases.json 实测 ConvertFrom-Json 计数 40（34→40），追加 6 条：query-system-user-by-name / query-dept-list / customer-company-detail-by-id / query-report-contract / discrimination-customer-company-detail（客户列表 vs 详情）/ discrimination-system-user-vs-contact（系统用户 vs 外部联系人）；JSON 语法合法，id 唯一（AiEvalCaseLoader 加载即校验非空/唯一）
+- [x] 3.2 `AiEvalCaseSetTest` 补断言：验证黄金用例集覆盖 4 新工具（queryUser/queryDept/getCustomerCompanyDetail/queryReport），用例总数 ≥ 40 且无重复 id
+      依据：mvn -B -ntp test -Dtest=AiEvalCaseSetTest 退出码 0，Tests run: 1, Failures: 0, Errors: 0, Skipped: 0；断言 hasSizeGreaterThanOrEqualTo(40) + doesNotHaveDuplicates + contains(queryUser/queryDept/getCustomerCompanyDetail/queryReport) 全绿
 
 ## 任务 4 · 门禁与基线收尾
 
