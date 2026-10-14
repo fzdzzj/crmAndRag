@@ -1,6 +1,7 @@
 # HANDOFF — CRM+RAG 融合平台交接文档
 
 > 给接手本项目的人/agent。目标：读完能**理解**这个项目是什么、为什么长这样、现在什么状态、坑在哪、下一步做什么。
+> **【主 Agent 轮换快捷入口】**：新开启主 Agent 对话窗口时，请**直接首选阅读 [`docs/active-handoff.md`](./docs/active-handoff.md)**（极简滚动活看板，掌握当前最新 master、基线与在途队列，避免被本文中的历史时点读数干扰）。
 > 配套深度文档在 `spec/changes/add-crm-rag-fusion-platform/`（见 §4 文档地图）。本文是"理解入口"，不是替代品。
 
 ---
