@@ -57,6 +57,12 @@ public class AiDraftToolExecutors {
     return submitDraft(args, toolContext, ActionTypeEnum.CREATE_CONTACT_TASK);
   }
 
+  /** extend-ai-draft-and-eval 任务 2.3：业务活动草稿（挂 null 注册，起草自由，写门在确认链）。 */
+  public Object executeCreateBusinessActivityDraft(
+      Map<String, Object> args, ToolContext toolContext) throws Exception {
+    return submitDraft(args, toolContext, ActionTypeEnum.CREATE_BUSINESS_ACTIVITY);
+  }
+
   private Object submitDraft(
       Map<String, Object> args, ToolContext toolContext, ActionTypeEnum actionType)
       throws Exception {

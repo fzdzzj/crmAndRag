@@ -17,14 +17,14 @@
 
 ## 任务组 2 · 业务活动草稿链
 
-- [ ] 2.1 ActionTypeEnum 新增 `CREATE_BUSINESS_ACTIVITY → PermissionOperates.SALES_CREATE_BUSINESS_ACTIVITY`
-      依据：
-- [ ] 2.2 BusinessActivityValidator + BusinessActivityExecutor Bean（落库走 BusinessActivityService 既有 create 语义；裁决假设 5：仅主实体 create，参与人/关联联系人子操作不入卡）
-      依据：
-- [ ] 2.3 AiToolRegistry 注册 `createBusinessActivityDraft`（挂 null 同模式）
-      依据：
-- [ ] 2.4 单测：同任务组 1.4 结构四例；计数断言复验（null 11、低权 13 已在 1.4 更新则本格仅复跑不重复改）
-      依据：
+- [x] 2.1 ActionTypeEnum 新增 `CREATE_BUSINESS_ACTIVITY → PermissionOperates.SALES_CREATE_BUSINESS_ACTIVITY`
+      依据：git diff src/main/java/com/slz/crm/server/ai/enums/ActionTypeEnum.java 实测新增 CREATE_BUSINESS_ACTIVITY→SALES_CREATE_BUSINESS_ACTIVITY（PermissionOperates 222L 既有常量，零权限语义新增）；BusinessActivityController POST / 同锚 L47 @RequirePermission(SALES_CREATE_BUSINESS_ACTIVITY) 实测在案
+- [x] 2.2 BusinessActivityValidator + BusinessActivityExecutor Bean（落库走 BusinessActivityService 既有 create 语义；裁决假设 5：仅主实体 create，参与人/关联联系人子操作不入卡）
+      依据：新增 src/main/java/com/slz/crm/server/ai/validation/BusinessActivityActionValidator.java 与 executor/BusinessActivityActionExecutor.java（Javadoc 标注「extend-ai-draft-and-eval 任务 2.2」，另新增 pojo/dto/ai/AiBusinessActivityDraftPayloadDTO.java）；执行器委托 BusinessActivityService.create（BusinessActivityServiceImpl L51 既有 create 语义），仅主实体字段映射、不触碰 addContacts/addUsers（裁决假设 5）
+- [x] 2.3 AiToolRegistry 注册 `createBusinessActivityDraft`（挂 null 同模式）
+      依据：AiToolRegistry.registerDraftTools 实测新增 createBusinessActivityDraft 注册（permission=null 同既有 7 草稿无条件注入模式；description 含商机双通道与 pendingId 追问合并说明）；AiDraftToolExecutors.executeCreateBusinessActivityDraft 走 submitDraft→mergeDraft(pendingId)/submitDraft 双分支分发
+- [x] 2.4 单测：同任务组 1.4 结构四例；计数断言复验（null 11、低权 13 已在 1.4 更新则本格仅复跑不重复改）
+      依据：mvn -B -ntp test -Dtest=BusinessActivityActionValidatorTest,BusinessActivityActionExecutorTest,PendingActionNewDraftPermissionTest,AiToolRegistryContextTest 退出码 0（16 tests pass，0 failures）：执行器 mock 落库 + 业务失败（2）、校验器双通道（opportunityId 已知/opportunityName 解析写回）+ 缺失追问（4）、守卫 12002/50008（3）、注册表上下文（8）；计数断言本笔复验终值 null 11、低权 13（1.4 已按预期变化声明，2.3 注册落库后终值确认）
 
 ## 任务组 3 · AiEval 评测集同步（19→30+）
 

@@ -39,6 +39,26 @@ class PendingActionNewDraftPermissionTest {
   }
 
   @Test
+  void businessActivityDraft_requiresSalesCreateBusinessActivity_andRejects12002() {
+    assertThat(ActionTypeEnum.getRequiredPermission("CREATE_BUSINESS_ACTIVITY"))
+        .isEqualTo(PermissionOperates.SALES_CREATE_BUSINESS_ACTIVITY);
+    when(permissionService.hasPermission(2L, PermissionOperates.SALES_CREATE_BUSINESS_ACTIVITY))
+        .thenReturn(false);
+
+    assertThatThrownBy(
+            () ->
+                PendingActionGuards.requirePermission(
+                    "CREATE_BUSINESS_ACTIVITY", 2L, permissionService))
+        .isInstanceOf(BaseException.class)
+        .satisfies(
+            e ->
+                assertThat(((BaseException) e).getCode())
+                    .isEqualTo(
+                        com.slz.crm.common.enumeration.ErrorCode.PERMISSION_DENIED.getCode()))
+        .hasMessageContaining("无权限");
+  }
+
+  @Test
   void unknownActionType_noMapping_throwsParamRequired() {
     assertThat(ActionTypeEnum.getRequiredPermission("UNKNOWN_TYPE")).isNull();
 

@@ -14,7 +14,10 @@ public enum ActionTypeEnum {
   CREATE_PAYMENT("CREATE_PAYMENT", PermissionOperates.FINANCE_RECORD_PAYMENT),
   CREATE_INVOICE("CREATE_INVOICE", PermissionOperates.FINANCE_RECORD_INVOICE),
   /** extend-ai-draft-and-eval 任务 1.1：跟进任务草稿（确认链 requirePermission 自动映射既有写权限） */
-  CREATE_CONTACT_TASK("CREATE_CONTACT_TASK", PermissionOperates.TASK_CREATE_TASK);
+  CREATE_CONTACT_TASK("CREATE_CONTACT_TASK", PermissionOperates.TASK_CREATE_TASK),
+  /** extend-ai-draft-and-eval 任务 2.1：业务活动草稿（确认链 requirePermission 自动映射既有写权限） */
+  CREATE_BUSINESS_ACTIVITY(
+      "CREATE_BUSINESS_ACTIVITY", PermissionOperates.SALES_CREATE_BUSINESS_ACTIVITY);
 
   private final String value;
   private final PermissionOperates requiredPermission;

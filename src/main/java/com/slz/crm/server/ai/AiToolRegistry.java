@@ -338,6 +338,23 @@ public class AiToolRegistry {
         null,
         draftToolExecutors::executeCreateContactTaskDraft,
         user);
+    add(
+        callbacks,
+        "createBusinessActivityDraft",
+        "新增业务活动草稿。业务活动挂在商机下，记录拜访/会议/电话等跟进动作。商机双通道：已知商机ID传"
+            + " opportunityId，只知道名称传 opportunityName（后端自动解析，多个匹配会追问候选）；不确定时先调用"
+            + " queryOpportunity 查出 opportunityId。字段：activityTitle（必填）、activityContent（活动内容）、activityTime（活动时间，格式"
+            + " yyyy-MM-dd"
+            + " HH:mm:ss，选填缺省当天）、activityType（活动类型）、activityDuration（持续时间分钟）、remark。草稿需要用户确认后才真实创建。参数不全时会返回缺失字段，请据此向用户追问。追问合并时必传"
+            + " pendingId",
+        "{\"type\":\"object\",\"properties\":{\"pendingId\":{\"type\":\"string\",\"description\":\"追问合并时必传\"},\"opportunityId\":{\"type\":\"integer\",\"description\":\"商机ID，与"
+            + " opportunityName 二选一\"},\"opportunityName\":{\"type\":\"string\",\"description\":\"商机名称，与"
+            + " opportunityId"
+            + " 二选一\"},\"activityTitle\":{\"type\":\"string\"},\"activityContent\":{\"type\":\"string\"},\"activityTime\":{\"type\":\"string\",\"description\":\"yyyy-MM-dd"
+            + " HH:mm:ss\"},\"activityType\":{\"type\":\"string\"},\"activityDuration\":{\"type\":\"integer\"},\"remark\":{\"type\":\"string\"}},\"required\":[\"activityTitle\"]}",
+        null,
+        draftToolExecutors::executeCreateBusinessActivityDraft,
+        user);
   }
 
   private void add(
