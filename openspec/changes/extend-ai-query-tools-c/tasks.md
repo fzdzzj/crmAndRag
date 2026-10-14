@@ -5,12 +5,12 @@
 
 ## 任务 1 · 注册表扩展（AiToolRegistry）
 
-- [ ] 1.1 `AiToolRegistry` 注册 4 个新查询工具：queryUser（SYSTEM_VIEW_USER）/ queryDept（SYSTEM_VIEW_USER）/ getCustomerCompanyDetail（CUSTOMER_VIEW_COMPANY）/ queryReport（REPORT_VIEW_REPORT）；description 与 inputSchema 对齐既有工具文案风格（含查空放宽引导 AMBIGUITY_GUIDANCE）
-      依据：git diff src/main/java/com/slz/crm/server/ai/AiToolRegistry.java 实测确认追加 4 处注册，权限锚与描述对齐既有工具风格
-- [ ] 1.2 编排结构治理：新增私有方法 `registerSystemTools` 注册 queryUser 与 queryDept，`getCustomerCompanyDetail` 放入 `registerCustomerTools`，`queryReport` 放入 `registerAnalyticsTools`，拆分后 NCSS 达标，`AiToolExecutorSplitTest` 全绿
-      依据：mvn -B -ntp pmd:check 退出码 0，AiToolRegistry 拆分后 NCSS 达标，AiToolExecutorSplitTest 实测全绿
-- [ ] 1.3 `AiToolRegistryContextTest` 补断言：持有对应权限的用户可见 4 新工具；null 用户仍 11 个、低权样本用户仍 13 个（新工具全挂权限，既有计数断言预期不变，若实测变化需在依据行说明原因）
-      依据：mvn -B -ntp test -Dtest=AiToolRegistryContextTest 退出码 0，null 用户 11 / 低权样本 13 计数不变，有权用户对应 4 工具均可见断言全绿
+- [x] 1.1 `AiToolRegistry` 注册 4 个新查询工具：queryUser（SYSTEM_VIEW_USER）/ queryDept（SYSTEM_VIEW_USER）/ getCustomerCompanyDetail（CUSTOMER_VIEW_COMPANY）/ queryReport（REPORT_VIEW_REPORT）；description 与 inputSchema 对齐既有工具文案风格（含查空放宽引导 AMBIGUITY_GUIDANCE）
+      依据：AiToolRegistry.java 实测追加 4 处注册——queryUser/queryDept 入 registerSystemTools（权限 SYSTEM_VIEW_USER 602）、getCustomerCompanyDetail 入 registerCustomerTools（CUSTOMER_VIEW_COMPANY 117）、queryReport 入 registerAnalyticsTools（REPORT_VIEW_REPORT 501，枚举实测值见 PermissionOperates.java L41/L223/L236）；四者 description 均含 AMBIGUITY_GUIDANCE 查空放宽引导
+- [x] 1.2 编排结构治理：新增私有方法 `registerSystemTools` 注册 queryUser 与 queryDept，`getCustomerCompanyDetail` 放入 `registerCustomerTools`，`queryReport` 放入 `registerAnalyticsTools`，拆分后 NCSS 达标，`AiToolExecutorSplitTest` 全绿
+      依据：mvn -B -ntp pmd:check 退出码 0（registerSystemTools 拆分后 AiToolRegistry 类 NCSS 达标；同轮 pmd 覆盖 AiQueryToolExecutors）；AiToolExecutorSplitTest 实测 Tests run: 2, Failures: 0, Errors: 0, Skipped: 0
+- [x] 1.3 `AiToolRegistryContextTest` 补断言：持有对应权限的用户可见 4 新工具；null 用户仍 11 个、低权样本用户仍 13 个（新工具全挂权限，既有计数断言预期不变，若实测变化需在依据行说明原因）
+      依据：mvn -B -ntp test -Dtest=AiToolRegistryContextTest 退出码 0，Tests run: 9, Failures: 0, Errors: 0, Skipped: 0；nullUser 计数断言仍 11、lowPrivilegeUser 计数断言仍 13（新工具全挂权限故既有计数不变），userWithBatchCQueryPermissions_seesPermittedTools 断言 queryUser/queryDept（602）、getCustomerCompanyDetail（117）、queryReport（501）均可见
 
 ## 任务 2 · 执行器实现与单测（AiQueryToolExecutors）
 
@@ -23,7 +23,7 @@
 - [x] 2.4 `executeQueryReport`：reportType 必填校验（CONTRACT / BUSINESS / OPPORTUNITY），调 `ReportService.getTotalSignContractNum` 或 `getTotalBusinessNum`，支持时间解析
       依据：executeQueryReport 按 reportType 分派 ReportService.getTotalSignContractNum（CONTRACT）/ getTotalBusinessNum（BUSINESS 与 OPPORTUNITY 别名，底层服务仅两方法）；单测 CONTRACT / BUSINESS / 缺失抛错 三例全绿
 - [x] 2.5 新增执行器行为单测（纯 JVM mock service）：每工具至少覆盖正常返回 + 参数解析路径；分页裁剪与查空提示与既有工具模式一致
-      依据：mvn -B -ntp test -Dtest=AiQueryToolExecutorsTest 退出码 0，Tests run: 21, Failures: 0, Errors: 0, Skipped: 0（原 12 例 + 新增 9 例）
+      依据：mvn -B -ntp test -Dtest=AiQueryToolExecutorsTest 退出码 0，Tests run: 21, Failures: 0, Errors: 0, Skipped: 0（原 12 例 + 新增 9 例）；执行细节拆至 AiExtendedQueryToolExecutors（PMD 类 NCSS 治理），AiQueryToolExecutors 保留薄委派，测试断言与计数不变
 
 ## 任务 3 · 黄金评测集扩展与断言（AiEval）
 

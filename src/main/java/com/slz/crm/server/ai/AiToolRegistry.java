@@ -25,20 +25,21 @@ public class AiToolRegistry {
 
   /**
    * 获取当前用户有权访问的 AI 工具回调列表。 extend-ai-query-tools 任务 1.1：追加 6 个查询工具。 extend-ai-query-tools 任务
-   * 1.2：按业务域拆分私有方法以满足 PMD NCSS 与方法长度规范。
+   * 1.2：按业务域拆分私有方法以满足 PMD NCSS 与方法长度规范。 extend-ai-query-tools-c 任务 1.1：追加 4 个查询工具。
    */
   public List<ToolCallback> getPermittedToolCallbacks(RoleAO user) {
     List<ToolCallback> callbacks = new ArrayList<>();
     registerAnalyticsTools(callbacks, user);
     registerOrderContractTools(callbacks, user);
     registerCustomerTools(callbacks, user);
+    registerSystemTools(callbacks, user);
     registerContactTaskTools(callbacks, user);
     registerFinanceTools(callbacks, user);
     registerDraftTools(callbacks, user);
     return callbacks;
   }
 
-  /** extend-ai-query-tools 任务 1.2：统计与仪表盘工具编排。 */
+  /** extend-ai-query-tools 任务 1.2：统计与仪表盘工具编排。 extend-ai-query-tools-c 任务 1.1：新增 queryReport。 */
   private void registerAnalyticsTools(List<ToolCallback> callbacks, RoleAO user) {
     add(
         callbacks,
@@ -66,6 +67,15 @@ public class AiToolRegistry {
         "{\"type\":\"object\",\"properties\":{}}",
         PermissionOperates.SALES_VIEW_SALE_OPPORTUNITY,
         queryToolExecutors::executeGetOpportunityStageDistribution,
+        user);
+    add(
+        callbacks,
+        "queryReport",
+        "查询合同与商机统计报表（直通报表管理模块）。reportType: CONTRACT=签约合同统计, BUSINESS=商机总量统计,"
+            + " OPPORTUNITY=已签约商机统计。可选 startTime/endTime（格式 yyyy-MM-dd HH:mm:ss）",
+        "{\"type\":\"object\",\"properties\":{\"reportType\":{\"type\":\"string\",\"enum\":[\"CONTRACT\",\"BUSINESS\",\"OPPORTUNITY\"]},\"startTime\":{\"type\":\"string\"},\"endTime\":{\"type\":\"string\"}},\"required\":[\"reportType\"]}",
+        PermissionOperates.REPORT_VIEW_REPORT,
+        queryToolExecutors::executeQueryReport,
         user);
   }
 
@@ -109,7 +119,10 @@ public class AiToolRegistry {
         user);
   }
 
-  /** extend-ai-query-tools 任务 1.2：客户、商机与联系人工具编排（含任务 1.1 新增 getOpportunityDetail）。 */
+  /**
+   * extend-ai-query-tools 任务 1.2：客户、商机与联系人工具编排（含任务 1.1 新增 getOpportunityDetail）。
+   * extend-ai-query-tools-c 任务 1.1：新增 getCustomerCompanyDetail。
+   */
   private void registerCustomerTools(List<ToolCallback> callbacks, RoleAO user) {
     add(
         callbacks,
@@ -155,6 +168,36 @@ public class AiToolRegistry {
         "{\"type\":\"object\",\"properties\":{\"groupName\":{\"type\":\"string\"},\"status\":{\"type\":\"integer\",\"enum\":[0,1]}}}",
         PermissionOperates.CUSTOMER_QUERY_COMPANY,
         queryToolExecutors::executeQueryCompanyGroup,
+        user);
+    add(
+        callbacks,
+        "getCustomerCompanyDetail",
+        "按客户公司ID查询客户公司档案详情（区分于 queryCustomerCompany 列表查询；补齐已有 getOrderDetail / getContractDetail 详情工具对称性）。若用户仅提供公司名称，先调用"
+            + " queryCustomerCompany 定位公司再取 companyId 查详情",
+        "{\"type\":\"object\",\"properties\":{\"companyId\":{\"type\":\"integer\"}},\"required\":[\"companyId\"]}",
+        PermissionOperates.CUSTOMER_VIEW_COMPANY,
+        queryToolExecutors::executeGetCustomerCompanyDetail,
+        user);
+  }
+
+  /** extend-ai-query-tools-c 任务 1.2：系统用户与组织架构部门工具编排。 */
+  private void registerSystemTools(List<ToolCallback> callbacks, RoleAO user) {
+    add(
+        callbacks,
+        "queryUser",
+        "查询系统内部用户（区分于外部联系人 queryContact）。可选条件：realName（姓名模糊）、phone（电话）、email（邮箱）、roleName（角色名）、roleId（角色ID）、status（账号状态：1正常/0冻结/2离职）。返回用户列表（含姓名、部门、角色、状态，手机与邮箱脱敏）"
+            + AMBIGUITY_GUIDANCE,
+        "{\"type\":\"object\",\"properties\":{\"realName\":{\"type\":\"string\"},\"phone\":{\"type\":\"string\"},\"email\":{\"type\":\"string\"},\"roleName\":{\"type\":\"string\"},\"roleId\":{\"type\":\"integer\"},\"status\":{\"type\":\"integer\",\"enum\":[0,1,2]},\"pageNum\":{\"type\":\"integer\"},\"pageSize\":{\"type\":\"integer\"}}}",
+        PermissionOperates.SYSTEM_VIEW_USER,
+        queryToolExecutors::executeQueryUser,
+        user);
+    add(
+        callbacks,
+        "queryDept",
+        "查询系统组织架构部门列表（区分于客户集团 queryCompanyGroup）。可选条件：includeDisabled（true 含停用部门，默认仅启用）。返回部门列表（含部门名、上级部门、负责人、状态）",
+        "{\"type\":\"object\",\"properties\":{\"includeDisabled\":{\"type\":\"boolean\"}}}",
+        PermissionOperates.SYSTEM_VIEW_USER,
+        queryToolExecutors::executeQueryDept,
         user);
   }
 

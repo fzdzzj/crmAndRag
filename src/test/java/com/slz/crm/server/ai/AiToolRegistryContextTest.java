@@ -95,7 +95,11 @@ class AiToolRegistryContextTest {
             "queryBusinessActivity",
             "getContractDetail",
             "getOpportunityDetail",
-            "queryStageApproval");
+            "queryStageApproval",
+            "queryUser",
+            "queryDept",
+            "getCustomerCompanyDetail",
+            "queryReport");
     assertThat(callbacks).hasSize(11);
   }
 
@@ -139,7 +143,11 @@ class AiToolRegistryContextTest {
             "queryBusinessActivity",
             "getContractDetail",
             "getOpportunityDetail",
-            "queryStageApproval");
+            "queryStageApproval",
+            "queryUser",
+            "queryDept",
+            "getCustomerCompanyDetail",
+            "queryReport");
     assertThat(callbacks).hasSize(13);
   }
 
@@ -180,6 +188,31 @@ class AiToolRegistryContextTest {
             .map(cb -> cb.getToolDefinition().name())
             .toList();
     assertThat(stageToolNames).contains("queryStageApproval");
+  }
+
+  /** extend-ai-query-tools-c 任务 1.3：验证持有对应权限的用户可见 C 批 4 个新增查询工具。 */
+  @Test
+  void userWithBatchCQueryPermissions_seesPermittedTools() {
+    RoleAO systemUser = buildUser(106L, PermissionOperates.SYSTEM_VIEW_USER);
+    List<String> systemToolNames =
+        registry.getPermittedToolCallbacks(systemUser).stream()
+            .map(cb -> cb.getToolDefinition().name())
+            .toList();
+    assertThat(systemToolNames).contains("queryUser", "queryDept");
+
+    RoleAO companyUser = buildUser(107L, PermissionOperates.CUSTOMER_VIEW_COMPANY);
+    List<String> companyToolNames =
+        registry.getPermittedToolCallbacks(companyUser).stream()
+            .map(cb -> cb.getToolDefinition().name())
+            .toList();
+    assertThat(companyToolNames).contains("getCustomerCompanyDetail");
+
+    RoleAO reportUser = buildUser(108L, PermissionOperates.REPORT_VIEW_REPORT);
+    List<String> reportToolNames =
+        registry.getPermittedToolCallbacks(reportUser).stream()
+            .map(cb -> cb.getToolDefinition().name())
+            .toList();
+    assertThat(reportToolNames).contains("queryReport");
   }
 
   @Test
