@@ -64,3 +64,4 @@
 - 局部代码：执行 agent 跑关联单测和受影响的静态检查；主 agent 用 diff 与关键反例独立核验。跨模块/权限/迁移：再补相应 IT、契约或集成测试，依 `docs/migration-runbook.md` 核定 Docker 前提；不能把跳过说成通过。
 - **要合并时**：适用的 `openspec/git-workflow.md` 要求真实运行 `scripts/merge-gate.sh`，不要以分次小测替代；是否包含 `--with-verify` 依据变更/环境/授权和 runbook 判断。主 agent 仅指导与验收，未受托不替执行 agent 合并或提交。
 - 任何真实外发、付费模型评测/embedding、生产 reingest 或开关、破坏性数据操作、引依赖、迁移结构、`git push/reset` 等按根 `AGENTS.md` 和既有规格先问 owner。没有批准，就做 mock、只读核查或写出待授权方案；不得绕开闸门。
+- **门禁分层（2026-10-14 owner 问询沉淀）**：执行迭代中可只跑相关测试类（`mvn test -Dtest=XxxTest`）加快循环；**停步自证、复核、CI 三个层面必须全量**——① 基线口径是全量数字（surefire/failsafe 与 test-baseline 对账，「只增不减」约束只有全量才有证据）；② 「与其他测试无关」是开发者假设，回归常藏于共享面（先例：改 `useAiChat` 影响全部 AI 聊天用例、SOURCES 发射点被 references 链路共消费）；③ CI 反正全量跑，本地全量是把红灯拦在 push 前的预演——本地省的是分钟级，CI 红一次返工半小时级起（Build Budget 红先例）。纯 git 操作任务（合并/推送/盯跑类）零文件改动即零门禁。曾议「执行侧降为快筛 + CI 远端兜底」方向：代价是停步证据链弱化、NO-GO/MAJOR 漏检风险上升，owner 未拍板，维持现状。
