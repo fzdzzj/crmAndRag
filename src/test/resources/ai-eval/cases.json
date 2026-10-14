@@ -161,5 +161,123 @@
       "orders": [{ "productName": "边缘服务器", "quantity": 3, "unitPrice": 15000 }]
     },
     "tags": ["draft-tool", "order", "follow-up"]
+  },
+  {
+    "id": "contact-task-by-assignee",
+    "utterance": "帮我查一下执行人 8 名下的跟进任务",
+    "expectedTool": "queryContactTask",
+    "expectedParams": { "assigneeId": 8 },
+    "tags": ["query-tool", "contact-task"]
+  },
+  {
+    "id": "task-comment-by-id",
+    "utterance": "查看任务 10086 的沟通评论",
+    "expectedTool": "queryTaskComment",
+    "expectedParams": { "taskId": 10086 },
+    "tags": ["query-tool", "contact-task"]
+  },
+  {
+    "id": "business-activity-by-company",
+    "utterance": "云创科技有限公司最近有哪些业务活动？",
+    "expectedTool": "queryBusinessActivity",
+    "expectedParams": { "companyName": "云创科技有限公司" },
+    "tags": ["query-tool", "business-activity"]
+  },
+  {
+    "id": "contract-detail-by-id",
+    "utterance": "查一下合同 88 的详细信息，包括关联订单和回款进度",
+    "expectedTool": "getContractDetail",
+    "expectedParams": { "contractId": 88 },
+    "tags": ["query-tool", "contract"]
+  },
+  {
+    "id": "opportunity-detail-by-id",
+    "utterance": "查一下商机 66 的详细情况，包括关联业务活动和阶段变更",
+    "expectedTool": "getOpportunityDetail",
+    "expectedParams": { "opportunityId": 66 },
+    "tags": ["query-tool", "opportunity"]
+  },
+  {
+    "id": "stage-approval-pending",
+    "utterance": "商机 66 有哪些待审批的阶段推进记录？",
+    "expectedTool": "queryStageApproval",
+    "expectedParams": { "opportunityId": 66, "approvalStatus": 0 },
+    "tags": ["query-tool", "stage-approval"]
+  },
+  {
+    "id": "create-contact-task-draft",
+    "utterance": "给云创科技有限公司记一个跟进任务，主题下周拜访客户，内容约见采购总监定方案",
+    "expectedTool": "createContactTaskDraft",
+    "expectedParams": {
+      "companyName": "云创科技有限公司",
+      "taskTitle": "下周拜访客户",
+      "taskContent": "约见采购总监定方案"
+    },
+    "tags": ["draft-tool", "contact-task"]
+  },
+  {
+    "id": "create-business-activity-draft",
+    "utterance": "给智能制造 MES 项目记一次业务活动，标题客户需求调研，类型电话沟通，时长 30 分钟",
+    "expectedTool": "createBusinessActivityDraft",
+    "expectedParams": {
+      "opportunityName": "智能制造 MES 项目",
+      "activityTitle": "客户需求调研",
+      "activityType": "电话沟通",
+      "activityDuration": 30
+    },
+    "tags": ["draft-tool", "business-activity"]
+  },
+  {
+    "id": "create-business-activity-draft-follow-up",
+    "utterance": "继续补充，pendingId 是 pending-2001，活动时长改成 45 分钟，备注下午三点",
+    "expectedTool": "createBusinessActivityDraft",
+    "expectedParams": {
+      "pendingId": "pending-2001",
+      "activityDuration": 45,
+      "remark": "下午三点"
+    },
+    "tags": ["draft-tool", "business-activity", "follow-up"]
+  },
+  {
+    "id": "discrimination-contract-detail",
+    "utterance": "合同 88 的详情是什么？",
+    "expectedTool": "getContractDetail",
+    "expectedParams": { "contractId": 88 },
+    "tags": ["query-tool", "contract", "discrimination"]
+  },
+  {
+    "id": "discrimination-contract-list",
+    "utterance": "我名下都有哪些合同？列出来看看",
+    "expectedTool": "queryContract",
+    "expectedParams": {},
+    "tags": ["query-tool", "contract", "discrimination"]
+  },
+  {
+    "id": "discrimination-task-comment",
+    "utterance": "任务 10086 上大家留了什么评论？",
+    "expectedTool": "queryTaskComment",
+    "expectedParams": { "taskId": 10086 },
+    "tags": ["query-tool", "contact-task", "discrimination"]
+  },
+  {
+    "id": "discrimination-task-surface",
+    "utterance": "看看分配给执行人 8 的跟进任务都有哪些",
+    "expectedTool": "queryContactTask",
+    "expectedParams": { "assigneeId": 8 },
+    "tags": ["query-tool", "contact-task", "discrimination"]
+  },
+  {
+    "id": "discrimination-opportunity-detail",
+    "utterance": "商机 66 的详细情况是什么？",
+    "expectedTool": "getOpportunityDetail",
+    "expectedParams": { "opportunityId": 66 },
+    "tags": ["query-tool", "opportunity", "discrimination"]
+  },
+  {
+    "id": "discrimination-opportunity-list",
+    "utterance": "有没有叫智能制造 MES 的商机？",
+    "expectedTool": "queryOpportunity",
+    "expectedParams": { "opportunityName": "智能制造 MES" },
+    "tags": ["query-tool", "opportunity", "discrimination"]
   }
 ]
