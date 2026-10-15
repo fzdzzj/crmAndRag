@@ -261,6 +261,7 @@ public final class PermissionCoverageScanner {
     Map<String, Class<?>> registry = new LinkedHashMap<>();
     registry.put("AiActionController", clazz("com.slz.crm.server.controller.AiActionController"));
     registry.put("AiChatController", clazz("com.slz.crm.server.controller.AiChatController"));
+    registry.put("AiInsightController", clazz("com.slz.crm.server.controller.AiInsightController"));
     registry.put("AssistController", clazz("com.slz.crm.server.controller.AssistController"));
     registry.put(
         "BusinessActivityController",

@@ -84,6 +84,19 @@
         <div v-if="isStreaming" class="streaming">...</div>
       </div>
 
+      <!-- 快捷指令药丸（Prompt Starter Pills）：高频业务场景一键填充并发送 -->
+      <div v-if="!isStreaming" class="pills-bar">
+        <button
+          v-for="pill in starterPills"
+          :key="pill"
+          type="button"
+          class="starter-pill"
+          @click="sendPill(pill)"
+        >
+          {{ pill }}
+        </button>
+      </div>
+
       <!-- 输入 -->
       <div class="input-bar">
         <Input
@@ -122,6 +135,14 @@ import ErrorFeedbackButton from '@/components/ai/ErrorFeedbackButton.vue';
 import KnowledgeDocumentDrawer from '@/components/ai/KnowledgeDocumentDrawer.vue';
 
 const BUSINESS_SOURCE_TYPES = ['CUSTOMER', 'BUSINESS_ACTIVITY', 'SALES_OPPORTUNITY', 'CONTRACT', 'CONTACT_TASK'];
+
+/** 快捷指令药丸（add-ai-customer-360-insight 任务 4.1）：高频业务场景一键填充并发送 */
+const starterPills = [
+  '📊 诊断客户健康度',
+  '📋 汇总今日待办任务',
+  '📈 统计本月商机进展',
+  '📝 起草商业拜访纪要',
+];
 
 /** 业务来源 documentId 可能带的历史前缀（旧客户口径 CUSTOMER_COMPANY:，新口径为纯主键字符串） */
 const BUSINESS_DOC_ID_PREFIXES = ['CUSTOMER_COMPANY:', 'BUSINESS_ACTIVITY:', 'SALES_OPPORTUNITY:', 'CONTRACT:', 'CONTACT_TASK:'];
@@ -212,6 +233,13 @@ async function send() {
   inputText.value = '';
   await nextTick();
   scrollToBottom();
+}
+
+/** 药丸一键填充并发送 */
+function sendPill(text: string) {
+  if (isStreaming.value) return;
+  inputText.value = text;
+  void send();
 }
 
 function scrollToBottom() {
@@ -537,6 +565,18 @@ defineExpose({ open: () => { visible.value = true; } });
 }
 .inline-citation:hover { background: #e6f4ff; }
 .action-card { border: 1px dashed #faad14; padding: 4px; margin-top: 4px; font-size: 12px; }
+.pills-bar { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 8px 0; }
+.starter-pill {
+  border: 1px solid #d9d9d9;
+  border-radius: 14px;
+  padding: 2px 10px;
+  font-size: 12px;
+  color: #1677ff;
+  background: #f5faff;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.starter-pill:hover { border-color: #1677ff; background: #e6f4ff; }
 .input-bar { display: flex; gap: 8px; padding: 8px; border-top: 1px solid #f0f0f0; }
 .streaming { color: #888; }
 </style>

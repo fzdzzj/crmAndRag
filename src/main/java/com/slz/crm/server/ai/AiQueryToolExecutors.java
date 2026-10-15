@@ -24,6 +24,7 @@ import com.slz.crm.pojo.vo.PaymentRecordVO;
 import com.slz.crm.pojo.vo.SalesOpportunityVO;
 import com.slz.crm.pojo.vo.SalesStageApprovalVO;
 import com.slz.crm.pojo.vo.TaskCommentVO;
+import com.slz.crm.server.ai.insight.CustomerInsightService;
 import com.slz.crm.server.service.BusinessActivityService;
 import com.slz.crm.server.service.CompanyGroupService;
 import com.slz.crm.server.service.ContactTaskService;
@@ -66,6 +67,7 @@ public class AiQueryToolExecutors {
   private final BusinessActivityService businessActivityService;
   private final SalesStageApprovalService salesStageApprovalService;
   private final AiExtendedQueryToolExecutors extendedQueryToolExecutors;
+  private final CustomerInsightService customerInsightService;
 
   public Object executeGetChartData(Map<String, Object> args, ToolContext toolContext)
       throws Exception {
@@ -275,6 +277,18 @@ public class AiQueryToolExecutors {
   /** extend-ai-query-tools-c 任务 2.4：查询合同与商机统计报表；执行细节委派 {@link AiExtendedQueryToolExecutors}。 */
   public Object executeQueryReport(Map<String, Object> args, ToolContext toolContext) {
     return extendedQueryToolExecutors.executeQueryReport(args, toolContext);
+  }
+
+  /**
+   * add-ai-customer-360-insight 任务 3.1：获取指定客户的 360° AI 商业健康度诊断（只读；权限由 {@link
+   * com.slz.crm.server.ai.insight.CustomerInsightService} 内部 DataScope 守卫收口）。
+   */
+  public Object executeGetCustomerInsight(Map<String, Object> args, ToolContext toolContext) {
+    Long companyId = toLong(args.get("companyId"));
+    if (companyId == null) {
+      throw new IllegalArgumentException("companyId 不能为空");
+    }
+    return customerInsightService.diagnose(companyId);
   }
 
   private <T> List<T> trimPageResult(List<T> records) {
