@@ -21,9 +21,12 @@
 
 ## 任务 3 · 业务数据检索多实体融合（检索层）
 
-- [ ] 3.1 权限闸接入 `sales_opportunity`：调用 `dataScopeService.getHighestDataScopeLevel(user, "sales_opportunity")`，执行 NONE 零外发 / SELF / DEPT / DEPT_AND_CHILD / ALL 过滤与 TAGE/共享补充召回
-- [ ] 3.2 三业务实体（客户、商业活动、销售商机）多路召回与合并：同轮检索召回各实体向量，按相似度降序截断 TopK，来源标注 `type=SALES_OPPORTUNITY`，纵深防御复核归属，组装 `【业务数据检索】` 上下文
-- [ ] 3.3 槽位注入与 AiChat 集成回归验证：确保无标记/回退态与纯知识库路径逐字节一致，编号自 numberStart 自动顺延
+- [x] 3.1 权限闸接入 `sales_opportunity`：调用 `dataScopeService.getHighestDataScopeLevel(user, "sales_opportunity")`，执行 NONE 零外发 / SELF / DEPT / DEPT_AND_CHILD / ALL 过滤与 TAGE/共享补充召回
+      依据：git diff src/main/java/com/slz/crm/server/service/impl/BusinessRetrievalService.java 确认权限分支与向量过滤参数
+- [x] 3.2 三业务实体（客户、商业活动、销售商机）多路召回与合并：同轮检索召回各实体向量，按相似度降序截断 TopK，来源标注 `type=SALES_OPPORTUNITY`，纵深防御复核归属，组装 `【业务数据检索】` 上下文
+      依据：git diff src/main/java/com/slz/crm/server/service/impl/BusinessRetrievalService.java 确认多实体合并与来源封装
+- [x] 3.3 槽位注入与 AiChat 集成回归验证：确保无标记/回退态与纯知识库路径逐字节一致，编号自 numberStart 自动顺延
+      依据：mvn -B -ntp test -Dtest=AiChatKnowledgeRetrievalServiceTest 退出码 0（13 全绿；业务零命中/业务端口未就绪两用例断言 context 与 sources 与纯知识库路径逐字节一致，编号自 numberStart 顺延）
 
 ## 任务 4 · 单元测试与门禁收尾（门禁层）
 

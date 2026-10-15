@@ -8,10 +8,13 @@ package com.slz.crm.platform.contract;
  *
  * @param sourceType 来源类型：{@code pdf|docx|txt|md|excel|image|manual} 等，小写；业务实体来源为 {@code
  *     CUSTOMER}（add-customer-semantic-retrieval 受控解冻 2026-10-13：documentId=客户主键、
- *     filename=company_name）与 {@code BUSINESS_ACTIVITY}（add-business-activity-semantic-retrieval
- *     受控解冻 2026-10-14：documentId=活动主键、filename=活动标题），均复用现有字段零结构改动；spec 增量见
- *     openspec/changes/add-customer-semantic-retrieval/specs/knowledge-rag/spec-delta.md 与
- *     openspec/changes/add-business-activity-semantic-retrieval/specs/knowledge-rag/spec-delta.md）
+ *     filename=company_name）、{@code BUSINESS_ACTIVITY}（add-business-activity-semantic-retrieval
+ *     受控解冻 2026-10-14：documentId=活动主键、filename=活动标题）与 {@code SALES_OPPORTUNITY}
+ *     （add-sales-opportunity-semantic-retrieval 受控解冻 2026-10-15：documentId=商机主键、filename=商机名称），
+ *     均复用现有字段零结构改动；spec 增量见
+ *     openspec/changes/add-customer-semantic-retrieval/specs/knowledge-rag/spec-delta.md、
+ *     openspec/changes/add-business-activity-semantic-retrieval/specs/knowledge-rag/spec-delta.md 与
+ *     openspec/changes/add-sales-opportunity-semantic-retrieval/specs/knowledge-rag/spec-delta.md）
  * @param route 检索路由：{@code vector|keyword|hybrid|ocr}（便于评测归因）
  * @param filename 展示用文件名（含扩展名，不含路径）
  * @param documentId 文档主键
