@@ -36,8 +36,10 @@ import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.Executor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -79,6 +81,11 @@ public class CustomerContactServiceImpl
   @Autowired(required = false)
   private CustomerIngestionService customerIngestionService;
 
+  /** 所属公司语义重摄取异步任务执行器（add-unified-business-semantic-retrieval 任务 2.1；异步非阻塞核心依赖）。 */
+  @Autowired
+  @Qualifier("embeddingTaskExecutor")
+  private Executor embeddingTaskExecutor;
+
   @Override
   @Transactional(rollbackFor = Exception.class)
   public int list(MultipartFile file) {
@@ -105,7 +112,11 @@ public class CustomerContactServiceImpl
 
     // add-customer-contact-retrieval 任务 1.3：Excel 导入路径——导入后所属公司重摄取（联系人入语义段）
     CustomerContactReingestSupport.reingestForContacts(
-        "导入客户联系人", dataList, customerIngestionService, customerCompanyMapper);
+        "导入客户联系人",
+        dataList,
+        customerIngestionService,
+        customerCompanyMapper,
+        embeddingTaskExecutor);
 
     return dataList.size();
   }
@@ -143,7 +154,11 @@ public class CustomerContactServiceImpl
 
     // add-customer-contact-retrieval 任务 1.3：修改路径——受影响所属公司批量重摄取（联系人字段入语义段）
     CustomerContactReingestSupport.reingestForContacts(
-        "修改客户联系人", dataList, customerIngestionService, customerCompanyMapper);
+        "修改客户联系人",
+        dataList,
+        customerIngestionService,
+        customerCompanyMapper,
+        embeddingTaskExecutor);
 
     return list.size();
   }
@@ -176,7 +191,8 @@ public class CustomerContactServiceImpl
         "新增客户联系人",
         entity.getCompanyId() == null ? List.of() : List.of(entity.getCompanyId()),
         customerIngestionService,
-        customerCompanyMapper);
+        customerCompanyMapper,
+        embeddingTaskExecutor);
     return created;
   }
 
@@ -214,7 +230,11 @@ public class CustomerContactServiceImpl
 
     // add-customer-contact-retrieval 任务 1.3：软删/恢复路径——受影响所属公司重摄取（软删联系人出语义段）
     CustomerContactReingestSupport.reingestForContacts(
-        "软删/恢复客户联系人", dataList, customerIngestionService, customerCompanyMapper);
+        "软删/恢复客户联系人",
+        dataList,
+        customerIngestionService,
+        customerCompanyMapper,
+        embeddingTaskExecutor);
 
     return dataList.size();
   }
@@ -248,7 +268,8 @@ public class CustomerContactServiceImpl
         "物理删除客户联系人",
         CustomerContactReingestSupport.distinctCompanyIds(doomed),
         customerIngestionService,
-        customerCompanyMapper);
+        customerCompanyMapper,
+        embeddingTaskExecutor);
 
     return deleted;
   }

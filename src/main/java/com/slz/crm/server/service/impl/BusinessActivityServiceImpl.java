@@ -24,8 +24,10 @@ import com.slz.crm.server.service.BusinessActivityService;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.Executor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,6 +51,11 @@ public class BusinessActivityServiceImpl
 
   /** 商业活动语义向量摄取（add-business-activity-semantic-retrieval 任务 2.2）。 */
   @Autowired private BusinessActivityIngestionService businessActivityIngestionService;
+
+  /** 商业活动语义向量异步任务执行器（add-unified-business-semantic-retrieval 任务 2.1；异步非阻塞核心依赖）。 */
+  @Autowired
+  @Qualifier("embeddingTaskExecutor")
+  private Executor embeddingTaskExecutor;
 
   @Override
   @Transactional(rollbackFor = Exception.class)
@@ -270,15 +277,16 @@ public class BusinessActivityServiceImpl
   }
 
   /**
-   * 语义向量同步闸（任务 2.2，委托 {@link BusinessActivitySemanticHookSupport}）：事务激活时注册 afterCommit，
-   * 无事务立即同步；semantic 侧未装配或异常均不阻断业务主流程。
+   * 语义向量同步闸（任务 2.2；add-unified-business-semantic-retrieval 任务 2.1 异步化，委托 {@link
+   * BusinessActivitySemanticHookSupport#runAfterCommitAsync}）：事务激活时注册 afterCommit，提交后异步派发至
+   * embeddingTaskExecutor，无事务环境同样异步派发；semantic 侧未装配或异常均不阻断业务主流程，主线程零等待。
    *
    * @param scene 场景描述（日志定位用）
    * @param action 向量同步动作
    */
   private void runSemanticSync(String scene, Runnable action) {
-    if (businessActivityIngestionService != null) {
-      BusinessActivitySemanticHookSupport.runAfterCommit(scene, action);
+    if (businessActivityIngestionService != null && embeddingTaskExecutor != null) {
+      BusinessActivitySemanticHookSupport.runAfterCommitAsync(scene, embeddingTaskExecutor, action);
     }
   }
 

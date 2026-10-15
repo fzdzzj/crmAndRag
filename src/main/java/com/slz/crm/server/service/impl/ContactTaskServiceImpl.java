@@ -8,6 +8,7 @@ import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.enumeration.ModelName;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.BaseUnit;
+import com.slz.crm.knowledge.ingestion.ContactTaskIngestionService;
 import com.slz.crm.pojo.dto.ContactTaskDTO;
 import com.slz.crm.pojo.entity.ContactTaskEntity;
 import com.slz.crm.pojo.entity.UserEntity;
@@ -23,8 +24,10 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.Executor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,6 +46,15 @@ public class ContactTaskServiceImpl extends ServiceImpl<ContactTaskMapper, Conta
   @Autowired private AssistRequestService assistRequestService;
 
   @Autowired private ApprovalAttachmentService approvalAttachmentService;
+
+  /** 跟进任务语义向量摄取（add-unified-business-semantic-retrieval 任务 2.2；缺失时 hook 整体跳过）。 */
+  @Autowired(required = false)
+  private ContactTaskIngestionService contactTaskIngestionService;
+
+  /** 跟进任务语义向量异步任务执行器（add-unified-business-semantic-retrieval 任务 2.2；异步非阻塞核心依赖）。 */
+  @Autowired
+  @Qualifier("embeddingTaskExecutor")
+  private Executor embeddingTaskExecutor;
 
   @Override
   @Transactional(rollbackFor = Exception.class)
@@ -89,6 +101,15 @@ public class ContactTaskServiceImpl extends ServiceImpl<ContactTaskMapper, Conta
           contactTaskEntity.getId(),
           currentId,
           contactTaskDTO.getAssistApplyList());
+
+      // add-unified-business-semantic-retrieval 任务 2.2：创建成功后事务提交异步增量 upsert 语义向量
+      // （super::getById：本类覆写了 getById(Long) 返回 VO，须用 ServiceImpl 的实体回查重载作 loader；异步派发主线程零等待）
+      ContactTaskSemanticHookSupport.syncAfterCommit(
+          "创建跟进任务",
+          embeddingTaskExecutor,
+          contactTaskIngestionService,
+          contactTaskEntity.getId(),
+          super::getById);
     }
     return saved;
   }
@@ -105,6 +126,11 @@ public class ContactTaskServiceImpl extends ServiceImpl<ContactTaskMapper, Conta
     approvalAttachmentService.removeByAndIds(idList, ModelName.CONTACT_TASK);
     // 级联删除任务评论
     deleteCommentByTaskIds(idList);
+
+    // add-unified-business-semantic-retrieval 任务 2.2：删除事务提交后异步失效向量（删除即失效，主线程零等待）
+    ContactTaskSemanticHookSupport.deleteAllAfterCommit(
+        "删除跟进任务", embeddingTaskExecutor, contactTaskIngestionService, idList);
+
     return contactTaskMapper.deleteBatchIds(idList);
   }
 
@@ -124,6 +150,11 @@ public class ContactTaskServiceImpl extends ServiceImpl<ContactTaskMapper, Conta
     assistRequestService.deleteByRecords(ModelName.CONTACT_TASK, List.of(id));
     approvalAttachmentService.removeByAndIds(List.of(id), ModelName.CONTACT_TASK);
     deleteCommentByTaskIds(List.of(id));
+
+    // add-unified-business-semantic-retrieval 任务 2.2：删除事务提交后异步失效向量（删除即失效，主线程零等待）
+    ContactTaskSemanticHookSupport.deleteAfterCommit(
+        "删除跟进任务", embeddingTaskExecutor, contactTaskIngestionService, id);
+
     return removeById(id);
   }
 
@@ -154,6 +185,15 @@ public class ContactTaskServiceImpl extends ServiceImpl<ContactTaskMapper, Conta
       entityList.add(entity);
     }
 
+    // add-unified-business-semantic-retrieval 任务 2.2：批量更新成功后事务提交异步重嵌语义向量
+    // （回查完整实体防 DTO 部分字段丢键；afterCommit/无事务均异步派发，主线程零等待）
+    ContactTaskSemanticHookSupport.syncAllAfterCommit(
+        "批量更新跟进任务",
+        embeddingTaskExecutor,
+        contactTaskIngestionService,
+        entityList.stream().map(ContactTaskEntity::getId).toList(),
+        super::getById);
+
     return updateBatchById(entityList) ? entityList.size() : 0;
   }
 
@@ -181,7 +221,18 @@ public class ContactTaskServiceImpl extends ServiceImpl<ContactTaskMapper, Conta
       }
     }
 
-    return updateById(entity);
+    boolean updated = updateById(entity);
+
+    // add-unified-business-semantic-retrieval 任务 2.2：更新成功后事务提交异步重嵌语义向量
+    // （回查完整实体防 DTO 部分字段丢键；afterCommit/无事务均异步派发，主线程零等待）
+    ContactTaskSemanticHookSupport.syncAfterCommit(
+        "更新跟进任务",
+        embeddingTaskExecutor,
+        contactTaskIngestionService,
+        contactTaskDTO.getId(),
+        super::getById);
+
+    return updated;
   }
 
   /** DTO 的时间字段为 LocalDateTime、Entity 为 Date，BeanUtils 类型不匹配会跳过复制， 这里手动转换，保证创建/编辑时开始、结束时间能写入 */

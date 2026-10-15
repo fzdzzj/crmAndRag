@@ -7,14 +7,16 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.Executor;
 
 /**
  * 客户联系人变更后所属公司语义重摄取协作类（add-customer-contact-retrieval 任务 1.3 / 任务 4.1 PMD NcssCount 拆分： 拆自 {@link
- * CustomerContactServiceImpl}，行为等价）。纯静态协作，无可变共享状态。
+ * CustomerContactServiceImpl}，行为等价；add-unified-business-semantic-retrieval 任务 2.1
+ * 升级为**事务后异步派发**）。纯静态协作，无可变共享状态。
  *
- * <p>职责：联系人列表去重取公司 id、事务提交后对受影响公司批量回查重嵌（复用 {@link CustomerSemanticHookSupport#runAfterCommit} 的
- * afterCommit 闸与 {@link CustomerSemanticHookSupport#reingestById} 的回查重嵌）。无 embedding 配置 （ingestion
- * 缺失）时整体跳过，静默降级不致既有 IT 失败。
+ * <p>职责：联系人列表去重取公司 id、事务提交后对受影响公司批量回查重嵌（复用 {@link CustomerSemanticHookSupport#runAfterCommitAsync}
+ * 的 afterCommit 闸与 {@link CustomerSemanticHookSupport#reingestById} 的回查重嵌）。无 embedding 配置
+ * （ingestion 缺失）或 executor 缺失时整体跳过，静默降级不致既有 IT 失败。
  */
 final class CustomerContactReingestSupport {
 
@@ -40,24 +42,27 @@ final class CustomerContactReingestSupport {
 
   /**
    * 联系人 CRUD 变更后的事务提交重摄取入口：依赖未装配（部分单测场景）、companyIds 为空均跳过； 有依赖则委托 {@link
-   * CustomerSemanticHookSupport#runAfterCommit} 注册 afterCommit，逐公司回查完整实体后 upsert。
+   * CustomerSemanticHookSupport#runAfterCommitAsync} 注册 afterCommit，逐公司回查完整实体后 upsert。
    *
    * @param scene 场景描述（日志定位用）
    * @param companyIds 受影响公司 id 集合（可为 null/空）
    * @param ingestion 摄取服务（可为 null，此时整体跳过）
    * @param companyMapper 公司 mapper（回查 loader 用）
+   * @param executor 异步任务执行器（可为 null，此时整体跳过；生产为 {@code embeddingTaskExecutor} 线程池）
    */
   static void reingestAfterCommit(
       String scene,
       List<Long> companyIds,
       CustomerIngestionService ingestion,
-      CustomerCompanyMapper companyMapper) {
-    if (ingestion == null || companyMapper == null) {
+      CustomerCompanyMapper companyMapper,
+      Executor executor) {
+    if (ingestion == null || companyMapper == null || executor == null) {
       return;
     }
     List<Long> ids = companyIds == null ? List.of() : companyIds;
-    CustomerSemanticHookSupport.runAfterCommit(
+    CustomerSemanticHookSupport.runAfterCommitAsync(
         scene,
+        executor,
         () -> {
           for (Long companyId : ids) {
             CustomerSemanticHookSupport.reingestById(
@@ -71,7 +76,8 @@ final class CustomerContactReingestSupport {
       String scene,
       List<CustomerContactEntity> contacts,
       CustomerIngestionService ingestion,
-      CustomerCompanyMapper companyMapper) {
-    reingestAfterCommit(scene, distinctCompanyIds(contacts), ingestion, companyMapper);
+      CustomerCompanyMapper companyMapper,
+      Executor executor) {
+    reingestAfterCommit(scene, distinctCompanyIds(contacts), ingestion, companyMapper, executor);
   }
 }
