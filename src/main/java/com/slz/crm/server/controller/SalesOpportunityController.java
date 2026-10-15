@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.slz.crm.common.annotation.RequirePermission;
 import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.result.Result;
+import com.slz.crm.knowledge.ingestion.SalesOpportunityIngestionService;
 import com.slz.crm.pojo.dto.SalesOpportunityDTO;
 import com.slz.crm.pojo.dto.SalesOpportunityQueryDTO;
 import com.slz.crm.pojo.vo.SalesOpportunityVO;
@@ -19,6 +20,9 @@ import org.springframework.web.bind.annotation.*;
 public class SalesOpportunityController {
 
   @Autowired private SalesOpportunityService salesOpportunityService;
+
+  /** 销售商机语义向量摄取（add-sales-opportunity-semantic-retrieval 任务 2.3 全量回埋）。 */
+  @Autowired private SalesOpportunityIngestionService salesOpportunityIngestionService;
 
   /**
    * 修改销售机会
@@ -137,5 +141,18 @@ public class SalesOpportunityController {
       result = Result.error(e.getMessage());
     }
     return result;
+  }
+
+  // ========== 销售商机语义向量全量回埋接口 ==========
+
+  /**
+   * 销售商机语义全量回埋（add-sales-opportunity-semantic-retrieval 任务 2.3）：分页游标重嵌全量销售商机， 返回成功/失败计数（单条失败不中断）。
+   *
+   * @return 回埋结果（total/success/failure）
+   */
+  @PostMapping("/reingestAll")
+  @RequirePermission(PermissionOperates.SALES_CREATE_SALE_OPPORTUNITY)
+  public Result<SalesOpportunityIngestionService.ReingestResult> reingestAll() {
+    return Result.success(salesOpportunityIngestionService.reingestAll());
   }
 }

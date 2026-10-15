@@ -9,6 +9,7 @@ import com.slz.crm.common.enumeration.ModelName;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.common.untils.ForeignKeyDeleteUtil;
+import com.slz.crm.knowledge.ingestion.SalesOpportunityIngestionService;
 import com.slz.crm.pojo.dto.SalesOpportunityDTO;
 import com.slz.crm.pojo.dto.SalesOpportunityQueryDTO;
 import com.slz.crm.pojo.entity.*;
@@ -25,9 +26,11 @@ import com.slz.crm.server.service.BusinessRecordAccessService;
 import com.slz.crm.server.service.DataConvertService;
 import com.slz.crm.server.service.SalesOpportunityService;
 import java.util.*;
+import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,10 +54,37 @@ public class SalesOpportunityServiceImpl
   @Autowired private BusinessRecordAccessService businessRecordAccessService;
   @Autowired private AssistScopeService assistScopeService;
 
+  /** 销售商机语义向量摄取（add-sales-opportunity-semantic-retrieval 任务 2.2）。 */
+  @Autowired private SalesOpportunityIngestionService salesOpportunityIngestionService;
+
+  /** 商机语义向量异步任务执行器（add-sales-opportunity-semantic-retrieval 任务 2.2；异步非阻塞核心依赖）。 */
+  @Autowired
+  @Qualifier("embeddingTaskExecutor")
+  private Executor embeddingTaskExecutor;
+
   /** 详情装配协作对象（经工厂构造，复用主类依赖，保持 @InjectMocks 测试行为不变） */
   private SalesOpportunityDetailAssembler detailAssembler() {
     return new SalesOpportunityDetailAssembler(
         dataConvertService, salesStageApprovalMapper, assistRequestService, userMapper);
+  }
+
+  /**
+   * 语义向量同步闸（任务 2.2，委托 {@link SalesOpportunitySemanticHookSupport}）：事务激活时注册 afterCommit 并异步派发至
+   * embeddingTaskExecutor，无事务环境同样异步派发；semantic 侧未装配（评测/单测注入 null）时跳过，绝不阻塞业务主流程。
+   *
+   * @param scene 场景描述（日志定位用）
+   * @param action 向量同步动作
+   */
+  private void runSemanticSync(String scene, Runnable action) {
+    if (salesOpportunityIngestionService != null && embeddingTaskExecutor != null) {
+      SalesOpportunitySemanticHookSupport.runAfterCommitAsync(scene, embeddingTaskExecutor, action);
+    }
+  }
+
+  /** 回查完整实体后 upsert 语义向量（任务 2.2）；仅在 runSemanticSync 的 action 内调用。 */
+  private void reingestSemanticById(Long id) {
+    SalesOpportunitySemanticHookSupport.reingestById(
+        id, salesOpportunityIngestionService, this::getById);
   }
 
   @Override
@@ -63,7 +93,13 @@ public class SalesOpportunityServiceImpl
     SalesOpportunityEntity salesOpportunityEntity = new SalesOpportunityEntity();
     BeanUtils.copyProperties(salesOpportunityDTO, salesOpportunityEntity);
     salesOpportunityEntity.setCreatorId(BaseUnit.getCurrentId());
-    return updateById(salesOpportunityEntity);
+    boolean updated = updateById(salesOpportunityEntity);
+
+    // add-sales-opportunity-semantic-retrieval 任务 2.2：更新成功提交后异步重嵌语义向量
+    // （回查完整实体防 DTO 部分字段丢键；afterCommit/无事务均异步派发，主线程零等待）
+    runSemanticSync("更新商机", () -> reingestSemanticById(salesOpportunityEntity.getId()));
+
+    return updated;
   }
 
   @Override
@@ -78,7 +114,14 @@ public class SalesOpportunityServiceImpl
     }
 
     foreignKeyDeleteUtil.deleteCascade(SalesOpportunityEntity.class, List.of(id), 0);
-    return salesOpportunityMapper.logicalDeleteById(id);
+    boolean deleted = salesOpportunityMapper.logicalDeleteById(id);
+
+    // add-sales-opportunity-semantic-retrieval 任务 2.2：删除事务提交后异步失效向量（删除即失效）
+    runSemanticSync(
+        "删除商机",
+        () -> SalesOpportunitySemanticHookSupport.deleteById(id, salesOpportunityIngestionService));
+
+    return deleted;
   }
 
   @Override
@@ -126,6 +169,11 @@ public class SalesOpportunityServiceImpl
               dataConvertService.getUserName(entity.getCreatorId()),
               dataConvertService.getUserName(entity.getApproverId()));
     }
+
+    // add-sales-opportunity-semantic-retrieval 任务 2.2：创建成功提交后异步增量 upsert 语义向量
+    // （异步派发，HTTP 主线程立即返回，不等待任何向量嵌入耗时）
+    runSemanticSync("创建商机", () -> reingestSemanticById(entity.getId()));
+
     return result;
   }
 
