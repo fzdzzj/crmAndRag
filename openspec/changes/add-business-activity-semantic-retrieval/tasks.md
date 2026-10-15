@@ -21,9 +21,9 @@
 
 ## 任务 3 · 业务数据检索服务多实体扩展（BusinessRetrievalService）
 
-- [ ] 3.1 权限闸接入 `business_activity`：调用 `dataScopeService.getHighestDataScopeLevel(user, "business_activity")`，执行 NONE 零外发 / SELF / DEPT / DEPT_AND_CHILD / ALL 过滤与 TAGE/共享补充召回
+- [x] 3.1 权限闸接入 `business_activity`：调用 `dataScopeService.getHighestDataScopeLevel(user, "business_activity")`，执行 NONE 零外发 / SELF / DEPT / DEPT_AND_CHILD / ALL 过滤与 TAGE/共享补充召回
       依据：git diff src/main/java/com/slz/crm/server/service/impl/BusinessRetrievalService.java 确认权限分支与向量过滤参数
-- [ ] 3.2 客户与商业活动双实体多路召回与合并：同轮检索同时召回 `CUSTOMER_COMPANY` 与 `BUSINESS_ACTIVITY`，按相似度降序截断 TopK，来源标注 `type=BUSINESS_ACTIVITY`，组装 `【业务数据检索】` 上下文
+- [x] 3.2 客户与商业活动双实体多路召回与合并：同轮检索同时召回 `CUSTOMER_COMPANY` 与 `BUSINESS_ACTIVITY`，按相似度降序截断 TopK，来源标注 `type=BUSINESS_ACTIVITY`，组装 `【业务数据检索】` 上下文
       依据：git diff src/main/java/com/slz/crm/server/service/impl/BusinessRetrievalService.java 确认多实体合并与来源封装
 - [ ] 3.3 槽位注入与 AiChat 集成回归验证：确保无标记/回退态与纯知识库路径逐字节一致，编号自动顺延
       依据：mvn -B -ntp test -Dtest=AiChatKnowledgeRetrievalServiceTest 退出码 0

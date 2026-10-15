@@ -14,9 +14,9 @@ import java.util.UUID;
  * <p>拼文本口径：非空字段按「活动标题、活动类型、关联客户、关联商机、沟通内容、备注、参与人、联系人」固定顺序输出 「字段名: 值」，以「；」连接；全空字段返回空串（调用方跳过嵌入）。文本值
  * trim 后写入。
  *
- * <p>参与人段取 business_activity_user 关联（按 id 升序、上限 5 人），展示为「参与人: 用户ID（角色）」； 联系人段由摄取服务按客户联系人姓名 +
- * 活动角色（business_activity_contact.contact_role）解析后传入，展示为 「联系人: 姓名（角色）」，两段共用 {@link
- * #buildNamedSegment} 分隔口径（「；」连接、「（角色）」后缀）。
+ * <p>参与人段取 business_activity_user 关联（按 id 升序、上限 5 人），段内容为「用户ID（角色）」； 联系人段由摄取服务按客户联系人姓名 +
+ * 活动角色（business_activity_contact.contact_role）解析后传入，段内容为「姓名（角色）」；两段共用 {@link #appendNamedSegment}
+ * 分隔口径（「；」连接、「（角色）」后缀），标签「参与人: 」「联系人: 」由 {@link #buildSemanticText} 字段层统一加。
  *
  * <p>文档/切片标识口径：documentId = chunkId = {@code BUSINESS_ACTIVITY:{主键}}；Qdrant point id 由该口径经 UUID v3
  * 确定性派生（nameUUIDFromBytes），重摄取幂等。
@@ -30,12 +30,6 @@ final class BusinessActivitySemanticTextSupport {
 
   /** 参与人/联系人附段上限（防语义膨胀保险丝）。 */
   static final int SEGMENT_MAX = 5;
-
-  /** 参与人段标签。 */
-  static final String PARTICIPANT_LABEL = "参与人: ";
-
-  /** 联系人段标签。 */
-  static final String CONTACT_LABEL = "联系人: ";
 
   /**
    * 向量 documentId 口径：BUSINESS_ACTIVITY:{主键}（SourceReference.documentId 同口径，按文档删除依赖）。
@@ -89,10 +83,11 @@ final class BusinessActivitySemanticTextSupport {
   }
 
   /**
-   * 参与人段拼装：保留 userId 非空项、按关联记录 id 升序、上限 5 条；段形如 {@code 参与人: 用户ID（角色）}， 多人以「；」连接；角色为空只输出用户 ID。
+   * 参与人段拼装：保留 userId 非空项、按关联记录 id 升序、上限 5 条；返回**段内容**（不含「参与人: 」标签，标签由 {@link #buildSemanticText}
+   * 字段层统一加），形如 {@code 42（主讲人）；43（陪同人）}；角色为空只输出用户 ID。
    *
    * @param participants 活动参与人关联列表（可为 null/空）
-   * @return 参与人段文本；无可用参与人返回空串
+   * @return 参与人段内容；无可用参与人返回空串
    */
   static String buildParticipantSegment(List<BusinessActivityUserEntity> participants) {
     StringBuilder sb = new StringBuilder();
@@ -106,7 +101,6 @@ final class BusinessActivitySemanticTextSupport {
               .toList();
       appendNamedSegment(
           sb,
-          PARTICIPANT_LABEL,
           filtered.stream().map(BusinessActivityUserEntity::getUserId).toList(),
           filtered.stream().map(BusinessActivityUserEntity::getUserRole).toList());
     }
@@ -114,31 +108,34 @@ final class BusinessActivitySemanticTextSupport {
   }
 
   /**
-   * 联系人段拼装：段形如 {@code 联系人: 姓名（角色）}，多人以「；」连接、上限 5 条；空白项跳过。
+   * 联系人段拼装：返回**段内容**（不含「联系人: 」标签，标签由 {@link #buildSemanticText} 字段层统一加），形如 {@code
+   * 张伟（决策者）；李娜（技术对接人）}；多人以「；」连接、上限 5 条、空白项跳过。
    *
    * @param names 联系人姓名有序列表（与 roles 同序，可为 null/空）
    * @param roles 联系人在活动中的角色有序列表（可为 null；缺失位按空角色处理）
-   * @return 联系人段文本；无可用联系人返回空串
+   * @return 联系人段内容；无可用联系人返回空串
    */
   static String buildContactSegment(List<String> names, List<String> roles) {
     StringBuilder sb = new StringBuilder();
-    appendNamedSegment(sb, CONTACT_LABEL, names, roles);
+    appendNamedSegment(sb, names, roles);
     return sb.toString();
   }
 
-  /** 单条展示项：{@code 值（角色）}；角色为空只输出值、值为空返回空串。 */
+  /** 单条展示项：{@code 值（角色）}；值缺失（null）返回空串，角色为空只输出值。 */
   static String namedEntry(Object value, String role) {
-    String text = value == null ? "" : String.valueOf(value).trim();
-    String result = text;
-    if (!text.isEmpty() && role != null && !role.isBlank()) {
-      result = text + "（" + role.trim() + "）";
+    String result = "";
+    if (value != null) {
+      String text = String.valueOf(value).trim();
+      result = text;
+      if (!text.isEmpty() && role != null && !role.isBlank()) {
+        result = text + "（" + role.trim() + "）";
+      }
     }
     return result;
   }
 
-  /** 参与人/联系人共用段拼装：值非空项按原序取前 {@link #SEGMENT_MAX} 条，「；」连接。 */
-  private static void appendNamedSegment(
-      StringBuilder sb, String label, List<?> values, List<String> roles) {
+  /** 参与人/联系人共用段内容拼装：值非空项按原序取前 {@link #SEGMENT_MAX} 条，「；」连接（不含标签）。 */
+  private static void appendNamedSegment(StringBuilder sb, List<?> values, List<String> roles) {
     if (values != null && !values.isEmpty()) {
       StringBuilder segment = new StringBuilder();
       int index = 0;
@@ -155,9 +152,7 @@ final class BusinessActivitySemanticTextSupport {
         }
         index++;
       }
-      if (segment.length() > 0) {
-        sb.append(label).append(segment);
-      }
+      sb.append(segment);
     }
   }
 

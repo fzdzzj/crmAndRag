@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -28,15 +29,23 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 /**
- * 业务数据检索权限闸矩阵（add-customer-semantic-retrieval 任务 3.1 红测先行）。
+ * 业务数据检索权限闸矩阵（add-customer-semantic-retrieval 任务 3.1 红测先行；add-business-activity-semantic-retrieval
+ * 任务 4.1 扩展为双业务实体）。
  *
- * <p>场景全覆盖：归属人可检 / SELF 同事检索不到（且不补 TAGE）/ DEPT 上司可检下属（且补 TAGE 标签资源）/ 管理员 ALL 全可检 / NONE 级零外发（零
- * embed 零 search）/ TAGE 与共享 union 不漏 / DEPT_AND_CHILD 子树 union 且补 TAGE；另含编号接续、去重截断与 降级链。向量库以 mock
- * 承接：权限闸的正确性体现在 VectorSearchRequest.filter 的档位组合上（Qdrant metadata 等值过滤，B4 冻结约定）。
+ * <p>场景全覆盖（客户公司 + 商业活动各自独立过闸）：归属人可检 / SELF 跨部门同事检索不到（且不补 TAGE）/ DEPT 上司 可检下属（且补 TAGE 标签资源）/ 管理员 ALL
+ * 全可检 / 双实体皆 NONE 零外发（零 embed 零 search）/ 单实体 NONE 另一实体 照常召回 / TAGE 与共享 union 不漏 / DEPT_AND_CHILD 子树
+ * union 且补 TAGE；另含编号接续、去重截断、来源判源与降级链。
+ *
+ * <p>向量库以 mock 按 {@code entityType} 路由承接：权限闸的正确性体现在 VectorSearchRequest.filter 的「实体 + 档位」
+ * 组合上（Qdrant metadata 等值过滤，B4 冻结约定）。商业活动 owner 锚定 creator_id（页面列表 SELF/DEPT 档同源）。
  */
 class BusinessRetrievalServiceTest {
 
-  private static final String RESOURCE_TYPE = "customer_company";
+  private static final String CUSTOMER = "customer_company";
+
+  private static final String ACTIVITY = "business_activity";
+
+  private static final String ENTITY_TYPE = "entityType";
 
   private CrmEntityVectorStore vectorStore;
 
@@ -67,8 +76,33 @@ class BusinessRetrievalServiceTest {
     return new UserContext(userId, roleId, deptId, DataScopeLevel.NONE, null);
   }
 
+  /** 双实体档位桩（客户面 + 商业活动面各自独立）。 */
+  private void stubLevels(DataScopeLevel customerLevel, DataScopeLevel activityLevel) {
+    when(dataScopeService.getHighestDataScopeLevel(any(), any()))
+        .thenAnswer(
+            invocation -> {
+              String resourceType = invocation.getArgument(1);
+              return (ACTIVITY.equals(resourceType) ? activityLevel : customerLevel).getCode();
+            });
+  }
+
+  /** 双实体同档桩（多数既有场景：两面档位一致）。 */
   private void stubLevel(DataScopeLevel level) {
-    when(dataScopeService.getHighestDataScopeLevel(any(), any())).thenReturn(level.getCode());
+    stubLevels(level, level);
+  }
+
+  /**
+   * 按调用序喂入检索结果（客户面与商业活动面检索按实体顺序交替，故传参需按完整调用序列给出）。
+   *
+   * <p>注意：必须用 {@code thenReturn(第一个)} + {@code thenReturn(其余)} 的链式两步写法——「新起 {@code when(...)} 再连续
+   * {@code thenReturn}」在 Mockito 5 下只生效首个值（实测踩坑）。
+   */
+  private void stubSearchSequence(List<VectorSearchHit>... results) {
+    org.mockito.stubbing.OngoingStubbing<List<VectorSearchHit>> stub =
+        when(vectorStore.search(any())).thenReturn(results[0]);
+    for (int index = 1; index < results.length; index++) {
+      stub = stub.thenReturn(results[index]);
+    }
   }
 
   private VectorSearchHit hit(String chunkId, long resourceId, double score, String companyName) {
@@ -80,10 +114,29 @@ class BusinessRetrievalServiceTest {
         Map.of(
             "companyName",
             companyName,
-            "entityType",
+            ENTITY_TYPE,
             "CUSTOMER_COMPANY",
             "resourceId",
-            resourceId));
+            resourceId,
+            "ownerUserId",
+            42L));
+  }
+
+  private VectorSearchHit activityHit(String chunkId, long activityId, double score, String title) {
+    return new VectorSearchHit(
+        chunkId,
+        "BUSINESS_ACTIVITY:" + activityId,
+        score,
+        "活动标题: " + title,
+        Map.of(
+            "title",
+            title,
+            ENTITY_TYPE,
+            "BUSINESS_ACTIVITY",
+            "resourceId",
+            activityId,
+            "ownerUserId",
+            42L));
   }
 
   private SysDeptEntity dept(Long id, Long parentId) {
@@ -93,12 +146,20 @@ class BusinessRetrievalServiceTest {
     return dept;
   }
 
+  /** 无 TAGE / 无共享授权的空召回桩（避免 Mockito 对未打桩返回 null 造成 NPE）。 */
+  private void stubEmptyGrants(Long userId, Long roleId) {
+    when(dataScopeService.getSharedResourceIds(userId, roleId, CUSTOMER)).thenReturn(List.of());
+    when(dataScopeService.getSharedResourceIds(userId, roleId, ACTIVITY)).thenReturn(List.of());
+    when(dataScopeService.getTageResourceIds(roleId, CUSTOMER)).thenReturn(List.of());
+    when(dataScopeService.getTageResourceIds(roleId, ACTIVITY)).thenReturn(List.of());
+  }
+
   @Test
-  @DisplayName("归属人可检：SELF 档主 filter ownerUserId=当前用户，来源引用字段逐项对齐")
+  @DisplayName("归属人可检：SELF 档双实体主 filter ownerUserId=当前用户，来源引用字段逐项对齐")
   void retrieve_selfOwnerRetrievesOwnData() {
     stubLevel(DataScopeLevel.SELF);
-    when(dataScopeService.getSharedResourceIds(42L, 3L, RESOURCE_TYPE)).thenReturn(List.of());
-    when(vectorStore.search(any())).thenReturn(List.of(hit("chunk-1", 301L, 0.92D, "甲公司")));
+    stubEmptyGrants(42L, 3L);
+    stubSearchSequence(List.of(hit("chunk-1", 301L, 0.92D, "甲公司")), List.of());
 
     BusinessRetrievalPort.BusinessRetrievalResult result =
         service.retrieve(
@@ -121,69 +182,164 @@ class BusinessRetrievalServiceTest {
     assertThat(source.relevanceScore()).isEqualTo(0.92D);
 
     ArgumentCaptor<VectorSearchRequest> captor = ArgumentCaptor.forClass(VectorSearchRequest.class);
-    verify(vectorStore).search(captor.capture());
-    assertThat(captor.getValue().filter())
-        .containsEntry("entityType", "CUSTOMER_COMPANY")
+    verify(vectorStore, times(2)).search(captor.capture());
+    assertThat(captor.getAllValues().get(0).filter())
+        .containsEntry(ENTITY_TYPE, "CUSTOMER_COMPANY")
+        .containsEntry("ownerUserId", 42L);
+    assertThat(captor.getAllValues().get(1).filter())
+        .containsEntry(ENTITY_TYPE, "BUSINESS_ACTIVITY")
         .containsEntry("ownerUserId", 42L);
   }
 
   @Test
-  @DisplayName("SELF 同事检索不到：主 filter 锁定 ownerUserId=自己，同事数据物理不可达")
+  @DisplayName("SELF 跨部门同事数据检索不到：主 filter 锁定 ownerUserId=自己，他人商业活动物理不可达")
   void retrieve_selfColleagueDataNotRetrievable() {
     stubLevel(DataScopeLevel.SELF);
-    when(dataScopeService.getSharedResourceIds(43L, 3L, RESOURCE_TYPE)).thenReturn(List.of());
-    when(vectorStore.search(any())).thenReturn(List.of());
+    stubEmptyGrants(43L, 3L);
+    // 同事 42 的商业活动（活动 901）在同部门内且被向量库整轮返回，但权限闸主 filter 只认 ownerUserId=43，
+    // 且服务侧档位复核（纵深防御）同样按 payload ownerUserId 复判 → 同事数据物理不可达
+    stubSearchSequence(List.of(activityHit("chunk-colleague", 901L, 0.99D, "同事的拜访")), List.of());
 
     BusinessRetrievalPort.BusinessRetrievalResult result =
         service.retrieve(
             new BusinessRetrievalPort.BusinessRetrievalQuery(
-                "乙公司", userContext(43L, 3L, 11L), 5, 1));
+                "同事的拜访要点", userContext(43L, 3L, 11L), 5, 1));
 
     assertThat(result.hitCount()).isZero();
     assertThat(result.sources()).isEmpty();
     assertThat(result.context()).isEmpty();
     ArgumentCaptor<VectorSearchRequest> captor = ArgumentCaptor.forClass(VectorSearchRequest.class);
-    verify(vectorStore).search(captor.capture());
-    assertThat(captor.getValue().filter()).containsEntry("ownerUserId", 43L);
+    verify(vectorStore, times(2)).search(captor.capture());
+    assertThat(captor.getAllValues())
+        .allSatisfy(request -> assertThat(request.filter()).containsEntry("ownerUserId", 43L));
     // SELF 档不补 TAGE：SQL 层 SELF 无 tage，补召回会越权扩大（页面一致性锚定）
     verify(dataScopeService, never()).getTageResourceIds(any(), any());
   }
 
   @Test
-  @DisplayName("DEPT 上司可检下属：ownerDeptId=本部门 filter")
-  void retrieve_deptSupervisorRetrievesSubordinates() {
-    stubLevel(DataScopeLevel.DEPT);
-    when(dataScopeService.getSharedResourceIds(10L, 3L, RESOURCE_TYPE)).thenReturn(List.of());
-    when(vectorStore.search(any())).thenReturn(List.of(hit("chunk-d", 305L, 0.8D, "丙公司")));
+  @DisplayName("SELF 商业活动归属人可检：命中以 BUSINESS_ACTIVITY 来源下发（documentId=活动主键、filename=活动标题）")
+  void retrieve_selfOwnerRetrievesOwnActivity() {
+    stubLevel(DataScopeLevel.SELF);
+    stubEmptyGrants(42L, 3L);
+    stubSearchSequence(List.of(), List.of(activityHit("act-1", 901L, 0.88D, "甲公司产品演示")));
 
-    service.retrieve(
-        new BusinessRetrievalPort.BusinessRetrievalQuery("丙公司", userContext(10L, 3L, 11L), 5, 1));
+    BusinessRetrievalPort.BusinessRetrievalResult result =
+        service.retrieve(
+            new BusinessRetrievalPort.BusinessRetrievalQuery(
+                "甲公司演示重点", userContext(42L, 3L, 11L), 5, 1));
 
-    ArgumentCaptor<VectorSearchRequest> captor = ArgumentCaptor.forClass(VectorSearchRequest.class);
-    verify(vectorStore).search(captor.capture());
-    assertThat(captor.getValue().filter()).containsEntry("ownerDeptId", 11L);
+    assertThat(result.hitCount()).isEqualTo(1);
+    assertThat(result.context()).contains("【业务数据检索】").contains("[1] 活动标题: 甲公司产品演示");
+    SourceReference source = result.sources().get(0);
+    assertThat(source.sourceType()).isEqualTo("BUSINESS_ACTIVITY");
+    assertThat(source.filename()).isEqualTo("甲公司产品演示");
+    assertThat(source.documentId()).isEqualTo("901");
+    assertThat(source.chunkId()).isEqualTo("act-1");
+    assertThat(source.relevanceScore()).isEqualTo(0.88D);
   }
 
   @Test
-  @DisplayName("管理员 ALL 全可检：仅 entityType filter，无 owner 维度且不查 TAGE/共享")
+  @DisplayName("DEPT 上司可检下属：双实体均 ownerDeptId=本部门 filter")
+  void retrieve_deptSupervisorRetrievesSubordinates() {
+    stubLevel(DataScopeLevel.DEPT);
+    stubEmptyGrants(10L, 3L);
+    stubSearchSequence(
+        List.of(hit("chunk-d", 305L, 0.8D, "丙公司")),
+        List.of(activityHit("chunk-da", 905L, 0.7D, "丙公司电话沟通")));
+
+    BusinessRetrievalPort.BusinessRetrievalResult result =
+        service.retrieve(
+            new BusinessRetrievalPort.BusinessRetrievalQuery(
+                "丙公司", userContext(10L, 3L, 11L), 5, 1));
+
+    assertThat(result.hitCount()).isEqualTo(2);
+    ArgumentCaptor<VectorSearchRequest> captor = ArgumentCaptor.forClass(VectorSearchRequest.class);
+    verify(vectorStore, times(2)).search(captor.capture());
+    assertThat(captor.getAllValues())
+        .allSatisfy(request -> assertThat(request.filter()).containsEntry("ownerDeptId", 11L));
+  }
+
+  @Test
+  @DisplayName("管理员 ALL 全可检：双实体仅 entityType filter，无 owner 维度且不查 TAGE/共享")
   void retrieve_adminAllRetrievesEverything() {
     stubLevel(DataScopeLevel.ALL);
-    when(vectorStore.search(any())).thenReturn(List.of(hit("chunk-a", 301L, 0.9D, "甲公司")));
+    stubSearchSequence(
+        List.of(hit("chunk-a", 301L, 0.9D, "甲公司")),
+        List.of(activityHit("chunk-aa", 901L, 0.85D, "甲公司需求沟通")));
 
     BusinessRetrievalPort.BusinessRetrievalResult result =
         service.retrieve(
             new BusinessRetrievalPort.BusinessRetrievalQuery("客户", userContext(1L, 1L, 1L), 5, 1));
 
-    assertThat(result.hitCount()).isEqualTo(1);
+    assertThat(result.hitCount()).isEqualTo(2);
+    assertThat(result.sources())
+        .extracting(SourceReference::sourceType)
+        .containsExactly("CUSTOMER", "BUSINESS_ACTIVITY");
     ArgumentCaptor<VectorSearchRequest> captor = ArgumentCaptor.forClass(VectorSearchRequest.class);
-    verify(vectorStore).search(captor.capture());
-    assertThat(captor.getValue().filter()).containsOnlyKeys("entityType");
+    verify(vectorStore, times(2)).search(captor.capture());
+    assertThat(captor.getAllValues().get(0).filter()).containsOnlyKeys(ENTITY_TYPE);
+    assertThat(captor.getAllValues().get(1).filter())
+        .containsOnlyKeys(ENTITY_TYPE)
+        .containsEntry(ENTITY_TYPE, "BUSINESS_ACTIVITY");
     verify(dataScopeService, never()).getTageResourceIds(any(), any());
     verify(dataScopeService, never()).getSharedResourceIds(any(), any(), any());
   }
 
   @Test
-  @DisplayName("NONE 级零外发：不 embed 不 search，空返回")
+  @DisplayName("四角色矩阵（客户 + 商业活动同轮）：归属人/本部门上级/跨部门同事/管理员逐角色断言")
+  void retrieve_roleMatrixCoversFourRoles() {
+    // ① 归属人（SELF）：本人条目可检，他人同部门条目物理不可达
+    stubLevel(DataScopeLevel.SELF);
+    stubEmptyGrants(42L, 3L);
+    stubSearchSequence(
+        List.of(hit("own", 301L, 0.9D, "甲公司")), List.of(activityHit("own-a", 901L, 0.8D, "本人拜访")));
+    BusinessRetrievalPort.BusinessRetrievalResult owner =
+        service.retrieve(
+            new BusinessRetrievalPort.BusinessRetrievalQuery(
+                "我的记录", userContext(42L, 3L, 11L), 5, 1));
+    assertThat(owner.hitCount()).isEqualTo(2);
+    assertThat(owner.sources())
+        .extracting(SourceReference::documentId)
+        .containsExactly("301", "901");
+
+    // ② 本部门上级（DEPT）：本部门条目（含下属活动）可检
+    stubLevel(DataScopeLevel.DEPT);
+    stubEmptyGrants(10L, 3L);
+    stubSearchSequence(
+        List.of(hit("sub", 302L, 0.7D, "乙公司")), List.of(activityHit("sub-a", 902L, 0.6D, "下属拜访")));
+    BusinessRetrievalPort.BusinessRetrievalResult supervisor =
+        service.retrieve(
+            new BusinessRetrievalPort.BusinessRetrievalQuery(
+                "部门记录", userContext(10L, 3L, 11L), 5, 1));
+    assertThat(supervisor.hitCount()).isEqualTo(2);
+    assertThat(supervisor.sources())
+        .extracting(SourceReference::documentId)
+        .containsExactly("302", "902");
+
+    // ③ 跨部门同事（SELF，deptId=99 另一部门）：filter 锁定自己 → 零命中
+    stubEmptyGrants(77L, 3L);
+    stubSearchSequence(List.of(), List.of());
+    BusinessRetrievalPort.BusinessRetrievalResult crossDept =
+        service.retrieve(
+            new BusinessRetrievalPort.BusinessRetrievalQuery(
+                "别人部门的记录", userContext(77L, 3L, 99L), 5, 1));
+    assertThat(crossDept.hitCount()).isZero();
+    assertThat(crossDept.sources()).isEmpty();
+
+    // ④ 管理员（ALL）：全量可检，无 owner 维度
+    stubLevel(DataScopeLevel.ALL);
+    stubSearchSequence(
+        List.of(hit("all", 301L, 0.5D, "甲公司")),
+        List.of(activityHit("all-a", 901L, 0.4D, "全员可见拜访")));
+    BusinessRetrievalPort.BusinessRetrievalResult admin =
+        service.retrieve(
+            new BusinessRetrievalPort.BusinessRetrievalQuery(
+                "全量记录", userContext(1L, 1L, 1L), 5, 1));
+    assertThat(admin.hitCount()).isEqualTo(2);
+  }
+
+  @Test
+  @DisplayName("双实体皆 NONE 级零外发：不 embed 不 search，空返回")
   void retrieve_noneLevelZeroExternalCalls() {
     stubLevel(DataScopeLevel.NONE);
 
@@ -201,117 +357,156 @@ class BusinessRetrievalServiceTest {
   }
 
   @Test
-  @DisplayName("TAGE 绑定不漏：TAGE 档在自有数据外补查标签绑定资源（逐 id filter）")
+  @DisplayName("单实体 NONE：客户面无权但商业活动面有权时仍召回活动，且不发客户面检索")
+  void retrieve_singleEntityNoneStillRetrievesOtherEntity() {
+    stubLevels(DataScopeLevel.NONE, DataScopeLevel.SELF);
+    when(dataScopeService.getSharedResourceIds(42L, 3L, ACTIVITY)).thenReturn(List.of());
+    stubSearchSequence(List.of(activityHit("act-only", 901L, 0.77D, "活动专有命中")));
+
+    BusinessRetrievalPort.BusinessRetrievalResult result =
+        service.retrieve(
+            new BusinessRetrievalPort.BusinessRetrievalQuery(
+                "只有活动权限", userContext(42L, 3L, 11L), 5, 1));
+
+    assertThat(result.hitCount()).isEqualTo(1);
+    assertThat(result.sources().get(0).sourceType()).isEqualTo("BUSINESS_ACTIVITY");
+    ArgumentCaptor<VectorSearchRequest> captor = ArgumentCaptor.forClass(VectorSearchRequest.class);
+    verify(vectorStore, times(1)).search(captor.capture());
+    assertThat(captor.getValue().filter())
+        .containsEntry(ENTITY_TYPE, "BUSINESS_ACTIVITY")
+        .containsEntry("ownerUserId", 42L);
+  }
+
+  @Test
+  @DisplayName("TAGE 绑定不漏：TAGE 档在自有数据外补查标签绑定资源（逐实体逐 id filter）")
   void retrieve_tageBindingUnionNotMissed() {
     stubLevel(DataScopeLevel.TAGE);
-    when(dataScopeService.getTageResourceIds(3L, RESOURCE_TYPE)).thenReturn(List.of(302L));
-    when(dataScopeService.getSharedResourceIds(42L, 3L, RESOURCE_TYPE)).thenReturn(List.of());
-    when(vectorStore.search(any()))
-        .thenReturn(
-            List.of(hit("chunk-own", 301L, 0.9D, "甲公司")),
-            List.of(hit("chunk-tage", 302L, 0.7D, "乙公司")));
+    stubEmptyGrants(42L, 3L);
+    when(dataScopeService.getTageResourceIds(3L, CUSTOMER)).thenReturn(List.of(302L));
+    when(dataScopeService.getTageResourceIds(3L, ACTIVITY)).thenReturn(List.of(902L));
+    stubSearchSequence(
+        List.of(hit("chunk-own", 301L, 0.9D, "甲公司")),
+        List.of(hit("chunk-tage", 302L, 0.7D, "乙公司")),
+        List.of(activityHit("chunk-own-a", 901L, 0.6D, "自有活动")),
+        List.of(activityHit("chunk-tage-a", 902L, 0.5D, "标签活动")));
 
     BusinessRetrievalPort.BusinessRetrievalResult result =
         service.retrieve(
             new BusinessRetrievalPort.BusinessRetrievalQuery(
-                "客户", userContext(42L, 3L, 11L), 5, 1));
+                "客户", userContext(42L, 3L, 11L), 10, 1));
 
-    assertThat(result.hitCount()).isEqualTo(2);
+    assertThat(result.hitCount()).isEqualTo(4);
     assertThat(result.sources())
         .extracting(SourceReference::documentId)
-        .containsExactly("301", "302");
+        .containsExactly("301", "302", "901", "902");
     ArgumentCaptor<VectorSearchRequest> captor = ArgumentCaptor.forClass(VectorSearchRequest.class);
-    verify(vectorStore, org.mockito.Mockito.times(2)).search(captor.capture());
-    assertThat(captor.getAllValues().get(1).filter()).containsEntry("resourceId", 302L);
+    verify(vectorStore, times(4)).search(captor.capture());
+    assertThat(captor.getAllValues().get(1).filter())
+        .containsEntry(ENTITY_TYPE, "CUSTOMER_COMPANY")
+        .containsEntry("resourceId", 302L);
+    assertThat(captor.getAllValues().get(3).filter())
+        .containsEntry(ENTITY_TYPE, "BUSINESS_ACTIVITY")
+        .containsEntry("resourceId", 902L);
   }
 
   @Test
-  @DisplayName("共享不漏：SELF 档补查共享资源（逐 id filter）并按相似度降序")
+  @DisplayName("共享不漏：SELF 档补查共享资源（逐实体逐 id filter）并按相似度降序")
   void retrieve_sharedUnionNotMissed() {
     stubLevel(DataScopeLevel.SELF);
-    when(dataScopeService.getSharedResourceIds(42L, 3L, RESOURCE_TYPE)).thenReturn(List.of(303L));
-    when(vectorStore.search(any()))
-        .thenReturn(
-            List.of(hit("chunk-own", 301L, 0.6D, "甲公司")),
-            List.of(hit("chunk-shared", 303L, 0.95D, "丙公司")));
+    when(dataScopeService.getSharedResourceIds(42L, 3L, CUSTOMER)).thenReturn(List.of(303L));
+    when(dataScopeService.getSharedResourceIds(42L, 3L, ACTIVITY)).thenReturn(List.of(903L));
+    stubSearchSequence(
+        List.of(hit("chunk-own", 301L, 0.6D, "甲公司")),
+        List.of(hit("chunk-shared", 303L, 0.95D, "丙公司")),
+        List.of(),
+        List.of(activityHit("chunk-shared-a", 903L, 0.91D, "被共享的活动")));
 
     BusinessRetrievalPort.BusinessRetrievalResult result =
         service.retrieve(
             new BusinessRetrievalPort.BusinessRetrievalQuery(
-                "客户", userContext(42L, 3L, 11L), 5, 1));
+                "客户", userContext(42L, 3L, 11L), 10, 1));
 
-    assertThat(result.hitCount()).isEqualTo(2);
+    assertThat(result.hitCount()).isEqualTo(3);
     assertThat(result.sources())
         .extracting(SourceReference::documentId)
-        .containsExactly("303", "301");
+        .containsExactly("303", "903", "301");
   }
 
   @Test
-  @DisplayName("DEPT_AND_CHILD：按部门子树逐 deptId 检索并 union")
+  @DisplayName("DEPT_AND_CHILD：双实体按部门子树逐 deptId 检索并 union")
   void retrieve_deptAndChildSubtreeUnion() {
     stubLevel(DataScopeLevel.DEPT_AND_CHILD);
-    when(dataScopeService.getSharedResourceIds(10L, 3L, RESOURCE_TYPE)).thenReturn(List.of());
+    stubEmptyGrants(10L, 3L);
     // resolver 的 LambdaQueryWrapper 参数绑定是惰性注册（getSqlSegment 前 paramNameValuePairs 为空 map，实测
-    // PARAMS={}），
-    // 故按调用序返回子节点：第 1 查（根 11）→[12]、第 2 查（12）→[13]、第 3 查（13）→无子节点；
-    // 子树递归展开（含环防御）语义由 DataScopeDepartmentResolver 自身测试保障。
+    // PARAMS={}），故本桩按「子树展开轮次」作答：每轮第 1 查（根 11）→[12]、第 2 查（12）→[13]、第 3 查（13）→
+    // 无子节点；双实体各展开一轮，用 1/2/3/4/5/6 次调用映射到两轮同一序列（子树递归展开含环防御语义由
+    // DataScopeDepartmentResolver 自身测试保障）。
     java.util.concurrent.atomic.AtomicInteger deptQuery =
         new java.util.concurrent.atomic.AtomicInteger();
     when(sysDeptMapper.selectList(any()))
         .thenAnswer(
             invocation -> {
-              int call = deptQuery.incrementAndGet();
-              if (call == 1) {
+              int roundCall = (deptQuery.incrementAndGet() - 1) % 3 + 1;
+              if (roundCall == 1) {
                 return List.of(dept(12L, 11L));
               }
-              if (call == 2) {
+              if (roundCall == 2) {
                 return List.of(dept(13L, 12L));
               }
               return List.of();
             });
-    when(vectorStore.search(any()))
-        .thenReturn(
-            List.of(hit("chunk-11", 301L, 0.9D, "甲公司")),
-            List.of(hit("chunk-12", 302L, 0.8D, "乙公司")),
-            List.of(hit("chunk-13", 303L, 0.7D, "丙公司")));
+    stubSearchSequence(
+        List.of(hit("chunk-11", 301L, 0.9D, "甲公司")),
+        List.of(hit("chunk-12", 302L, 0.8D, "乙公司")),
+        List.of(hit("chunk-13", 303L, 0.7D, "丙公司")),
+        List.of(activityHit("chunk-11a", 901L, 0.65D, "根的拜访")),
+        List.of(activityHit("chunk-12a", 902L, 0.6D, "子部门拜访")),
+        List.of(activityHit("chunk-13a", 903L, 0.55D, "孙部门拜访")));
 
     BusinessRetrievalPort.BusinessRetrievalResult result =
         service.retrieve(
             new BusinessRetrievalPort.BusinessRetrievalQuery(
-                "客户", userContext(10L, 3L, 11L), 5, 1));
+                "客户", userContext(10L, 3L, 11L), 10, 1));
 
-    assertThat(result.hitCount()).isEqualTo(3);
+    assertThat(result.hitCount()).isEqualTo(6);
     ArgumentCaptor<VectorSearchRequest> captor = ArgumentCaptor.forClass(VectorSearchRequest.class);
-    verify(vectorStore, org.mockito.Mockito.times(3)).search(captor.capture());
+    verify(vectorStore, times(6)).search(captor.capture());
     assertThat(captor.getAllValues())
         .extracting(request -> request.filter().get("ownerDeptId"))
-        .containsExactly(11L, 12L, 13L);
+        .containsExactly(11L, 12L, 13L, 11L, 12L, 13L);
+    assertThat(captor.getAllValues().get(3).filter())
+        .containsEntry(ENTITY_TYPE, "BUSINESS_ACTIVITY");
   }
 
   @Test
-  @DisplayName("DEPT 档补查 TAGE 绑定：与页面列表 SQL 超集不变量一致，不漏标签资源客户")
+  @DisplayName("DEPT 档补查 TAGE 绑定：与页面列表 SQL 超集不变量一致，不漏标签资源")
   void retrieve_deptSupplementsTageBindings() {
     stubLevel(DataScopeLevel.DEPT);
-    when(dataScopeService.getTageResourceIds(3L, RESOURCE_TYPE)).thenReturn(List.of(304L));
-    when(dataScopeService.getSharedResourceIds(10L, 3L, RESOURCE_TYPE)).thenReturn(List.of());
-    when(vectorStore.search(any()))
-        .thenReturn(
-            List.of(hit("chunk-dept", 305L, 0.8D, "丙公司")),
-            List.of(hit("chunk-tage", 304L, 0.85D, "丁公司")));
+    stubEmptyGrants(10L, 3L);
+    when(dataScopeService.getTageResourceIds(3L, CUSTOMER)).thenReturn(List.of(304L));
+    when(dataScopeService.getTageResourceIds(3L, ACTIVITY)).thenReturn(List.of(904L));
+    stubSearchSequence(
+        List.of(hit("chunk-dept", 305L, 0.8D, "丙公司")),
+        List.of(hit("chunk-tage", 304L, 0.85D, "丁公司")),
+        List.of(activityHit("chunk-dept-a", 905L, 0.5D, "部门活动")),
+        List.of(activityHit("chunk-tage-a", 904L, 0.45D, "标签活动")));
 
     BusinessRetrievalPort.BusinessRetrievalResult result =
         service.retrieve(
             new BusinessRetrievalPort.BusinessRetrievalQuery(
-                "客户", userContext(10L, 3L, 11L), 5, 1));
+                "客户", userContext(10L, 3L, 11L), 10, 1));
 
-    assertThat(result.hitCount()).isEqualTo(2);
+    assertThat(result.hitCount()).isEqualTo(4);
     assertThat(result.sources())
         .extracting(SourceReference::documentId)
-        .containsExactly("304", "305");
+        .containsExactly("304", "305", "905", "904");
     ArgumentCaptor<VectorSearchRequest> captor = ArgumentCaptor.forClass(VectorSearchRequest.class);
-    verify(vectorStore, org.mockito.Mockito.times(2)).search(captor.capture());
+    verify(vectorStore, times(4)).search(captor.capture());
     assertThat(captor.getAllValues().get(0).filter()).containsEntry("ownerDeptId", 11L);
     assertThat(captor.getAllValues().get(1).filter()).containsEntry("resourceId", 304L);
+    assertThat(captor.getAllValues().get(3).filter())
+        .containsEntry(ENTITY_TYPE, "BUSINESS_ACTIVITY")
+        .containsEntry("resourceId", 904L);
   }
 
   @Test
@@ -319,51 +514,72 @@ class BusinessRetrievalServiceTest {
   void retrieve_deptAndChildSupplementsTageBindings() {
     stubLevel(DataScopeLevel.DEPT_AND_CHILD);
     when(sysDeptMapper.selectList(any())).thenReturn(List.of());
-    when(dataScopeService.getTageResourceIds(3L, RESOURCE_TYPE)).thenReturn(List.of(306L));
-    when(dataScopeService.getSharedResourceIds(10L, 3L, RESOURCE_TYPE)).thenReturn(List.of());
-    when(vectorStore.search(any()))
-        .thenReturn(
-            List.of(hit("chunk-dept", 301L, 0.9D, "甲公司")),
-            List.of(hit("chunk-tage", 306L, 0.6D, "戊公司")));
+    stubEmptyGrants(10L, 3L);
+    // TAGE 绑定按资源面路由（客户面 306；商业活动面无绑定）。注意顺序：先打通用桩、后打具体覆盖桩——Mockito
+    // 同参数匹配下**最后注册的桩生效**，若先注册具体桩会被随后的通用桩覆盖而恒返空。
+    when(dataScopeService.getTageResourceIds(any(), any()))
+        .thenAnswer(
+            invocation -> ACTIVITY.equals(invocation.getArgument(1)) ? List.of() : List.of(306L));
+    // 调用序：① 客户面部门子树（根 11）② 客户面 TAGE 补充召回（306）③ 商业活动面部门子树（根 11）
+    stubSearchSequence(
+        List.of(hit("chunk-dept", 301L, 0.9D, "甲公司")),
+        List.of(hit("chunk-tage", 306L, 0.6D, "戊公司")),
+        List.of());
 
     BusinessRetrievalPort.BusinessRetrievalResult result =
         service.retrieve(
             new BusinessRetrievalPort.BusinessRetrievalQuery(
-                "客户", userContext(10L, 3L, 11L), 5, 1));
+                "客户", userContext(10L, 3L, 11L), 10, 1));
 
     assertThat(result.hitCount()).isEqualTo(2);
     ArgumentCaptor<VectorSearchRequest> captor = ArgumentCaptor.forClass(VectorSearchRequest.class);
-    verify(vectorStore, org.mockito.Mockito.times(2)).search(captor.capture());
-    assertThat(captor.getAllValues().get(0).filter()).containsEntry("ownerDeptId", 11L);
-    assertThat(captor.getAllValues().get(1).filter()).containsEntry("resourceId", 306L);
+    verify(vectorStore, times(3)).search(captor.capture());
+    assertThat(captor.getAllValues().get(0).filter())
+        .containsEntry(ENTITY_TYPE, "CUSTOMER_COMPANY")
+        .containsEntry("ownerDeptId", 11L);
+    assertThat(captor.getAllValues().get(1).filter())
+        .containsEntry(ENTITY_TYPE, "CUSTOMER_COMPANY")
+        .containsEntry("resourceId", 306L);
+    assertThat(captor.getAllValues().get(2).filter())
+        .containsEntry(ENTITY_TYPE, "BUSINESS_ACTIVITY")
+        .containsEntry("ownerDeptId", 11L);
   }
 
   @Test
-  @DisplayName("编号接续：numberStart=3 时业务片段编号自 [3] 起")
+  @DisplayName("双实体混合命中按相似度统一降序，编号自 numberStart 起接续知识库片段")
   void retrieve_numberingContinuesFromNumberStart() {
     stubLevel(DataScopeLevel.ALL);
-    when(vectorStore.search(any()))
-        .thenReturn(List.of(hit("c1", 301L, 0.9D, "甲公司"), hit("c2", 302L, 0.8D, "乙公司")));
+    stubSearchSequence(
+        List.of(hit("c1", 301L, 0.9D, "甲公司"), hit("c2", 302L, 0.8D, "乙公司")),
+        List.of(activityHit("a1", 901L, 0.85D, "甲公司拜访")));
 
     BusinessRetrievalPort.BusinessRetrievalResult result =
         service.retrieve(
             new BusinessRetrievalPort.BusinessRetrievalQuery("客户", userContext(1L, 1L, 1L), 5, 3));
 
-    assertThat(result.context()).contains("[3] 公司名称： 甲公司").contains("[4] 公司名称： 乙公司");
+    assertThat(result.context())
+        .contains("[3] 公司名称： 甲公司")
+        .contains("[4] 活动标题: 甲公司拜访")
+        .contains("[5] 公司名称： 乙公司");
     assertThat(result.context()).doesNotContain("[1]").doesNotContain("[2]");
+    assertThat(result.sources())
+        .extracting(SourceReference::sourceType)
+        .containsExactly("CUSTOMER", "BUSINESS_ACTIVITY", "CUSTOMER");
   }
 
   @Test
   @DisplayName("多 filter 档命中按 chunkId 去重（取高分）、相似度降序并截断 topK")
   void retrieve_dedupSortTruncate() {
     stubLevel(DataScopeLevel.TAGE);
-    when(dataScopeService.getTageResourceIds(3L, RESOURCE_TYPE)).thenReturn(List.of(301L, 302L));
-    when(dataScopeService.getSharedResourceIds(42L, 3L, RESOURCE_TYPE)).thenReturn(List.of(301L));
-    when(vectorStore.search(any()))
-        .thenReturn(
-            List.of(hit("chunk-x", 301L, 0.5D, "甲公司")),
-            List.of(hit("chunk-x", 301L, 0.9D, "甲公司"), hit("chunk-y", 302L, 0.7D, "乙公司")),
-            List.of(hit("chunk-x", 301L, 0.8D, "甲公司")));
+    when(dataScopeService.getTageResourceIds(3L, CUSTOMER)).thenReturn(List.of(301L, 302L));
+    when(dataScopeService.getSharedResourceIds(42L, 3L, CUSTOMER)).thenReturn(List.of(301L));
+    when(dataScopeService.getTageResourceIds(3L, ACTIVITY)).thenReturn(List.of());
+    when(dataScopeService.getSharedResourceIds(42L, 3L, ACTIVITY)).thenReturn(List.of());
+    stubSearchSequence(
+        List.of(hit("chunk-x", 301L, 0.5D, "甲公司")),
+        List.of(hit("chunk-x", 301L, 0.9D, "甲公司"), hit("chunk-y", 302L, 0.7D, "乙公司")),
+        List.of(hit("chunk-x", 301L, 0.8D, "甲公司")),
+        List.of());
 
     BusinessRetrievalPort.BusinessRetrievalResult result =
         service.retrieve(
