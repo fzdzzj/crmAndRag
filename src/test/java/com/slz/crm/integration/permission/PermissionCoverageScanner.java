@@ -316,6 +316,7 @@ public final class PermissionCoverageScanner {
     registry.put(
         "SalesOpportunityController",
         clazz("com.slz.crm.server.controller.SalesOpportunityController"));
+    registry.put("SalesLeadController", clazz("com.slz.crm.server.controller.SalesLeadController"));
     registry.put(
         "SalesStageApprovalController",
         clazz("com.slz.crm.server.controller.SalesStageApprovalController"));

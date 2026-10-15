@@ -278,6 +278,39 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultSalesStageApprovalVO"
+  /sales/lead:
+    put:
+      tags:
+      - sales-lead-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SalesLeadDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+    post:
+      tags:
+      - sales-lead-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SalesLeadDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultSalesLeadVO"
   /payment/record:
     put:
       tags:
@@ -1540,6 +1573,54 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultReingestResult"
+  /sales/lead/query:
+    post:
+      tags:
+      - sales-lead-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 10
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SalesLeadQueryDTO"
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageSalesLeadVO"
+  /sales/lead/convert:
+    post:
+      tags:
+      - sales-lead-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeadConvertDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultLeadConvertVO"
   /role/add:
     post:
       tags:
@@ -3501,6 +3582,41 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageSalesOpportunityVO"
+  /sales/lead/{id}:
+    get:
+      tags:
+      - sales-lead-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultSalesLeadVO"
+    delete:
+      tags:
+      - sales-lead-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
   /sales/detail/{opportunityId}:
     get:
       tags:
@@ -5958,6 +6074,30 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AssistVO"
+    SalesLeadDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        companyName:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        source:
+          type: string
+        status:
+          type: integer
+          format: int32
+        ownerId:
+          type: integer
+          format: int64
+        remark:
+          type: string
     PaymentRecordDTO:
       type: object
       properties:
@@ -6852,6 +6992,168 @@ components:
           type: string
         data:
           $ref: "#/components/schemas/ReingestResult"
+    ResultSalesLeadVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/SalesLeadVO"
+    SalesLeadVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        companyName:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        source:
+          type: string
+        status:
+          type: integer
+          format: int32
+        ownerId:
+          type: integer
+          format: int64
+        creatorId:
+          type: integer
+          format: int64
+        convertedCompanyId:
+          type: integer
+          format: int64
+        convertedContactId:
+          type: integer
+          format: int64
+        convertedOpportunityId:
+          type: integer
+          format: int64
+        convertedTime:
+          type: string
+          format: date-time
+        remark:
+          type: string
+        ownerName:
+          type: string
+        createTime:
+          type: string
+          format: date-time
+        updateTime:
+          type: string
+          format: date-time
+    SalesLeadQueryDTO:
+      type: object
+      properties:
+        name:
+          type: string
+        companyName:
+          type: string
+        phone:
+          type: string
+        source:
+          type: string
+        status:
+          type: integer
+          format: int32
+        ownerId:
+          type: integer
+          format: int64
+        minCreateTime:
+          type: string
+          format: date-time
+        maxCreateTime:
+          type: string
+          format: date-time
+    PageSalesLeadVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/SalesLeadVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    ResultPageSalesLeadVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PageSalesLeadVO"
+    LeadConvertDTO:
+      type: object
+      properties:
+        leadId:
+          type: integer
+          format: int64
+        createOpportunity:
+          type: boolean
+        opportunityName:
+          type: string
+        estimatedAmount:
+          type: number
+    LeadConvertVO:
+      type: object
+      properties:
+        companyId:
+          type: integer
+          format: int64
+        contactId:
+          type: integer
+          format: int64
+        opportunityId:
+          type: integer
+          format: int64
+    ResultLeadConvertVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/LeadConvertVO"
     PromptTemplateRevertDTO:
       type: object
       properties:

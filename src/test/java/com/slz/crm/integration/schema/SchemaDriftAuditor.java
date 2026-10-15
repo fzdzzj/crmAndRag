@@ -56,6 +56,7 @@ import com.slz.crm.pojo.entity.PromptTemplateFeedbackEntity;
 import com.slz.crm.pojo.entity.PromptTemplateHistoryEntity;
 import com.slz.crm.pojo.entity.RoleEntity;
 import com.slz.crm.pojo.entity.RolePermissionsEntity;
+import com.slz.crm.pojo.entity.SalesLeadEntity;
 import com.slz.crm.pojo.entity.SalesOpportunityEntity;
 import com.slz.crm.pojo.entity.SalesStageApprovalEntity;
 import com.slz.crm.pojo.entity.SysDeptEntity;
@@ -266,6 +267,7 @@ public final class SchemaDriftAuditor {
     registry.put("prompt_template_feedback", PromptTemplateFeedbackEntity.class);
     registry.put("prompt_template_history", PromptTemplateHistoryEntity.class);
     registry.put("role_permissions", RolePermissionsEntity.class);
+    registry.put("sales_lead", SalesLeadEntity.class);
     registry.put("sales_opportunity", SalesOpportunityEntity.class);
     registry.put("sales_stage_approval", SalesStageApprovalEntity.class);
     registry.put("sys_dept", SysDeptEntity.class);
