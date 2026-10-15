@@ -51,18 +51,18 @@
               </div>
             </div>
 
-            <!-- 客户（CUSTOMER）业务来源标签行 -->
-            <div v-if="customerSources(msg).length" class="sources">
-              <div class="sources-title">客户来源</div>
+            <!-- 业务实体来源标签行（客户/活动/商机/合同/任务） -->
+            <div v-if="businessSources(msg).length" class="sources">
+              <div class="sources-title">业务来源</div>
               <div class="sources-tags">
                 <Tag
-                  v-for="(source, i) in customerSources(msg)"
+                  v-for="(source, i) in businessSources(msg)"
                   :key="i"
                   class="source-tag"
                   color="orange"
-                  @click="openCustomerSource(source)"
+                  @click="openBusinessSource(source)"
                 >
-                  {{ customerSourceLabel(source) }}
+                  {{ businessSourceLabel(source) }}
                 </Tag>
               </div>
             </div>
@@ -121,7 +121,10 @@ import { showErrorToast } from '@/utils/error-toast';
 import ErrorFeedbackButton from '@/components/ai/ErrorFeedbackButton.vue';
 import KnowledgeDocumentDrawer from '@/components/ai/KnowledgeDocumentDrawer.vue';
 
-const CUSTOMER_SOURCE_PREFIX = 'CUSTOMER_COMPANY:';
+const BUSINESS_SOURCE_TYPES = ['CUSTOMER', 'BUSINESS_ACTIVITY', 'SALES_OPPORTUNITY', 'CONTRACT', 'CONTACT_TASK'];
+
+/** 业务来源 documentId 可能带的历史前缀（旧客户口径 CUSTOMER_COMPANY:，新口径为纯主键字符串） */
+const BUSINESS_DOC_ID_PREFIXES = ['CUSTOMER_COMPANY:', 'BUSINESS_ACTIVITY:', 'SALES_OPPORTUNITY:', 'CONTRACT:', 'CONTACT_TASK:'];
 
 const props = defineProps<{ open?: boolean }>();
 const emit = defineEmits(['update:open']);
@@ -267,30 +270,30 @@ function refIdSuffix(ref: unknown): string {
 }
 
 function jumpReference(ref: unknown) {
-  // 真实跳转，简化实现；根据 type 路由
+  // 真实跳转，简化实现；根据 type/sourceType 路由
   const r = (ref ?? {}) as Record<string, unknown>;
   const type = (r.type || r.sourceType) as string | undefined;
   const id = (r.id || r.documentId) as string | number | undefined;
-  if (id) {
-    if (type === 'contract' || type === 'CONTRACT') {
-      // 实际应 router.push(`/sale/contract-details/${id}`)
-      window.open(`/sale/contract-details/${id}`, '_blank');
-    } else {
-      antdMessage.info(`跳转引用: ${type || ''} ${id}`);
-    }
-  } else {
-    antdMessage.warning('无效引用（无ID）');
-  }
-}
-
-/** 行内 [n] 引文落地：优先按客户/合同业务引用跳转，其次按知识来源打开文档 */
-function jumpCitation(ref: unknown) {
-  const r = (ref ?? {}) as Record<string, unknown>;
-  const documentId = r.documentId as string | undefined;
-  if (typeof documentId === 'string' && documentId.startsWith(CUSTOMER_SOURCE_PREFIX)) {
-    openCustomerSource(ref);
+  if (!type || !id) {
+    antdMessage.warning('无效引用（无类型或ID）');
     return;
   }
+  if (BUSINESS_SOURCE_TYPES.includes(type)) {
+    jumpToBusiness(type, String(id));
+    return;
+  }
+  antdMessage.info(`跳转引用: ${type} ${id}`);
+}
+
+/** 行内 [n] 引文落地：优先按业务实体引用深度跳转，其次按知识来源打开文档 */
+function jumpCitation(ref: unknown) {
+  const r = (ref ?? {}) as Record<string, unknown>;
+  const type = (r.sourceType ?? r.type) as string | undefined;
+  if (typeof type === 'string' && BUSINESS_SOURCE_TYPES.includes(type)) {
+    jumpToBusiness(type, businessSourceId(r));
+    return;
+  }
+  const documentId = r.documentId as string | undefined;
   if (typeof documentId === 'string' && documentId) {
     openDocument(
       documentId,
@@ -302,19 +305,21 @@ function jumpCitation(ref: unknown) {
   jumpReference(ref);
 }
 
-/** 判断是否为知识库（KB）来源：有 documentId 且非客户前缀 */
+/** 判断是否为知识库（KB）来源：有 documentId 且 sourceType 非业务实体来源（不再按单一客户前缀误判） */
 function isKbSource(source: unknown): boolean {
   const s = (source ?? {}) as Record<string, unknown>;
-  return typeof s.documentId === 'string'
-    && s.documentId.length > 0
-    && !s.documentId.startsWith(CUSTOMER_SOURCE_PREFIX);
+  const type = (s.sourceType ?? s.type) as string | undefined;
+  if (typeof type === 'string' && BUSINESS_SOURCE_TYPES.includes(type)) {
+    return false;
+  }
+  return typeof s.documentId === 'string' && s.documentId.length > 0;
 }
 
-/** 判断是否为客户业务来源：documentId 以 CUSTOMER_COMPANY: 开头 */
-function isCustomerSource(source: unknown): boolean {
+/** 判断是否为业务实体来源：sourceType 命中五业务实体（CUSTOMER/BUSINESS_ACTIVITY/SALES_OPPORTUNITY/CONTRACT/CONTACT_TASK） */
+function isBusinessSource(source: unknown): boolean {
   const s = (source ?? {}) as Record<string, unknown>;
-  return typeof s.documentId === 'string'
-    && s.documentId.startsWith(CUSTOMER_SOURCE_PREFIX);
+  const type = (s.sourceType ?? s.type) as string | undefined;
+  return typeof type === 'string' && BUSINESS_SOURCE_TYPES.includes(type);
 }
 
 /** 取出消息中所有 KB 来源 */
@@ -322,9 +327,9 @@ function kbSources(msg: ChatMessage): unknown[] {
   return (Array.isArray(msg.sources) ? msg.sources : []).filter(isKbSource);
 }
 
-/** 取出消息中所有客户业务来源 */
-function customerSources(msg: ChatMessage): unknown[] {
-  return (Array.isArray(msg.sources) ? msg.sources : []).filter(isCustomerSource);
+/** 取出消息中所有业务实体来源 */
+function businessSources(msg: ChatMessage): unknown[] {
+  return (Array.isArray(msg.sources) ? msg.sources : []).filter(isBusinessSource);
 }
 
 function sourceLabel(source: unknown): string {
@@ -351,11 +356,11 @@ function sourceScore(source: unknown): string | null {
   return typeof v === 'number' && Number.isFinite(v) ? String(Math.round(v * 100) / 100) : null;
 }
 
-function customerSourceLabel(source: unknown): string {
+function businessSourceLabel(source: unknown): string {
   const s = (source ?? {}) as Record<string, unknown>;
   const filename = typeof s.filename === 'string' ? s.filename : '';
   const name = typeof s.name === 'string' ? s.name : '';
-  return name || filename || '客户来源';
+  return name || filename || '业务来源';
 }
 
 /** 打开 KB 来源：进入文档查看抽屉并滚动到指定 chunk */
@@ -373,18 +378,64 @@ function openSource(source: unknown) {
   );
 }
 
-/** 打开客户业务来源：跳转到客户详情页 */
-function openCustomerSource(source: unknown) {
+/** 提取业务来源主键：剥离历史 documentId 前缀（如 CUSTOMER_COMPANY:301 → 301），兼容纯主键口径 */
+function businessSourceId(source: unknown): string {
   const s = (source ?? {}) as Record<string, unknown>;
-  const documentId = s.documentId as string | undefined;
-  if (typeof documentId === 'string' && documentId.startsWith(CUSTOMER_SOURCE_PREFIX)) {
-    const customerId = documentId.slice(CUSTOMER_SOURCE_PREFIX.length);
-    if (customerId) {
-      void router.push({ path: '/client/list', query: { 'filters.id': customerId } });
-      return;
+  const documentId = typeof s.documentId === 'string' ? s.documentId : '';
+  const id = typeof s.id === 'string' || typeof s.id === 'number' ? String(s.id) : '';
+  let result = id || documentId;
+  for (const prefix of BUSINESS_DOC_ID_PREFIXES) {
+    if (result.startsWith(prefix)) {
+      result = result.slice(prefix.length);
+      break;
     }
   }
-  antdMessage.warning('无效客户来源');
+  return result;
+}
+
+/** 业务实体来源深度跳转：客户/商机/合同/活动/任务逐类型精准路由，杜绝误调知识库接口 */
+function jumpToBusiness(type: string, id: string) {
+  if (!id) {
+    antdMessage.warning('无效业务来源（无ID）');
+    return;
+  }
+  if (type === 'CUSTOMER') {
+    void router.push({ path: '/client/list', query: { 'filters.id': id } });
+    return;
+  }
+  if (type === 'SALES_OPPORTUNITY') {
+    void router.push(`/sale/detail/${id}`);
+    return;
+  }
+  if (type === 'CONTRACT') {
+    void router.push(`/sale/contract-details/${id}`);
+    return;
+  }
+  if (type === 'BUSINESS_ACTIVITY') {
+    void router.push(`/contact/activity?query=${encodeURIComponent(id)}`);
+    return;
+  }
+  if (type === 'CONTACT_TASK') {
+    void router.push({ path: '/contact/task', query: { id } });
+    return;
+  }
+  antdMessage.warning(`未知业务来源类型: ${type}`);
+}
+
+/** 打开业务实体来源：按来源类型深度跳转 */
+function openBusinessSource(source: unknown) {
+  const s = (source ?? {}) as Record<string, unknown>;
+  const type = (s.sourceType ?? s.type) as string | undefined;
+  if (typeof type !== 'string' || !BUSINESS_SOURCE_TYPES.includes(type)) {
+    antdMessage.warning('无效业务来源');
+    return;
+  }
+  const id = businessSourceId(source);
+  if (!id) {
+    antdMessage.warning('无效业务来源（无ID）');
+    return;
+  }
+  jumpToBusiness(type, id);
 }
 
 const actionLoading = computed(() => action.loading.value);

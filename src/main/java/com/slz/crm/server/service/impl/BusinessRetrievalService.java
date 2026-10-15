@@ -3,6 +3,8 @@ package com.slz.crm.server.service.impl;
 import com.slz.crm.common.enumeration.DataScopeLevel;
 import com.slz.crm.knowledge.embedding.EmbeddingService;
 import com.slz.crm.knowledge.ingestion.BusinessActivityIngestionService;
+import com.slz.crm.knowledge.ingestion.ContactTaskIngestionService;
+import com.slz.crm.knowledge.ingestion.ContractIngestionService;
 import com.slz.crm.knowledge.ingestion.CustomerIngestionService;
 import com.slz.crm.knowledge.ingestion.SalesOpportunityIngestionService;
 import com.slz.crm.knowledge.vector.CrmEntityVectorStore;
@@ -25,19 +27,21 @@ import org.springframework.stereotype.Service;
 
 /**
  * 业务数据语义检索服务（add-customer-semantic-retrieval 任务 3.1；add-business-activity-semantic-retrieval 任务
- * 3.1/3.2 多实体扩展；add-sales-opportunity-semantic-retrieval 任务 3.1/3.2 三实体扩展）。
+ * 3.1/3.2 多实体扩展；add-sales-opportunity-semantic-retrieval 任务 3.1/3.2
+ * 三实体扩展；add-unified-business-semantic-retrieval 任务 4.1 **五业务实体**全覆盖）。
  *
- * <p>实现 {@link BusinessRetrievalPort}：**三业务实体**多路召回——客户公司（{@code CUSTOMER_COMPANY}，资源类型 {@code
+ * <p>实现 {@link BusinessRetrievalPort}：**五业务实体**多路召回——客户公司（{@code CUSTOMER_COMPANY}，资源类型 {@code
  * customer_company}，owner 锚定 owner_id）、商业活动（{@code BUSINESS_ACTIVITY}，资源类型 {@code
- * business_activity}，owner 锚定 creator_id）与销售商机（{@code SALES_OPPORTUNITY}，资源类型 {@code
- * sales_opportunity}，owner 锚定 owner_id）同轮检索，各自独立过权限闸档位 + 补充召回，向量落 {@code crm_entity} 集合（{@link
- * CrmEntityVectorStore}）。
+ * business_activity}，owner 锚定 creator_id）、销售商机（{@code SALES_OPPORTUNITY}，资源类型 {@code
+ * sales_opportunity}，owner 锚定 owner_id）、销售合同（{@code CONTRACT}，资源类型 {@code contract}，owner 锚定
+ * owner_id）与跟进任务（{@code CONTACT_TASK}，资源类型 {@code contact_task}，owner 锚定
+ * assignee_id）同轮检索，各自独立过权限闸档位 + 补充召回，向量落 {@code crm_entity} 集合（{@link CrmEntityVectorStore}）。
  *
  * <p>权限闸（与页面列表 SQL 同源，owner 锚定「页面看得到的检索得到」）：NONE 该实体零外发；ALL 仅 entityType filter； SELF/TAGE
  * ownerUserId=本人；DEPT ownerDeptId=本部门；DEPT_AND_CHILD 子树逐 deptId union；TAGE 补充召回对
  * TAGE/DEPT/DEPT_AND_CHILD 档恒开、共享补充召回对全部非 ALL 档恒开（{@link BusinessRetrievalScopeSupport}）。
  *
- * <p>三实体档位互相独立（各查一次 getHighestDataScopeLevel）：任一实体 NONE 不影响其他实体；三实体皆 NONE 零外发空返回。 SELF/TAGE
+ * <p>五实体档位互相独立（各查一次 getHighestDataScopeLevel）：任一实体 NONE 不影响其他实体；五实体皆 NONE 零外发空返回。 SELF/TAGE
  * 档召回结果合并前经档位复核（纵深防御，见协作类），filter 语义漂移时不致越权放大。
  *
  * <p>安全红线：无权业务数据绝不出现在检索结果；检索链路任何异常按空返回降级，不阻断 AiChat 主答。
@@ -55,6 +59,15 @@ public class BusinessRetrievalService implements BusinessRetrievalPort {
 
   /** 销售商机数据权限资源类型（DataScopeTablePermissions 冻结映射；SELF 用户字段 creator_id+owner_id，业务归属锚 owner_id）。 */
   static final String SALES_OPPORTUNITY_RESOURCE_TYPE = "sales_opportunity";
+
+  /** 销售合同数据权限资源类型（DataScopeTablePermissions 冻结映射；SELF 用户字段 creator_id+owner_id，业务归属锚 owner_id）。 */
+  static final String CONTRACT_RESOURCE_TYPE = "contract";
+
+  /**
+   * 跟进任务数据权限资源类型（DataScopeTablePermissions 冻结映射；SELF 用户字段 creator_id+assignee_id，业务归属锚
+   * assignee_id）。
+   */
+  static final String CONTACT_TASK_RESOURCE_TYPE = "contact_task";
 
   /** 向量 payload 的 entityType 键（B4 冻结，Qdrant keyword 等值过滤）。 */
   private static final String ENTITY_TYPE_KEY = "entityType";
@@ -83,9 +96,15 @@ public class BusinessRetrievalService implements BusinessRetrievalPort {
   /** 来源引用 sourceType：销售商机（受控解冻增量 2026-10-15）。 */
   private static final String SOURCE_TYPE_SALES_OPPORTUNITY = "SALES_OPPORTUNITY";
 
+  /** 来源引用 sourceType：销售合同（受控解冻增量 2026-10-16）。 */
+  private static final String SOURCE_TYPE_CONTRACT = "CONTRACT";
+
+  /** 来源引用 sourceType：跟进任务（受控解冻增量 2026-10-16）。 */
+  private static final String SOURCE_TYPE_CONTACT_TASK = "CONTACT_TASK";
+
   /** 注入上下文头部：向模型声明业务片段引用规则（编号接续知识库片段）。 */
   private static final String CONTEXT_HEADER =
-      "【业务数据检索】以下是权限范围内的客户、商业活动与销售商机数据片段；引用承重结论时在句尾使用 [编号]，" + "片段未支撑的内容不要编造来源。\n\n";
+      "【业务数据检索】以下是权限范围内的客户、商业活动、销售商机、合同与跟进任务数据片段；引用承重结论时在句尾使用 [编号]，" + "片段未支撑的内容不要编造来源。\n\n";
 
   /**
    * 单实体召回装配（任务 3.2）：entityType payload 值 + 数据权限资源类型 + documentId 前缀 + sourceType + filename 展示键。
@@ -116,6 +135,18 @@ public class BusinessRetrievalService implements BusinessRetrievalPort {
               SALES_OPPORTUNITY_RESOURCE_TYPE,
               "SALES_OPPORTUNITY:",
               SOURCE_TYPE_SALES_OPPORTUNITY,
+              TITLE_KEY),
+          new RetrievalEntity(
+              ContractIngestionService.ENTITY_TYPE,
+              CONTRACT_RESOURCE_TYPE,
+              "CONTRACT:",
+              SOURCE_TYPE_CONTRACT,
+              TITLE_KEY),
+          new RetrievalEntity(
+              ContactTaskIngestionService.ENTITY_TYPE,
+              CONTACT_TASK_RESOURCE_TYPE,
+              "CONTACT_TASK:",
+              SOURCE_TYPE_CONTACT_TASK,
               TITLE_KEY));
 
   private final CrmEntityVectorStore vectorStore;
@@ -139,7 +170,7 @@ public class BusinessRetrievalService implements BusinessRetrievalPort {
         || query.query().isBlank()) {
       result = BusinessRetrievalResult.empty();
     } else if (!hasAnyScope(query.userContext())) {
-      // 权限闸红线：双实体皆 NONE 级零外发——不 embed 不 search，空返回
+      // 权限闸红线：五实体皆 NONE 级零外发——不 embed 不 search，空返回
       result = BusinessRetrievalResult.empty();
     } else {
       try {
@@ -152,7 +183,7 @@ public class BusinessRetrievalService implements BusinessRetrievalPort {
     return result;
   }
 
-  /** 三实体档位任一方非 NONE 即可外发（逐实体闸门在 searchWithPermissionGate 内独立执行）。 */
+  /** 五实体档位任一方非 NONE 即可外发（逐实体闸门在 searchWithPermissionGate 内独立执行）。 */
   private boolean hasAnyScope(UserContext user) {
     boolean scoped = false;
     for (RetrievalEntity entity : ENTITIES) {
@@ -170,7 +201,7 @@ public class BusinessRetrievalService implements BusinessRetrievalPort {
   }
 
   /**
-   * 三实体多路召回（任务 3.1/3.2）：逐实体按档位 filter 检索 + TAGE/共享补充召回 union；档位复核后合并去重（chunkId 取高分）、按相似度降序截断
+   * 五实体多路召回（任务 3.1/3.2/4.1）：逐实体按档位 filter 检索 + TAGE/共享补充召回 union；档位复核后合并去重（chunkId 取高分）、按相似度降序截断
    * topK。NONE 档实体零检索（既不发 embed 也不发 search）。
    *
    * @param query 检索查询
@@ -185,7 +216,9 @@ public class BusinessRetrievalService implements BusinessRetrievalPort {
             BUSINESS_ACTIVITY_RESOURCE_TYPE,
                 support.resolveLevel(user, BUSINESS_ACTIVITY_RESOURCE_TYPE),
             SALES_OPPORTUNITY_RESOURCE_TYPE,
-                support.resolveLevel(user, SALES_OPPORTUNITY_RESOURCE_TYPE));
+                support.resolveLevel(user, SALES_OPPORTUNITY_RESOURCE_TYPE),
+            CONTRACT_RESOURCE_TYPE, support.resolveLevel(user, CONTRACT_RESOURCE_TYPE),
+            CONTACT_TASK_RESOURCE_TYPE, support.resolveLevel(user, CONTACT_TASK_RESOURCE_TYPE));
     List<VectorSearchHit> hits = new ArrayList<>();
     boolean anyScope = false;
     for (DataScopeLevel level : levels.values()) {
@@ -274,7 +307,7 @@ public class BusinessRetrievalService implements BusinessRetrievalPort {
         .toList();
   }
 
-  /** 组装面向模型的上下文与来源引用（三实体混合命中统一编号，自 numberStart 接续知识库片段）。 */
+  /** 组装面向模型的上下文与来源引用（五实体混合命中统一编号，自 numberStart 接续知识库片段）。 */
   private BusinessRetrievalResult buildResult(List<VectorSearchHit> hits, int numberStart) {
     BusinessRetrievalResult result;
     if (hits.isEmpty()) {
@@ -295,10 +328,12 @@ public class BusinessRetrievalService implements BusinessRetrievalPort {
   }
 
   /**
-   * 来源引用映射（任务 3.2，受控解冻增量）：按命中 payload 的 entityType 判源——客户公司 {@code
+   * 来源引用映射（任务 3.2/4.1，受控解冻增量）：按命中 payload 的 entityType 判源——客户公司 {@code
    * CUSTOMER}（documentId=客户主键、filename=company_name）；商业活动 {@code
    * BUSINESS_ACTIVITY}（documentId=活动主键、filename=活动标题）；销售商机 {@code
-   * SALES_OPPORTUNITY}（documentId=商机主键、filename=商机名称）。
+   * SALES_OPPORTUNITY}（documentId=商机主键、filename=商机名称）；销售合同 {@code
+   * CONTRACT}（documentId=合同主键、filename=合同名称）；跟进任务 {@code
+   * CONTACT_TASK}（documentId=任务主键、filename=任务标题）。
    */
   private SourceReference toSourceReference(VectorSearchHit hit) {
     Map<String, Object> metadata = hit.metadata();
