@@ -43,7 +43,7 @@ class FlywayMigrationIT {
       new TreeSet<>(
           List.of(
               "1", "3", "4", "4.1", "5", "6", "21", "22", "23", "24", "25", "26", "27", "28", "29",
-              "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41"));
+              "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42"));
 
   /** 跨 lane 关键表抽样：确认各号段 DDL 真的建出了表（V1/V3/V4/V5/V6）。 */
   private static final List<String> SPOT_CHECK_TABLES =
@@ -52,7 +52,8 @@ class FlywayMigrationIT {
           "knowledge_base", // V3 知识库（B）
           "ai_conversation_memory", // V4 助手记忆（C）
           "ai_chat_image", // V4_1 聊天图片（C）
-          "dynamic_config_item" // V6 动态配置（E）
+          "dynamic_config_item", // V6 动态配置（E）
+          "sales_lead" // V42 销售线索表（F，add-lead-management-and-conversion-funnel）
           );
 
   private static MySQLContainer<?> mysql;
@@ -568,6 +569,53 @@ class FlywayMigrationIT {
       assertTrue(
           ddl.contains("KEY `idx_pool_log_action`"),
           "V41 应建出 idx_pool_log_action 索引，实际 DDL：" + ddl);
+    }
+  }
+
+  /**
+   * V42 断言（add-lead-management-and-conversion-funnel 任务 1.4）：销售线索表 sales_lead schema 落库——
+   * 核心列（name/company_name/source/status/converted_* 等）与三个组合索引（owner/status/company）。
+   */
+  @Test
+  @Order(14)
+  void salesLeadSchemaApplied() throws Exception {
+    assumeTrue(mysql != null, "Docker 不可用时本用例随类跳过");
+    try (Connection connection =
+            DriverManager.getConnection(
+                mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
+        Statement statement = connection.createStatement();
+        ResultSet rs = statement.executeQuery("SHOW CREATE TABLE sales_lead")) {
+      assertTrue(rs.next(), "sales_lead 表应存在");
+      String ddl = rs.getString(2);
+      // 列断言用正则容忍 MySQL 对 utf8mb4 表列显式渲染的 "CHARACTER SET utf8mb4 COLLATE ..." 段
+      assertTrue(
+          ddl.matches("(?s).*`name` varchar\\(100\\)[^,]*NOT NULL.*"),
+          "V42 应建出 name 列，实际 DDL：" + ddl);
+      assertTrue(
+          ddl.matches("(?s).*`company_name` varchar\\(200\\)[^,]*NOT NULL.*"),
+          "V42 应建出 company_name 列，实际 DDL：" + ddl);
+      assertTrue(
+          ddl.matches("(?s).*`status` int[^,]*(DEFAULT '0'|NOT NULL DEFAULT '0').*"),
+          "V42 应建出 status 列且默认 0（待跟进），实际 DDL：" + ddl);
+      assertTrue(
+          ddl.matches("(?s).*`converted_company_id` bigint DEFAULT NULL.*"),
+          "V42 应建出 converted_company_id 列，实际 DDL：" + ddl);
+      assertTrue(
+          ddl.matches("(?s).*`converted_opportunity_id` bigint DEFAULT NULL.*"),
+          "V42 应建出 converted_opportunity_id 列，实际 DDL：" + ddl);
+      assertTrue(
+          ddl.matches("(?s).*`converted_time` datetime DEFAULT NULL.*"),
+          "V42 应建出 converted_time 列，实际 DDL：" + ddl);
+      assertTrue(
+          ddl.contains("KEY `idx_sales_lead_owner`")
+              || ddl.contains("KEY `idx_sales_lead_owner` (`owner_id`,`is_deleted`)"),
+          "V42 应建出 idx_sales_lead_owner 索引，实际 DDL：" + ddl);
+      assertTrue(
+          ddl.contains("KEY `idx_sales_lead_status`"),
+          "V42 应建出 idx_sales_lead_status 索引，实际 DDL：" + ddl);
+      assertTrue(
+          ddl.contains("KEY `idx_sales_lead_company`"),
+          "V42 应建出 idx_sales_lead_company 索引，实际 DDL：" + ddl);
     }
   }
 
