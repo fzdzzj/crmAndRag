@@ -43,11 +43,18 @@
   - `add-business-activity-semantic-retrieval`（商业活动语义检索与权限过滤，master@323ad97）
   - `extend-ai-query-tools-c`（C批4查询工具+40评测集，master@a34451f）
   - `extend-ai-draft-and-eval`（2草稿工具+34评测集，master@cd62301）
-- **候选池队列（参考 `work/_paa-candidates-pool.md` §5）**：
-  1. OpenSpec 在途归档批次（将已合入的 5 目录移至 `archive/`：`extend-ai-draft-and-eval`、`extend-ai-query-tools-c`、`add-business-activity-semantic-retrieval`、`add-sales-opportunity-semantic-retrieval`、`add-unified-business-semantic-retrieval`）；
-  2. `scripts/tests/review-mechanical-check.sh` §4 判据恒真修复（OBS-1，C 档治理小卡，防止基线漂移被静默吞掉）；
-  3. 用户数据隐私增强（MINOR-3 留档：为 `findPage` 加 `@Privacy` 需 A 档并经 owner 拍板）；
-  4. 在线考试子域（`work/_online-exam-backlog.md` 留档）。
+- **候选池队列与三阶段路线图（详见 `work/_paa-candidates-pool.md` §6）**：
+  - **阶段 1 · 敏捷治理批（即刻可做，低风险）**：
+    1. OpenSpec 在途 5 提案目录归档至 `archive/`（`extend-ai-draft-and-eval`、`extend-ai-query-tools-c`、`add-business-activity-semantic-retrieval`、`add-sales-opportunity-semantic-retrieval`、`add-unified-business-semantic-retrieval`）；
+    2. `scripts/tests/review-mechanical-check.sh` §4 判据恒真修复（OBS-1，C 档治理小卡）；
+    3. 统一向量运维同步端点收口（`POST /knowledge/admin/sync/{entity}` 与 `POST /knowledge/admin/sync/all`）；
+  - **阶段 2 · AI 主动赋能（业务价值最大）**：
+    1. 客户 360° AI 智能商业诊断与流失风险预警（结合跟进、阶段停滞、回款逾期与任务执行）；
+    2. AI 会话体验提升（标题智能生成提炼 + 抽屉预置业务快捷 Prompt 库）；
+  - **阶段 3 · CRM 业务闭环扩充（功能完整度）**：
+    1. 客户公海池与自动回收机制（超时无跟进自动释放私海客户至公海 + 认领配额/分派）；
+    2. 合同履约到期预警与逾期应收账款催款待办联动；
+  - **长期储备**：在线考试子域（`work/_online-exam-backlog.md` 留档）、用户数据隐私脱敏增强（MINOR-3 留档）。
 
 ---
 
