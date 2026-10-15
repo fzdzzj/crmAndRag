@@ -2607,6 +2607,17 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+  /business/activity/reingestAll:
+    post:
+      tags:
+      - business-activity-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultReingestResult"
   /business/activity/query:
     post:
       tags:

@@ -43,8 +43,9 @@ import org.springframework.stereotype.Service;
  *
  * <p>两实体档位互相独立（各查一次 getHighestDataScopeLevel）：一方 NONE 不影响另一方召回；两方皆 NONE 时零外发空返回 （不 embed 不 search）。
  *
- * <p>档位复核（纵深防御）：SELF/TAGE 档召回结果在合并前逐命中按落库 payload 复判归属（ownerUserId=本人，或 ownerDeptId=本部门 且该实体存在补充召回，或
- * resourceId 命中 TAGE/共享授权清单）——向量库 filter 语义漂移时不致越权放大。DEPT/DEPT_AND_CHILD 档以 ownerDeptId 子树检索自行收口，ALL 档超管直通，两档均不额外复核。
+ * <p>档位复核（纵深防御）：SELF/TAGE 档召回结果在合并前逐命中按落库 payload 复判归属（ownerUserId=本人，或 ownerDeptId=本部门
+ * 且该实体存在补充召回，或 resourceId 命中 TAGE/共享授权清单）——向量库 filter 语义漂移时不致越权放大。DEPT/DEPT_AND_CHILD 档以
+ * ownerDeptId 子树检索自行收口，ALL 档超管直通，两档均不额外复核。
  *
  * <p>安全红线：无权业务数据绝不出现在检索结果；检索链路任何异常按空返回降级，不阻断 AiChat 主答。
  */
