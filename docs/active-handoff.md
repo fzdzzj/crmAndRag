@@ -8,8 +8,8 @@
 
 ## 1. 现状快照 (Current State Snapshot)
 
-- **当前主干版本**：`master@993e91c`（已合入 `add-unified-business-semantic-retrieval`）
-- **测试基线**：Surefire 1391 / Failsafe 116（7 skipped），`scripts/test-baseline.txt` 权威对账
+- **当前主干版本**：`master@ecd308c`（已合入 `add-ai-customer-360-insight`）
+- **测试基线**：Surefire 1415 / Failsafe 116（7 skipped），`scripts/test-baseline.txt` 权威对账
 - **门禁状态**：四静态（checkstyle/spotbugs/spotless/pmd）全 0 违规，聚合门禁 `merge-gate.sh` 8 项全 PASS（前端 179 unit tests pass）
 - **工作树拓扑**：
   - 观察树：`D:\code\crmAndRag`（承载执行日志 `docs/`、任务卡与交接 `work/`）
@@ -25,11 +25,16 @@
    - 全站增量异步化统一：全仓 5 实体 6 个 ServiceImpl 全部升级为事务后异步非阻塞派发（`embeddingTaskExecutor`），消除主业务接口延迟；
    - 严格四档数据权限闸（NONE 零外发 / SELF / DEPT / DEPT_AND_CHILD / ALL）+ 结果合并前逐命中 owner/dept 纵深防御；
    - 问答引用来源高亮与跳转闭环：`AiAssistantDrawer` 覆盖 5 实体精准深度跳转路由，杜绝向 `/knowledge/chunk` 误请求 404。
-2. **AI 助手工具面（已达 31 个，齐备就位）**：
-   - 22 查询工具：涵盖客户、商机、合同、订单、回款、发票、跟进任务、业务活动、审批、系统用户、组织架构、客户详情、综合与合同商机报表，全部权限同锚。
+2. **AI 智能商业诊断与会话交互深化（刚刚合入）**：
+   - 客户 360° AI 诊断引擎：多实体数据聚合（客户/联系人/活动/商机/合同/回款/待办）；确定性规则评分（0~100 加权与四级映射 `EXCELLENT`/`HEALTHY`/`WARNING`/`CRITICAL`）+ 规则风险警示；
+   - `ModelProvider` 智能商业画像摘要、流失风险点与拜访建议生成；双层安全降级，模型异常/未装配恒定回退规则文本，绝不抛 500；
+   - 鉴权同锚：端点 `GET /ai/insight/customer/{companyId}` 与 AI Tool `getCustomerInsight` 同锚 `CUSTOMER_VIEW_COMPANY=117` + `DataScope` 跨部门 12002 越权拦截；
+   - 会话体验：首问后异步自动提炼会话标题（<=12 字）；`AiAssistantDrawer.vue` 预置 4 枚高频业务快捷药丸指令。
+3. **AI 助手工具面（已达 32 个，齐备就位）**：
+   - 23 查询工具：涵盖客户诊断、商机、合同、订单、回款、发票、跟进任务、业务活动、审批、系统用户、组织架构、客户详情、综合与合同商机报表，全部权限同锚。
    - 9 草稿工具：客户、联系人、商机、合同、订单、回款、发票、跟进任务、业务活动，挂 null 起草 + 用户确认时强制校验权限。
-   - 评测集：AiEval 40 个用例（含边界辨析），全绿通过。
-3. **权限与治理**：
+   - 评测集：Surefire 1415 个测试全绿。
+4. **权限与治理**：
    - 方法级 `@RequirePermission`，用户状态检查（冻结/离职）前置拦截，零注解端点 PENDING_DECISION 已清零；
    - Schema 漂移门禁：7 项已知豁免已注册 `KnownDriftRegistry`，CRITICAL=0。
 
@@ -38,19 +43,18 @@
 ## 3. 当前在途与候选队列 (Next Up Candidates)
 
 - **刚闭环合入卡**：
+  - `add-ai-customer-360-insight`（客户 360° AI 智能商业诊断与会话交互深化，master@ecd308c，基线 1415/116）
   - `add-unified-business-semantic-retrieval`（统一业务语义检索与全站增量异步化，master@993e91c）
   - `add-sales-opportunity-semantic-retrieval`（销售商机语义检索与异步增量保障，master@22e7397）
   - `add-business-activity-semantic-retrieval`（商业活动语义检索与权限过滤，master@323ad97）
-  - `extend-ai-query-tools-c`（C批4查询工具+40评测集，master@a34451f）
-  - `extend-ai-draft-and-eval`（2草稿工具+34评测集，master@cd62301）
 - **候选池队列与三阶段路线图（详见 `work/_paa-candidates-pool.md` §6）**：
   - **阶段 1 · 敏捷治理批（即刻可做，低风险）**：
-    1. OpenSpec 在途 5 提案目录归档至 `archive/`（`extend-ai-draft-and-eval`、`extend-ai-query-tools-c`、`add-business-activity-semantic-retrieval`、`add-sales-opportunity-semantic-retrieval`、`add-unified-business-semantic-retrieval`）；
+    1. OpenSpec 在途 5 提案目录归档至 `archive/`（`extend-ai-draft-and-eval`、`extend-ai-query-tools-c`、`add-business-activity-semantic-retrieval`、`add-sales-opportunity-semantic-retrieval`、`add-unified-business-semantic-retrieval` 以及刚完工的 `add-ai-customer-360-insight`）；
     2. `scripts/tests/review-mechanical-check.sh` §4 判据恒真修复（OBS-1，C 档治理小卡）；
     3. 统一向量运维同步端点收口（`POST /knowledge/admin/sync/{entity}` 与 `POST /knowledge/admin/sync/all`）；
-  - **阶段 2 · AI 主动赋能（业务价值最大）**：
-    1. 客户 360° AI 智能商业诊断与流失风险预警（结合跟进、阶段停滞、回款逾期与任务执行）；
-    2. AI 会话体验提升（标题智能生成提炼 + 抽屉预置业务快捷 Prompt 库）；
+  - **阶段 2 · AI 主动赋能（客户 360° 诊断已完工，后续深化）**：
+    1. 智能销售跟进建议一键转 Action（与现有 AiAction 确认流打通）；
+    2. 知识库与 CRM 多模态图文混合问答强化；
   - **阶段 3 · CRM 业务闭环扩充（功能完整度）**：
     1. 客户公海池与自动回收机制（超时无跟进自动释放私海客户至公海 + 认领配额/分派）；
     2. 合同履约到期预警与逾期应收账款催款待办联动；
