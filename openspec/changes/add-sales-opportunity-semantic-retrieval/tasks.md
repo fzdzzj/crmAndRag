@@ -34,5 +34,7 @@
       依据：mvn -B -ntp test -Dtest=BusinessRetrievalServiceTest 退出码 0（20 全绿，含三实体四角色矩阵与 SELF 跨部门同事商机反向用例）
 - [x] 4.2 摄取拼装、异步非阻塞隔离与全量回埋 Mock 单测（纯 JVM，零真跑外呼）
       依据：mvn -B -ntp test -Dtest=SalesOpportunityIngestionServiceTest 退出码 0（10 全绿）+ SalesOpportunitySemanticTextSupportTest（8 全绿）+ SalesOpportunitySemanticHookSupportTest（8 全绿）
-- [ ] 4.3 `mvn -B -ntp test` 全绿，surefire 数量只增不减（基线 1314），树净时单次 `--update` 基线
-- [ ] 4.4 四静态（checkstyle/spotbugs/spotless/pmd）顺序跑全绿 + 三守卫 + `scripts/merge-gate.sh` 退出码 0
+- [x] 4.3 `mvn -B -ntp test` 全绿，surefire 数量只增不减（基线 1314），树净时单次 `--update` 基线
+      依据：mvn -B -ntp clean verify 退出码 0，surefire 1342（净增 28：ingestion 10 + text-support 8 + hook 8 + retrieval 2），check-test-baseline.sh --update 写入 1314→1342（source-revision=d73c71d 树净，无 -dirty）
+- [x] 4.4 四静态（checkstyle/spotbugs/spotless/pmd）顺序跑全绿 + 三守卫 + `scripts/merge-gate.sh` 退出码 0
+      依据：bash scripts/merge-gate.sh 退出码 0 全绿（8/8：unit/spotbugs/pmd/baseline/frontend-unit/hook/bijection/pmd-baseline），证据留档于 work/tmp/add-sales-opportunity-semantic-retrieval/
