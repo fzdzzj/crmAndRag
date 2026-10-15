@@ -12,9 +12,12 @@
 
 ## 任务 2 · 异步增量机制与商机语义摄取（摄取与异步层）
 
-- [ ] 2.1 新增 `SalesOpportunitySemanticTextSupport` 与 `SalesOpportunityIngestionService`：富文本拼装（商机名称/客户/对接人/阶段描述/金额/来源/预计结单/需求描述/负责人）、调用 `EmbeddingService.embed`、打标 Payload（entityType="SALES_OPPORTUNITY", resourceId, ownerUserId, ownerDeptId, companyId, title）并写入 `CrmEntityVectorStore`
-- [ ] 2.2 异步增量 Hook：新增 `SalesOpportunitySemanticHookSupport.runAfterCommitAsync`，在 `SalesOpportunityServiceImpl` 的 create/update/delete 处通过事务同步器在 afterCommit 后异步派发至线程池执行重嵌（`reingestById`）与删除（`deleteById`），单条失败仅记 WARN 不阻断业务
-- [ ] 2.3 存量回埋：新增全量回埋端点 `POST /sales/reingestAll`，挂既有注解 `@RequirePermission(PermissionOperates.SALES_CREATE_SALE_OPPORTUNITY)`；若契约检查触发漂移，同步更新 `frontend/openapi.yaml`
+- [x] 2.1 新增 `SalesOpportunitySemanticTextSupport` 与 `SalesOpportunityIngestionService`：富文本拼装（商机名称/客户/对接人/阶段描述/金额/来源/预计结单/需求描述/负责人）、调用 `EmbeddingService.embed`、打标 Payload（entityType="SALES_OPPORTUNITY", resourceId, ownerUserId, ownerDeptId, companyId, title）并写入 `CrmEntityVectorStore`
+      依据：git diff src/main/java/com/slz/crm/knowledge/ingestion/ 确认摄取逻辑与 Payload 键
+- [x] 2.2 异步增量 Hook：新增 `SalesOpportunitySemanticHookSupport.runAfterCommitAsync`，在 `SalesOpportunityServiceImpl` 的 create/update/delete 处通过事务同步器在 afterCommit 后异步派发至线程池执行重嵌（`reingestById`）与删除（`deleteById`），单条失败仅记 WARN 不阻断业务
+      依据：git diff src/main/java/com/slz/crm/server/service/impl/SalesOpportunitySemanticHookSupport.java 确认异步派发与 WARN 隔离
+- [x] 2.3 存量回埋：新增全量回埋端点 `POST /sales/reingestAll`，挂既有注解 `@RequirePermission(PermissionOperates.SALES_CREATE_SALE_OPPORTUNITY)`；若契约检查触发漂移，同步更新 `frontend/openapi.yaml`
+      依据：git diff src/main/java/com/slz/crm/server/controller/SalesOpportunityController.java 确认端点挂注解
 
 ## 任务 3 · 业务数据检索多实体融合（检索层）
 
