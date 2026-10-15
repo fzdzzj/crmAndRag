@@ -30,7 +30,9 @@
 
 ## 任务 4 · 单元测试与门禁收尾（门禁层）
 
-- [ ] 4.1 新增商机检索权限反向测试（四角色全覆盖）：归属人本人可查、本部门上级可查、跨部门同事绝不可查、管理员全可查
-- [ ] 4.2 摄取拼装、异步非阻塞隔离与全量回埋 Mock 单测（纯 JVM，零真跑外呼）
+- [x] 4.1 新增商机检索权限反向测试（四角色全覆盖）：归属人本人可查、本部门上级可查、跨部门同事绝不可查、管理员全可查
+      依据：mvn -B -ntp test -Dtest=BusinessRetrievalServiceTest 退出码 0（20 全绿，含三实体四角色矩阵与 SELF 跨部门同事商机反向用例）
+- [x] 4.2 摄取拼装、异步非阻塞隔离与全量回埋 Mock 单测（纯 JVM，零真跑外呼）
+      依据：mvn -B -ntp test -Dtest=SalesOpportunityIngestionServiceTest 退出码 0（10 全绿）+ SalesOpportunitySemanticTextSupportTest（8 全绿）+ SalesOpportunitySemanticHookSupportTest（8 全绿）
 - [ ] 4.3 `mvn -B -ntp test` 全绿，surefire 数量只增不减（基线 1314），树净时单次 `--update` 基线
 - [ ] 4.4 四静态（checkstyle/spotbugs/spotless/pmd）顺序跑全绿 + 三守卫 + `scripts/merge-gate.sh` 退出码 0
