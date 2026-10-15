@@ -43,8 +43,8 @@ public final class PermissionCoverageScanner {
   private static final String SCAN_BASE_PACKAGE = "com.slz.crm";
 
   /**
-   * controller 登记清单（简单类名 → 全限定类名，按类名字母序）：server/controller 29 + platform/config 2 = 31 （本卡新增
-   * PromptTemplateController、KnowledgeChunkController）。
+   * controller 登记清单（简单类名 → 全限定类名，按类名字母序）：server/controller 30 + platform/config 2 = 32 （本卡新增
+   * ContractWarningController）。
    */
   public static final Map<String, Class<?>> CONTROLLER_REGISTRY = buildRegistry();
 
@@ -273,6 +273,9 @@ public final class PermissionCoverageScanner {
     registry.put(
         "ContactTaskController", clazz("com.slz.crm.server.controller.ContactTaskController"));
     registry.put("ContractController", clazz("com.slz.crm.server.controller.ContractController"));
+    registry.put(
+        "ContractWarningController",
+        clazz("com.slz.crm.server.controller.ContractWarningController"));
     registry.put(
         "ContractOrderItemController",
         clazz("com.slz.crm.server.controller.ContractOrderItemController"));

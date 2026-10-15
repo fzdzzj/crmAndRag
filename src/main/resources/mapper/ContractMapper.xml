@@ -92,4 +92,70 @@
         FROM contract
         WHERE sign_date BETWEEN #{startTime} AND #{endTime}
     </select>
+
+    <!-- add-contract-warning-and-overdue-reminder 任务 1.1：分页查询到期/临期合同（contract_status=1 且 end_date 非空且 <= now+days 天） -->
+    <select id="selectExpiringContracts" resultType="com.slz.crm.pojo.vo.ContractExpiringVO">
+        SELECT
+            c.id,
+            c.contract_no,
+            c.contract_name,
+            c.company_id,
+            cc.company_name,
+            c.opportunity_id,
+            so.opportunity_name,
+            c.owner_id,
+            u.real_name AS owner_name,
+            c.start_date,
+            c.end_date,
+            c.total_amount,
+            c.contract_status,
+            COALESCE(SUM(pr.payment_amount), 0) AS paid_amount,
+            (c.total_amount - COALESCE(SUM(pr.payment_amount), 0)) AS remaining_amount,
+            DATEDIFF(c.end_date, NOW()) AS remain_days
+        FROM contract c
+        LEFT JOIN customer_company cc ON cc.id = c.company_id
+        LEFT JOIN sales_opportunity so ON so.id = c.opportunity_id
+        LEFT JOIN sys_user u ON u.id = c.owner_id
+        LEFT JOIN payment_record pr ON pr.contract_id = c.id AND pr.payment_status = 0
+        WHERE c.contract_status = 1
+          AND c.end_date IS NOT NULL
+          AND c.end_date &lt;= DATE_ADD(NOW(), INTERVAL #{days} DAY)
+        GROUP BY c.id, cc.company_name, so.opportunity_name, u.real_name, c.start_date,
+            c.end_date, c.total_amount, c.contract_status
+        ORDER BY remain_days ASC, c.id ASC
+    </select>
+
+    <!-- add-contract-warning-and-overdue-reminder 任务 1.1：分页查询逾期应收账款合同（未结敞口>0 且 生效超30天 或 距到期不足15天） -->
+    <select id="selectOverduePaymentContracts"
+            resultType="com.slz.crm.pojo.vo.ContractOverduePaymentVO">
+        SELECT
+            c.id,
+            c.contract_no,
+            c.contract_name,
+            c.company_id,
+            cc.company_name,
+            c.opportunity_id,
+            so.opportunity_name,
+            c.owner_id,
+            u.real_name AS owner_name,
+            c.start_date,
+            c.end_date,
+            c.total_amount,
+            c.contract_status,
+            COALESCE(SUM(pr.payment_amount), 0) AS paid_amount,
+            (c.total_amount - COALESCE(SUM(pr.payment_amount), 0)) AS remaining_amount,
+            DATEDIFF(c.end_date, NOW()) AS remain_days
+        FROM contract c
+        LEFT JOIN customer_company cc ON cc.id = c.company_id
+        LEFT JOIN sales_opportunity so ON so.id = c.opportunity_id
+        LEFT JOIN sys_user u ON u.id = c.owner_id
+        LEFT JOIN payment_record pr ON pr.contract_id = c.id AND pr.payment_status = 0
+        WHERE c.contract_status = 1
+        GROUP BY c.id, cc.company_name, so.opportunity_name, u.real_name, c.start_date,
+            c.end_date, c.total_amount, c.contract_status
+        HAVING (c.total_amount - COALESCE(SUM(pr.payment_amount), 0)) &gt; 0
+           AND (COALESCE(c.start_date, c.sign_date) &lt;= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                OR (c.end_date IS NOT NULL AND c.end_date &lt;= DATE_ADD(NOW(), INTERVAL 15 DAY)))
+        ORDER BY remain_days ASC, c.id ASC
+    </select>
 </mapper>
