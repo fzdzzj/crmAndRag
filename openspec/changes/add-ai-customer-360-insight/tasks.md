@@ -25,9 +25,9 @@
 
 ## 任务 5 · 单元测试与门禁收尾（门禁层）
 
-- [ ] 5.1 数据聚合与规则引擎单测：覆盖不同跟进间隔、商机逾期、未回款款项的健康分确定性量化与评级
-- [ ] 5.2 诊断服务单测与降级测试：Mock `ModelProvider` 验证结构化输出，以及模型异常时安全回退零 500 验证
-- [ ] 5.3 权限反向单测：归属人及上级正常获取诊断，无权限同事访问返回 12002 `PERMISSION_DENIED`
-- [ ] 5.4 前端质量门禁：前端单元测试与类型检查全绿（`pnpm lint:check` + `pnpm type-check:check` + `pnpm vitest run` 179 pass）
-- [ ] 5.5 `mvn -B -ntp test` 全绿，surefire 数量只增不减（基线 1391），树净时单次 `--update` 基线
-- [ ] 5.6 四静态（checkstyle/spotbugs/spotless/pmd）顺序跑全绿 + 三守卫 + `scripts/merge-gate.sh` 退出码 0
+- [x] 5.1 数据聚合与规则引擎单测：覆盖不同跟进间隔、商机逾期、未回款款项的健康分确定性量化与评级
+- [x] 5.2 诊断服务单测与降级测试：Mock `ModelProvider` 验证结构化输出，以及模型异常时安全回退零 500 验证
+- [x] 5.3 权限反向单测：归属人及上级正常获取诊断，无权限同事访问返回 12002 `PERMISSION_DENIED`
+- [x] 5.4 前端质量门禁：前端单元测试与类型检查全绿（`pnpm lint:check` + `pnpm type-check:check` + `pnpm vitest run` 179 pass）
+- [x] 5.5 `mvn -B -ntp test` 全绿，surefire 数量只增不减（基线 1391→1415），树净时单次 `--update` 基线
+- [x] 5.6 四静态（checkstyle/spotbugs/spotless/pmd）顺序跑全绿 + 三守卫 + `scripts/merge-gate.sh` 退出码 0
