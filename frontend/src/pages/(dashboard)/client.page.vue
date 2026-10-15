@@ -15,6 +15,8 @@ const activeKey = computed({
     switch (path) {
       case '/client/contacts':
         return 'contacts';
+      case '/client/pool':
+        return 'pool';
       default:
         return 'list';
     }
@@ -23,6 +25,9 @@ const activeKey = computed({
     switch (key) {
       case 'contacts':
         void router.push('/client/contacts');
+        break;
+      case 'pool':
+        void router.push('/client/pool');
         break;
       default:
         void router.push('/client/list');
@@ -56,6 +61,7 @@ watch(
             <span data-tour="client-contacts-tab">联系人管理</span>
           </template>
         </Tabs.TabPane>
+        <Tabs.TabPane key="pool" tab="公海池"/>
       </Tabs>
       <router-view/>
     </div>

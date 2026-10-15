@@ -40,6 +40,20 @@ public class CustomerCompanyVO implements Privacy {
 
   private Boolean isDeleted;
 
+  /** 公海状态（0-私海客户，1-公海池客户；add-customer-public-sea-pool 补入公海视图展示与退回弹窗判定） */
+  private Integer poolStatus;
+
+  /** 进入公海时间 */
+  @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+  private LocalDateTime poolReleaseTime;
+
+  /** 进入公海原因 */
+  private String poolReleaseReason;
+
+  /** 最近一次有效跟进时间 */
+  @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+  private LocalDateTime lastActivityTime;
+
   /** 视同本人的关联用户ID（协助人/参与人），用于隐私脱敏放行 */
   private Set<Long> relatedUserIds = Collections.emptySet();
 
@@ -91,6 +105,10 @@ public class CustomerCompanyVO implements Privacy {
       vo.setIsDeleted(entity.getIsDeleted());
       vo.setCreatorName(creatorName);
       vo.setOwnerName(ownerName);
+      vo.setPoolStatus(entity.getPoolStatus());
+      vo.setPoolReleaseTime(entity.getPoolReleaseTime());
+      vo.setPoolReleaseReason(entity.getPoolReleaseReason());
+      vo.setLastActivityTime(entity.getLastActivityTime());
     }
     return vo;
   }

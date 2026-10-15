@@ -286,6 +286,8 @@ public final class PermissionCoverageScanner {
         "CustomerContactController",
         clazz("com.slz.crm.server.controller.CustomerContactController"));
     registry.put(
+        "CustomerPoolController", clazz("com.slz.crm.server.controller.CustomerPoolController"));
+    registry.put(
         "DataStatisticsController",
         clazz("com.slz.crm.server.controller.DataStatisticsController"));
     registry.put(

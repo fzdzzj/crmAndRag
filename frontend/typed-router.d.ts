@@ -37,6 +37,7 @@ declare module 'vue-router/auto-routes' {
       | 'client'
       | 'clientContacts'
       | 'clientList'
+      | 'clientPool'
       | 'contact'
       | 'contactTask'
       | 'detail'
@@ -80,6 +81,7 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | 'clientContacts'
       | 'clientList'
+      | 'clientPool'
     >,
     'clientContacts': RouteRecordInfo<
       'clientContacts',
@@ -91,6 +93,13 @@ declare module 'vue-router/auto-routes' {
     'clientList': RouteRecordInfo<
       'clientList',
       '/client/list',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    'clientPool': RouteRecordInfo<
+      'clientPool',
+      '/client/pool',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -253,6 +262,7 @@ declare module 'vue-router/auto-routes' {
         | 'client'
         | 'clientContacts'
         | 'clientList'
+        | 'clientPool'
         | 'contact'
         | 'contactTask'
         | 'detail'
@@ -293,6 +303,7 @@ declare module 'vue-router/auto-routes' {
         | 'client'
         | 'clientContacts'
         | 'clientList'
+        | 'clientPool'
       views:
         | 'default'
     }
@@ -305,6 +316,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/(dashboard)/client/list.page.vue': {
       routes:
         | 'clientList'
+      views:
+        | never
+    }
+    'src/pages/(dashboard)/client/pool.page.vue': {
+      routes:
+        | 'clientPool'
       views:
         | never
     }

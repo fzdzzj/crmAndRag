@@ -2507,6 +2507,75 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+  /company/pool/release/{id}:
+    post:
+      tags:
+      - customer-pool-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: reason
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /company/pool/recycle/trigger:
+    post:
+      tags:
+      - customer-pool-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
+  /company/pool/claim/{id}:
+    post:
+      tags:
+      - customer-pool-controller
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
+  /company/pool/assign:
+    post:
+      tags:
+      - customer-pool-controller
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerPoolAssignDTO"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultBoolean"
   /company/list:
     post:
       tags:
@@ -4584,6 +4653,66 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultByte[]"
+  /company/pool:
+    get:
+      tags:
+      - customer-pool-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 10
+      - name: companyName
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: industry
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: grade
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageCustomerCompanyVO"
+  /company/pool/logs/{companyId}:
+    get:
+      tags:
+      - customer-pool-controller
+      parameters:
+      - name: companyId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListCustomerPoolLogVO"
   /company/group:
     get:
       tags:
@@ -7731,6 +7860,17 @@ components:
           type: string
         data:
           $ref: "#/components/schemas/PageContactTaskVO"
+    CustomerPoolAssignDTO:
+      type: object
+      properties:
+        companyId:
+          type: integer
+          format: int64
+        targetUserId:
+          type: integer
+          format: int64
+        reason:
+          type: string
     AddActivityUserRequestDTO:
       type: object
       properties:
@@ -9469,6 +9609,17 @@ components:
           format: date-time
         isDeleted:
           type: boolean
+        poolStatus:
+          type: integer
+          format: int32
+        poolReleaseTime:
+          type: string
+          format: date-time
+        poolReleaseReason:
+          type: string
+        lastActivityTime:
+          type: string
+          format: date-time
         relatedUserIds:
           type: array
           items:
@@ -9534,6 +9685,45 @@ components:
         data:
           type: object
           additionalProperties: {}
+    CustomerPoolLogVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        companyId:
+          type: integer
+          format: int64
+        operatorId:
+          type: integer
+          format: int64
+        operatorName:
+          type: string
+        actionType:
+          type: string
+        previousOwnerId:
+          type: integer
+          format: int64
+        newOwnerId:
+          type: integer
+          format: int64
+        reason:
+          type: string
+        createTime:
+          type: string
+          format: date-time
+    ResultListCustomerPoolLogVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomerPoolLogVO"
     ResultCustomerCompanyVO:
       type: object
       properties:
