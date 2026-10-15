@@ -3178,6 +3178,30 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultAiChatImageUploadVO"
+  /ai/insight/customer/{companyId}/to-action:
+    post:
+      tags:
+      - ai-insight-controller
+      parameters:
+      - name: companyId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InsightToActionRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInsightToActionResult"
   /ai/chat/stream:
     post:
       tags:
@@ -8410,6 +8434,35 @@ components:
           type: string
         data:
           $ref: "#/components/schemas/AiChatImageUploadVO"
+    InsightToActionRequest:
+      type: object
+      properties:
+        suggestionIndex:
+          type: integer
+          format: int32
+        actionType:
+          type: string
+    InsightToActionResult:
+      type: object
+      properties:
+        pendingId:
+          type: string
+        status:
+          type: string
+        actionType:
+          type: string
+        suggestion:
+          type: string
+    ResultInsightToActionResult:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/InsightToActionResult"
     AiChatRequestDTO:
       type: object
       properties:
