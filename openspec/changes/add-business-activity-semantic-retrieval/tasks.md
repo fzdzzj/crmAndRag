@@ -25,16 +25,16 @@
       依据：git diff src/main/java/com/slz/crm/server/service/impl/BusinessRetrievalService.java 确认权限分支与向量过滤参数
 - [x] 3.2 客户与商业活动双实体多路召回与合并：同轮检索同时召回 `CUSTOMER_COMPANY` 与 `BUSINESS_ACTIVITY`，按相似度降序截断 TopK，来源标注 `type=BUSINESS_ACTIVITY`，组装 `【业务数据检索】` 上下文
       依据：git diff src/main/java/com/slz/crm/server/service/impl/BusinessRetrievalService.java 确认多实体合并与来源封装
-- [ ] 3.3 槽位注入与 AiChat 集成回归验证：确保无标记/回退态与纯知识库路径逐字节一致，编号自动顺延
-      依据：mvn -B -ntp test -Dtest=AiChatKnowledgeRetrievalServiceTest 退出码 0
+- [x] 3.3 槽位注入与 AiChat 集成回归验证：确保无标记/回退态与纯知识库路径逐字节一致，编号自动顺延
+      依据：mvn -B -ntp test -Dtest=AiChatKnowledgeRetrievalServiceTest 退出码 0（13 全绿；业务零命中/业务端口未就绪两用例断言 context 与 sources 与纯知识库路径逐字节一致，编号自 numberStart 顺延）
 
 ## 任务 4 · 单元测试与门禁收尾
 
-- [ ] 4.1 新增业务活动检索权限反向测试（四角色全覆盖）：归属人本人可查、本部门上级可查、跨部门同事绝不可查、管理员全可查
-      依据：mvn -B -ntp test -Dtest=BusinessRetrievalServiceTest 退出码 0（含四角色反向用例）
-- [ ] 4.2 摄取拼装与全量回埋 Mock 单测（纯 JVM，零真跑外呼）
-      依据：mvn -B -ntp test -Dtest=BusinessActivityIngestionServiceTest 退出码 0
-- [ ] 4.3 `mvn -B -ntp test` 全绿，surefire 数量只增不减（基线 1290），树净时单次 `--update` 基线
-      依据：mvn -B -ntp test 退出码 0，surefire 计数如实增长，check-test-baseline.sh 验证通过且哈希干净
-- [ ] 4.4 四静态（checkstyle/spotbugs/spotless/pmd）顺序跑全绿 + 三守卫 + `scripts/merge-gate.sh` 退出码 0
-      依据：bash scripts/merge-gate.sh 退出码 0 全绿通过，证据留档于 work/tmp/add-business-activity-semantic-retrieval/
+- [x] 4.1 新增业务活动检索权限反向测试（四角色全覆盖）：归属人本人可查、本部门上级可查、跨部门同事绝不可查、管理员全可查
+      依据：mvn -B -ntp test -Dtest=BusinessRetrievalServiceTest 退出码 0（18 全绿，含四角色矩阵与 SELF 跨部门反向用例）
+- [x] 4.2 摄取拼装与全量回埋 Mock 单测（纯 JVM，零真跑外呼）
+      依据：mvn -B -ntp test -Dtest=BusinessActivityIngestionServiceTest 退出码 0（12 全绿）+ BusinessActivitySemanticTextSupportTest（9 全绿）
+- [x] 4.3 `mvn -B -ntp test` 全绿，surefire 数量只增不减（基线 1290），树净时单次 `--update` 基线
+      依据：mvn -B -ntp clean verify 退出码 0，surefire 1314（净增 24：ingestion 12 + text-support 9 + retrieval 3），check-test-baseline.sh --update 写入 1290→1314（source-revision=07e011e 树净，无 -dirty）
+- [x] 4.4 四静态（checkstyle/spotbugs/spotless/pmd）顺序跑全绿 + 三守卫 + `scripts/merge-gate.sh` 退出码 0
+      依据：bash scripts/merge-gate.sh 退出码 0 全绿（8/8：unit/spotbugs/pmd/baseline/frontend-unit/hook/bijection/pmd-baseline），证据留档于 work/tmp/add-business-activity-semantic-retrieval/
