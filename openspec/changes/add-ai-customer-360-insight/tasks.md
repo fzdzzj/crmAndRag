@@ -10,8 +10,8 @@
 
 ## 任务 2 · LLM 智能洞察服务与安全降级（模型与服务层）
 
-- [ ] 2.1 实现 `CustomerInsightService`：通过 `ModelProvider` 生成一句话商业摘要、成单风险点与下一步销售拜访建议；模型异常或未配置时安全降级为规则文本，绝对不抛 500
-- [ ] 2.2 实现 `AiInsightController` 端点 `GET /ai/insight/customer/{companyId}`：挂 `@RequirePermission(CUSTOMER_VIEW_COMPANY)`，复用 DataScope 守卫拦截无权限访问
+- [x] 2.1 实现 `CustomerInsightService`：通过 `ModelProvider` 生成一句话商业摘要、成单风险点与下一步销售拜访建议；模型异常或未配置时安全降级为规则文本，绝对不抛 500
+- [x] 2.2 实现 `AiInsightController` 端点 `GET /ai/insight/customer/{companyId}`：挂 `@RequirePermission(CUSTOMER_VIEW_COMPANY)`，复用 DataScope 守卫拦截无权限访问
 
 ## 任务 3 · AI Tool 注册与会话标题提炼（AI 交互层）
 
