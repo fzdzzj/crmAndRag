@@ -8,6 +8,7 @@ import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.result.Result;
 import com.slz.crm.common.untils.BaseUnit;
+import com.slz.crm.knowledge.ingestion.BusinessActivityIngestionService;
 import com.slz.crm.pojo.dto.AddActivityContactRequestDTO;
 import com.slz.crm.pojo.dto.AddActivityUserRequestDTO;
 import com.slz.crm.pojo.dto.ApprovalAttachmentDTO;
@@ -36,6 +37,9 @@ public class BusinessActivityController {
   @Autowired private ApprovalAttachmentService approvalAttachmentService;
 
   @Autowired private AttachmentAccessService attachmentAccessService;
+
+  /** 商业活动语义向量摄取（add-business-activity-semantic-retrieval 任务 2.3 全量回埋）。 */
+  @Autowired private BusinessActivityIngestionService businessActivityIngestionService;
 
   /**
    * 创建活动
@@ -243,5 +247,18 @@ public class BusinessActivityController {
       @PathVariable("activityId") Long activityId,
       @RequestBody BatchDeleteActivityAssociationRequestDTO request) {
     return Result.success(businessActivityService.deleteAssociations(activityId, request));
+  }
+
+  // ========== 商业活动语义向量全量回埋接口 ==========
+
+  /**
+   * 商业活动语义全量回埋（add-business-activity-semantic-retrieval 任务 2.3）：分页游标重嵌全量商业活动， 返回成功/失败计数（单条失败不中断）。
+   *
+   * @return 回埋结果（total/success/failure）
+   */
+  @PostMapping("/reingestAll")
+  @RequirePermission(PermissionOperates.SALES_CREATE_BUSINESS_ACTIVITY)
+  public Result<BusinessActivityIngestionService.ReingestResult> reingestAll() {
+    return Result.success(businessActivityIngestionService.reingestAll());
   }
 }

@@ -6,6 +6,7 @@ import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.enumeration.ModelName;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.BaseUnit;
+import com.slz.crm.knowledge.ingestion.BusinessActivityIngestionService;
 import com.slz.crm.pojo.dto.AddActivityContactRequestDTO;
 import com.slz.crm.pojo.dto.AddActivityUserRequestDTO;
 import com.slz.crm.pojo.dto.BatchDeleteActivityAssociationRequestDTO;
@@ -45,6 +46,9 @@ public class BusinessActivityServiceImpl
   @Autowired private ApprovalAttachmentMapper approvalAttachmentMapper;
 
   @Autowired private AssistRequestService assistRequestService;
+
+  /** 商业活动语义向量摄取（add-business-activity-semantic-retrieval 任务 2.2）。 */
+  @Autowired private BusinessActivityIngestionService businessActivityIngestionService;
 
   @Override
   @Transactional(rollbackFor = Exception.class)
@@ -113,6 +117,9 @@ public class BusinessActivityServiceImpl
         }
       }
     }
+
+    // add-business-activity-semantic-retrieval 任务 2.2：创建成功提交后增量 upsert 语义向量
+    runSemanticSync("创建商业活动", () -> reingestSemanticById(businessActivityEntity.getId()));
 
     return true;
   }
@@ -221,6 +228,11 @@ public class BusinessActivityServiceImpl
 
     updateBatchById(businessActivityEntityList);
 
+    // add-business-activity-semantic-retrieval 任务 2.2：更新成功提交后批量重嵌（回查完整实体防 DTO 部分字段丢键）
+    runSemanticSync(
+        "批量更新商业活动",
+        () -> businessActivityEntityList.forEach(entity -> reingestSemanticById(entity.getId())));
+
     return businessActivityEntityList.size();
   }
 
@@ -243,7 +255,37 @@ public class BusinessActivityServiceImpl
     }
 
     // 2. 物理删除活动本身
-    return businessActivityMapper.deleteBatchIds(idList);
+    Integer deleted = businessActivityMapper.deleteBatchIds(idList);
+
+    // add-business-activity-semantic-retrieval 任务 2.2：物理删除提交后连带删向量（删除即失效）
+    runSemanticSync(
+        "物理删除商业活动",
+        () ->
+            idList.forEach(
+                id ->
+                    BusinessActivitySemanticHookSupport.deleteById(
+                        id, businessActivityIngestionService)));
+
+    return deleted;
+  }
+
+  /**
+   * 语义向量同步闸（任务 2.2，委托 {@link BusinessActivitySemanticHookSupport}）：事务激活时注册 afterCommit，
+   * 无事务立即同步；semantic 侧未装配或异常均不阻断业务主流程。
+   *
+   * @param scene 场景描述（日志定位用）
+   * @param action 向量同步动作
+   */
+  private void runSemanticSync(String scene, Runnable action) {
+    if (businessActivityIngestionService != null) {
+      BusinessActivitySemanticHookSupport.runAfterCommit(scene, action);
+    }
+  }
+
+  /** 回查完整实体后 upsert 语义向量（任务 2.2）；仅在 runSemanticSync 的 action 内调用。 */
+  private void reingestSemanticById(Long id) {
+    BusinessActivitySemanticHookSupport.reingestById(
+        id, businessActivityIngestionService, this::getById);
   }
 
   @Override
