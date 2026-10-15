@@ -8,9 +8,10 @@ package com.slz.crm.platform.contract;
  *
  * @param sourceType 来源类型：{@code pdf|docx|txt|md|excel|image|manual} 等，小写；业务实体来源为 {@code
  *     CUSTOMER}（2026-10-13 受控解冻：documentId=客户主键、filename=company_name）、{@code
- *     BUSINESS_ACTIVITY}（2026-10-14 受控解冻：documentId=活动主键、filename=活动标题）与 {@code
- *     SALES_OPPORTUNITY}（2026-10-15 受控解冻：documentId=商机主键、filename=商机名称），均复用现有字段零结构改动； spec 增量见
- *     openspec/changes/ 各卡 specs/knowledge-rag/spec-delta.md）
+ *     BUSINESS_ACTIVITY}（2026-10-14 受控解冻：documentId=活动主键、filename=活动标题）、 {@code
+ *     SALES_OPPORTUNITY}（2026-10-15 受控解冻：documentId=商机主键、filename=商机名称）、 {@code CONTRACT} 与 {@code
+ *     CONTACT_TASK}（2026-10-16 受控解冻：documentId=合同/任务主键、filename=合同名称/任务标题）， 复用现有十字段零结构改动；spec 增量见各卡
+ *     specs/knowledge-rag/spec-delta.md）
  * @param route 检索路由：{@code vector|keyword|hybrid|ocr}（便于评测归因）
  * @param filename 展示用文件名（含扩展名，不含路径）
  * @param documentId 文档主键
