@@ -5,18 +5,18 @@
 
 ## 任务 1 · 契约解冻与 spec-delta（契约层）
 
-- [ ] 1.1 卡内 `specs/knowledge-rag/spec-delta.md` 落地：声明 `SourceReference.sourceType` 支持 `"BUSINESS_ACTIVITY"`，明确 documentId/filename/chunkId 字段映射规约
+- [x] 1.1 卡内 `specs/knowledge-rag/spec-delta.md` 落地：声明 `SourceReference.sourceType` 支持 `"BUSINESS_ACTIVITY"`，明确 documentId/filename/chunkId 字段映射规约
       依据：git diff openspec/changes/add-business-activity-semantic-retrieval/specs/knowledge-rag/spec-delta.md 确认契约增量声明
-- [ ] 1.2 `spec/changes/add-crm-rag-fusion-platform/contracts-frozen.md` 追加受控解冻变更条目（对齐 B1 先例）
+- [x] 1.2 `spec/changes/add-crm-rag-fusion-platform/contracts-frozen.md` 追加受控解冻变更条目（对齐 B1 先例）
       依据：git diff spec/changes/add-crm-rag-fusion-platform/contracts-frozen.md 确认变更日志追记解冻条目
 
 ## 任务 2 · 商业活动语义摄取服务（BusinessActivityIngestionService）
 
-- [ ] 2.1 新增 `BusinessActivitySemanticTextSupport` 与 `BusinessActivityIngestionService`：富文本拼装（标题/类型/客户/商机/沟通内容/备注/人员）、调用 `EmbeddingService.embed`、打标 Payload（entityType="BUSINESS_ACTIVITY", resourceId, ownerUserId, ownerDeptId, companyId, opportunityId）并写入 `CrmEntityVectorStore`
+- [x] 2.1 新增 `BusinessActivitySemanticTextSupport` 与 `BusinessActivityIngestionService`：富文本拼装（标题/类型/客户/商机/沟通内容/备注/人员）、调用 `EmbeddingService.embed`、打标 Payload（entityType="BUSINESS_ACTIVITY", resourceId, ownerUserId, ownerDeptId, companyId, opportunityId）并写入 `CrmEntityVectorStore`
       依据：git diff src/main/java/com/slz/crm/knowledge/ingestion/ 确认摄取逻辑与 Payload 键
-- [ ] 2.2 增量 Hook：在 `BusinessActivityServiceImpl` 新增/更新/删除处通过 `BusinessActivitySemanticHookSupport.runAfterCommit` 注册 Spring 事务提交回调，实现异步重嵌入（`reingestById`）与删除（`deleteById`）
+- [x] 2.2 增量 Hook：在 `BusinessActivityServiceImpl` 新增/更新/删除处通过 `BusinessActivitySemanticHookSupport.runAfterCommit` 注册 Spring 事务提交回调，实现异步重嵌入（`reingestById`）与删除（`deleteById`）
       依据：git diff src/main/java/com/slz/crm/server/service/impl/BusinessActivityServiceImpl.java 确认事务钩子注册
-- [ ] 2.3 存量回埋：新增全量回埋端点 `POST /business/activity/reingestAll`，挂既有注解 `@RequirePermission(PermissionOperates.SALES_CREATE_BUSINESS_ACTIVITY)`
+- [x] 2.3 存量回埋：新增全量回埋端点 `POST /business/activity/reingestAll`，挂既有注解 `@RequirePermission(PermissionOperates.SALES_CREATE_BUSINESS_ACTIVITY)`
       依据：git diff src/main/java/com/slz/crm/server/controller/BusinessActivityController.java 确认端点挂注解与注册表同步
 
 ## 任务 3 · 业务数据检索服务多实体扩展（BusinessRetrievalService）
