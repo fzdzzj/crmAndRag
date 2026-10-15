@@ -1,7 +1,7 @@
 # 交接快照 · 销售线索管理与一键转化商机漏斗 (add-lead-management-and-conversion-funnel)
 
 - **分支机构**：`feature/add-lead-management-and-conversion-funnel`（单亲线性，自 master 检出）
-- **当前提交哈希**：`ce6ddd83eeb0d60915b986e479f76ecadb1c0574`（README/docs 变更提交，分支 HEAD，检出基点 master `ce6ddd8`；合规整改完成后本特性改动并入新 commit）
+- **当前提交哈希**：`d9f0a0f`（分支 HEAD，1 笔整体提交，自 master 检出基点 `ce6ddd8` 单亲线性；增量复验 GO 后经 `merge --no-ff 54277c5` 合入 master）
 - **复核档位**：**A 档**（含 Flyway V42 数据库迁移脚本 + Testcontainers Docker 校验）
 - **交付形态/合规整改（NO-GO 复核后已闭合）**：① `frontend/typed-router.d.ts` 禁区文件已 `git checkout --` 还原，未纳入改动；② 测试基线已用 Git Bash `check-test-baseline.sh --update` 从真实运行写入并实测 `surefire.tests=1450`；③ `tasks.md` 全部项勾选 `[x]` 并补齐 6 空格实测依据；④ 本快照真实披露提交哈希/基线/还原记录。**执行状态**：代码 + 单测 + 契约 + 前端 UI 全部完成，`mvn verify` + `merge-gate.sh` 全绿，整改后规范提交为分支 commit，**未 merge、未 push**（停步等 Owner）
 
