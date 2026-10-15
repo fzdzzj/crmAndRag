@@ -8,8 +8,8 @@
 
 ## 1. 现状快照 (Current State Snapshot)
 
-- **当前主干版本**：`master@323ad97`（已合入 `add-business-activity-semantic-retrieval`）
-- **测试基线**：Surefire 1314 / Failsafe 116（7 skipped），`scripts/test-baseline.txt` 权威对账
+- **当前主干版本**：`master@22e7397`（已合入 `add-sales-opportunity-semantic-retrieval`）
+- **测试基线**：Surefire 1342 / Failsafe 116（7 skipped），`scripts/test-baseline.txt` 权威对账
 - **门禁状态**：四静态（checkstyle/spotbugs/spotless/pmd）全 0 违规，聚合门禁 `merge-gate.sh` 8 项全 PASS（前端 179 unit tests pass）
 - **工作树拓扑**：
   - 观察树：`D:\code\crmAndRag`（承载执行日志 `docs/`、任务卡与交接 `work/`）
@@ -19,9 +19,10 @@
 
 ## 2. 核心架构与现行能力面
 
-1. **RAG 检索与双业务实体语义检索**：
+1. **RAG 检索与三业务实体语义检索**：
    - 知识库文档：混合检索（向量 + MySQL FULLTEXT ngram 稀疏）+ RRF 融合，切分支持 parent_chunk_id 父子块；
-   - 业务数据双实体语义检索：已覆盖客户公司（`CUSTOMER`）与商业跟进活动（`BUSINESS_ACTIVITY`），独立落库 Qdrant `crm_entity` 集合；
+   - 业务数据三实体语义检索：已覆盖客户公司（`CUSTOMER`）、商业跟进活动（`BUSINESS_ACTIVITY`）与销售商机（`SALES_OPPORTUNITY`），独立落库 Qdrant `crm_entity` 集合；
+   - 异步增量保障：`runAfterCommitAsync` 事务提交后异步派发至 `embeddingTaskExecutor` 线程池，业务请求微秒级返回，彻底避免模型嵌入阻塞 CRM 接口；
    - 严格四档数据权限闸（NONE 零外发 / SELF / DEPT / DEPT_AND_CHILD / ALL）+ 结果合并前逐命中 owner/dept 纵深防御；
    - 问答引用来源高亮与跳转已闭环（`add-source-citation-and-dashboard`）。
 2. **AI 助手工具面（已达 31 个，齐备就位）**：
@@ -37,15 +38,15 @@
 ## 3. 当前在途与候选队列 (Next Up Candidates)
 
 - **刚闭环合入卡**：
+  - `add-sales-opportunity-semantic-retrieval`（销售商机语义检索与异步增量保障，master@22e7397）
   - `add-business-activity-semantic-retrieval`（商业活动语义检索与权限过滤，master@323ad97）
   - `extend-ai-query-tools-c`（C批4查询工具+40评测集，master@a34451f）
   - `extend-ai-draft-and-eval`（2草稿工具+34评测集，master@cd62301）
-  - `extend-ai-query-tools`（B批6查询工具，master@3f754ac）
 - **候选池队列（参考 `work/_paa-candidates-pool.md` §5）**：
   1. `scripts/tests/review-mechanical-check.sh` §4 判据恒真修复（OBS-1，C 档治理小卡，防止基线漂移被静默吞掉）；
-  2. OpenSpec 在途归档批次（将已合入的 `extend-ai-draft-and-eval`、`extend-ai-query-tools-c`、`add-business-activity-semantic-retrieval` 移至 `archive/`）；
+  2. OpenSpec 在途归档批次（将已合入的 `extend-ai-draft-and-eval`、`extend-ai-query-tools-c`、`add-business-activity-semantic-retrieval`、`add-sales-opportunity-semantic-retrieval` 移至 `archive/`）；
   3. 用户数据隐私增强（MINOR-3 留档：为 `findPage` 加 `@Privacy` 需 A 档并经 owner 拍板）；
-  4. 销售商机（SalesOpportunity）语义检索接入（业务 RAG 第三实体扩展）；
+  4. 合同（Contract）语义检索接入（业务 RAG 第四实体扩展）或统一回埋权限收紧；
   5. 在线考试子域（`work/_online-exam-backlog.md` 留档）。
 
 ---
