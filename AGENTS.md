@@ -73,6 +73,7 @@
   - 子 agent 实现代码一律从权威树 `master` 检出 `feature/<card-name>` 分支；
   - 验证全绿后以 `git merge --no-ff` 合入 master，保留分支；
   - 严禁未经 owner 显式授权执行 `git push`！
+  - **子 Agent 派发与复核纪律**：执行子 agent 与复核子 agent **一律由 owner 亲自派发**，主 agent 严禁自行调用工具代派；主 agent 负责生成标准自足的《执行提示词》与《复核提示词》交付 owner，复核报告回贴后由主 agent 负责核验审计与提请合并授权。
 - **草稿层与交接规约**：
   - `work/` 仅用于承载任务卡（`work/task-card-*.md`）与跨会话交接快照（`work/handoff-*.md`），临时产物受 `.gitignore` 规则收敛，禁止以未跟踪状态散落污染工作树。
 

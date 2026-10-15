@@ -45,6 +45,7 @@ import com.slz.crm.pojo.entity.CustomerCompanyLogEntity;
 import com.slz.crm.pojo.entity.CustomerContactEntity;
 import com.slz.crm.pojo.entity.CustomerContactRemarkEntity;
 import com.slz.crm.pojo.entity.CustomerMergeLogEntity;
+import com.slz.crm.pojo.entity.CustomerPoolLogEntity;
 import com.slz.crm.pojo.entity.DataShareEntity;
 import com.slz.crm.pojo.entity.InvoiceInfoEntity;
 import com.slz.crm.pojo.entity.PaymentRecordEntity;
@@ -240,6 +241,7 @@ public final class SchemaDriftAuditor {
     registry.put("customer_contact", CustomerContactEntity.class);
     registry.put("customer_contact_remark", CustomerContactRemarkEntity.class);
     registry.put("customer_merge_log", CustomerMergeLogEntity.class);
+    registry.put("customer_pool_log", CustomerPoolLogEntity.class);
     registry.put("data_share", DataShareEntity.class);
     registry.put("document_vector_chunk", DocumentVectorChunkEntity.class);
     // 平台（platform/config）

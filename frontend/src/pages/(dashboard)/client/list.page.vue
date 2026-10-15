@@ -83,6 +83,13 @@ class="cursor-pointer text-red-500 hover:text-red-700"
                     @click="handleDelete(record as CompanyListItem)" />
                 </Popover>
               </Permission>
+              <Permission :allow="['customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY']">
+                <Popover content="退回公海" placement="top">
+                  <LogoutOutlined
+class="cursor-pointer text-purple-500 hover:text-purple-700"
+                    @click="openRelease(record as CompanyListItem)" />
+                </Popover>
+              </Permission>
             </template>
             <template v-else>
               <Permission :allow="['customer:CUSTOMER_RECOVER_CUSTOMER_COMPANY']">
@@ -140,6 +147,11 @@ class="cursor-pointer text-orange-500 hover:text-orange-700"
                       <DeleteOutlined class="cursor-pointer text-red-500 hover:text-red-700" @click="handleDelete(record as CompanyListItem)" />
                     </Popover>
                   </Permission>
+                  <Permission :allow="['customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY']">
+                    <Popover content="退回公海" placement="top">
+                      <LogoutOutlined class="cursor-pointer text-purple-500 hover:text-purple-700" @click="openRelease(record as CompanyListItem)" />
+                    </Popover>
+                  </Permission>
                 </template>
               </template>
             </template>
@@ -194,6 +206,11 @@ class="cursor-pointer text-orange-500 hover:text-orange-700"
                       <DeleteOutlined class="cursor-pointer text-red-500 hover:text-red-700" @click="handleDelete(record as CompanyListItem)" />
                     </Popover>
                   </Permission>
+                  <Permission :allow="['customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY']">
+                    <Popover content="退回公海" placement="top">
+                      <LogoutOutlined class="cursor-pointer text-purple-500 hover:text-purple-700" @click="openRelease(record as CompanyListItem)" />
+                    </Popover>
+                  </Permission>
                 </template>
               </template>
             </template>
@@ -206,6 +223,29 @@ class="cursor-pointer text-orange-500 hover:text-orange-700"
     <CompanyEditModal ref="editModalRef" />
     <CompanyCreateModal ref="createModalRef" />
     <CustomerModal ref="contactModalRef" />
+
+    <Modal
+      v-model:open="releaseVisible"
+      title="退回公海"
+      ok-text="确认退回"
+      cancel-text="取消"
+      :confirm-loading="releaseLoading"
+      @ok="confirmRelease"
+    >
+      <Alert
+        v-if="releaseTarget"
+        class="mb-3"
+        type="warning"
+        show-icon
+        :message="`确定将「${releaseTarget.companyName || releaseTarget.id}」退回公海池？退回后可由其他销售认领。`"
+      />
+      <Input.TextArea
+        v-model:value="releaseReason"
+        class="mt-2"
+        :rows="2"
+        placeholder="请输入退回原因（如：无效客户 / 客户不匹配 / 长期未跟进）"
+      />
+    </Modal>
   </div>
 </template>
 
@@ -217,6 +257,7 @@ import {
   Button,
   Collapse,
   Input,
+  Alert,
   message,
   Modal,
   Popover,
@@ -235,6 +276,7 @@ import {
   useExportCompanies,
   useBatchDeleteCompanies,
 } from '@/hooks/useCompany.ts';
+import { useReleasePoolCustomer } from '@/hooks/useCustomerPool.ts';
 import {
   getContactGetContactByCompanyId,
   getCompanyCustom,
@@ -274,6 +316,7 @@ import {
   EyeOutlined,
   StarFilled,
   StarOutlined,
+  LogoutOutlined,
 } from '@ant-design/icons-vue';
 import { useBuildFilterColumn } from '@/utils/buildFilterColumn';
 
@@ -628,6 +671,38 @@ const handleRestore = (company: CompanyListItem) => {
     },
   });
 };
+
+const releaseMutate = useReleasePoolCustomer();
+const releaseVisible = ref(false);
+const releaseTarget = ref<CompanyListItem | null>(null);
+const releaseReason = ref<string | undefined>(undefined);
+const releaseLoading = ref(false);
+
+function openRelease(company: CompanyListItem) {
+  releaseTarget.value = company;
+  releaseReason.value = undefined;
+  releaseVisible.value = true;
+}
+
+function confirmRelease() {
+  if (!releaseTarget.value || releaseTarget.value.id === undefined) {
+    message.warning('请选择要退回的客户');
+    return;
+  }
+  releaseLoading.value = true;
+  releaseMutate.mutate(
+    { id: releaseTarget.value.id, reason: releaseReason.value },
+    {
+      onSuccess() {
+        releaseVisible.value = false;
+        void refetch();
+      },
+      onSettled() {
+        releaseLoading.value = false;
+      },
+    },
+  );
+}
 
 const handleTableChange = (pagination: CompanyTablePagination) => {
   current.value = pagination.current ?? current.value;

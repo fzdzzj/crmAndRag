@@ -43,7 +43,7 @@ class FlywayMigrationIT {
       new TreeSet<>(
           List.of(
               "1", "3", "4", "4.1", "5", "6", "21", "22", "23", "24", "25", "26", "27", "28", "29",
-              "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40"));
+              "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41"));
 
   /** 跨 lane 关键表抽样：确认各号段 DDL 真的建出了表（V1/V3/V4/V5/V6）。 */
   private static final List<String> SPOT_CHECK_TABLES =
@@ -514,6 +514,60 @@ class FlywayMigrationIT {
               "SELECT COUNT(DISTINCT position) FROM customer_contact WHERE id BETWEEN 20001 AND 20240"
                   + " AND position IN ('销售总监','技术负责人','采购经理','运营总监','总经理','财务负责人')");
       assertTrue(positions.next() && positions.getLong(1) >= 3, "V40 职位分布应覆盖 ≥3 个关键岗位");
+    }
+  }
+
+  /**
+   * V41 断言（add-customer-public-sea-pool 任务 1.4）：公海池 schema 落库—— customer_company 扩出 pool_status /
+   * pool_release_time / pool_release_reason / last_activity_time 四列与 idx_customer_company_pool
+   * 组合索引，且建出 customer_pool_log 流转记录表（含 company/operator/action 索引）。
+   */
+  @Test
+  @Order(13)
+  void customerPublicSeaPoolSchemaApplied() throws Exception {
+    assumeTrue(mysql != null, "Docker 不可用时本用例随类跳过");
+    try (Connection connection =
+            DriverManager.getConnection(
+                mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
+        Statement statement = connection.createStatement();
+        ResultSet rs = statement.executeQuery("SHOW CREATE TABLE customer_company")) {
+      assertTrue(rs.next(), "customer_company 表应存在");
+      String ddl = rs.getString(2);
+      assertTrue(
+          ddl.contains("`pool_status` tinyint NOT NULL DEFAULT '0'")
+              || ddl.contains("`pool_status` tinyint(4) NOT NULL DEFAULT '0'")
+              || ddl.contains("`pool_status` tinyint(1) NOT NULL DEFAULT '0'"),
+          "V41 应扩出 pool_status 列且默认 0（私海），实际 DDL：" + ddl);
+      assertTrue(
+          ddl.matches("(?s).*`pool_release_time` datetime DEFAULT NULL.*"),
+          "V41 应扩出可空 pool_release_time 列，实际 DDL：" + ddl);
+      assertTrue(
+          ddl.matches("(?s).*`pool_release_reason` varchar\\(255\\) DEFAULT NULL.*"),
+          "V41 应扩出 pool_release_reason 列，实际 DDL：" + ddl);
+      assertTrue(
+          ddl.matches("(?s).*`last_activity_time` datetime DEFAULT NULL.*"),
+          "V41 应扩出可空 last_activity_time 列，实际 DDL：" + ddl);
+      assertTrue(
+          ddl.contains("KEY `idx_customer_company_pool` (`pool_status`,`is_deleted`)")
+              || ddl.contains("KEY `idx_customer_company_pool` (`pool_status`, `is_deleted`)"),
+          "V41 应建出 idx_customer_company_pool 组合索引，实际 DDL：" + ddl);
+    }
+    try (Connection connection =
+            DriverManager.getConnection(
+                mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
+        Statement statement = connection.createStatement();
+        ResultSet rs = statement.executeQuery("SHOW CREATE TABLE customer_pool_log")) {
+      assertTrue(rs.next(), "customer_pool_log 表应存在");
+      String ddl = rs.getString(2);
+      assertTrue(
+          ddl.contains("`action_type` varchar(32)") && ddl.contains("NOT NULL"),
+          "V41 应建出 customer_pool_log.action_type 列，实际 DDL：" + ddl);
+      assertTrue(
+          ddl.contains("KEY `idx_pool_log_company`"),
+          "V41 应建出 idx_pool_log_company 索引，实际 DDL：" + ddl);
+      assertTrue(
+          ddl.contains("KEY `idx_pool_log_action`"),
+          "V41 应建出 idx_pool_log_action 索引，实际 DDL：" + ddl);
     }
   }
 

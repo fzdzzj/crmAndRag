@@ -81,6 +81,9 @@ public enum ErrorCode {
   /** 公司数据为空 */
   COMPANY_DATA_EMPTY(20002, "公司数据为空", "error.company.data.empty"),
 
+  /** 私海客户保有量配额已达上限（add-customer-public-sea-pool 任务 2.2，无法继续认领/分派） */
+  CUSTOMER_POOL_QUOTA_EXCEEDED(20003, "已达到私海客户保有量上限，无法继续认领", "error.customer.pool.quota.exceeded"),
+
   // ========== 联系人管理错误大类 ==========
   /** 联系人管理错误 */
   CONTACT_ERROR(21000, "联系人管理错误", "error.contact.category"),

@@ -24,17 +24,24 @@ import com.slz.crm.server.service.BusinessActivityService;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.Executor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class BusinessActivityServiceImpl
     extends ServiceImpl<BusinessActivityMapper, BusinessActivityEntity>
     implements BusinessActivityService {
+
+  /** 独立 SLF4J 日志器（本类 extends ServiceImpl 已自带 MyBatis {@code Log log}，name 冲突故用专属 LOGGER）。 */
+  private static final org.slf4j.Logger LOGGER =
+      org.slf4j.LoggerFactory.getLogger(BusinessActivityServiceImpl.class);
 
   @Autowired private BusinessActivityMapper businessActivityMapper;
   @Autowired private UserMapper userMapper;
@@ -127,6 +134,9 @@ public class BusinessActivityServiceImpl
 
     // add-business-activity-semantic-retrieval 任务 2.2：创建成功提交后增量 upsert 语义向量
     runSemanticSync("创建商业活动", () -> reingestSemanticById(businessActivityEntity.getId()));
+
+    // add-customer-public-sea-pool 任务 3.2：新增活动后事务提交异步刷新关联客户 last_activity_time（跟进活跃度联动）
+    refreshCustomerLastActivityAfterCommit(businessActivityEntity.getId());
 
     return true;
   }
@@ -294,6 +304,43 @@ public class BusinessActivityServiceImpl
   private void reingestSemanticById(Long id) {
     BusinessActivitySemanticHookSupport.reingestById(
         id, businessActivityIngestionService, this::getById);
+  }
+
+  /**
+   * 新增商业活动后，事务提交异步刷新关联客户的 {@code last_activity_time = now()}（add-customer-public-sea-pool 任务 3.2）。
+   *
+   * <p>通过活动关联联系人 → 联系人所属客户公司，批量刷新跟进活跃度；异常不外抛（活跃度刷新失败不阻断活动主流程）， 供超时自动回收的跟进时效判定。
+   */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 跟进活跃度刷新失败类型不可枚举（ORM/外呼多源），WARN 兜底不阻断活动
+  private void refreshCustomerLastActivityAfterCommit(Long activityId) {
+    Runnable refresh =
+        () -> {
+          try {
+            Set<Long> contactIds =
+                businessActivityContactMapper.selectContactIdsByActivity(activityId);
+            if (contactIds == null || contactIds.isEmpty()) {
+              return;
+            }
+            Set<Long> companyIds = customerContactMapper.selectCompanyIdsByContactIds(contactIds);
+            if (companyIds == null || companyIds.isEmpty()) {
+              return;
+            }
+            customerCompanyMapper.updateLastActivityTime(companyIds);
+          } catch (Exception e) {
+            LOGGER.warn("客户 last_activity_time 跟进活跃度联动刷新失败（活动 {}），可由后续活动刷新兜底", activityId, e);
+          }
+        };
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(
+          new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+              refresh.run();
+            }
+          });
+    } else {
+      refresh.run();
+    }
   }
 
   @Override

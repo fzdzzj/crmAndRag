@@ -99,4 +99,20 @@ public class CustomerCompanyEntity {
   /** 客户来源（V28 补列，客户来源分布图表的数据源；getter/setter 由类级 @Data 生成） */
   @Column(comment = "客户来源", type = "varchar(50)")
   private String source;
+
+  /** 公海状态（V41 补列，0-私海客户，1-公海池客户；默认 0 私海） */
+  @Column(comment = "公海状态（0-私海客户，1-公海池客户）", type = "tinyint", notNull = true, defaultValue = "0")
+  private Integer poolStatus;
+
+  /** 进入公海时间（V41 补列，主动退回或系统自动回收时写入） */
+  @Column(comment = "进入公海时间（主动退回或系统自动回收时间）", type = "datetime")
+  private LocalDateTime poolReleaseTime;
+
+  /** 进入公海的原因（V41 补列，如：销售主动放弃/超时未跟进自动回收/离职划转等） */
+  @Column(comment = "进入公海的原因", type = "varchar(255)")
+  private String poolReleaseReason;
+
+  /** 最近一次有效跟进时间（V41 补列，商业活动保存时异步联动刷新） */
+  @Column(comment = "最近一次有效跟进时间（商业活动保存时联动刷新）", type = "datetime")
+  private LocalDateTime lastActivityTime;
 }
