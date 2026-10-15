@@ -20,8 +20,8 @@
 
 ## 任务 4 · 前端交互与快捷药丸（前端层）
 
-- [ ] 4.1 在 `AiAssistantDrawer.vue` 预置高频业务快捷指令药丸（Prompt Starter Pills），点击一键填充/发送
-- [ ] 4.2 若新增端点触发 OpenAPI 契约漂移，运行 `bash scripts/check-openapi-consistency.sh --update` 同步 `frontend/openapi.yaml`
+- [x] 4.1 在 `AiAssistantDrawer.vue` 预置高频业务快捷指令药丸（Prompt Starter Pills），点击一键填充/发送
+- [x] 4.2 若新增端点触发 OpenAPI 契约漂移，运行 `bash scripts/check-openapi-consistency.sh --update` 同步 `frontend/openapi.yaml`
 
 ## 任务 5 · 单元测试与门禁收尾（门禁层）
 
