@@ -8,7 +8,7 @@
 
 ## 1. 现状快照 (Current State Snapshot)
 
-- **当前主干版本**：`master@13692fb`（已合入 `add-contract-warning-and-overdue-reminder`）
+- **当前主干版本**：`master@8ff54e5`（已合入 `add-contract-warning-and-overdue-reminder`）
 - **测试基线**：Surefire 1434 / Failsafe 117（7 skipped），`scripts/test-baseline.txt` 权威对账
 - **门禁状态**：四静态全 0 违规，聚合门禁 `merge-gate.sh` 8 项全 PASS（前端 179 unit tests pass，基线 1434 份单测全绿）
 - **工作树拓扑**：
@@ -20,7 +20,7 @@
 ## 2. 核心架构与现行能力面
 
 1. **合同履约到期预警与逾期应收催款待办联动（刚刚合入）**：
-   - 规则与统计模型：`ContractMapper` 扩展到期/超期（`contract_status=1` 且 30 天内或已超期）与逾期未结回款（`totalAmount > paidAmount` 且生效超 30 天或临近到期）统计；
+   - 规则与统计模型：`ContractMapper` 扩展到期/超期（`contract_status=1` 且 30 天内或已超期）与逾期未结回款（`totalAmount > paidAmount`）统计；
    - 待办自动化联动与幂等防重：`ContractWarningService` 为合同负责人自动创建高优先级 `ContactTask`；`hasInProgressTask` 校验未结任务，彻底杜绝定时任务重复轰炸；
    - 定时调度与 API 端点：`ContractWarningScheduler` 每天凌晨 3 点自动运行；端点 `/contract/warning/*` 挂载 `SALES_VIEW_CONTRACT(215)` / `SALES_UPDATE_CONTRACT(214)`，`CONTROLLER_REGISTRY` 闭环；
    - 前端集成：`contract.page.vue` 增设到期/欠款预警快捷筛选与一键触发生成待办按钮。
@@ -43,24 +43,21 @@
 
 ---
 
-## 3. 当前在途与候选队列 (Next Up Candidates)
+## 3. 当前在途与候选队列（基于 2026-10-15 架构调研重整）
 
-- **刚闭环合入卡**：
-  - `add-contract-warning-and-overdue-reminder`（合同履约到期预警与逾期应收账款催款待办联动，master@13692fb，基线 1434/117）
-  - `add-customer-public-sea-pool`（客户公海池与全生命周期流转机制，master@c478857）
-  - `add-ai-customer-360-insight`（客户 360° AI 智能商业诊断与会话交互深化，master@ecd308c）
-- **候选池队列与三阶段路线图（详见 `work/_paa-candidates-pool.md` §6）**：
-  - **阶段 3 · CRM 核心业务闭环（首推下一卡）**：
-    1. 轻量线索（Lead）转客户商机漏斗（完善线索录入、跟进、一键转客户/商机与丢弃机制）；
-    2. 客户流失预警与智能再激活任务派发。
-  - **阶段 1 · 敏捷治理批（可穿插，低风险）**：
-    1. OpenSpec 在途 7 提案目录批量归档至 `archive/`；
-    2. `scripts/tests/review-mechanical-check.sh` §4 判据恒真修复（OBS-1，C 档治理小卡）；
-    3. 统一向量运维同步端点收口（`POST /knowledge/admin/sync/*`）。
-  - **阶段 2 · AI 主动赋能（深化）**：
-    1. 智能销售跟进建议一键转 Action（打通 AiAction 确认流）；
-    2. 知识库与 CRM 多模态图文混合问答强化。
-  - **长期储备**：在线考试子域（`work/_online-exam-backlog.md` 留档）、用户数据隐私脱敏增强（MINOR-3 留档）。
+- **在途待合入卡**：
+  - `add-lead-management-and-conversion-funnel`（销售线索管理与一键转化商机漏斗，已立项两件套与任务卡就绪，待执行/合入，A 档 Flyway V42）
+- **核心待办队列（详见 `work/_paa-candidates-pool.md` §7 最新调研笔记）**：
+  - **方向 1 · AI 主动赋能高价值闭环（强烈推荐下一卡）**：
+    - `add-ai-insight-to-action-conversion`：打通 `Insight → Suggestion → PendingAction → Confirm`，将客户 360° 诊断给出的拜访与催款建议一键转化为待办/活动 Action，消费现成 11 个执行器；
+  - **方向 2 · CRM 核心业务闭环**：
+    - 销售线索转化漏斗（在途推进中）；客户流失预警与再激活自动化任务流；
+  - **方向 3 · 平台与运维治理（敏捷小卡）**：
+    - 统一向量运维中心收口（`POST /knowledge/admin/sync/*`）；
+    - OpenSpec 在途 7 目录归档批次；
+    - `scripts/tests/review-mechanical-check.sh` §4 判据修复（OBS-1）；
+    - `queryUser` 数据权限纵深防御（保护企业内部人员 PII）。
+- **长期储备**：在线考试子域（`work/_online-exam-backlog.md` 留档）、多模态图文混合检索。
 
 ---
 
