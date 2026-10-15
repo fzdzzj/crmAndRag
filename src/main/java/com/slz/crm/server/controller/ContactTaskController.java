@@ -8,6 +8,7 @@ import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.result.Result;
 import com.slz.crm.common.untils.BaseUnit;
+import com.slz.crm.knowledge.ingestion.ContactTaskIngestionService;
 import com.slz.crm.pojo.dto.ApprovalAttachmentDTO;
 import com.slz.crm.pojo.dto.ContactTaskDTO;
 import com.slz.crm.pojo.vo.ApprovalAttachmentVO;
@@ -33,6 +34,9 @@ public class ContactTaskController {
   @Autowired private ApprovalAttachmentService approvalAttachmentService;
 
   @Autowired private AttachmentAccessService attachmentAccessService;
+
+  /** 跟进任务语义向量摄取（add-unified-business-semantic-retrieval 任务 3.2 全量回埋）。 */
+  @Autowired private ContactTaskIngestionService contactTaskIngestionService;
 
   /** 上传联络任务普通附件（创建人/指派人/执行人/超管；协助人必须走 assist 专用接口） */
   @PostMapping("/{id}/attachments")
@@ -186,5 +190,19 @@ public class ContactTaskController {
   public Result<List<ContactTaskVO>> getByOpportunityId(@PathVariable Long opportunityId) {
     List<ContactTaskVO> tasks = contactTaskService.getByOpportunityId(opportunityId);
     return Result.success(tasks);
+  }
+
+  // ========== 跟进任务语义向量全量回埋接口 ==========
+
+  /**
+   * 跟进任务语义全量回埋（add-unified-business-semantic-retrieval 任务 3.2）：分页游标重嵌全量跟进任务（含 task_content
+   * 富文本描述），返回成功/失败计数（单条失败不中断）。
+   *
+   * @return 回埋结果（total/success/failure）
+   */
+  @PostMapping("/reingestAll")
+  @RequirePermission(PermissionOperates.TASK_CREATE_TASK)
+  public Result<ContactTaskIngestionService.ReingestResult> reingestAll() {
+    return Result.success(contactTaskIngestionService.reingestAll());
   }
 }
