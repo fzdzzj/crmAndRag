@@ -7,6 +7,7 @@ import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.common.untils.ForeignKeyDeleteUtil;
+import com.slz.crm.knowledge.ingestion.ContractIngestionService;
 import com.slz.crm.pojo.dto.ContractDTO;
 import com.slz.crm.pojo.dto.OrderDTO;
 import com.slz.crm.pojo.entity.ContractEntity;
@@ -21,9 +22,11 @@ import com.slz.crm.server.service.ContractOrderItemService;
 import com.slz.crm.server.service.ContractService;
 import com.slz.crm.server.service.DataConvertService;
 import java.util.*;
+import java.util.concurrent.Executor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +40,33 @@ public class ContractServiceImpl extends ServiceImpl<ContractMapper, ContractEnt
   @Autowired private ForeignKeyDeleteUtil foreignKeyDeleteUtil;
   @Autowired private ContractOrderItemService contractOrderItemService;
   @Autowired private DataConvertService dataConvertService;
+
+  /** 合同语义向量摄取（add-unified-business-semantic-retrieval 任务 2.2；缺失时 hook 整体跳过）。 */
+  @Autowired(required = false)
+  private ContractIngestionService contractIngestionService;
+
+  /** 合同语义向量异步任务执行器（add-unified-business-semantic-retrieval 任务 2.2；异步非阻塞核心依赖）。 */
+  @Autowired
+  @Qualifier("embeddingTaskExecutor")
+  private Executor embeddingTaskExecutor;
+
+  /**
+   * 语义向量同步闸（任务 2.2，委托 {@link ContractSemanticHookSupport#runAfterCommitAsync}）：事务激活时注册
+   * afterCommit，提交后异步派发至 embeddingTaskExecutor，无事务环境同样异步派发；semantic 侧未装配或异常均不阻断业务主流程，主线程零等待。
+   *
+   * @param scene 场景描述（日志定位用）
+   * @param action 向量同步动作
+   */
+  private void runSemanticSync(String scene, Runnable action) {
+    if (contractIngestionService != null && embeddingTaskExecutor != null) {
+      ContractSemanticHookSupport.runAfterCommitAsync(scene, embeddingTaskExecutor, action);
+    }
+  }
+
+  /** 回查完整实体后 upsert 语义向量（任务 2.2）；仅在 runSemanticSync 的 action 内调用。 */
+  private void reingestSemanticById(Long id) {
+    ContractSemanticHookSupport.reingestById(id, contractIngestionService, this::getById);
+  }
 
   @Override
   @Transactional(rollbackFor = Exception.class)
@@ -94,6 +124,12 @@ public class ContractServiceImpl extends ServiceImpl<ContractMapper, ContractEnt
       String ownerName = dataConvertService.getUserName(entity.getOwnerId());
       String creatorName = dataConvertService.getUserName(entity.getCreatorId());
       result = ContractVO.fromEntity(entity, companyName, opportunityName, ownerName, creatorName);
+    }
+
+    // add-unified-business-semantic-retrieval 任务 2.2：创建成功提交后异步增量 upsert 语义向量
+    // （回查完整实体含订单明细/回款附属段；异步派发，HTTP 主线程立即返回，不等待任何向量嵌入耗时）
+    if (result != null && result.getId() != null) {
+      runSemanticSync("创建合同", () -> reingestSemanticById(result.getId()));
     }
     return result;
   }
@@ -206,7 +242,13 @@ public class ContractServiceImpl extends ServiceImpl<ContractMapper, ContractEnt
     BeanUtils.copyProperties(dto, entity);
     //        entity.setUpdateTime(BaseUnit.getCurrentTime());
 
-    return updateById(entity);
+    boolean updated = updateById(entity);
+
+    // add-unified-business-semantic-retrieval 任务 2.2：更新成功提交后异步重嵌语义向量
+    // （回查完整实体防 DTO 部分字段丢键；afterCommit/无事务均异步派发，主线程零等待）
+    runSemanticSync("更新合同", () -> reingestSemanticById(dto.getId()));
+
+    return updated;
   }
 
   @Override
@@ -236,7 +278,16 @@ public class ContractServiceImpl extends ServiceImpl<ContractMapper, ContractEnt
     }
 
     foreignKeyDeleteUtil.deleteCascade(ContractEntity.class, ids, 0);
-    return baseMapper.deleteBatchIds(ids);
+    int deleted = baseMapper.deleteBatchIds(ids);
+
+    // add-unified-business-semantic-retrieval 任务 2.2：删除事务提交后异步失效向量（删除即失效）
+    runSemanticSync(
+        "删除合同",
+        () ->
+            ids.forEach(
+                id -> ContractSemanticHookSupport.deleteById(id, contractIngestionService)));
+
+    return deleted;
   }
 
   @Override

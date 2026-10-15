@@ -60,6 +60,9 @@ class CustomerContactServiceImplTest {
   @Mock private SalesOpportunityService salesOpportunityService;
   @Mock private CustomerIngestionService customerIngestionService;
 
+  /** 直接执行器（add-unified-business-semantic-retrieval 任务 2.1 异步化后单测注入，保证向量动作内联确定性完成）。 */
+  private final java.util.concurrent.Executor directExecutor = Runnable::run;
+
   @Spy @InjectMocks private CustomerContactServiceImpl contactService;
 
   /** 显式注入 baseMapper（Mockito 对 ServiceImpl 泛型 baseMapper 字段注入不可靠，反射定位声明类覆写）。 */
@@ -86,11 +89,21 @@ class CustomerContactServiceImplTest {
     return company;
   }
 
+  /** 注入直接执行器（异步 hook 派发后立即内联执行，单测行为确定）。 */
+  private void injectDirectExecutor() {
+    setField(
+        contactService,
+        "embeddingTaskExecutor",
+        directExecutor,
+        com.slz.crm.server.service.impl.CustomerContactServiceImpl.class);
+  }
+
   @Test
   @DisplayName("新增联系人后事务提交触发所属公司重摄取")
   void insertTriggersParentCompanyReingest() {
     authenticateAs(1L);
     injectBaseMapper();
+    injectDirectExecutor();
     when(customerCompanyMapper.selectById(501L)).thenReturn(fullCompany(501L));
     when(customerContactMapper.insert(any(CustomerContactEntity.class)))
         .thenAnswer(
@@ -114,6 +127,7 @@ class CustomerContactServiceImplTest {
   void softDeleteTriggersParentCompanyReingest() {
     authenticateAs(1L);
     injectBaseMapper();
+    injectDirectExecutor();
     // getById 走 baseMapper.selectById；updateBatchById 走 MyBatis-Plus 批处理器需 Spring 事务资源（纯单测无），
     // @Spy 桩掉该重载避开；软删后重摄取所属公司仍应触发
     when(customerContactMapper.selectById(9L)).thenReturn(contactEntity(9L, 502L));

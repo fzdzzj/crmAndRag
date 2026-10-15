@@ -29,9 +29,11 @@ import com.slz.crm.server.service.SalesOpportunityService;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
+import java.util.concurrent.Executor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -69,6 +71,11 @@ public class CustomerCompanyServiceImpl
   /** 客户语义向量摄取（add-customer-semantic-retrieval 任务 2.3 hook 依赖；缺失时 hook 整体跳过）。 */
   @Autowired(required = false)
   private CustomerIngestionService customerIngestionService;
+
+  /** 客户语义向量异步任务执行器（add-unified-business-semantic-retrieval 任务 2.1；异步非阻塞核心依赖）。 */
+  @Autowired
+  @Qualifier("embeddingTaskExecutor")
+  private Executor embeddingTaskExecutor;
 
   @Override
   public CustomerCompanyVO add(CustomerCompanyDTO customerCompanyDTO) {
@@ -415,17 +422,17 @@ public class CustomerCompanyServiceImpl
   }
 
   /**
-   * 语义向量同步闸（add-customer-semantic-retrieval 任务 2.3）：依赖未装配（部分单测场景）整体跳过； 事务与异常语义委托 {@link
-   * CustomerSemanticHookSupport#runAfterCommit}（任务 4.3 NcssCount 拆分）。
+   * 语义向量同步闸（add-customer-semantic-retrieval 任务 2.3；add-unified-business-semantic-retrieval 任务 2.1
+   * 异步化）：依赖未装配（部分单测场景）整体跳过；事务与异常语义委托 {@link CustomerSemanticHookSupport#runAfterCommitAsync}（任务 4.3
+   * NcssCount 拆分）——事务激活时注册 afterCommit， 提交后异步派发至 embeddingTaskExecutor，无事务环境同样异步派发，主线程零等待。
    *
    * @param scene 场景描述（日志定位用）
    * @param action 向量同步动作
    */
   private void runAfterCommit(String scene, Runnable action) {
-    if (customerIngestionService == null) {
-      return;
+    if (customerIngestionService != null && embeddingTaskExecutor != null) {
+      CustomerSemanticHookSupport.runAfterCommitAsync(scene, embeddingTaskExecutor, action);
     }
-    CustomerSemanticHookSupport.runAfterCommit(scene, action);
   }
 
   /**

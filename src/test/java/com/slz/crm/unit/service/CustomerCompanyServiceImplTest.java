@@ -69,11 +69,20 @@ class CustomerCompanyServiceImplTest {
 
   @Mock private CustomerIngestionService customerIngestionService;
 
+  /** 直接执行器（add-unified-business-semantic-retrieval 任务 2.1 异步化后单测注入，保证向量动作内联确定性完成）。 */
+  private final java.util.concurrent.Executor directExecutor = Runnable::run;
+
   @Spy @InjectMocks private CustomerCompanyServiceImpl customerCompanyService;
 
   @AfterEach
   void clearCurrentUser() {
     BaseUnit.removeCurrentId();
+  }
+
+  /** 注入直接执行器（异步 hook 派发后立即内联执行，单测行为确定）。 */
+  private void injectDirectExecutor() {
+    org.springframework.test.util.ReflectionTestUtils.setField(
+        customerCompanyService, "embeddingTaskExecutor", directExecutor);
   }
 
   private void authenticateAs(Long userId) {
@@ -196,6 +205,7 @@ class CustomerCompanyServiceImplTest {
   @DisplayName("新增成功后回查完整实体并 upsert 语义向量")
   void addTriggersSemanticIngestAfterSave() {
     authenticateAs(1L);
+    injectDirectExecutor();
     when(customerCompanyMapper.selectCount(any())).thenReturn(0L);
     doAnswer(
             invocation -> {
@@ -221,6 +231,7 @@ class CustomerCompanyServiceImplTest {
   @DisplayName("向量摄取异常不阻断新增主流程（WARN 降级，回埋端点兜底）")
   void addSurvivesIngestionFailure() {
     authenticateAs(1L);
+    injectDirectExecutor();
     when(customerCompanyMapper.selectCount(any())).thenReturn(0L);
     doAnswer(
             invocation -> {
@@ -247,6 +258,7 @@ class CustomerCompanyServiceImplTest {
   @Test
   @DisplayName("级联逻辑删除后连带删除语义向量")
   void logicalDeleteCascadesVectorRemoval() {
+    injectDirectExecutor();
     when(foreignKeyDeleteUtil.logicalDeleteByCascade(CustomerCompanyEntity.class, 9L))
         .thenReturn(1);
 

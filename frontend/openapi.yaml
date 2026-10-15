@@ -2300,6 +2300,17 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultChartDataVO"
+  /contract/reingestAll:
+    post:
+      tags:
+      - contract-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultReingestResult"
   /contract/query:
     post:
       tags:
@@ -2415,6 +2426,17 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultAttachmentDeleteResultVO"
+  /contactTask/reingestAll:
+    post:
+      tags:
+      - contact-task-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultReingestResult"
   /contactTask/query:
     post:
       tags:

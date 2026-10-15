@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.slz.crm.common.annotation.RequirePermission;
 import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.result.Result;
+import com.slz.crm.knowledge.ingestion.ContractIngestionService;
 import com.slz.crm.pojo.dto.ContractANDOrderDTO;
 import com.slz.crm.pojo.dto.ContractDTO;
 import com.slz.crm.pojo.vo.ContractANDOrderVO;
@@ -21,6 +22,9 @@ import org.springframework.web.bind.annotation.*;
 public class ContractController {
 
   @Autowired private ContractService contractService;
+
+  /** 合同语义向量摄取（add-unified-business-semantic-retrieval 任务 3.1 全量回埋）。 */
+  @Autowired private ContractIngestionService contractIngestionService;
 
   /**
    * 新增合同
@@ -112,5 +116,19 @@ public class ContractController {
       pageSize = 10;
     }
     return Result.success(contractService.contractQuery(pageNum, pageSize, new ContractDTO()));
+  }
+
+  // ========== 合同语义向量全量回埋接口 ==========
+
+  /**
+   * 合同语义全量回埋（add-unified-business-semantic-retrieval 任务 3.1）：分页游标重嵌全量合同（含订单明细与回款附属段），
+   * 返回成功/失败计数（单条失败不中断）。
+   *
+   * @return 回埋结果（total/success/failure）
+   */
+  @PostMapping("/reingestAll")
+  @RequirePermission(PermissionOperates.SALES_CREATE_CONTRACT)
+  public Result<ContractIngestionService.ReingestResult> reingestAll() {
+    return Result.success(contractIngestionService.reingestAll());
   }
 }
