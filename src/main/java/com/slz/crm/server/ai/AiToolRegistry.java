@@ -178,6 +178,15 @@ public class AiToolRegistry {
         PermissionOperates.CUSTOMER_VIEW_COMPANY,
         queryToolExecutors::executeGetCustomerCompanyDetail,
         user);
+    add(
+        callbacks,
+        "getCustomerInsight",
+        "获取指定客户的360°AI商业健康度诊断（含确定性健康分、健康等级、流失风险预警与下一步拜访建议）。companyId 必填；若用户仅提供公司名称，先调用"
+            + " queryCustomerCompany 定位公司再取 companyId",
+        "{\"type\":\"object\",\"properties\":{\"companyId\":{\"type\":\"integer\"}},\"required\":[\"companyId\"]}",
+        PermissionOperates.CUSTOMER_VIEW_COMPANY,
+        queryToolExecutors::executeGetCustomerInsight,
+        user);
   }
 
   /** extend-ai-query-tools-c 任务 1.2：系统用户与组织架构部门工具编排。 */

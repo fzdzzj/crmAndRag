@@ -73,6 +73,7 @@ class AiQueryToolExecutorsTest {
   @Mock private UserService userService;
   @Mock private SysDeptService sysDeptService;
   @Mock private ReportService reportService;
+  @Mock private com.slz.crm.server.ai.insight.CustomerInsightService customerInsightService;
 
   private AiQueryToolExecutors executors;
 
@@ -96,7 +97,8 @@ class AiQueryToolExecutorsTest {
             taskCommentService,
             businessActivityService,
             salesStageApprovalService,
-            extendedQueryToolExecutors);
+            extendedQueryToolExecutors,
+            customerInsightService);
   }
 
   @Test
@@ -471,5 +473,36 @@ class AiQueryToolExecutorsTest {
     assertThatThrownBy(() -> executors.executeQueryReport(Map.of(), null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("reportType 不能为空");
+  }
+
+  /** add-ai-customer-360-insight 任务 3.1：客户健康度诊断委托洞察服务。 */
+  @Test
+  void executeGetCustomerInsight_validId_callsInsightService() {
+    com.slz.crm.server.ai.insight.CustomerInsightResult result =
+        new com.slz.crm.server.ai.insight.CustomerInsightResult(
+            88L,
+            "北京测试科技有限公司",
+            96,
+            com.slz.crm.server.ai.insight.CustomerInsightHealthLevel.EXCELLENT,
+            "客户整体健康",
+            List.of(),
+            List.of("保持定期跟进"),
+            List.of(),
+            List.of(),
+            true);
+    when(customerInsightService.diagnose(88L)).thenReturn(result);
+
+    Object actual = executors.executeGetCustomerInsight(Map.of("companyId", 88L), null);
+
+    assertThat(actual).isSameAs(result);
+    verify(customerInsightService).diagnose(88L);
+  }
+
+  /** add-ai-customer-360-insight 任务 3.1：companyId 缺失抛参数异常。 */
+  @Test
+  void executeGetCustomerInsight_missingId_throwsIllegalArgumentException() {
+    assertThatThrownBy(() -> executors.executeGetCustomerInsight(Map.of(), null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("companyId 不能为空");
   }
 }

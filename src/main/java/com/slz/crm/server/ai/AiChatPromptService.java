@@ -39,6 +39,9 @@ public class AiChatPromptService {
   private static final String SYSTEM_PROMPT_TEMPLATE_CODE = "aichat-system-prompt";
   private static final String TITLE_PROMPT_TEMPLATE_CODE = "aichat-session-title";
 
+  /** 会话标题结果侧最大长度（add-ai-customer-360-insight 任务 3.2：提案 4~12 字口径的 12 字上限）。 */
+  private static final int MAX_TITLE_LENGTH = 12;
+
   @Autowired private AiProperties aiProperties;
 
   @Autowired private AiMessageService aiMessageService;
@@ -264,10 +267,25 @@ public class AiChatPromptService {
               .user(userMessage)
               .call()
               .content();
-      result = title == null ? null : AiThinkTagStripper.strip(title).trim();
+      result = title == null ? null : clampTitleLength(AiThinkTagStripper.strip(title).trim());
     } catch (Exception e) {
       log.warn("生成会话标题失败", e);
       result = null;
+    }
+    return result;
+  }
+
+  /**
+   * 标题长度夹紧（add-ai-customer-360-insight 任务 3.2）：结果侧强制 ≤ {@value #MAX_TITLE_LENGTH} 字， 与提案 "4~12
+   * 字简洁业务标题"口径对齐（提示词模板与迁移种子逐字节冻结，故在结果侧收口；不足 4 字不臆造补字）。
+   *
+   * @param title 模型输出标题（已去除思维链标记并 trim）
+   * @return 夹紧后的标题；null 原样返回
+   */
+  static String clampTitleLength(String title) {
+    String result = title;
+    if (title != null && title.length() > MAX_TITLE_LENGTH) {
+      result = title.substring(0, MAX_TITLE_LENGTH);
     }
     return result;
   }

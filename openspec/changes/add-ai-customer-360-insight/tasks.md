@@ -15,8 +15,8 @@
 
 ## 任务 3 · AI Tool 注册与会话标题提炼（AI 交互层）
 
-- [ ] 3.1 在 `AiToolRegistry` 注册只读查询工具 `getCustomerInsight` 并同锚 `CUSTOMER_VIEW_COMPANY`（117），支持大模型自然语言识别并触发诊断
-- [ ] 3.2 实现会话标题智能提炼：在首轮对话完成后，提炼 4~12 字简洁业务标题并异步更新 `aiSessionService.updateTitle`
+- [x] 3.1 在 `AiToolRegistry` 注册只读查询工具 `getCustomerInsight` 并同锚 `CUSTOMER_VIEW_COMPANY`（117），支持大模型自然语言识别并触发诊断
+- [x] 3.2 实现会话标题智能提炼：在首轮对话完成后，提炼 4~12 字简洁业务标题并异步更新 `aiSessionService.updateTitle`
 
 ## 任务 4 · 前端交互与快捷药丸（前端层）
 

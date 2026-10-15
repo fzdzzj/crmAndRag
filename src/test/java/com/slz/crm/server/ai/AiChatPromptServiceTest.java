@@ -200,6 +200,24 @@ class AiChatPromptServiceTest {
     assertThat(systemCaptor.getValue()).isEqualTo(readClasspath(TITLE_PROMPT_PATH));
   }
 
+  @Test
+  @DisplayName("标题夹紧：结果侧 >12 字截断到 12 字（add-ai-customer-360-insight 任务 3.2）")
+  void clampTitleLength_overLongTitle_truncatedToTwelveChars() {
+    String overLong = "关于北京某某科技公司的合同续约与回款进度咨询分析";
+
+    String clamped = AiChatPromptService.clampTitleLength(overLong);
+
+    assertThat(clamped).hasSize(12);
+  }
+
+  @Test
+  @DisplayName("标题夹紧：4~12 字与 null 原样返回")
+  void clampTitleLength_withinRangeOrNull_passesThrough() {
+    assertThat(AiChatPromptService.clampTitleLength("合同咨询")).isEqualTo("合同咨询");
+    assertThat(AiChatPromptService.clampTitleLength("关于北京公司的合同咨询")).isEqualTo("关于北京公司的合同咨询");
+    assertThat(AiChatPromptService.clampTitleLength(null)).isNull();
+  }
+
   // ===== 槽位双模式注入（add-prompt-template-slots 任务 2.1/2.3） =====
 
   /** V37 标记骨架 = 静态骨架尾部附四槽位标记；静态骨架复用 classpath 文件（其尾部含换行符）。 */

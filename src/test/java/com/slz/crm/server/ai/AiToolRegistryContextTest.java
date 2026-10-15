@@ -99,6 +99,7 @@ class AiToolRegistryContextTest {
             "queryUser",
             "queryDept",
             "getCustomerCompanyDetail",
+            "getCustomerInsight",
             "queryReport");
     assertThat(callbacks).hasSize(11);
   }
@@ -147,6 +148,7 @@ class AiToolRegistryContextTest {
             "queryUser",
             "queryDept",
             "getCustomerCompanyDetail",
+            "getCustomerInsight",
             "queryReport");
     assertThat(callbacks).hasSize(13);
   }
@@ -205,7 +207,7 @@ class AiToolRegistryContextTest {
         registry.getPermittedToolCallbacks(companyUser).stream()
             .map(cb -> cb.getToolDefinition().name())
             .toList();
-    assertThat(companyToolNames).contains("getCustomerCompanyDetail");
+    assertThat(companyToolNames).contains("getCustomerCompanyDetail", "getCustomerInsight");
 
     RoleAO reportUser = buildUser(108L, PermissionOperates.REPORT_VIEW_REPORT);
     List<String> reportToolNames =
