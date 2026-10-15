@@ -2300,6 +2300,17 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultChartDataVO"
+  /contract/warning/trigger:
+    post:
+      tags:
+      - contract-warning-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
   /contract/reingestAll:
     post:
       tags:
@@ -4208,6 +4219,64 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultContractANDOrderVO"
+  /contract/warning/overdue-payment:
+    get:
+      tags:
+      - contract-warning-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 10
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageContractOverduePaymentVO"
+  /contract/warning/expiring:
+    get:
+      tags:
+      - contract-warning-controller
+      parameters:
+      - name: pageNum
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 10
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultPageContractExpiringVO"
   /contactTask/{id}:
     get:
       tags:
@@ -9308,6 +9377,188 @@ components:
           type: string
         data:
           $ref: "#/components/schemas/ContractANDOrderVO"
+    ContractOverduePaymentVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        contractNo:
+          type: string
+        contractName:
+          type: string
+        companyId:
+          type: integer
+          format: int64
+        companyName:
+          type: string
+        opportunityId:
+          type: integer
+          format: int64
+        opportunityName:
+          type: string
+        ownerId:
+          type: integer
+          format: int64
+        ownerName:
+          type: string
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        contractStatus:
+          type: integer
+          format: int32
+        totalAmount:
+          type: number
+        paidAmount:
+          type: number
+        remainingAmount:
+          type: number
+        remainDays:
+          type: integer
+          format: int32
+    PageContractOverduePaymentVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContractOverduePaymentVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    ResultPageContractOverduePaymentVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PageContractOverduePaymentVO"
+    ContractExpiringVO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        contractNo:
+          type: string
+        contractName:
+          type: string
+        companyId:
+          type: integer
+          format: int64
+        companyName:
+          type: string
+        opportunityId:
+          type: integer
+          format: int64
+        opportunityName:
+          type: string
+        ownerId:
+          type: integer
+          format: int64
+        ownerName:
+          type: string
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        contractStatus:
+          type: integer
+          format: int32
+        totalAmount:
+          type: number
+        paidAmount:
+          type: number
+        remainingAmount:
+          type: number
+        remainDays:
+          type: integer
+          format: int32
+    PageContractExpiringVO:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContractExpiringVO"
+        total:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        current:
+          type: integer
+          format: int64
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+          writeOnly: true
+        optimizeCountSql:
+          writeOnly: true
+        searchCount:
+          writeOnly: true
+        optimizeJoinOfCountSql:
+          type: boolean
+          writeOnly: true
+        maxLimit:
+          type: integer
+          format: int64
+          writeOnly: true
+        countId:
+          type: string
+          writeOnly: true
+        pages:
+          type: integer
+          format: int64
+    ResultPageContractExpiringVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/PageContractExpiringVO"
     CustomerContactRemarkVO:
       type: object
       properties:
