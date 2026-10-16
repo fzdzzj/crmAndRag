@@ -194,7 +194,7 @@ public class AiToolRegistry {
     add(
         callbacks,
         "queryUser",
-        "查询系统内部用户（区分于外部联系人 queryContact）。可选条件：realName（姓名模糊）、phone（电话）、email（邮箱）、roleName（角色名）、roleId（角色ID）、status（账号状态：1正常/0冻结/2离职）。返回用户列表（含姓名、部门、角色、状态，手机与邮箱脱敏）"
+        "查询系统内部用户（区分于外部联系人 queryContact）。可选条件：realName（姓名模糊）、phone（电话）、email（邮箱）、roleName（角色名）、roleId（角色ID）、status（账号状态：1正常/0冻结/2离职）。返回用户列表（含姓名、部门、角色、状态，手机与邮箱脱敏）。注意：结果范围受部门数据隔离限制，仅返回当前操作用户所属部门内的用户，不要据此推断或承诺全公司用户"
             + AMBIGUITY_GUIDANCE,
         "{\"type\":\"object\",\"properties\":{\"realName\":{\"type\":\"string\"},\"phone\":{\"type\":\"string\"},\"email\":{\"type\":\"string\"},\"roleName\":{\"type\":\"string\"},\"roleId\":{\"type\":\"integer\"},\"status\":{\"type\":\"integer\",\"enum\":[0,1,2]},\"pageNum\":{\"type\":\"integer\"},\"pageSize\":{\"type\":\"integer\"}}}",
         PermissionOperates.SYSTEM_VIEW_USER,

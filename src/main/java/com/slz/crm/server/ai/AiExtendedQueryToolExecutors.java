@@ -1,6 +1,8 @@
 package com.slz.crm.server.ai;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.slz.crm.common.untils.BaseUnit;
+import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.dto.GetUserDTO;
 import com.slz.crm.pojo.entity.CompanyGroupEntity;
 import com.slz.crm.pojo.entity.SysDeptEntity;
@@ -37,7 +39,12 @@ public class AiExtendedQueryToolExecutors {
   private final CustomerCompanyService customerCompanyService;
   private final ReportService reportService;
 
-  /** 按条件分页查询系统内部用户。 */
+  /**
+   * 按条件分页查询系统内部用户。
+   *
+   * <p>add-queryuser-dept-isolation：非豁免操作者仅返回本部门（deptId）用户；豁免角色保持全量。当前操作用户经 {@link BaseUnit}（由
+   * {@link AiToolCallbackFactory} 在工具执行前填充），与既有数据权限切面同一来源。
+   */
   public Object executeQueryUser(Map<String, Object> args, ToolContext toolContext) {
     GetUserDTO dto = new GetUserDTO();
     dto.setRealName((String) args.get("realName"));
@@ -54,8 +61,48 @@ public class AiExtendedQueryToolExecutors {
     }
     dto.setPageNum(toInt(args.get("pageNum"), 1));
     dto.setPageSize(toInt(args.get("pageSize"), 10));
+
     Page<UserVO> page = userService.findPage(dto);
-    return trimPageResult(page.getRecords());
+    List<UserVO> records = page.getRecords();
+    RoleAO currentUser = BaseUnit.getCurrentRole();
+    return trimPageResult(filterQueryUserByDept(records, currentUser));
+  }
+
+  /**
+   * 部门隔离：非豁免操作者仅保留与当前操作者同部门（deptId）的用户记录；豁免角色不过滤保持全量。 隔离在 AI 工具内完成，不扩展共享查询 DTO， 以保持 {@code
+   * /user/find} 等既有接口的 OpenAPI 契约零漂移（spec/ 零 diff）。
+   *
+   * @param records findPage 返回的用户记录
+   * @param currentUser 当前操作用户（可能为空）
+   * @return 过滤后的用户记录
+   */
+  private List<UserVO> filterQueryUserByDept(List<UserVO> records, RoleAO currentUser) {
+    List<UserVO> result = records;
+    if (!isQueryUserDeptExempt(currentUser)) {
+      Long currentDeptId = currentUser == null ? null : currentUser.getDeptId();
+      if (currentDeptId == null) {
+        // 边界裁决：非豁免操作者无部门可见范围，返回空列表（对齐数据面 deptId 缺失→无可见范围语义），
+        // 避免退化为全量泄露；操作者上下文缺失同判 fail-closed。
+        result = java.util.List.of();
+      } else if (records != null) {
+        result =
+            records.stream()
+                .filter(user -> java.util.Objects.equals(user.getDeptId(), currentDeptId))
+                .toList();
+      }
+    }
+    return result;
+  }
+
+  /**
+   * 部门隔离豁免判定：超管（roleId=1）保持全量可见。口径对齐既有豁免语义——{@link
+   * com.slz.crm.server.interceptor.PermissionsInterceptor#checkPermission} 对 roleId=1 超管直通；{@link
+   * com.slz.crm.server.service.impl.DataScopeLevelResolver} 对 roleId=1 授予 ALL 数据范围。
+   */
+  private boolean isQueryUserDeptExempt(RoleAO currentUser) {
+    return currentUser != null
+        && currentUser.getRoleId() != null
+        && currentUser.getRoleId().longValue() == 1L;
   }
 
   /** 查询系统组织架构部门列表（可选含停用）。 */
