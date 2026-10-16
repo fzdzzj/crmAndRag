@@ -1,7 +1,11 @@
 <template>
   <div class="w-full">
     <!-- Table -->
-    <Spin v-if="!groupByGrade && !groupByCompany" :spinning="isLoading" tip="Loading...">
+    <Spin
+      v-if="!churnMode && !groupByGrade && !groupByCompany"
+      :spinning="isLoading"
+      tip="Loading..."
+    >
       <Table
         data-tour="client-table"
         :scroll="{ x: 'max-content' }"
@@ -36,6 +40,22 @@ v-if="tagManageMode && isDeleted" type="primary" :disabled="selectedRowKeys.leng
                 批量恢复
               </Button>
               <Button :loading="isRefetching" @click="refetch()"> 刷新 </Button>
+              <Button
+                :type="churnMode ? 'primary' : 'default'"
+                data-tour="client-churn-filter"
+                @click="toggleChurnMode"
+              >
+                {{ churnMode ? '返回客户列表' : '流失风险' }}
+              </Button>
+              <Permission :allow="['customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY']">
+                <Button
+                  type="primary"
+                  :loading="triggerChurnPending"
+                  data-tour="client-churn-scan"
+                  @click="handleTriggerChurnScan"
+                  >生成流失预警待办</Button
+                >
+              </Permission>
               <Button data-tour="client-recycle" @click="handleToggleDeleted()">
                 {{ isDeleted ? '返回客户列表' : '回收站' }}
               </Button>
@@ -220,6 +240,35 @@ class="cursor-pointer text-orange-500 hover:text-orange-700"
       </Spin>
     </template>
 
+    <template v-if="churnMode">
+      <div class="mb-3 flex items-center justify-between">
+        <h2>流失风险客户</h2>
+        <Button :loading="churnRefetching" @click="churnRefetch()">刷新风险清单</Button>
+      </div>
+      <Alert
+        class="mb-3"
+        type="warning"
+        show-icon
+        message="以下是近 60 天无已完成跟进、无商业活动、无合同回款进展的私海客户；建议先走客户诊断，再用 Insight→Action 转待办或转活动。"
+      />
+      <Table
+        data-tour="client-churn-table"
+        :scroll="{ x: 'max-content' }"
+        size="small"
+        :columns="churnColumns"
+        :data-source="churnRisks"
+        :loading="churnLoading"
+        :row-key="(record: { companyId?: number }) => record.companyId!"
+        :pagination="false"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'daysSinceLastInteraction'">
+            <span class="text-red-500">{{ (record as ChurnWarningRow).daysSinceLastInteraction }}</span>
+          </template>
+        </template>
+      </Table>
+    </template>
+
     <CompanyEditModal ref="editModalRef" />
     <CompanyCreateModal ref="createModalRef" />
     <CustomerModal ref="contactModalRef" />
@@ -278,9 +327,14 @@ import {
 } from '@/hooks/useCompany.ts';
 import { useReleasePoolCustomer } from '@/hooks/useCustomerPool.ts';
 import {
+  useQueryCustomerChurnWarning,
+  useTriggerCustomerChurnWarning,
+} from '@/hooks/useCustomerChurnWarning.ts';
+import {
   getContactGetContactByCompanyId,
   getCompanyCustom,
   type GetContactGetContactByCompanyIdResponse,
+  type GetCustomerChurnWarningListResponse,
 } from '@/api/axios';
 import apiClient from '@/api/apiClient.ts';
 import { useQuery } from '@tanstack/vue-query';
@@ -306,6 +360,18 @@ type CompanyTablePagination = Parameters<
   NonNullable<TableProps<CompanyListItem>['onChange']>
 >[0];
 type CompanyRowSelection = NonNullable<TableProps<CompanyListItem>['rowSelection']>;
+
+type ChurnWarningRow = NonNullable<
+  NonNullable<GetCustomerChurnWarningListResponse['data']>[number]
+>;
+
+const churnColumns = [
+  { title: '客户公司', dataIndex: 'companyName', key: 'companyName' },
+  { title: '负责人ID', dataIndex: 'ownerId', key: 'ownerId' },
+  { title: '无互动天数', dataIndex: 'daysSinceLastInteraction', key: 'daysSinceLastInteraction' },
+  { title: '最后一笔互动', dataIndex: 'lastInteractionTime', key: 'lastInteractionTime' },
+  { title: '判定窗口(天)', dataIndex: 'windowDays', key: 'windowDays' },
+];
 import CompanyEditModal from '@/components/client/CompanyEditModal.vue';
 import CompanyCreateModal from '@/components/client/CompanyCreateModal.vue';
 import CustomerModal from '@/components/client/CustomerModal.vue';
@@ -335,6 +401,39 @@ const activeGradeKeys = ref<string[]>([]);
 const groupByCompany = ref(false);
 const activeCompanyKeys = ref<string[]>([]);
 const companySearchText = ref('');
+
+/** 流失风险筛选模式（add-customer-churn-warning-and-reactivation 任务 3.1） */
+const churnMode = ref(false);
+const {
+  data: churnRiskData,
+  isLoading: churnLoading,
+  isRefetching: churnRefetching,
+  refetch: churnRefetch,
+} = useQueryCustomerChurnWarning({ limit: 200 });
+const { isPending: triggerChurnPending, mutate: runTriggerChurnScan } =
+  useTriggerCustomerChurnWarning();
+const churnRisks = computed<ChurnWarningRow[]>(() => churnRiskData.value ?? []);
+
+function toggleChurnMode() {
+  churnMode.value = !churnMode.value;
+  if (churnMode.value) {
+    groupByGrade.value = false;
+    groupByCompany.value = false;
+    tagManageMode.value = false;
+    void churnRefetch();
+  }
+}
+
+function handleTriggerChurnScan() {
+  Modal.confirm({
+    title: '生成流失预警待办',
+    content:
+      '将为近 60 天无任何互动（无已完成跟进 / 无商业活动 / 无合同回款进展）的私海客户负责人生成高优先待办（已存在进行中流失预警待办的将自动跳过），是否继续？',
+    okText: '生成',
+    cancelText: '取消',
+    onOk: () => runTriggerChurnScan(),
+  });
+}
 
 type CompanyContact = NonNullable<
   NonNullable<GetContactGetContactByCompanyIdResponse['data']>[number]

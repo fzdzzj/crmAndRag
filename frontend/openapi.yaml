@@ -2381,6 +2381,17 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultChartDataVO"
+  /customer/churn/warning/scan:
+    post:
+      tags:
+      - customer-churn-warning-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultInteger"
   /contract/warning/trigger:
     post:
       tags:
@@ -4341,6 +4352,24 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultOpportunityStageDistributionVO"
+  /customer/churn/warning/list:
+    get:
+      tags:
+      - customer-churn-warning-controller
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultListCustomerChurnWarningVO"
   /contract/{id}:
     get:
       tags:
@@ -9713,6 +9742,38 @@ components:
           type: string
         data:
           $ref: "#/components/schemas/OpportunityStageDistributionVO"
+    CustomerChurnWarningVO:
+      type: object
+      properties:
+        companyId:
+          type: integer
+          format: int64
+        companyName:
+          type: string
+        ownerId:
+          type: integer
+          format: int64
+        lastInteractionTime:
+          type: string
+          format: date-time
+        daysSinceLastInteraction:
+          type: integer
+          format: int64
+        windowDays:
+          type: integer
+          format: int32
+    ResultListCustomerChurnWarningVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomerChurnWarningVO"
     ContractANDOrderVO:
       type: object
       properties:
