@@ -66,3 +66,5 @@ git diff master --stat -- src/ frontend/ pom.xml   →  空（DIFFRC=0，零输�
 > 机械核对表出 `scripts/tests/review-mechanical-check.sh`（非门禁；设计态只报告，核对指令非预期失败以非 0 退出码如实反映）。
 
 > 注：`docs/review-intensity-policy.md` §五 L40「该脚本恒 exit 0，只报告不判定」同口径同样过期；本卡同样只披露未改，是否随本卡或 Owner 另行统一处理由 Owner 定夺。
+
+> 合入 master@93e6c7f（merge --no-ff，2+1 笔），机械核对 GO（两向自测复跑留证 work/tmp/rmct-close/rerun.txt）

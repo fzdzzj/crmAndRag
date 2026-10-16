@@ -37,7 +37,7 @@
 ## 五、机械核对脚本
 
 - `scripts/tests/review-mechanical-check.sh`：两树 git 状态 / HEAD 位置、分支 vs master diff 文件清单、指定卡 tasks.md 未勾项计数、基线文件 vs master 漂移。
-- 该脚本**恒 exit 0，只报告不判定**；不接 CI、不接 `merge-gate.sh`（D4 边界）。
+- 该脚本**非门禁，设计态只报告不判定**；核对指令非预期失败以非 0 退出码如实反映；不接 CI、不接 `merge-gate.sh`（D4 边界）。
 
 ## 六、生效语义
 

@@ -53,7 +53,7 @@
 
 ### 复核档位
 
-- 复核强度按变更内容分 A/B/C 三档，判据、职责矩阵与生效语义见 `docs/review-intensity-policy.md`；机械核对表出 `scripts/tests/review-mechanical-check.sh`（非门禁，恒 exit 0）。本卡为首个 C 档试点。
+- 复核强度按变更内容分 A/B/C 三档，判据、职责矩阵与生效语义见 `docs/review-intensity-policy.md`；机械核对表出 `scripts/tests/review-mechanical-check.sh`（非门禁；设计态只报告，核对指令非预期失败以非 0 退出码如实反映）。本卡为首个 C 档试点。
 
 ### 环境与迁移入口
 
