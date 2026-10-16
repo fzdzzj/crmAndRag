@@ -1,10 +1,15 @@
 package com.slz.crm.server.controller;
 
 import com.slz.crm.common.annotation.RequirePermission;
+import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.result.Result;
 import com.slz.crm.knowledge.document.DocumentIngestionResult;
+import com.slz.crm.knowledge.ingestion.BusinessActivityIngestionService;
+import com.slz.crm.knowledge.ingestion.ContactTaskIngestionService;
+import com.slz.crm.knowledge.ingestion.ContractIngestionService;
 import com.slz.crm.knowledge.ingestion.CustomerIngestionService;
+import com.slz.crm.knowledge.ingestion.SalesOpportunityIngestionService;
 import com.slz.crm.pojo.dto.KnowledgeAdminRetrievalRequest;
 import com.slz.crm.pojo.vo.KnowledgeAdminRetrievalResponse;
 import com.slz.crm.pojo.vo.KnowledgeBaseVO;
@@ -12,7 +17,12 @@ import com.slz.crm.pojo.vo.KnowledgeFileVO;
 import com.slz.crm.server.service.KbAdminRetrievalStrategyWriteService;
 import com.slz.crm.server.service.KbRetrievalStrategyItem;
 import com.slz.crm.server.service.KnowledgeAdminService;
+import jakarta.servlet.http.HttpServletResponse;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -23,6 +33,12 @@ import org.springframework.web.multipart.MultipartFile;
  *
  * <p>add-per-kb-retrieval-strategy-override 任务 4 新增 4 端点（策略清单 / 单键覆盖 / 单键回落 / 按版本回滚）， 同样挂
  * {@code @RequirePermission(900)}，写前过 12 键白名单。
+ *
+ * <p>unify-vector-ops-endpoints 新增统一回埋入口 {@code POST /admin/sync/{entity}} 与 {@code POST
+ * /admin/sync/all}，
+ * 委托五实体既有回埋服务（customer/contract/contactTask/businessActivity/salesOpportunity），同样挂
+ * {@code @RequirePermission(900)}；旧散落端点（各业务 Controller 的 {@code /reingestAll} 与本文的 {@code
+ * /customer/reingest}）按向后兼容保留。
  */
 @RestController
 @RequestMapping("/knowledge")
@@ -32,6 +48,14 @@ public class KnowledgeAdminController {
   private final KnowledgeAdminService knowledgeAdminService;
 
   private final CustomerIngestionService customerIngestionService;
+
+  private final ContractIngestionService contractIngestionService;
+
+  private final ContactTaskIngestionService contactTaskIngestionService;
+
+  private final BusinessActivityIngestionService businessActivityIngestionService;
+
+  private final SalesOpportunityIngestionService salesOpportunityIngestionService;
 
   /** per-KB 检索策略写端（字段注入以保持既有单参构造；端点统一挂 900 权限）。 */
   @Autowired(required = false)
@@ -145,5 +169,102 @@ public class KnowledgeAdminController {
   @RequirePermission(PermissionOperates.KNOWLEDGE_ADMIN_MANAGE)
   public Result<CustomerIngestionService.ReingestResult> reingestCustomers() {
     return Result.success(customerIngestionService.reingestAll());
+  }
+
+  // ---------------- unify-vector-ops-endpoints：向量全量回埋统一收口 ----------------
+  // 五个实体（客户/合同/跟进任务/商业活动/销售商机）的统一运维入口，权限全部复用 KNOWLEDGE_ADMIN_MANAGE(900)；
+  // 仅做入口委托，不改各实体回埋服务实现；首次真实调用 /sync/* 属成本敏感操作，须 Owner 显式授权后执行。
+
+  /** 单实体全量回埋统一结果（与各实体 ReingestResult 同构：total/success/failure）。 */
+  public record SyncResult(int total, int success, int failure) {}
+
+  /** 统一收口端点支持的同步实体（路径参数校验白名单，wireName 即对外路径段）。 */
+  enum SyncEntity {
+    CUSTOMER("customer"),
+    CONTRACT("contract"),
+    CONTACT_TASK("contactTask"),
+    BUSINESS_ACTIVITY("businessActivity"),
+    SALES_OPPORTUNITY("salesOpportunity");
+
+    private final String wireName;
+
+    SyncEntity(String wireName) {
+      this.wireName = wireName;
+    }
+
+    /** 按路径参数解析；非法实体返回 null（端点回 400）。 */
+    static SyncEntity from(String wireName) {
+      SyncEntity matched = null;
+      for (SyncEntity entity : values()) {
+        if (entity.wireName.equals(wireName)) {
+          matched = entity;
+          break;
+        }
+      }
+      return matched;
+    }
+  }
+
+  /** 单实体全量回埋（POST）：entity 属五实体枚举之一，非法值 400；委托对应实体回埋服务，不改实现。 */
+  @PostMapping("/admin/sync/{entity}")
+  @RequirePermission(PermissionOperates.KNOWLEDGE_ADMIN_MANAGE)
+  public Result<SyncResult> syncEntity(
+      @PathVariable("entity") String entity, HttpServletResponse response) {
+    SyncEntity resolved = SyncEntity.from(entity);
+    Result<SyncResult> result;
+    if (resolved == null) {
+      response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+      result =
+          Result.error(
+              ErrorCode.PARAM_FORMAT_ERROR, "未知同步实体 '" + entity + "'，可选：" + syncEntityNames());
+    } else {
+      result = Result.success(syncOne(resolved));
+    }
+    return result;
+  }
+
+  /** 五实体全量回埋（POST）：逐个委托，返回实体名 → 结果的映射（键序固定为枚举声明序）。 */
+  @PostMapping("/admin/sync/all")
+  @RequirePermission(PermissionOperates.KNOWLEDGE_ADMIN_MANAGE)
+  public Result<Map<String, SyncResult>> syncAll() {
+    Map<String, SyncResult> results = new LinkedHashMap<>();
+    for (SyncEntity entity : SyncEntity.values()) {
+      results.put(entity.wireName, syncOne(entity));
+    }
+    return Result.success(results);
+  }
+
+  private SyncResult syncOne(SyncEntity entity) {
+    return switch (entity) {
+      case CUSTOMER -> toSyncResult(customerIngestionService.reingestAll());
+      case CONTRACT -> toSyncResult(contractIngestionService.reingestAll());
+      case CONTACT_TASK -> toSyncResult(contactTaskIngestionService.reingestAll());
+      case BUSINESS_ACTIVITY -> toSyncResult(businessActivityIngestionService.reingestAll());
+      case SALES_OPPORTUNITY -> toSyncResult(salesOpportunityIngestionService.reingestAll());
+    };
+  }
+
+  private static SyncResult toSyncResult(CustomerIngestionService.ReingestResult r) {
+    return new SyncResult(r.total(), r.success(), r.failure());
+  }
+
+  private static SyncResult toSyncResult(ContractIngestionService.ReingestResult r) {
+    return new SyncResult(r.total(), r.success(), r.failure());
+  }
+
+  private static SyncResult toSyncResult(ContactTaskIngestionService.ReingestResult r) {
+    return new SyncResult(r.total(), r.success(), r.failure());
+  }
+
+  private static SyncResult toSyncResult(BusinessActivityIngestionService.ReingestResult r) {
+    return new SyncResult(r.total(), r.success(), r.failure());
+  }
+
+  private static SyncResult toSyncResult(SalesOpportunityIngestionService.ReingestResult r) {
+    return new SyncResult(r.total(), r.success(), r.failure());
+  }
+
+  private static String syncEntityNames() {
+    return Arrays.stream(SyncEntity.values()).map(e -> e.wireName).collect(Collectors.joining("/"));
   }
 }
