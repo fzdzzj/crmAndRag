@@ -239,3 +239,11 @@
 - [ ] 页面：`/client/list`（`流失风险` 模式下）| 点「生成流失预警待办」→ 二次确认弹窗文案含「近 60 天无任何互动」与「已存在进行中流失预警待办的将自动跳过」；确认后 toast 为「已生成 N 条流失预警待办」（无新增时为「扫描完成，无新增待办」），且风险清单自动重取；无 `CUSTOMER_UPDATE_CUSTOMER_COMPANY` 权限的账号看不到该按钮
 - [ ] 页面：`/client/list`（`流失风险` 模式下）| 接口不可用（后端 500 或网络断开）时，表格进入 loading 后展示空清单且不误报成功 toast；恢复后点「刷新风险清单」可重新取回数据
 
+
+## 2026-10-16 unify-vector-ops-endpoints（向量运维端点统一收口）
+
+- [ ] 页面：/knowledge 知识库管理 | 向量库运维卡片显示五实体入口（客户/合同/跟进任务/商业活动/销售商机）与"全部同步"按钮
+- [ ] 页面：/knowledge 知识库管理 | 点击单实体按钮弹出确认框，确认后调用 /knowledge/admin/sync/{entity} 并在卡片显示最近同步结果（成功/失败/总计）
+- [ ] 页面：/knowledge 知识库管理 | 点击"全部同步"调用 /knowledge/admin/sync/all，五实体结果全部刷新
+- [ ] 页面：/knowledge 知识库管理 | 非法 entity（如 /sync/unknownEntity）返回 400
+

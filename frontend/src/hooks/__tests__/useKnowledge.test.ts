@@ -15,18 +15,27 @@ const sdkState = vi.hoisted(() => ({
   deleteKnowledgeFilesById: vi.fn(),
   postKnowledgeFilesByIdReingest: vi.fn(),
   postKnowledgeRetrievalTest: vi.fn(),
+  postKnowledgeAdminSyncByEntity: vi.fn(),
+  postKnowledgeAdminSyncAll: vi.fn(),
 }));
 
 vi.mock('@/api/axios/sdk.gen.ts', () => ({
-  getKnowledgeBases: (...args: unknown[]) => sdkState.getKnowledgeBases(...(args as [])),
-  getKnowledgeFiles: (...args: unknown[]) => sdkState.getKnowledgeFiles(...(args as [])),
-  postKnowledgeFiles: (...args: unknown[]) => sdkState.postKnowledgeFiles(...(args as [])),
+  getKnowledgeBases: (...args: unknown[]) =>
+    sdkState.getKnowledgeBases(...(args as [])),
+  getKnowledgeFiles: (...args: unknown[]) =>
+    sdkState.getKnowledgeFiles(...(args as [])),
+  postKnowledgeFiles: (...args: unknown[]) =>
+    sdkState.postKnowledgeFiles(...(args as [])),
   deleteKnowledgeFilesById: (...args: unknown[]) =>
     sdkState.deleteKnowledgeFilesById(...(args as [])),
   postKnowledgeFilesByIdReingest: (...args: unknown[]) =>
     sdkState.postKnowledgeFilesByIdReingest(...(args as [])),
   postKnowledgeRetrievalTest: (...args: unknown[]) =>
     sdkState.postKnowledgeRetrievalTest(...(args as [])),
+  postKnowledgeAdminSyncByEntity: (...args: unknown[]) =>
+    sdkState.postKnowledgeAdminSyncByEntity(...(args as [])),
+  postKnowledgeAdminSyncAll: (...args: unknown[]) =>
+    sdkState.postKnowledgeAdminSyncAll(...(args as [])),
 }));
 
 vi.mock('ant-design-vue', async (importOriginal) => {
@@ -44,12 +53,19 @@ import {
   useKnowledgeFileRemove,
   useKnowledgeReingest,
   useRetrievalTest,
+  useKnowledgeSyncEntity,
+  useKnowledgeSyncAll,
+  SYNC_ENTITIES,
   type KnowledgeBaseVO,
   type KnowledgeFileVO,
 } from '@/hooks/useKnowledge';
 
 /** ant-design-vue 全局 Toast 的 mock 句柄（显式收窄，规避 @typescript-eslint/unbound-method） */
-const toast = message as unknown as { success: Mock; error: Mock; warning: Mock };
+const toast = message as unknown as {
+  success: Mock;
+  error: Mock;
+  warning: Mock;
+};
 
 function makeBase(overrides: Partial<KnowledgeBaseVO> = {}): KnowledgeBaseVO {
   return {
@@ -79,9 +95,14 @@ function makeFile(overrides: Partial<KnowledgeFileVO> = {}): KnowledgeFileVO {
 }
 
 /** 在无 @vue/test-utils 依赖下挂载一个使用 vue-query 的组合式函数 */
-function withSetup<T>(composable: () => T): { result: () => T; queryClient: QueryClient } {
+function withSetup<T>(composable: () => T): {
+  result: () => T;
+  queryClient: QueryClient;
+} {
   let result!: T;
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   const host = document.createElement('div');
   const App = defineComponent({
     setup() {
@@ -104,7 +125,10 @@ describe('useKnowledgeBases', () => {
     sdkState.getKnowledgeBases.mockResolvedValue({
       data: {
         code: 1,
-        data: [makeBase(), makeBase({ id: 2, name: 'kb-2', displayName: '售后库' })],
+        data: [
+          makeBase(),
+          makeBase({ id: 2, name: 'kb-2', displayName: '售后库' }),
+        ],
       },
     });
     const { result } = withSetup(() => useKnowledgeBases());
@@ -149,7 +173,10 @@ describe('useKnowledgeFiles', () => {
     const { result } = withSetup(() => useKnowledgeFiles(kbId));
     await vi.waitFor(() => expect(result().isSuccess.value).toBe(true));
     expect(sdkState.getKnowledgeFiles).toHaveBeenCalledWith(
-      expect.objectContaining({ client: expect.anything(), query: { kbId: 101 } }),
+      expect.objectContaining({
+        client: expect.anything(),
+        query: { kbId: 101 },
+      }),
     );
   });
 
@@ -171,7 +198,9 @@ describe('useKnowledgeFiles', () => {
         expect.objectContaining({ query: { kbId: 202 } }),
       ),
     );
-    expect(sdkState.getKnowledgeFiles.mock.calls.length).toBeGreaterThan(callsBefore);
+    expect(sdkState.getKnowledgeFiles.mock.calls.length).toBeGreaterThan(
+      callsBefore,
+    );
     expect(result().isSuccess.value).toBe(true);
   });
 });
@@ -181,12 +210,19 @@ describe('useKnowledgeUpload', () => {
     sdkState.postKnowledgeFiles.mockResolvedValue({
       data: {
         code: 1,
-        data: { uploadedFileId: 1, documentId: 'doc-uuid-123', chunkCount: 12, vectorCount: 12 },
+        data: {
+          uploadedFileId: 1,
+          documentId: 'doc-uuid-123',
+          chunkCount: 12,
+          vectorCount: 12,
+        },
       },
     });
     const { result, queryClient } = withSetup(() => useKnowledgeUpload());
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
-    const file = new File(['demo'], '产品手册.pdf', { type: 'application/pdf' });
+    const file = new File(['demo'], '产品手册.pdf', {
+      type: 'application/pdf',
+    });
     const saved = await result().mutateAsync({ file, kbId: 101 });
     expect(sdkState.postKnowledgeFiles).toHaveBeenCalledWith(
       expect.objectContaining({ body: { file, kbId: 101 } }),
@@ -201,14 +237,18 @@ describe('useKnowledgeUpload', () => {
     sdkState.postKnowledgeFiles.mockRejectedValue(new Error('文件格式不支持'));
     const { result } = withSetup(() => useKnowledgeUpload());
     const file = new File(['demo'], 'bad.exe');
-    await expect(result().mutateAsync({ file, kbId: 101 })).rejects.toThrow('文件格式不支持');
+    await expect(result().mutateAsync({ file, kbId: 101 })).rejects.toThrow(
+      '文件格式不支持',
+    );
     expect(toast.error).toHaveBeenCalledWith('文件格式不支持');
   });
 });
 
 describe('useKnowledgeFileRemove', () => {
   it('删除成功触发缓存失效并弹出成功提示', async () => {
-    sdkState.deleteKnowledgeFilesById.mockResolvedValue({ data: { code: 1, data: true } });
+    sdkState.deleteKnowledgeFilesById.mockResolvedValue({
+      data: { code: 1, data: true },
+    });
     const { result, queryClient } = withSetup(() => useKnowledgeFileRemove());
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
     const removed = await result().mutateAsync('doc-uuid-123');
@@ -222,9 +262,13 @@ describe('useKnowledgeFileRemove', () => {
   });
 
   it('删除失败时弹出错误提示', async () => {
-    sdkState.deleteKnowledgeFilesById.mockRejectedValue(new Error('文档不存在或无权限'));
+    sdkState.deleteKnowledgeFilesById.mockRejectedValue(
+      new Error('文档不存在或无权限'),
+    );
     const { result } = withSetup(() => useKnowledgeFileRemove());
-    await expect(result().mutateAsync('doc-x')).rejects.toThrow('文档不存在或无权限');
+    await expect(result().mutateAsync('doc-x')).rejects.toThrow(
+      '文档不存在或无权限',
+    );
     expect(toast.error).toHaveBeenCalledWith('文档不存在或无权限');
   });
 });
@@ -234,7 +278,12 @@ describe('useKnowledgeReingest', () => {
     sdkState.postKnowledgeFilesByIdReingest.mockResolvedValue({
       data: {
         code: 1,
-        data: { uploadedFileId: 1, documentId: 'doc-uuid-456', chunkCount: 8, vectorCount: 8 },
+        data: {
+          uploadedFileId: 1,
+          documentId: 'doc-uuid-456',
+          chunkCount: 8,
+          vectorCount: 8,
+        },
       },
     });
     const { result, queryClient } = withSetup(() => useKnowledgeReingest());
@@ -250,7 +299,9 @@ describe('useKnowledgeReingest', () => {
   });
 
   it('重建失败时弹出错误提示', async () => {
-    sdkState.postKnowledgeFilesByIdReingest.mockRejectedValue(new Error('重建失败'));
+    sdkState.postKnowledgeFilesByIdReingest.mockRejectedValue(
+      new Error('重建失败'),
+    );
     const { result } = withSetup(() => useKnowledgeReingest());
     await expect(result().mutateAsync('doc-x')).rejects.toThrow('重建失败');
     expect(toast.error).toHaveBeenCalledWith('重建失败');
@@ -298,7 +349,12 @@ describe('useRetrievalTest', () => {
       },
     });
     const { result } = withSetup(() => useRetrievalTest());
-    await result().mutateAsync({ kbId: 1, query: '退款', topK: 8, useVector: true });
+    await result().mutateAsync({
+      kbId: 1,
+      query: '退款',
+      topK: 8,
+      useVector: true,
+    });
     expect(sdkState.postKnowledgeRetrievalTest).toHaveBeenCalledWith(
       expect.objectContaining({
         body: { kbId: 1, query: '退款', topK: 8, useVector: true },
@@ -307,9 +363,69 @@ describe('useRetrievalTest', () => {
   });
 
   it('检索失败时拦截错误并弹出错误提示', async () => {
-    sdkState.postKnowledgeRetrievalTest.mockRejectedValue(new Error('检索服务不可用'));
+    sdkState.postKnowledgeRetrievalTest.mockRejectedValue(
+      new Error('检索服务不可用'),
+    );
     const { result } = withSetup(() => useRetrievalTest());
-    await expect(result().mutateAsync({ query: '产品报价' })).rejects.toThrow('检索服务不可用');
+    await expect(result().mutateAsync({ query: '产品报价' })).rejects.toThrow(
+      '检索服务不可用',
+    );
     expect(toast.error).toHaveBeenCalledWith('检索服务不可用');
+  });
+});
+
+describe('useKnowledgeSyncEntity', () => {
+  it('按实体 key 调用统一回埋端点并返回 SyncResult 计数', async () => {
+    sdkState.postKnowledgeAdminSyncByEntity.mockResolvedValue({
+      data: { code: 1, data: { total: 10, success: 9, failure: 1 } },
+    });
+    const { result } = withSetup(() => useKnowledgeSyncEntity());
+    const saved = await result().mutateAsync('customer');
+    expect(sdkState.postKnowledgeAdminSyncByEntity).toHaveBeenCalledWith(
+      expect.objectContaining({ path: { entity: 'customer' } }),
+    );
+    expect(saved).toEqual({ total: 10, success: 9, failure: 1 });
+  });
+
+  it('同步失败时弹出错误提示（不触发任何真实重嵌入）', async () => {
+    sdkState.postKnowledgeAdminSyncByEntity.mockRejectedValue(
+      new Error('同步失败'),
+    );
+    const { result } = withSetup(() => useKnowledgeSyncEntity());
+    await expect(result().mutateAsync('contract')).rejects.toThrow('同步失败');
+    expect(toast.error).toHaveBeenCalledWith('同步失败');
+  });
+});
+
+describe('useKnowledgeSyncAll', () => {
+  it('一次请求返回五实体结果映射', async () => {
+    const all = Object.fromEntries(
+      SYNC_ENTITIES.map((e) => [e.key, { total: 1, success: 1, failure: 0 }]),
+    );
+    sdkState.postKnowledgeAdminSyncAll.mockResolvedValue({
+      data: { code: 1, data: all },
+    });
+    const { result } = withSetup(() => useKnowledgeSyncAll());
+    const saved = await result().mutateAsync(undefined);
+    expect(sdkState.postKnowledgeAdminSyncAll).toHaveBeenCalledWith(
+      expect.objectContaining({ client: expect.anything() }),
+    );
+    expect(Object.keys(saved)).toHaveLength(SYNC_ENTITIES.length);
+    expect(saved.salesOpportunity).toEqual({
+      total: 1,
+      success: 1,
+      failure: 0,
+    });
+  });
+
+  it('全量同步失败时弹出错误提示', async () => {
+    sdkState.postKnowledgeAdminSyncAll.mockRejectedValue(
+      new Error('全量同步失败'),
+    );
+    const { result } = withSetup(() => useKnowledgeSyncAll());
+    await expect(result().mutateAsync(undefined)).rejects.toThrow(
+      '全量同步失败',
+    );
+    expect(toast.error).toHaveBeenCalledWith('全量同步失败');
   });
 });

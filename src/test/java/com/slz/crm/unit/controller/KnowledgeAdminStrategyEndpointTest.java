@@ -7,7 +7,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.slz.crm.knowledge.ingestion.BusinessActivityIngestionService;
+import com.slz.crm.knowledge.ingestion.ContactTaskIngestionService;
+import com.slz.crm.knowledge.ingestion.ContractIngestionService;
 import com.slz.crm.knowledge.ingestion.CustomerIngestionService;
+import com.slz.crm.knowledge.ingestion.SalesOpportunityIngestionService;
 import com.slz.crm.server.controller.KnowledgeAdminController;
 import com.slz.crm.server.service.KbAdminRetrievalStrategyWriteService;
 import com.slz.crm.server.service.KnowledgeAdminService;
@@ -33,7 +37,13 @@ class KnowledgeAdminStrategyEndpointTest {
   private final KbAdminRetrievalStrategyWriteService writeService =
       mock(KbAdminRetrievalStrategyWriteService.class);
   private final KnowledgeAdminController controller =
-      new KnowledgeAdminController(service, mock(CustomerIngestionService.class));
+      new KnowledgeAdminController(
+          service,
+          mock(CustomerIngestionService.class),
+          mock(ContractIngestionService.class),
+          mock(ContactTaskIngestionService.class),
+          mock(BusinessActivityIngestionService.class),
+          mock(SalesOpportunityIngestionService.class));
   private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
 
   @BeforeEach
