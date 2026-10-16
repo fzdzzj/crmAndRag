@@ -56,6 +56,8 @@
 - **成本红线**：本卡未发起任何真实 `/sync/*` 调用（单测全 mock 向量服务；前端卡片仅渲染入口与结果占位，
   点击后走确认弹窗，真实执行须 Owner 显式授权）。
 
+> 合入 master@8d24c06（merge --no-ff，8+1 笔），复核 GO 报告 work/review-unify-vector-ops-endpoints-b.md
+
 ## 5. 待 Owner 决策
 
 - 旧散落端点是否后续加 `@Deprecated` + openapi 弃用描述（本卡按 diff 最小保留，见 §3.1）。
