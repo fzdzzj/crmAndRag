@@ -2298,6 +2298,34 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultReingestResult"
+  /knowledge/admin/sync/{entity}:
+    post:
+      tags:
+      - knowledge-admin-controller
+      parameters:
+      - name: entity
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultSyncResult"
+  /knowledge/admin/sync/all:
+    post:
+      tags:
+      - knowledge-admin-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultMapStringSyncResult"
   /invoice/info/query:
     post:
       tags:
@@ -7796,6 +7824,40 @@ components:
           type: string
         data:
           $ref: "#/components/schemas/DocumentIngestionResult"
+    ResultSyncResult:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/SyncResult"
+    SyncResult:
+      type: object
+      properties:
+        total:
+          type: integer
+          format: int32
+        success:
+          type: integer
+          format: int32
+        failure:
+          type: integer
+          format: int32
+    ResultMapStringSyncResult:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/SyncResult"
     InvoiceInfoVO:
       type: object
       properties:
