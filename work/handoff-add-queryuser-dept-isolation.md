@@ -68,3 +68,5 @@
 ## 8. 自检已覆盖红线
 
 零迁移（未建 Vxx）、零权限常量、零冻结契约（spec/ 零 diff，`/user/find` OpenAPI 契约未变）、未改 queryUser 之外的 AI 工具、未动 PermissionsInterceptor 本体（仅对齐其既有 roleId=1 豁免口径）、零 LLM/向量库外呼、预期零前端改动（实际零）。
+
+> 合入 master@51028c2（merge --no-ff，4+1 笔），复核 GO 报告 raw：work/tmp/qdi-review/review-evidence.md
