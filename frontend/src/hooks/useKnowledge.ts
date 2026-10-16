@@ -9,6 +9,8 @@ import {
   deleteKnowledgeFilesById,
   postKnowledgeFilesByIdReingest,
   postKnowledgeRetrievalTest,
+  postKnowledgeAdminSyncAll,
+  postKnowledgeAdminSyncByEntity,
 } from '@/api/axios/sdk.gen.ts';
 
 // Types matching backend (from proposal + controller + openapi sync)
@@ -61,6 +63,24 @@ export interface KnowledgeAdminRetrievalResponse {
     filename?: string;
   }>;
 }
+
+/** 向量全量回埋统一结果（与后端 SyncResult 同构：total/success/failure）。 */
+export interface SyncResult {
+  total: number;
+  success: number;
+  failure: number;
+}
+
+/** 统一回埋端点支持的实体白名单（与后端 SyncEntity wireName 一一对应）。 */
+export const SYNC_ENTITIES = [
+  { key: 'customer', label: '客户' },
+  { key: 'contract', label: '合同' },
+  { key: 'contactTask', label: '跟进任务' },
+  { key: 'businessActivity', label: '商业活动' },
+  { key: 'salesOpportunity', label: '销售商机' },
+] as const;
+
+export type SyncEntityKey = (typeof SYNC_ENTITIES)[number]['key'];
 
 const KB_QUERY_KEY = 'knowledgeBases';
 const FILES_QUERY_KEY = 'knowledgeFiles';
@@ -119,14 +139,18 @@ export function useKnowledgeFileRemove() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const res = await deleteKnowledgeFilesById({ client: apiClient, path: { id } });
+      const res = await deleteKnowledgeFilesById({
+        client: apiClient,
+        path: { id },
+      });
       return Boolean(res.data?.data);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [FILES_QUERY_KEY] });
       message.success('删除成功');
     },
-    onError: (err: unknown) => message.error((err as Error)?.message || '删除失败'),
+    onError: (err: unknown) =>
+      message.error((err as Error)?.message || '删除失败'),
   });
 }
 
@@ -134,14 +158,18 @@ export function useKnowledgeReingest() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const res = await postKnowledgeFilesByIdReingest({ client: apiClient, path: { id } });
+      const res = await postKnowledgeFilesByIdReingest({
+        client: apiClient,
+        path: { id },
+      });
       return narrow<DocumentIngestionResult>(res.data?.data);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [FILES_QUERY_KEY] });
       message.success('重建任务已提交，摄取中...');
     },
-    onError: (err: unknown) => message.error((err as Error)?.message || '重建失败'),
+    onError: (err: unknown) =>
+      message.error((err as Error)?.message || '重建失败'),
   });
 }
 
@@ -159,6 +187,34 @@ export function useRetrievalTest() {
       });
       return narrow<KnowledgeAdminRetrievalResponse>(res.data?.data);
     },
-    onError: (err: unknown) => message.error((err as Error)?.message || '检索测试失败'),
+    onError: (err: unknown) =>
+      message.error((err as Error)?.message || '检索测试失败'),
+  });
+}
+
+// ---------------- unify-vector-ops-endpoints：向量全量回埋统一运维入口 ----------------
+
+export function useKnowledgeSyncEntity() {
+  return useMutation({
+    mutationFn: async (entity: SyncEntityKey) => {
+      const res = await postKnowledgeAdminSyncByEntity({
+        client: apiClient,
+        path: { entity },
+      });
+      return narrow<SyncResult>(res.data?.data);
+    },
+    onError: (err: unknown) =>
+      message.error((err as Error)?.message || '同步失败'),
+  });
+}
+
+export function useKnowledgeSyncAll() {
+  return useMutation({
+    mutationFn: async () => {
+      const res = await postKnowledgeAdminSyncAll({ client: apiClient });
+      return narrow<Record<SyncEntityKey, SyncResult>>(res.data?.data);
+    },
+    onError: (err: unknown) =>
+      message.error((err as Error)?.message || '全量同步失败'),
   });
 }
