@@ -44,12 +44,12 @@
 
 ## 4. HEAD / 树净 / 提交披露（禁止虚报）
 
-- **HEAD**：完工提交后如实填写下方最终哈希（commit 后回填）。
-- **git log master..HEAD**：线性（本卡全部提交自 master 单线检出，无 merge）。
+- **HEAD**：`39620af8f4b131e6b805a9c2df19c3e381062752`（`git rev-parse HEAD` 实测，完工时点）。
+- **git log master..HEAD**：线性（本卡全部提交自 master 单线检出，无 merge），5 个提交：
 - **树净**：提交后 `git status --porcelain` 仅剩**他人卡面遗留未跟踪文件**（`openspec/changes/add-queryuser-dept-isolation/`、
   `openspec/changes/fix-review-mechanical-check-true/`、`work/task-card-add-queryuser-dept-isolation.md`、
   `work/task-card-fix-review-mechanical-check-true.md`、`work/task-card-wire-customer-insight-panel.md`，
-  共 5 项，与本卡无关、开工前已在案）；本卡范围文件全部入库。
+  共 5 项，与本卡无关、开工前已在案）；本卡范围文件全部入库（含 openspec 三件套、handoff、task-card）。
 - **typed-router.d.ts**：vitest/gen:api 再生后已 `git checkout --` 还原，提交零 diff（`git status --porcelain -- frontend/typed-router.d.ts` 为空实测）。
 - **未 merge / 未 push**：✅ 完工停步等 Owner，未执行任何 merge/push。
 - **成本红线**：本卡未发起任何真实 `/sync/*` 调用（单测全 mock 向量服务；前端卡片仅渲染入口与结果占位，
