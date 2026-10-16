@@ -1,6 +1,6 @@
 # 交接快照 · add-ai-insight-to-action-conversion（AI 诊断建议一键转 Action）
 
-> 执行子 agent 完工交接。B 档。分支 `feature/add-ai-insight-to-action-conversion`，自 `master@246a849` 检出，线性提交，**未 merge、未 push，停步等 Owner**。
+> 执行子 agent 完工交接。B 档。分支 `feature/add-ai-insight-to-action-conversion`，自 `master@246a849` 检出，4 笔线性提交（分支 HEAD `fca34e5`），已 `merge --no-ff 159837a` 合入 master 并 push。
 
 ## 1. 目标与成果
 
@@ -30,7 +30,7 @@
 - 零 DB 迁移（未碰 V1~V42）；零新增权限常量（复用 CUSTOMER_VIEW_COMPANY=117）；零 LLM 外呼；零冻结契约触碰。
 - 未改 `PendingActionService` 确认流与任何 `AiActionExecutor`；未新建/修改 ActionTypeEnum。
 - `frontend/typed-router.d.ts` 未提交（他人/生成物，已还原）。
-- 未 merge、未 push。
+- 已 `merge --no-ff 159837a` 合入 master、已 push（推送范围仅 merge 笔一笔）。
 
 ## 4. 已知非阻塞项 / 待 Owner 决策
 
@@ -63,7 +63,7 @@ bash scripts/check-openapi-consistency.sh
 
 ## 7. 交接状态
 
-- HEAD（基）：`246a849`
+- 分支 HEAD：`fca34e5`（4 笔线性，自 `master@246a849` 检出）
 - 分支：`feature/add-ai-insight-to-action-conversion`
-- merge / push：**未执行**，停步等 Owner。
+- merge：已 `merge --no-ff 159837a` 合入 master；push：已推 `246a849..159837a`（仅 merge 笔一笔）。
 - 原始日志：`work/review-surefire.log`、`work/review-merge-gate.log`、`work/review-frontend-{lint,typecheck,test}.log`（均 gitignored）。
