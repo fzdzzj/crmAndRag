@@ -1,9 +1,9 @@
 # 交接快照 · 客户流失预警与再激活任务流 (add-customer-churn-warning-and-reactivation)
 
-- **分支机构**：`feature/add-customer-churn-warning-and-reactivation`（单亲线性，自 master `0563052` 检出）
+- **分支机构**：`feature/add-customer-churn-warning-and-reactivation`（5 笔线性：c141e34 → 3d92e91 → 89effc7 → 74db150 → c91555e，自 master `0563052` 检出；分支 HEAD `c91555e`）
 - **基线 commit**：master `05630529d1d4618ebb9fdad467c39405c7cceed7`
 - **复核档位**：B 档（零 DB 迁移 / 零权限常量 / 零 LLM 外呼 / 零冻结契约触碰）
-- **执行状态**：代码 + 单测 + openapi 契约 + 前端 UI 全部完成，`mvn clean verify` 与 `merge-gate.sh --with-verify` 全绿，**未 merge、未 push**（停步等 Owner）
+- **执行状态**：代码 + 单测 + openapi 契约 + 前端 UI 全部完成，`mvn clean verify` 与 `merge-gate.sh --with-verify` 全绿；已由 Owner 执行 `git merge --no-ff`（`1bb0b50`）合入 master 并 push
 
 ## 1. 交付物清单
 
@@ -47,7 +47,7 @@
 - **零 LLM 外呼**：纯规则判定 + 待办落库，无外部模型调用。
 - **零冻结契约**：`spec/changes/add-crm-rag-fusion-platform/contracts-frozen.md` 未触碰。
 - **未改禁改本体**：`CustomerPoolService` 回池逻辑与 `CustomerInsightService` 诊断本体均未触碰；`frontend/typed-router.d.ts` 分支提交零 diff（vitest 行尾噪声已 `git checkout --` 还原）。
-- **单亲线性**：分支为 master `0563052` 单亲检出，无 merge 历史，未执行 `git merge` / `git push`。
+- **单亲线性**：分支为 master `0563052` 单亲检出，5 笔线性（HEAD `c91555e`），无 merge 历史；已由 Owner 执行 `merge --no-ff`（`1bb0b50`）合入 master 并 push，feature 分支保留。
 
 ## 3. 规则判定与幂等防重实现说明
 
@@ -82,7 +82,7 @@
 
 ## 5. 待 Owner 决策 / 遗留说明
 
-1. **待 merge 授权**：验证完成后按纪律由 Owner 授权 `git merge --no-ff` 合入 master，**本子 agent 未执行 merge/push**。
+1. **已合入**：Owner 已授权并执行 `git merge --no-ff`（`1bb0b50`）合入 master 并 push；feature 分支按纪律保留。
 2. **SDK 为 gitignored 产物**：`frontend/src/api/axios/` 不入库，已在本地由 `pnpm gen:api` 重新生成（含 `postCustomerChurnWarningScan` / `getCustomerChurnWarningList`）；CI/其他机器需在安装后重跑一次。
 3. **窗口天数可配**：判定窗口默认 60 天，`application.yml`/环境变量 `crm.customer-churn.inactive-days` 可覆盖（前端 Alert 文案仍按 60 天硬编码，若改配置需同步文案）。
 4. **扫描上限**：单次扫描最多 500 家私海客户（防一次性拉取过大）；超出部分下个调度周期覆盖，超大租户需评估分批策略。

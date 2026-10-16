@@ -1,6 +1,6 @@
 # 主 Agent 轮换交接活看板 (Active Main Agent Handoff)
 
-> **更新时间**：2026-10-16  
+> **更新时间**：2026-10-16（当日四卡）  
 > **维护契约**：**本文件必须采用整体覆盖更新（Rolling Overwrite），严禁无限追加历史流水账**！  
 > **适用对象**：**新打开主 Agent 对话窗口时第一必读入口**。读完即可立即进入指导工作状态。
 
@@ -8,9 +8,9 @@
 
 ## 1. 现状快照 (Current State Snapshot)
 
-- **当前主干版本**：`master@0358bcd`（已合入本卡 `wire-customer-insight-panel`，merge 笔 `0358bcd`）
-- **测试基线**：Surefire 1457 / Failsafe 118（7 skipped），`scripts/test-baseline.txt` 权威对账（持平未 `--update`）
-- **门禁状态**：四静态全 0 违规，聚合门禁 `merge-gate.sh` 8 项全 PASS（surefire 1457 单测 / 前端 188 用例 pass，Docker MySQL V1~V42 真库 28 迁移全绿（下一可用号仍 V43），SchemaDrift / PermissionCoverage 双 0 CRITICAL）
+- **当前主干版本**：`master@1bb0b50`（已合入本卡 `add-customer-churn-warning-and-reactivation`，merge 笔 `1bb0b50`）
+- **测试基线**：Surefire 1472 / Failsafe 118（7 skipped），`scripts/test-baseline.txt` 权威对账（本卡 `--update` 真实写入 1472）
+- **门禁状态**：四静态全 0 违规，聚合门禁 `merge-gate.sh` 8 项全 PASS（surefire 1472 单测 / 前端 188 用例 pass，Docker MySQL V1~V42 真库 28 迁移全绿（下一可用号仍 V43），SchemaDrift / PermissionCoverage 双 0 CRITICAL）
 - **工作树拓扑**：
   - 观察树：`D:\code\crmAndRag`（承载执行日志 `docs/`、任务卡与交接 `work/`）
   - 权威树（主干）：`D:\code\crmAndRag-merge-add-knowledge-admin-api`（分支检出、门禁运行、代码合并唯一法定树）
@@ -19,26 +19,27 @@
 
 ## 2. 核心架构与现行能力面
 
-1. **CustomerInsightPanel 双宿主接线（刚刚合入）**：客户详情弹窗（CompanyEditModal 只读路径）嵌入「客户诊断」区 + AI 助手抽屉上下文诊断面板（路由 query filters.id 优先 / 对话内 CUSTOMER 来源兜底，📊 药丸联动），created 反馈与刷新双宿主齐备；Insight → Action 最后一公里收口；+4 Vitest 至 188 用例。
-2. **AI 诊断建议一键转 Action**：后端 InsightToActionService 纯结构化映射（零外呼），诊断 actionSuggestions[index] → 复用既有草稿 DTO → PendingActionService.submitDraft 返回 pendingId；端点 POST /ai/insight/customer/{companyId}/to-action 挂 CUSTOMER_VIEW_COMPANY(117)，actionType 仅 CREATE_CONTACT_TASK / CREATE_BUSINESS_ACTIVITY；前端 CustomerInsightPanel.vue 转待办/转活动 + hook + 5 Vitest。
-3. **销售线索管理与一键转化商机漏斗**：
+1. **客户流失预警与自动化再激活（刚刚合入）**：确定性规则（三源皆空：已完成跟进/商业活动/合同回款 + @Value 60 天窗口）扫描私海客户 → hasInProgressTask 幂等建高优待办（描述含诊断→Insight→Action 引导）→ 每日 4 点错峰调度；POST/GET /customer/churn/warning/* 复用 117/113；前端客户列表流失筛选 + 一键触发 + 3 Playwright 检查点；零 LLM 零迁移。
+2. **CustomerInsightPanel 双宿主接线**：客户详情弹窗（CompanyEditModal 只读路径）嵌入「客户诊断」区 + AI 助手抽屉上下文诊断面板（路由 query filters.id 优先 / 对话内 CUSTOMER 来源兜底，📊 药丸联动），created 反馈与刷新双宿主齐备；Insight → Action 最后一公里收口；+4 Vitest 至 188 用例。
+3. **AI 诊断建议一键转 Action**：后端 InsightToActionService 纯结构化映射（零外呼），诊断 actionSuggestions[index] → 复用既有草稿 DTO → PendingActionService.submitDraft 返回 pendingId；端点 POST /ai/insight/customer/{companyId}/to-action 挂 CUSTOMER_VIEW_COMPANY(117)，actionType 仅 CREATE_CONTACT_TASK / CREATE_BUSINESS_ACTIVITY；前端 CustomerInsightPanel.vue 转待办/转活动 + hook + 5 Vitest。
+4. **销售线索管理与一键转化商机漏斗**：
    - 数据基座：Flyway V42 新建 `sales_lead` 线索表（意向等级/获取渠道/转化回填字段组）；
    - 业务闭环：`/sales/lead` 6 端点（录入/详情/分页/更新/删除/转化）复用既有 111/113/114/116/117 权限常量；
    - 一键转化：`convert` 单 `@Transactional` 内创建客户公司 + 首要联系人 + 可选商机并回填转化状态，事务后经 `runAfterCommitAsync` 异步派发向量同步；
    - 前端 `lead.page.vue`：线索分页列表、状态徽标筛选、录入与转化对话框闭环。
-4. **合同履约到期预警与逾期应收催款待办联动**：
+5. **合同履约到期预警与逾期应收催款待办联动**：
    - `ContractMapper` 扩展到期/超期与逾期未结回款统计；`ContractWarningService` 幂等生成高优先级 `ContactTask`；
    - `ContractWarningScheduler` 每天凌晨 3 点运行；端点 `/contract/warning/*` 挂载 215/214；前端 `contract.page.vue` 预警快捷筛选与一键生成待办。
-5. **CRM 客户公海池与全生命周期流转闭环**：
+6. **CRM 客户公海池与全生命周期流转闭环**：
    - Flyway V41 组合索引 + `customer_pool_log` 流转表；公海查询避开私海切面，认领配额 50 上限拦截 20003；
    - `CustomerPoolRecycleScheduler` 每天回收超时私海；`BusinessActivity` 联动刷新活跃度；前端 `pool.page.vue` 专属视图。
-6. **AI 智能商业诊断与会话交互深化**：
+7. **AI 智能商业诊断与会话交互深化**：
    - 客户 360° AI 诊断引擎：多实体聚合 + 确定性规则评分（0~100 与四级健康度）+ 风险警示；
    - `ModelProvider` 商业画像摘要与拜访建议，双层安全降级杜绝 500；会话首问后异步提炼标题 + 4 枚快捷药丸指令。
-7. **RAG 检索与五业务实体语义检索完全体**：
+8. **RAG 检索与五业务实体语义检索完全体**：
    - 知识库混合检索（向量 + FULLTEXT ngram）+ RRF 融合，支持父子块切分；
    - 5 大业务实体语义检索汇入 Qdrant `crm_entity`，事务后异步派发；严格四档数据权限闸 + 逐命中纵深防御。
-8. **AI 助手工具面与权限治理**：
+9. **AI 助手工具面与权限治理**：
    - 32 个 AI 工具（23 查询 + 9 草稿）方法级 `@RequirePermission`，用户状态检查前置；
    - Schema 漂移门禁：`KnownDriftRegistry` 豁免在册，真库 CRITICAL=0。
 
@@ -49,8 +50,8 @@
 - **在途待合入卡**：无
 - **核心待办队列（详见 `work/_paa-candidates-pool.md` §7 最新调研笔记）**：
   - **方向 1 · AI 主动赋能高价值闭环（强烈推荐下一卡）**：
-    - 客户流失预警与再激活自动化任务流（下一主卡，指导侧立项中）；
-  - **方向 2 · CRM 核心业务闭环**：客户流失预警与再激活自动化任务流；
+    - 向量运维中心收口（下一推荐候选）；
+  - **方向 2 · CRM 核心业务闭环**：
   - **方向 3 · 平台与运维治理（敏捷小卡）**：统一向量运维中心收口（`POST /knowledge/admin/sync/*`）、OpenSpec 归档批次、OBS-1 机械脚本修复、`queryUser` 数据权限纵深防御。
 - **长期储备**：在线考试子域（`work/_online-exam-backlog.md` 留档）、多模态图文混合检索。
 
