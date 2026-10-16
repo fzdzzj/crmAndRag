@@ -84,6 +84,24 @@
         <div v-if="isStreaming" class="streaming">...</div>
       </div>
 
+      <!-- 客户健康度诊断面板：「📊 诊断客户健康度」指令触发，或客户上下文明确时展示 -->
+      <div
+        v-if="insightCompanyId != null"
+        class="flex flex-col gap-2 border-t border-neutral-200 p-2"
+      >
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-medium text-neutral-500">
+            📊 客户健康度诊断（客户 #{{ insightCompanyId }}）
+          </span>
+          <Button size="small" type="text" @click="insightCompanyId = null">收起</Button>
+        </div>
+        <CustomerInsightPanel
+          :key="insightCompanyId"
+          :company-id="insightCompanyId"
+          @created="onInsightActionCreated"
+        />
+      </div>
+
       <!-- 快捷指令药丸（Prompt Starter Pills）：高频业务场景一键填充并发送 -->
       <div v-if="!isStreaming" class="pills-bar">
         <button
@@ -125,7 +143,7 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick, computed } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { Drawer, Button, Input, Tag, message as antdMessage } from 'ant-design-vue';
 import { useAiChat, type ChatMessage } from '@/hooks/useAiChat';
 import { useAiSessions, useCreateAiSession, useDeleteAiSession, useAiSessionMessages } from '@/hooks/useAiSession';
@@ -133,12 +151,14 @@ import { useAiAction } from '@/hooks/useAiAction';
 import { showErrorToast } from '@/utils/error-toast';
 import ErrorFeedbackButton from '@/components/ai/ErrorFeedbackButton.vue';
 import KnowledgeDocumentDrawer from '@/components/ai/KnowledgeDocumentDrawer.vue';
+import CustomerInsightPanel from '@/components/ai/CustomerInsightPanel.vue';
 
 const BUSINESS_SOURCE_TYPES = ['CUSTOMER', 'BUSINESS_ACTIVITY', 'SALES_OPPORTUNITY', 'CONTRACT', 'CONTACT_TASK'];
 
 /** 快捷指令药丸（add-ai-customer-360-insight 任务 4.1）：高频业务场景一键填充并发送 */
+const INSIGHT_PILL = '📊 诊断客户健康度';
 const starterPills = [
-  '📊 诊断客户健康度',
+  INSIGHT_PILL,
   '📋 汇总今日待办任务',
   '📈 统计本月商机进展',
   '📝 起草商业拜访纪要',
@@ -198,7 +218,45 @@ watch(visible, (v) => {
   }
 });
 
+const route = useRoute();
 const router = useRouter();
+
+/** 路由内客户上下文：客户列表页以 query `filters.id` 携带当前客户主键 */
+const routeCompanyId = computed<number | null>(() => {
+  const raw = route.query['filters.id'];
+  const id = Number(Array.isArray(raw) ? raw[0] : raw);
+  return Number.isFinite(id) && id > 0 ? id : null;
+});
+
+/** 上下文客户：优先路由 query，其次对话内最近的 CUSTOMER 业务来源 */
+const contextCompanyId = computed<number | null>(() => {
+  if (routeCompanyId.value != null) return routeCompanyId.value;
+  for (let i = chatMessages.value.length - 1; i >= 0; i -= 1) {
+    for (const source of businessSources(chatMessages.value[i])) {
+      const s = (source ?? {}) as Record<string, unknown>;
+      if (s.sourceType === 'CUSTOMER' || s.type === 'CUSTOMER') {
+        const id = Number(businessSourceId(source));
+        if (Number.isFinite(id) && id > 0) return id;
+      }
+    }
+  }
+  return null;
+});
+
+/** 诊断面板宿主：快捷指令触发或客户上下文明确时展示，可收起 */
+const insightCompanyId = ref<number | null>(null);
+
+watch(visible, (v) => {
+  if (v && routeCompanyId.value != null) {
+    insightCompanyId.value = routeCompanyId.value;
+  }
+}, { immediate: true });
+
+/** 转待办/转活动成功（draft 已生成）：可见反馈 + 刷新会话（操作卡片随之下发） */
+function onInsightActionCreated(pendingId: string) {
+  antdMessage.success(`已生成待确认草稿（${pendingId}），请在操作卡片中确认`);
+  void sessionMessages.refetch?.();
+}
 
 /**
  * 渲染 AI 消息正文：换行转 <br/>，并把行内 [n] 引文编号包成可点击锚点。
@@ -235,9 +293,16 @@ async function send() {
   scrollToBottom();
 }
 
-/** 药丸一键填充并发送 */
+/** 药丸一键填充并发送；「📊 诊断客户健康度」额外联动诊断面板（上下文客户明确时） */
 function sendPill(text: string) {
   if (isStreaming.value) return;
+  if (text === INSIGHT_PILL) {
+    if (contextCompanyId.value != null) {
+      insightCompanyId.value = contextCompanyId.value;
+    } else {
+      antdMessage.info('未识别到客户上下文，可从客户列表进入或直接在对话中指明客户');
+    }
+  }
   inputText.value = text;
   void send();
 }
