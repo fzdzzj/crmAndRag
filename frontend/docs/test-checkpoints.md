@@ -225,3 +225,9 @@
 ## register-rag-context-query-dynamic-keys（平台配置页新命名空间分组，2026-09-25）
 
 - [ ] 页面：`/privilege/platform-config` | 接口返回 rag.context / rag.chunking / rag.query 配置项时，分组按「RAG 检索 → RAG 上下文 → RAG 切分 → RAG 查询增强 → RAG 意图」稳定排序，组标题为中文标签而非原始键名；接口只有旧三组数据时分组与顺序保持原样
+
+## wire-customer-insight-panel（CustomerInsightPanel 双宿主接线：客户详情弹窗 + AI 助手抽屉，2026-10-16）
+
+### 待验证（Playwright）
+- [ ] 宿主 1（客户详情弹窗·查看模式）| 客户列表点开某客户的详情弹窗后，`客户诊断` 分隔线下方渲染 CustomerInsightPanel 并加载该公司诊断建议；对某条建议点「转待办 / 转活动」提交成功 → 出现成功反馈 toast「已生成待确认草稿（<pendingId>），请在待确认操作中确认」且诊断区重新拉取（不再停留在旧建议列表）
+- [ ] 宿主 2（AI 助手抽屉·诊断面板）| 从客户列表进入（路由 query 带 `filters.id`）或对话内已有 CUSTOMER 来源时，点快捷指令药丸「📊 诊断客户健康度」→ 抽屉内出现「📊 客户健康度诊断（客户 #<id>）」面板；再点「转待办 / 转活动」提交成功 → 反馈 toast「已生成待确认草稿（<pendingId>），请在操作卡片中确认」且会话消息刷新（操作卡片随之下发）；无客户上下文时点同药丸 → 仅提示「未识别到客户上下文，可从客户列表进入或直接在对话中指明客户」，不展示面板
