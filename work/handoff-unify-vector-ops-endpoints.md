@@ -44,7 +44,8 @@
 
 ## 4. HEAD / 树净 / 提交披露（禁止虚报）
 
-- **HEAD**：`39620af8f4b131e6b805a9c2df19c3e381062752`（`git rev-parse HEAD` 实测，完工时点）。
+- **HEAD**：完工内容时点 `39620af8f4b131e6b805a9c2df19c3e381062752`；其后仅追加本 docs 披露提交，分支最终
+  HEAD = `4b58771c3bda39e5ddd2b409fa6074c133046fec`（`git rev-parse HEAD` 实测，两者均无代码变更）。
 - **git log master..HEAD**：线性（本卡全部提交自 master 单线检出，无 merge），5 个提交：
 - **树净**：提交后 `git status --porcelain` 仅剩**他人卡面遗留未跟踪文件**（`openspec/changes/add-queryuser-dept-isolation/`、
   `openspec/changes/fix-review-mechanical-check-true/`、`work/task-card-add-queryuser-dept-isolation.md`、
