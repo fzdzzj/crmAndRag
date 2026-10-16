@@ -7,24 +7,24 @@
     "字段：maxGzipBytes=门禁上限（字节），measuredGzipBytes=写入时的真实值（仅备查，不参与裁决）。",
     "改 vite.config.ts 的 manualChunks 分桶名时，必须同步改 check-bundle-budget.mjs 的 VENDOR_BUCKETS。"
   ],
-  "sourceRevision": "279f5ca",
-  "measuredAt": "2026-10-14T01:11:50Z",
+  "sourceRevision": "8d24c06",
+  "measuredAt": "2026-10-16T10:29:35Z",
   "gzipLevel": 9,
   "headroom": 1.02,
   "buckets": {
     "entry": {
-      "maxGzipBytes": 10266,
-      "measuredGzipBytes": 10064,
+      "maxGzipBytes": 10626,
+      "measuredGzipBytes": 10417,
       "files": 3
     },
     "vendor-antd": {
-      "maxGzipBytes": 283686,
-      "measuredGzipBytes": 278123,
+      "maxGzipBytes": 287763,
+      "measuredGzipBytes": 282120,
       "files": 1
     },
     "vendor-echarts": {
-      "maxGzipBytes": 205253,
-      "measuredGzipBytes": 201228,
+      "maxGzipBytes": 205252,
+      "measuredGzipBytes": 201227,
       "files": 1
     },
     "vendor": {
@@ -33,14 +33,14 @@
       "files": 1
     },
     "app": {
-      "maxGzipBytes": 182805,
-      "measuredGzipBytes": 179220,
-      "files": 64
+      "maxGzipBytes": 197104,
+      "measuredGzipBytes": 193239,
+      "files": 68
     },
     "total": {
-      "maxGzipBytes": 797113,
-      "measuredGzipBytes": 781483,
-      "files": 70
+      "maxGzipBytes": 815849,
+      "measuredGzipBytes": 799851,
+      "files": 74
     }
   }
 }
