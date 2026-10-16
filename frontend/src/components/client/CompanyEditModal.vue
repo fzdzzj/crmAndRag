@@ -115,6 +115,13 @@
         row-key="id"
         size="small"
       />
+      <a-divider>客户诊断</a-divider>
+      <CustomerInsightPanel
+        v-if="currentCompanyId"
+        :key="insightKey"
+        :company-id="currentCompanyId"
+        @created="onInsightActionCreated"
+      />
     </template>
   </a-modal>
   <CustomerModal ref="contactModalRef" />
@@ -137,6 +144,7 @@ import {
 import { useUpdateCompany, useCompanyContacts, useGroupDeptMaster } from '@/hooks/useCompany.ts';
 import type { GetContactGetContactByCompanyIdResponse } from '@/api/axios';
 import CustomerModal from '@/components/client/CustomerModal.vue';
+import CustomerInsightPanel from '@/components/ai/CustomerInsightPanel.vue';
 interface CompanyListItem {
   id: number;
   companyName: string;
@@ -172,6 +180,14 @@ const editingId = ref<number | null>(null);
 const isReadonly = ref(false);
 const currentCompanyId = ref<number | undefined>(undefined);
 const contactModalRef = ref();
+/** 诊断建议转动作成功后的重载键：置新值即重挂 Panel，按需刷新诊断结果 */
+const insightKey = ref(0);
+
+/** 转待办/转活动成功（draft 已生成）：给出可见反馈并刷新诊断 */
+function onInsightActionCreated(pendingId: string) {
+  message.success(`已生成待确认草稿（${pendingId}），请在待确认操作中确认`);
+  insightKey.value += 1;
+}
 
 // 联系人相关
 const {
