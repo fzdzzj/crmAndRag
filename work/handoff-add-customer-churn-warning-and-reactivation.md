@@ -87,3 +87,4 @@
 3. **窗口天数可配**：判定窗口默认 60 天，`application.yml`/环境变量 `crm.customer-churn.inactive-days` 可覆盖（前端 Alert 文案仍按 60 天硬编码，若改配置需同步文案）。
 4. **扫描上限**：单次扫描最多 500 家私海客户（防一次性拉取过大）；超出部分下个调度周期覆盖，超大租户需评估分批策略。
 5. **ownerName 未回填**：风险清单返回 ownerId（负责人 ID），未做 `sys_user.real_name` 联查（保持与 ContactTask 系统派发口径一致，且避免新增联查依赖）；前端「负责人ID」列按数字展示，如需姓名列可作为后续增强。
+6. **树净披露**：提交后工作树仅剩 1 个未跟踪文件 `work/task-card-wire-customer-insight-panel.md`——系前序卡（wire-customer-insight-panel）遗留、本卡开工前已存在（见开工时 `git status`），不属于本卡交付，未代为提交；`work/review-*.log` 等原始日志按 `.gitignore` 规则不入库。
