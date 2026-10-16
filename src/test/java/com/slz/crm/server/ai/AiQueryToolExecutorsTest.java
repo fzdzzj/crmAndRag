@@ -8,6 +8,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.slz.crm.common.untils.BaseUnit;
+import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.dto.BusinessActivityQueryDTO;
 import com.slz.crm.pojo.dto.ContactTaskDTO;
 import com.slz.crm.pojo.dto.GetUserDTO;
@@ -43,6 +45,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -99,6 +102,11 @@ class AiQueryToolExecutorsTest {
             salesStageApprovalService,
             extendedQueryToolExecutors,
             customerInsightService);
+  }
+
+  @AfterEach
+  void clearCurrentUser() {
+    BaseUnit.removeCurrentId();
   }
 
   @Test
@@ -327,6 +335,8 @@ class AiQueryToolExecutorsTest {
     Page<UserVO> page = new Page<>(2, 5);
     page.setRecords(List.of(vo));
 
+    // 超管（roleId=1）为豁免角色，走全量路径，仍可验证参数解析与分页裁剪
+    BaseUnit.setCurrentRole(buildRole(999L, 1L, 11L));
     when(userService.findPage(any(GetUserDTO.class))).thenReturn(page);
 
     Map<String, Object> args =
@@ -374,6 +384,8 @@ class AiQueryToolExecutorsTest {
   void executeQueryUser_defaultPaging_fallsBackToFirstPage() {
     Page<UserVO> page = new Page<>(1, 10);
     page.setRecords(List.of());
+    // 非豁免操作者带 deptId；空记录集经过滤后仍为空，此处验证缺省分页回退 1/10
+    BaseUnit.setCurrentRole(buildRole(1001L, 3L, 11L));
     when(userService.findPage(any(GetUserDTO.class))).thenReturn(page);
 
     executors.executeQueryUser(Map.of(), null);
@@ -383,6 +395,104 @@ class AiQueryToolExecutorsTest {
     GetUserDTO dto = captor.getValue();
     assertThat(dto.getPageNum()).isEqualTo(1);
     assertThat(dto.getPageSize()).isEqualTo(10);
+  }
+
+  /** add-queryuser-dept-isolation 任务 2.1：同部门可见——非豁免操作者仅返回本部门用户。 */
+  @Test
+  void executeQueryUser_sameDept_nonExempt_returnsOnlySameDept() {
+    UserVO sameDept = new UserVO();
+    sameDept.setId(10L);
+    sameDept.setRealName("同部门张三");
+    sameDept.setDeptId(11L);
+    Page<UserVO> page = new Page<>(1, 10);
+    page.setRecords(List.of(sameDept));
+
+    BaseUnit.setCurrentRole(buildRole(2001L, 3L, 11L));
+    when(userService.findPage(any(GetUserDTO.class))).thenReturn(page);
+
+    Object result = executors.executeQueryUser(Map.of(), null);
+
+    @SuppressWarnings("unchecked")
+    List<UserVO> list = (List<UserVO>) result;
+    assertThat(list).hasSize(1);
+    assertThat(list.get(0).getDeptId()).isEqualTo(11L);
+    assertThat(list.get(0).getRealName()).isEqualTo("同部门张三");
+    verify(userService).findPage(any(GetUserDTO.class));
+  }
+
+  /** add-queryuser-dept-isolation 任务 2.2：跨部门不可见——非豁免操作者过滤掉不同部门用户。 */
+  @Test
+  void executeQueryUser_crossDept_excludedByDeptFilter() {
+    UserVO sameDept = new UserVO();
+    sameDept.setId(20L);
+    sameDept.setRealName("同部门李四");
+    sameDept.setDeptId(11L);
+    UserVO crossDept = new UserVO();
+    crossDept.setId(21L);
+    crossDept.setRealName("跨部门王五");
+    crossDept.setDeptId(99L);
+    Page<UserVO> page = new Page<>(1, 10);
+    page.setRecords(List.of(sameDept, crossDept));
+
+    BaseUnit.setCurrentRole(buildRole(2002L, 3L, 11L));
+    when(userService.findPage(any(GetUserDTO.class))).thenReturn(page);
+
+    Object result = executors.executeQueryUser(Map.of(), null);
+
+    @SuppressWarnings("unchecked")
+    List<UserVO> list = (List<UserVO>) result;
+    assertThat(list).hasSize(1);
+    assertThat(list.get(0).getId()).isEqualTo(20L);
+    assertThat(list.get(0).getRealName()).isEqualTo("同部门李四");
+    assertThat(list).extracting(UserVO::getRealName).doesNotContain("跨部门王五");
+    assertThat(list).extracting(UserVO::getDeptId).containsOnly(11L);
+  }
+
+  /** add-queryuser-dept-isolation 任务 2.3：豁免角色（超级管理员 roleId=1）全量可见——不过滤跨部门用户。 */
+  @Test
+  void executeQueryUser_superAdmin_exemptFromDeptFilter_allVisible() {
+    UserVO deptA = new UserVO();
+    deptA.setId(30L);
+    deptA.setRealName("部门甲");
+    deptA.setDeptId(1L);
+    UserVO deptB = new UserVO();
+    deptB.setId(31L);
+    deptB.setRealName("部门乙");
+    deptB.setDeptId(2L);
+    Page<UserVO> page = new Page<>(1, 10);
+    page.setRecords(List.of(deptA, deptB));
+
+    // 超管 roleId=1，即使本无 deptId 也保持全量
+    BaseUnit.setCurrentRole(buildRole(2003L, 1L, null));
+    when(userService.findPage(any(GetUserDTO.class))).thenReturn(page);
+
+    Object result = executors.executeQueryUser(Map.of(), null);
+
+    @SuppressWarnings("unchecked")
+    List<UserVO> list = (List<UserVO>) result;
+    assertThat(list).hasSize(2);
+    assertThat(list).extracting(UserVO::getDeptId).containsExactlyInAnyOrder(1L, 2L);
+  }
+
+  /** add-queryuser-dept-isolation 任务 2.4：无部门用户边界——非豁免操作者无 deptId 时返回空列表。 */
+  @Test
+  void executeQueryUser_noDept_nonExempt_returnsEmpty() {
+    UserVO any = new UserVO();
+    any.setId(40L);
+    any.setRealName("任何人");
+    any.setDeptId(11L);
+    Page<UserVO> page = new Page<>(1, 10);
+    page.setRecords(List.of(any));
+
+    BaseUnit.setCurrentRole(buildRole(2004L, 3L, null));
+    when(userService.findPage(any(GetUserDTO.class))).thenReturn(page);
+
+    Object result = executors.executeQueryUser(Map.of(), null);
+
+    @SuppressWarnings("unchecked")
+    List<UserVO> list = (List<UserVO>) result;
+    assertThat(list).isEmpty();
+    verify(userService).findPage(any(GetUserDTO.class));
   }
 
   /** extend-ai-query-tools-c 任务 2.2：默认查询启用部门。 */
@@ -504,5 +614,14 @@ class AiQueryToolExecutorsTest {
     assertThatThrownBy(() -> executors.executeGetCustomerInsight(Map.of(), null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("companyId 不能为空");
+  }
+
+  /** add-queryuser-dept-isolation 测试辅助：构造当前操作用户（id/roleId/deptId）。 */
+  private RoleAO buildRole(Long id, Long roleId, Long deptId) {
+    RoleAO role = new RoleAO();
+    role.setId(id);
+    role.setRoleId(roleId);
+    role.setDeptId(deptId);
+    return role;
   }
 }
