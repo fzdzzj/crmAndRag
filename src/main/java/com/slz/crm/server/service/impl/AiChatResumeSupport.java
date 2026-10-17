@@ -1,6 +1,11 @@
 package com.slz.crm.server.service.impl;
 
 import com.slz.crm.platform.contract.AssistantChatRequest;
+import com.slz.crm.platform.contract.TokenUsageType;
+import com.slz.crm.platform.token.TokenBudgetDecision;
+import com.slz.crm.platform.token.TokenBudgetRequest;
+import com.slz.crm.platform.token.TokenBudgetScope;
+import com.slz.crm.platform.token.TokenBudgetService;
 import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.entity.AiSessionEntity;
 import com.slz.crm.server.ai.AiChatImageUnderstandingService;
@@ -165,5 +170,34 @@ final class AiChatResumeSupport {
       emitter.complete();
     }
     return archived;
+  }
+
+  /**
+   * Token 预算检查（wire-built-unfinished-infra 任务 1.2）：超限发 TOKEN_BUDGET_EXCEEDED 错误事件并 complete
+   * 会话，与频次限流同构的既有配额拒绝语义；实际用量仍由流终 recordTokenUsage 上报（先查后扣）。
+   *
+   * <p>预算服务缺席（手工装配单测）或 userId 缺席时空跳过；预估 token 未知按契约传 0，即仅拦截「当前周期已超限」。
+   */
+  static boolean rejectIfBudgetExceeded(
+      TokenBudgetService tokenBudgetService,
+      Long userId,
+      SseEmitter emitter,
+      AiChatSseEventWriter eventWriter) {
+    boolean rejected = false;
+    if (tokenBudgetService != null && userId != null) {
+      TokenBudgetDecision decision =
+          tokenBudgetService.check(
+              new TokenBudgetRequest(
+                  TokenBudgetScope.USER, String.valueOf(userId), TokenUsageType.CHAT, 0L));
+      if (!decision.allowed()) {
+        eventWriter.sendError(
+            emitter,
+            decision.reason(),
+            "Token 预算已用尽，请稍后再试（建议 " + decision.retryAfterSeconds() + " 秒后重试）");
+        emitter.complete();
+        rejected = true;
+      }
+    }
+    return rejected;
   }
 }

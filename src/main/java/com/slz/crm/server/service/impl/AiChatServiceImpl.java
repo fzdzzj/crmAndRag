@@ -6,6 +6,7 @@ import com.slz.crm.platform.contract.AssistantChatRequest;
 import com.slz.crm.platform.contract.ModelProvider;
 import com.slz.crm.platform.contract.SseEventName;
 import com.slz.crm.platform.contract.UserContext;
+import com.slz.crm.platform.token.TokenBudgetService;
 import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.entity.AiChatImageEntity;
 import com.slz.crm.pojo.entity.AiMessageEntity;
@@ -75,6 +76,10 @@ public class AiChatServiceImpl implements AiChatService {
   @Autowired private AiAssistantMessageStore assistantMessageStore;
 
   @Autowired private AiRateLimiter aiRateLimiter;
+
+  /** Token 预算闸（wire-built-unfinished-infra 任务 1.2）：生产 bean 恒在；手工装配单测可缺席 → 闸空跳过。 */
+  @Autowired(required = false)
+  private TokenBudgetService tokenBudgetService;
 
   @Autowired(required = false)
   private AiChatImageService aiChatImageService;
@@ -146,6 +151,11 @@ public class AiChatServiceImpl implements AiChatService {
       }
 
       if (AiChatResumeSupport.rejectIfRateLimited(userId, emitter, eventWriter, aiRateLimiter)) {
+        return;
+      }
+
+      if (AiChatResumeSupport.rejectIfBudgetExceeded(
+          tokenBudgetService, userId, emitter, eventWriter)) {
         return;
       }
 
