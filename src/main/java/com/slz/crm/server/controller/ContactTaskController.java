@@ -17,6 +17,7 @@ import com.slz.crm.pojo.vo.ContactTaskVO;
 import com.slz.crm.server.service.ApprovalAttachmentService;
 import com.slz.crm.server.service.AttachmentAccessService;
 import com.slz.crm.server.service.ContactTaskService;
+import jakarta.validation.Valid;
 import java.util.Collections;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
@@ -94,7 +95,7 @@ public class ContactTaskController {
   /** 创建联络任务 */
   @PostMapping("/create")
   @RequirePermission(PermissionOperates.TASK_CREATE_TASK)
-  public Result<Boolean> create(@RequestBody ContactTaskDTO contactTaskDTO) {
+  public Result<Boolean> create(@Valid @RequestBody ContactTaskDTO contactTaskDTO) {
     Boolean result = contactTaskService.create(contactTaskDTO);
     return Result.success(result);
   }
@@ -102,7 +103,7 @@ public class ContactTaskController {
   /** 批量删除联络任务 */
   @DeleteMapping("/batch")
   @RequirePermission(PermissionOperates.TASK_DELETE_TASK)
-  public Result<Integer> deleteByIds(@RequestBody List<Long> idList) {
+  public Result<Integer> deleteByIds(@Valid @RequestBody List<Long> idList) {
     Integer count = contactTaskService.deleteByIds(idList);
     return Result.success(count);
   }
@@ -118,7 +119,7 @@ public class ContactTaskController {
   /** 批量更新联络任务 */
   @PutMapping("/batch")
   @RequirePermission(PermissionOperates.TASK_UPDATE_TASK)
-  public Result<Integer> updateList(@RequestBody List<ContactTaskDTO> contactTaskDTOList) {
+  public Result<Integer> updateList(@Valid @RequestBody List<ContactTaskDTO> contactTaskDTOList) {
     Integer count = contactTaskService.updateList(contactTaskDTOList);
     return Result.success(count);
   }
@@ -126,7 +127,7 @@ public class ContactTaskController {
   /** 更新单个联络任务 */
   @PutMapping("/update")
   @RequirePermission(PermissionOperates.TASK_UPDATE_TASK)
-  public Result<Boolean> update(@RequestBody ContactTaskDTO contactTaskDTO) {
+  public Result<Boolean> update(@Valid @RequestBody ContactTaskDTO contactTaskDTO) {
     Boolean result = contactTaskService.update(contactTaskDTO);
     return Result.success(result);
   }
@@ -155,7 +156,7 @@ public class ContactTaskController {
   public Result<Page<ContactTaskVO>> query(
       @RequestParam(defaultValue = "1") Integer pageNum,
       @RequestParam(defaultValue = "10") Integer pageSize,
-      @RequestBody ContactTaskDTO contactTaskDTO) {
+      @Valid @RequestBody ContactTaskDTO contactTaskDTO) {
     Page<ContactTaskVO> page = contactTaskService.query(pageNum, pageSize, contactTaskDTO);
     return Result.success(page);
   }

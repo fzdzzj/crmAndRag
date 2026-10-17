@@ -9,6 +9,7 @@ import com.slz.crm.pojo.dto.SalesOpportunityDTO;
 import com.slz.crm.pojo.dto.SalesOpportunityQueryDTO;
 import com.slz.crm.pojo.vo.SalesOpportunityVO;
 import com.slz.crm.server.service.SalesOpportunityService;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -32,7 +33,7 @@ public class SalesOpportunityController {
    */
   @PutMapping
   @RequirePermission(PermissionOperates.SALES_UPDATE_SALE_OPPORTUNITY)
-  public Result<Boolean> update(@RequestBody SalesOpportunityDTO salesOpportunityDTO) {
+  public Result<Boolean> update(@Valid @RequestBody SalesOpportunityDTO salesOpportunityDTO) {
     return Result.success(salesOpportunityService.update(salesOpportunityDTO));
   }
 
@@ -81,7 +82,7 @@ public class SalesOpportunityController {
    */
   @PostMapping
   @RequirePermission(PermissionOperates.SALES_CREATE_SALE_OPPORTUNITY)
-  public Result<SalesOpportunityVO> create(@RequestBody SalesOpportunityDTO dto) {
+  public Result<SalesOpportunityVO> create(@Valid @RequestBody SalesOpportunityDTO dto) {
     return Result.success(salesOpportunityService.create(dto));
   }
 

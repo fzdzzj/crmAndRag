@@ -7,6 +7,7 @@ import com.slz.crm.common.result.Result;
 import com.slz.crm.pojo.dto.PaymentRecordDTO;
 import com.slz.crm.pojo.vo.PaymentRecordVO;
 import com.slz.crm.server.service.PaymentRecordService;
+import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -26,7 +27,7 @@ public class PaymentRecordController {
    */
   @PostMapping
   @RequirePermission(PermissionOperates.FINANCE_RECORD_PAYMENT)
-  public Result<Boolean> create(@RequestBody PaymentRecordDTO dto) {
+  public Result<Boolean> create(@Valid @RequestBody PaymentRecordDTO dto) {
     return Result.success(paymentRecordService.create(dto) != null);
   }
 
@@ -38,7 +39,7 @@ public class PaymentRecordController {
    */
   @PutMapping
   @RequirePermission(PermissionOperates.FINANCE_EDIT_PAYMENT)
-  public Result<Boolean> update(@RequestBody PaymentRecordDTO dto) {
+  public Result<Boolean> update(@Valid @RequestBody PaymentRecordDTO dto) {
     return Result.success(paymentRecordService.update(dto));
   }
 
@@ -50,7 +51,7 @@ public class PaymentRecordController {
    */
   @DeleteMapping
   @RequirePermission(PermissionOperates.FINANCE_DELETE_PAYMENT)
-  public Result<Integer> delete(@RequestBody List<Long> idList) {
+  public Result<Integer> delete(@Valid @RequestBody List<Long> idList) {
     return Result.success(paymentRecordService.deleteByIds(idList));
   }
 
@@ -79,7 +80,7 @@ public class PaymentRecordController {
   public Result<Page<PaymentRecordVO>> queryPage(
       @RequestParam Integer pageNum,
       @RequestParam Integer pageSize,
-      @RequestBody PaymentRecordDTO dto) {
+      @Valid @RequestBody PaymentRecordDTO dto) {
     return Result.success(paymentRecordService.queryPage(pageNum, pageSize, dto));
   }
 

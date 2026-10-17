@@ -10,6 +10,7 @@ import com.slz.crm.pojo.dto.ContractDTO;
 import com.slz.crm.pojo.vo.ContractANDOrderVO;
 import com.slz.crm.pojo.vo.ContractVO;
 import com.slz.crm.server.service.ContractService;
+import jakarta.validation.Valid;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,7 +35,7 @@ public class ContractController {
    */
   @PostMapping
   @RequirePermission(PermissionOperates.SALES_CREATE_CONTRACT)
-  public Result<ContractVO> create(@RequestBody ContractANDOrderDTO dto) {
+  public Result<ContractVO> create(@Valid @RequestBody ContractANDOrderDTO dto) {
     return Result.success(contractService.createWithOrders(dto.getContract(), dto.getOrders()));
   }
 
@@ -62,7 +63,9 @@ public class ContractController {
   @PostMapping("/query")
   @RequirePermission(PermissionOperates.SALES_VIEW_CONTRACT)
   public Result<Page<ContractVO>> contractQuery(
-      @RequestParam Integer pageNum, @RequestParam Integer pageSize, @RequestBody ContractDTO dto) {
+      @RequestParam Integer pageNum,
+      @RequestParam Integer pageSize,
+      @Valid @RequestBody ContractDTO dto) {
     Page<ContractVO> page = contractService.contractQuery(pageNum, pageSize, dto);
     return Result.success(page);
   }
@@ -75,7 +78,7 @@ public class ContractController {
    */
   @PutMapping
   @RequirePermission(PermissionOperates.SALES_UPDATE_CONTRACT)
-  public Result<Boolean> update(@RequestBody ContractDTO dto) {
+  public Result<Boolean> update(@Valid @RequestBody ContractDTO dto) {
     boolean result = contractService.update(dto);
     return Result.success(result);
   }
@@ -89,7 +92,7 @@ public class ContractController {
   @DeleteMapping
   @RequirePermission(PermissionOperates.SALES_UPDATE_CONTRACT)
   @SuppressWarnings("PMD.AvoidCatchingGenericException") // 批量删除service外呼，失败转错误结果
-  public Result<Integer> delete(@RequestBody List<Long> ids) {
+  public Result<Integer> delete(@Valid @RequestBody List<Long> ids) {
     Result<Integer> result;
     try {
       int count = contractService.batchDelete(ids);

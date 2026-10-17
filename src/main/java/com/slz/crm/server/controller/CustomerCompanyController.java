@@ -14,6 +14,7 @@ import com.slz.crm.pojo.vo.GroupResultVO;
 import com.slz.crm.server.service.CustomerCompanyService;
 import com.slz.crm.server.service.CustomerContactService;
 import com.slz.crm.server.service.UserService;
+import jakarta.validation.Valid;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,7 +43,7 @@ public class CustomerCompanyController {
    */
   @PostMapping
   @RequirePermission(PermissionOperates.CUSTOMER_ADD_COMPANY)
-  public Result<Boolean> add(@RequestBody CustomerCompanyDTO customerCompanyDTO) {
+  public Result<Boolean> add(@Valid @RequestBody CustomerCompanyDTO customerCompanyDTO) {
     return Result.success(customerCompanyService.add(customerCompanyDTO) != null);
   }
 
@@ -67,7 +68,8 @@ public class CustomerCompanyController {
    */
   @PutMapping
   @RequirePermission(PermissionOperates.CUSTOMER_UPDATE_CUSTOMER_COMPANY)
-  public Result<Integer> update(@RequestBody List<CustomerCompanyDTO> customerCompanyDTOList) {
+  public Result<Integer> update(
+      @Valid @RequestBody List<CustomerCompanyDTO> customerCompanyDTOList) {
     return Result.success(customerCompanyService.updateList(customerCompanyDTOList));
   }
 
@@ -79,7 +81,7 @@ public class CustomerCompanyController {
    */
   @DeleteMapping
   @RequirePermission(PermissionOperates.CUSTOMER_DELETE_CUSTOMER_COMPANY)
-  public Result<Integer> delete(@RequestBody List<Long> idList) {
+  public Result<Integer> delete(@Valid @RequestBody List<Long> idList) {
     return Result.success(customerCompanyService.deleteByIds(idList));
   }
 
@@ -103,7 +105,7 @@ public class CustomerCompanyController {
    */
   @PutMapping("/recover")
   @RequirePermission(PermissionOperates.CUSTOMER_RECOVER_CUSTOMER_COMPANY)
-  public Result<Integer> recover(@RequestBody List<Long> idList) {
+  public Result<Integer> recover(@Valid @RequestBody List<Long> idList) {
     return Result.success(customerCompanyService.deleteOrRecoverByIds(idList, false));
   }
 
@@ -148,7 +150,7 @@ public class CustomerCompanyController {
    */
   @PutMapping("/merge")
   @RequirePermission(PermissionOperates.CUSTOMER_MERGE_COMPANY)
-  public Result<Boolean> merge(@RequestBody CustomerMergeDTO customerMergeDTO) {
+  public Result<Boolean> merge(@Valid @RequestBody CustomerMergeDTO customerMergeDTO) {
     return Result.success(customerCompanyService.merge(customerMergeDTO));
   }
 
@@ -279,7 +281,7 @@ public class CustomerCompanyController {
    */
   @DeleteMapping("/logical/batch")
   @RequirePermission(PermissionOperates.CUSTOMER_DELETE_CUSTOMER_COMPANY)
-  public Result<Integer> batchLogicalDelete(@RequestBody List<Long> idList) {
+  public Result<Integer> batchLogicalDelete(@Valid @RequestBody List<Long> idList) {
     return Result.success(customerCompanyService.batchLogicalDeleteByIds(idList));
   }
 

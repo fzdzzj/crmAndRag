@@ -7,6 +7,7 @@ import com.slz.crm.common.result.Result;
 import com.slz.crm.pojo.dto.InvoiceInfoDTO;
 import com.slz.crm.pojo.vo.InvoiceInfoVO;
 import com.slz.crm.server.service.InvoiceInfoService;
+import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -26,7 +27,7 @@ public class InvoiceInfoController {
    */
   @PostMapping
   @RequirePermission(PermissionOperates.FINANCE_RECORD_INVOICE)
-  public Result<Boolean> create(@RequestBody InvoiceInfoDTO dto) {
+  public Result<Boolean> create(@Valid @RequestBody InvoiceInfoDTO dto) {
     return Result.success(invoiceInfoService.create(dto) != null);
   }
 
@@ -38,7 +39,7 @@ public class InvoiceInfoController {
    */
   @PutMapping
   @RequirePermission(PermissionOperates.FINANCE_EDIT_INVOICE)
-  public Result<Boolean> update(@RequestBody InvoiceInfoDTO dto) {
+  public Result<Boolean> update(@Valid @RequestBody InvoiceInfoDTO dto) {
     return Result.success(invoiceInfoService.update(dto));
   }
 
@@ -50,7 +51,7 @@ public class InvoiceInfoController {
    */
   @DeleteMapping
   @RequirePermission(PermissionOperates.FINANCE_DELETE_INVOICE)
-  public Result<Integer> delete(@RequestBody List<Long> idList) {
+  public Result<Integer> delete(@Valid @RequestBody List<Long> idList) {
     return Result.success(invoiceInfoService.deleteByIds(idList));
   }
 
@@ -79,7 +80,7 @@ public class InvoiceInfoController {
   public Result<Page<InvoiceInfoVO>> queryPage(
       @RequestParam Integer pageNum,
       @RequestParam Integer pageSize,
-      @RequestBody InvoiceInfoDTO dto) {
+      @Valid @RequestBody InvoiceInfoDTO dto) {
     return Result.success(invoiceInfoService.queryPage(pageNum, pageSize, dto));
   }
 
