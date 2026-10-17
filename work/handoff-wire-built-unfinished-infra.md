@@ -60,3 +60,11 @@
 - reingest 存量重放入口不复评估（管理员恢复路径；新摄取已闸，存量是否补审待 owner）。
 - 预算闸 estimatedTokens 恒 0（仅拦截「已超限」；预估式闸需 prompt token 估算，另案）；取消路径 token 不回冲（C-10）未动。
 - upload 异常通道不区分拦截原因（见 2.2 已知余量）。
+
+## 6 · 闭环终态记录（2026-10-17）
+
+- **合并提交**：`a83c746`（merge --no-ff feature/wire-built-unfinished-infra 入 master，6+1 笔全入主干）；
+- **远端 CI**：GitHub Actions Run `39024314105` 6/6 全绿（OpenAPI / Frontend 197 / build-and-gate 1583 单测 / fail-fast / static-analysis / thread-pool-metrics）；
+- **测试基线**：Surefire 255 份报告 / 1583 用例 / 0 失败（+10 恰为本卡单测），Failsafe 31/118/7 skipped，`source-revision=bd1b9f3`；
+- **复核裁决**：B 档独立复核 🟢 GO（报告落盘 `work/review-wire-built-unfinished-infra-b.md`），5 项 MINOR 按披露接受，本批三卡全链闭环收官。
+
