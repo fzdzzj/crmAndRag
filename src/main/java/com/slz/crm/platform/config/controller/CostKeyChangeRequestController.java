@@ -6,6 +6,7 @@ import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.result.Result;
 import com.slz.crm.platform.config.CostKeyChangeRequestVO;
 import com.slz.crm.platform.config.service.CostKeyChangeRequestService;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -39,7 +40,8 @@ public class CostKeyChangeRequestController {
    */
   @PostMapping
   @RequirePermission(PermissionOperates.PLATFORM_DYNAMIC_CONFIG_MANAGE)
-  public Result<CostKeyChangeRequestVO> submit(@RequestBody CostKeyChangeRequestSubmitReq req) {
+  public Result<CostKeyChangeRequestVO> submit(
+      @Valid @RequestBody CostKeyChangeRequestSubmitReq req) {
     return Result.success(requestService.submit(req));
   }
 
@@ -96,7 +98,8 @@ public class CostKeyChangeRequestController {
   @PostMapping("/{id}/reject")
   @RequirePermission(PermissionOperates.PLATFORM_DYNAMIC_CONFIG_MANAGE)
   public Result<CostKeyChangeRequestVO> reject(
-      @PathVariable Long id, @RequestBody(required = false) CostKeyChangeRequestRejectReq req) {
+      @PathVariable Long id,
+      @Valid @RequestBody(required = false) CostKeyChangeRequestRejectReq req) {
     return Result.success(requestService.reject(id, req));
   }
 }

@@ -6,6 +6,7 @@ import com.slz.crm.common.result.Result;
 import com.slz.crm.server.ai.InsightToActionService;
 import com.slz.crm.server.ai.insight.CustomerInsightResult;
 import com.slz.crm.server.ai.insight.CustomerInsightService;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
@@ -58,7 +59,7 @@ public class AiInsightController {
   @RequirePermission(PermissionOperates.CUSTOMER_VIEW_COMPANY)
   public Result<InsightToActionService.InsightToActionResult> convertSuggestionToAction(
       @PathVariable Long companyId,
-      @RequestBody InsightToActionService.InsightToActionRequest request) {
+      @Valid @RequestBody InsightToActionService.InsightToActionRequest request) {
     return Result.success(insightToActionService.toAction(companyId, request));
   }
 }

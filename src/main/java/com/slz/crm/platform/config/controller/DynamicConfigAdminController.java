@@ -6,6 +6,7 @@ import com.slz.crm.common.result.Result;
 import com.slz.crm.platform.config.ConfigHistoryView;
 import com.slz.crm.platform.config.ConfigItemView;
 import com.slz.crm.platform.config.service.DynamicConfigAdminService;
+import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -66,7 +67,7 @@ public class DynamicConfigAdminController {
   /** 更新（或首次创建/复活）配置项：写前过校验护栏，非法值拒绝并保持原值 */
   @PostMapping("/items")
   @RequirePermission(PermissionOperates.PLATFORM_DYNAMIC_CONFIG_MANAGE)
-  public Result<ConfigItemView> update(@RequestBody ConfigUpdateRequest request) {
+  public Result<ConfigItemView> update(@Valid @RequestBody ConfigUpdateRequest request) {
     return Result.success(
         adminService.updateValue(request.getKey(), request.getValue(), request.getRemark()));
   }
@@ -75,7 +76,7 @@ public class DynamicConfigAdminController {
   @PostMapping("/items/{key}/rollback")
   @RequirePermission(PermissionOperates.PLATFORM_DYNAMIC_CONFIG_MANAGE)
   public Result<ConfigItemView> rollback(
-      @PathVariable String key, @RequestBody ConfigRollbackRequest request) {
+      @PathVariable String key, @Valid @RequestBody ConfigRollbackRequest request) {
     Integer targetVersion = request.getVersion();
     Result<ConfigItemView> result;
     if (targetVersion == null || targetVersion <= 0) {

@@ -13,6 +13,7 @@ import com.slz.crm.pojo.vo.PromptTemplateHistoryVO;
 import com.slz.crm.pojo.vo.PromptTemplateRenderVO;
 import com.slz.crm.pojo.vo.PromptTemplateVO;
 import com.slz.crm.server.service.PromptTemplateService;
+import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -63,14 +64,14 @@ public class PromptTemplateController {
   /** 创建模板（version=1，历史落 CREATE）。 */
   @PostMapping("/create")
   @RequirePermission(PermissionOperates.PROMPT_TEMPLATE_MANAGE)
-  public Result<Long> create(@RequestBody PromptTemplateDTO dto) {
+  public Result<Long> create(@Valid @RequestBody PromptTemplateDTO dto) {
     return Result.success(promptTemplateService.create(dto));
   }
 
   /** 更新模板（乐观锁 expectedVersion + version 递增 + 历史落 UPDATE）。 */
   @PostMapping("/update")
   @RequirePermission(PermissionOperates.PROMPT_TEMPLATE_MANAGE)
-  public Result<Boolean> update(@RequestBody PromptTemplateDTO dto) {
+  public Result<Boolean> update(@Valid @RequestBody PromptTemplateDTO dto) {
     return Result.success(promptTemplateService.update(dto));
   }
 
@@ -98,14 +99,15 @@ public class PromptTemplateController {
   /** 渲染模板：启用态模板 + required 校验 + 未定义变量拒绝 + {{var}} 占位符替换，返回组装文本与版本。 */
   @PostMapping("/render")
   @RequirePermission(PermissionOperates.PROMPT_TEMPLATE_VIEW)
-  public Result<PromptTemplateRenderVO> render(@RequestBody PromptTemplateRenderDTO dto) {
+  public Result<PromptTemplateRenderVO> render(@Valid @RequestBody PromptTemplateRenderDTO dto) {
     return Result.success(promptTemplateService.render(dto));
   }
 
   /** 回滚模板到指定历史版本（prompt-template-enhance 任务 2.3）：内容+variables 作新版本落档，历史落 REVERT+sourceVersion。 */
   @PostMapping("/{id}/revert")
   @RequirePermission(PermissionOperates.PROMPT_TEMPLATE_MANAGE)
-  public Result<Integer> revert(@PathVariable Long id, @RequestBody PromptTemplateRevertDTO dto) {
+  public Result<Integer> revert(
+      @PathVariable Long id, @Valid @RequestBody PromptTemplateRevertDTO dto) {
     return Result.success(promptTemplateService.revert(id, dto));
   }
 
@@ -113,7 +115,7 @@ public class PromptTemplateController {
   @PostMapping("/{id}/feedback")
   @RequirePermission(PermissionOperates.PROMPT_TEMPLATE_VIEW)
   public Result<Boolean> feedback(
-      @PathVariable Long id, @RequestBody PromptTemplateFeedbackDTO dto) {
+      @PathVariable Long id, @Valid @RequestBody PromptTemplateFeedbackDTO dto) {
     return Result.success(promptTemplateService.addFeedback(id, dto));
   }
 
