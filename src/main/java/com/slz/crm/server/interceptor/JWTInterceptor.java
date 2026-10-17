@@ -8,6 +8,7 @@ import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.entity.UserEntity;
 import com.slz.crm.server.mapper.UserMapper;
 import com.slz.crm.server.properties.JwtProperties;
+import com.slz.crm.server.service.support.TokenBlacklistService;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -24,50 +25,74 @@ public class JWTInterceptor implements HandlerInterceptor {
 
   @Autowired private UserMapper userMapper;
 
+  @Autowired private TokenBlacklistService tokenBlacklistService;
+
   @Override
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 鉴权边界：JWT解析+ORM查用户多源，失败统一按TOKEN无效拦截
   public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
       throws Exception {
-    RoleAO roleAO = new RoleAO();
-
-    final boolean result;
+    final boolean shouldContinue;
     if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
       response.setStatus(HttpServletResponse.SC_OK);
-      result = false; // 不继续执行后续拦截器或 Controller
-    } else if (request.getRequestURI().contains("/login")) {
-      result = true;
-    } else if (request.getRequestURI().startsWith("/public/")) {
-      result = true;
+      shouldContinue = false;
+    } else if (isPublicPath(request.getRequestURI())) {
+      shouldContinue = true;
     } else {
-      // 放行公共接口（如附件下载）
-      String token = request.getHeader(jwtProperties.getTokenName());
-
-      if (Objects.isNull(token)) {
-        throw new BaseException(ErrorCode.TOKEN_ERROR);
-      }
-
-      try {
-        Claims claims = JwtUntil.parseJWT(jwtProperties.getSecretKey(), token);
-
-        Long userID = claims.get("userID", Long.class);
-
-        // 从数据库查询用户信息，获取角色ID
-        UserEntity user = userMapper.selectById(userID);
-        if (user == null) {
-          throw new BaseException("用户不存在，请重新登录");
-        }
-
-        roleAO.setRoleId(user.getRoleId());
-        roleAO.setId(userID);
-
-        BaseUnit.setCurrentRole(roleAO);
-
-      } catch (Exception e) {
-        throw new BaseException(ErrorCode.TOKEN_INVALID);
-      }
-
-      result = true;
+      authenticate(request);
+      shouldContinue = true;
     }
-    return result;
+    return shouldContinue;
+  }
+
+  private boolean isPublicPath(String uri) {
+    return "/login".equals(uri)
+        || "/user/login".equals(uri)
+        || "/health".equals(uri)
+        || (uri != null && uri.startsWith("/public/"));
+  }
+
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 鉴权边界：JWT解析+ORM查用户多源，失败统一按TOKEN无效拦截
+  private void authenticate(HttpServletRequest request) {
+    String token = request.getHeader(jwtProperties.getTokenName());
+    if (Objects.isNull(token)) {
+      throw new BaseException(ErrorCode.TOKEN_ERROR);
+    }
+    if (tokenBlacklistService != null && tokenBlacklistService.isBlacklisted(token)) {
+      throw new BaseException(ErrorCode.TOKEN_INVALID);
+    }
+
+    try {
+      Claims claims = JwtUntil.parseJWT(jwtProperties.getSecretKey(), token);
+      Long userID = claims.get("userID", Long.class);
+
+      UserEntity user = userMapper.selectById(userID);
+      if (user == null) {
+        throw new BaseException("用户不存在，请重新登录");
+      }
+
+      checkUserStatus(user);
+
+      RoleAO roleAO = new RoleAO();
+      roleAO.setRoleId(user.getRoleId());
+      roleAO.setId(userID);
+      BaseUnit.setCurrentRole(roleAO);
+    } catch (BaseException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new BaseException(ErrorCode.TOKEN_INVALID);
+    }
+  }
+
+  private void checkUserStatus(UserEntity user) {
+    Integer status = user.getStatus();
+    Long roleId = user.getRoleId();
+    if (status == null || status != 1) {
+      if (Long.valueOf(2L).equals(roleId) || Integer.valueOf(2).equals(status)) {
+        throw new BaseException(ErrorCode.USER_IS_QUIT);
+      }
+      if (Long.valueOf(0L).equals(roleId) || Integer.valueOf(0).equals(status)) {
+        throw new BaseException(ErrorCode.USER_IS_FROZEN);
+      }
+      throw new BaseException(ErrorCode.USER_STATUS_EXCEPTION);
+    }
   }
 }

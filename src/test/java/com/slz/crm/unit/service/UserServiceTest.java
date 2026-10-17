@@ -22,6 +22,8 @@ import com.slz.crm.server.mapper.UserMapper;
 import com.slz.crm.server.properties.JwtProperties;
 import com.slz.crm.server.service.DataConvertService;
 import com.slz.crm.server.service.impl.UserServiceImpl;
+import com.slz.crm.server.service.support.LoginAttemptService;
+import com.slz.crm.server.service.support.TokenBlacklistService;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import org.junit.jupiter.api.AfterEach;
@@ -55,6 +57,10 @@ class UserServiceTest {
   @Mock private DataConvertService dataConvertService;
 
   @Mock private JwtProperties jwtProperties;
+
+  @Mock private LoginAttemptService loginAttemptService;
+
+  @Mock private TokenBlacklistService tokenBlacklistService;
 
   @InjectMocks private UserServiceImpl userService;
 
@@ -136,23 +142,83 @@ class UserServiceTest {
   }
 
   @Test
-  @DisplayName("密码错误时登录失败并抛出密码或邮箱错误")
+  @DisplayName("密码错误时登录失败并记录试错次数，提示剩余重试机会")
   void shouldRejectLoginWhenPasswordDoesNotMatch() {
     UserEntity user = existingUserWithPassword(PasswordHashUtil.hash("correct-password"));
     when(userMapper.selectOne(any())).thenReturn(user);
+    when(loginAttemptService.recordFailure(any())).thenReturn(4);
 
     BaseException exception =
         assertThrows(BaseException.class, () -> userService.login(loginRequest("wrong-password")));
 
-    assertEquals(ErrorCode.PASSWORD_OR_EMAIL_ERROR.getMessage(), exception.getMessage());
+    assertEquals(ErrorCode.PASSWORD_OR_EMAIL_ERROR.getCode(), exception.getCode());
+    assertTrue(exception.getMessage().contains("还剩 4 次重试机会"));
+    verify(loginAttemptService).recordFailure("jane.doe@example.com");
   }
 
   @Test
-  @DisplayName("邮箱不存在时登录失败并抛出密码或邮箱错误")
+  @DisplayName("邮箱不存在时登录失败并记录试错次数")
   void shouldRejectLoginWhenEmailNotFound() {
     when(userMapper.selectOne(any())).thenReturn(null);
+    when(loginAttemptService.recordFailure(any())).thenReturn(3);
 
-    assertThrows(BaseException.class, () -> userService.login(loginRequest("admin123")));
+    BaseException exception =
+        assertThrows(BaseException.class, () -> userService.login(loginRequest("admin123")));
+
+    assertEquals(ErrorCode.PASSWORD_OR_EMAIL_ERROR.getCode(), exception.getCode());
+    assertTrue(exception.getMessage().contains("还剩 3 次重试机会"));
+    verify(loginAttemptService).recordFailure("jane.doe@example.com");
+  }
+
+  @Test
+  @DisplayName("账号处于锁定状态时，应在查询前置直接阻断抛出 USER_IS_LOCK 异常")
+  void shouldBlockLoginWhenAccountIsLocked() {
+    doThrow(new BaseException(ErrorCode.USER_IS_LOCK, "登录失败次数过多，账号已被锁定，请在 15 分钟后重试"))
+        .when(loginAttemptService)
+        .checkLocked(any());
+
+    BaseException exception =
+        assertThrows(BaseException.class, () -> userService.login(loginRequest("admin123")));
+
+    assertEquals(ErrorCode.USER_IS_LOCK.getCode(), exception.getCode());
+    assertTrue(exception.getMessage().contains("账号已被锁定"));
+    verify(userMapper, never()).selectOne(any());
+  }
+
+  @Test
+  @DisplayName("试错达到 5 次上限时直接抛出 USER_IS_LOCK 锁定异常")
+  void shouldLockAccountWhenAttemptsReachLimit() {
+    UserEntity user = existingUserWithPassword(PasswordHashUtil.hash("correct-password"));
+    when(userMapper.selectOne(any())).thenReturn(user);
+    when(loginAttemptService.recordFailure(any())).thenReturn(0);
+
+    BaseException exception =
+        assertThrows(BaseException.class, () -> userService.login(loginRequest("wrong-password")));
+
+    assertEquals(ErrorCode.USER_IS_LOCK.getCode(), exception.getCode());
+    assertTrue(exception.getMessage().contains("账号已被锁定"));
+  }
+
+  @Test
+  @DisplayName("登录成功时清除试错计数")
+  void shouldClearAttemptsOnLoginSuccess() {
+    UserEntity user = existingUserWithPassword(PasswordHashUtil.hash("admin123"));
+    when(userMapper.selectOne(any())).thenReturn(user);
+    when(jwtProperties.getSecretKey()).thenReturn(TEST_JWT_SECRET);
+    when(jwtProperties.getTtl()).thenReturn(3_600_000L);
+
+    userService.login(loginRequest("admin123"));
+
+    verify(loginAttemptService).loginSucceeded("jane.doe@example.com");
+  }
+
+  @Test
+  @DisplayName("用户登出时将 Token 写入黑名单")
+  void shouldAddTokenToBlacklistOnLogout() {
+    String token = "jwt-sample-token";
+    userService.logout(token);
+
+    verify(tokenBlacklistService).addToBlacklist(token);
   }
 
   private UserEntity existingUserWithPassword(String storedPassword) {

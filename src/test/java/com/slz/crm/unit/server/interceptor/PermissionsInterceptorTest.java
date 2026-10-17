@@ -94,16 +94,22 @@ class PermissionsInterceptorTest {
   }
 
   /**
-   * 现状刻画（不是认可）：JWT 白名单用的是 contains("/login") 子串匹配， 因此任何路径片段以 login 开头的端点都会以"无上下文"形态抵达放行分支； 而同前缀的
-   * logout 仍需 token。收窄成精确/前缀匹配会让本用例变红，届时请与 PermissionsInterceptor 的注释一并更新。
+   * H-8 修复后校验：JWT 白名单已收窄为精确匹配（/login、/user/login 等），伪造子串路径（如
+   * /auth/loginQrCode、/customer/login-bypass） 不再被放行，直接按未携带 token 拦截。
    */
   @Test
-  void jwtLoginWhitelistMatchesLexicallyNotSemantically() throws Exception {
+  void jwtLoginWhitelistEnforcesExactPathMatching() throws Exception {
     JWTInterceptor jwtInterceptor = jwtInterceptorRequiringToken();
 
     MockHttpServletRequest qrLogin = new MockHttpServletRequest("GET", "/auth/loginQrCode");
-    assertTrue(jwtInterceptor.preHandle(qrLogin, new MockHttpServletResponse(), handlerMethod()));
-    assertTrue(interceptor.preHandle(qrLogin, new MockHttpServletResponse(), handlerMethod()));
+    assertThrows(
+        BaseException.class,
+        () -> jwtInterceptor.preHandle(qrLogin, new MockHttpServletResponse(), handlerMethod()));
+
+    MockHttpServletRequest bypass = new MockHttpServletRequest("POST", "/customer/login-bypass");
+    assertThrows(
+        BaseException.class,
+        () -> jwtInterceptor.preHandle(bypass, new MockHttpServletResponse(), handlerMethod()));
 
     MockHttpServletRequest logout = new MockHttpServletRequest("GET", "/user/logout");
     assertThrows(

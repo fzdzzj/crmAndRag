@@ -63,4 +63,42 @@ final class UserDeptSupport {
       }
     }
   }
+
+  /**
+   * 将在职系统用户实体列表转换为下拉选择项列表（含部门名转换）。
+   *
+   * @param users 系统用户实体列表
+   * @param dataConvertService 数据转换服务
+   * @return 选择项列表
+   */
+  static List<com.slz.crm.pojo.vo.UserOptionVO> toActiveOptions(
+      List<com.slz.crm.pojo.entity.UserEntity> users, DataConvertService dataConvertService) {
+    final List<com.slz.crm.pojo.vo.UserOptionVO> result;
+    if (users == null || users.isEmpty()) {
+      result = java.util.Collections.emptyList();
+    } else {
+      Set<Long> deptIds = new HashSet<>();
+      for (com.slz.crm.pojo.entity.UserEntity user : users) {
+        if (user.getDeptId() != null) {
+          deptIds.add(user.getDeptId());
+        }
+      }
+      Map<Long, String> deptNameMap =
+          deptIds.isEmpty()
+              ? java.util.Collections.emptyMap()
+              : dataConvertService.getDeptNames(deptIds);
+      result = new java.util.ArrayList<>(users.size());
+      for (com.slz.crm.pojo.entity.UserEntity user : users) {
+        com.slz.crm.pojo.vo.UserOptionVO vo = new com.slz.crm.pojo.vo.UserOptionVO();
+        vo.setId(user.getId());
+        vo.setRealName(user.getRealName());
+        vo.setDeptId(user.getDeptId());
+        if (user.getDeptId() != null) {
+          vo.setDeptName(deptNameMap.get(user.getDeptId()));
+        }
+        result.add(vo);
+      }
+    }
+    return result;
+  }
 }
