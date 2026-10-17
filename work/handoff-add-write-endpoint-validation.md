@@ -23,14 +23,14 @@
 - 扫描口径：POST/PUT/DELETE mapping 且方法参数含 `@RequestBody`；GET 端点经查零 @RequestBody，无边界遗漏。
 - 全仓 36 个 controller 中 **28 个**含写端点，共 **86 条**（其中 1 条 AiChatController `/ai/chat/stream` 已挂 @Valid，本卡不动）。
 - 双重扫描互证：正则状态机提取 86 条（awk + python 两版实现，逐 controller 双射对账一致）。
-- 特殊形态核实：4 条 `@RequestBody(required=false)`（CostKeyChangeRequest reject / ProjectFile query / SalesLead query）、1 条 `@RequestBody String`（User /password）、1 条 value= 多属性 mapping（AiChat /chat/stream）、5 个构造器注入 controller（KnowledgeAdmin 6 参 + User/UserHandover/CostKey/DynamicConfig 1 参）。
+- 特殊形态核实：3 条 `@RequestBody(required=false)`（CostKeyChangeRequest reject / ProjectFile query / SalesLead query）、1 条 `@RequestBody String`（User /password）、1 条 value= 多属性 mapping（AiChat /chat/stream）、5 个构造器注入 controller（KnowledgeAdmin 6 参 + User/UserHandover/CostKey/DynamicConfig 1 参）。
 
 ### 2.2 契约对表口径（tasks 1.1，openapi.yaml 只读零改动）
 
 - 路径映射：controller 类级 @RequestMapping 前缀 + 方法级路径 → openapi paths；method + requestBody.$ref → components/schemas。**85/86 命中验证**（唯一 MISS 为 AiChat value= 截断致路径拼接差异，该端点已在位不动）。
 - **字段级 required 全量核查：openapi.yaml components/schemas 区仅 2 处 required 数组——`message` 与 `resume.generationId`（AI 聊天契约），对应 AiChatRequestDTO 的 @NotBlank/@Size 注解已在位（AI 侧先前收口）。**
 - **结论：其余 84 端点契约零字段级 required → 按"契约未标 required 一律不加非空约束"口径，本卡 DTO 零新增校验注解。** 收口形态 = 86/86 写端点参数挂 `@Valid`（对无约束 DTO 当前为 no-op 防御网；未来契约标注 required 后校验自动生效，反向测试形态已就位）。
-- requestBody 级 `required: true`（body 本身必需）256 处与 Spring `@RequestBody` 默认 required=true 同语义，无需注解表达。
+- requestBody 级 required 计数修正：requestBody 块 102 处（84 处标 `required: true` / 18 处缺省），256 为全文件含参数级计数；与 Spring `@RequestBody` 默认 required=true 同语义，无需注解表达。
 
 ### 2.3 注解收口（tasks 1.2）
 
@@ -91,8 +91,8 @@
 
 ## 4 · 组 2 门禁纪要
 
-- **基线**：`mvn -B -ntp test` 全量 **1570 tests / 0 failures / 0 errors / BUILD SUCCESS**（5 分 08 秒）；`check-test-baseline.sh --update` 从真实运行写入：surefire **reports 226→255、tests 1484→1574、skipped 0**；failsafe 31/118/7 不变。脚本统计口径（按 XML 报告累加）与 mvn 汇总差 +4 属统计口径差异，非用例数漂移。
-- **typed-router**：`pnpm build` 实证再生产物 +17 行（`salesLeadList` 路由两条 Union 成员）——归因 **master 既有产物漂移**：salesLeadList 页面文件已随 511aa17/89effc7 入库但 typed-router.d.ts 生成产物未随提交更新，任何一次 build 都会再生，**非本卡写集**（本卡零前端触碰）。已按卡面口径 `git checkout --` 还原；merge-gate 的 vitest 段再次改写行尾后亦再次还原，收尾 `git status -- frontend/` 零残留。
+- **基线**：`mvn -B -ntp test` 全量 **1570 tests / 0 failures / 0 errors / BUILD SUCCESS**（5 分 08 秒）；`check-test-baseline.sh --update` 从真实运行写入：surefire **reports 226→254、tests 1484→1570、skipped 0**；failsafe 31/118/7 不变。~~脚本统计口径（按 XML 报告累加）与 mvn 汇总差 +4 属统计口径差异，非用例数漂移。~~ **残留污染归因（闭环订正）**：上述 +4 并非口径差异——D4 在途分支 b66a5b5 的 `SalesOpportunityServiceTest` 报告（tests=4，源码树已无此类）被 `--update` 未 clean 吸收，致台账 255/1574 虚高、CI run 38995729403 基线门禁红；纠偏笔 **6d61488**（F1）clean 全量 verify 后真实写入 254/1570，红→复绿全程在案（raw：work/tmp/wev-close/）。
+- **typed-router**：`pnpm build` 实证再生产物 +17 行（`salesLeadList` 路由两条 Union 成员）——归因 **master 既有产物漂移**：salesLeadList 页面文件已随 d9f0a0f 入库但 typed-router.d.ts 生成产物未随提交更新，任何一次 build 都会再生，**非本卡写集**（本卡零前端触碰）。已按卡面口径 `git checkout --` 还原；merge-gate 的 vitest 段再次改写行尾后亦再次还原，收尾 `git status -- frontend/` 零残留。
 - **merge-gate**：`bash scripts/merge-gate.sh --with-verify`（Docker 实测在线 29.6.2，9/9 全门禁）exit 0，脚本总结语"**merge-gate 通过：所有已执行的子门禁绿**。以上输出可作为合入证据"。日志可见段实测：frontend vitest **197/197 绿**、SpotBugs 双射 **BIJECTION_OK（12=12）**、PMD 基线 **PMD_BASELINE_OK（实测 0==登记 0==pom 阈值 0）**、pre-commit 转发器在位；其余段由总结语背书（执行日志经 `tail -40` 管道仅存尾段，属取证方式缺陷如实披露；复核如需逐段日志可复跑）。另披露：vitest 段曾改写 typed-router.d.ts 行尾（脚本 NOTE 明示为生成物噪声勿提交），已 checkout 还原。
 
 ## 5 · 红线与树净自证
@@ -109,3 +109,5 @@
 - 重点核对：契约对表结论（零 required → 零注解）是否成立——可复跑 `python` 对表或抽查 schemas 区 required；@Valid 86/86 可用 `grep -c "@Valid @RequestBody"` 逐文件核。
 - 反向测试的断言口径（isOk + 50002）与既有先例一致性。
 - typed-router 漂移归因（master 既有，非本卡）与还原动作。
+
+> 合入 master@73e365a（merge --no-ff，6+1 笔）+ 基线纠偏笔 F1=6d61488（台账 254/1570 真实值），A 档复核 GO（raw：work/tmp/wev-review/）
