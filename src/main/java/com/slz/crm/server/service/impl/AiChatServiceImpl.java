@@ -151,12 +151,8 @@ public class AiChatServiceImpl implements AiChatService {
         return;
       }
 
-      if (AiChatResumeSupport.rejectIfRateLimited(userId, emitter, eventWriter, aiRateLimiter)) {
-        return;
-      }
-
-      if (AiChatResumeSupport.rejectIfBudgetExceeded(
-          tokenBudgetService, userId, emitter, eventWriter)) {
+      if (AiChatResumeSupport.rejectIfThrottled(
+          aiRateLimiter, tokenBudgetService, userId, emitter, eventWriter)) {
         return;
       }
 
@@ -182,9 +178,7 @@ public class AiChatServiceImpl implements AiChatService {
       dispatchChatStream(currentUser, request, emitter, session, imagePrep, needTitle);
     } catch (ContentRiskBlockedException exception) {
       // wire-built-unfinished-infra 任务 1.2：内容安全 BLOCK 复用 SSE 错误事件语义明示拦截原因，不并入通用模型失败
-      log.warn("AI chat input blocked by content security, sessionId={}", request.sessionId());
-      eventWriter.sendError(emitter, "CONTENT_BLOCKED", exception.getMessage());
-      emitter.complete();
+      AiChatResumeSupport.rejectContentBlocked(emitter, eventWriter, exception);
     } catch (Exception exception) {
       log.error("AI chat failed, sessionId={}", request.sessionId(), exception);
       eventWriter.sendError(emitter, "LLM_ERROR", "模型调用失败，请稍后重试");

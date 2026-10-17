@@ -2,6 +2,7 @@ package com.slz.crm.server.service.impl;
 
 import com.slz.crm.platform.contract.AssistantChatRequest;
 import com.slz.crm.platform.contract.TokenUsageType;
+import com.slz.crm.platform.security.ContentRiskBlockedException;
 import com.slz.crm.platform.token.TokenBudgetDecision;
 import com.slz.crm.platform.token.TokenBudgetRequest;
 import com.slz.crm.platform.token.TokenBudgetScope;
@@ -15,6 +16,8 @@ import com.slz.crm.server.ai.AiRateLimiter;
 import com.slz.crm.server.ai.AiStreamRegistry;
 import com.slz.crm.server.service.AiSessionService;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -23,6 +26,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * 解析、末条用户消息定位与图片资料块拼装；依赖经参数传入，保持零注入可测性。
  */
 final class AiChatResumeSupport {
+
+  private static final Logger LOG = LoggerFactory.getLogger(AiChatResumeSupport.class);
 
   private AiChatResumeSupport() {}
 
@@ -170,6 +175,31 @@ final class AiChatResumeSupport {
       emitter.complete();
     }
     return archived;
+  }
+
+  /**
+   * 频次限流 + Token 预算合并前置检查（wire-built-unfinished-infra 任务 1.2）：任一未通过即发对应错误事件并 complete 会话。合并入口使
+   * doStreamChat 守卫链零增分支（PMD CyclomaticComplexity 口径）。
+   */
+  static boolean rejectIfThrottled(
+      AiRateLimiter aiRateLimiter,
+      TokenBudgetService tokenBudgetService,
+      Long userId,
+      SseEmitter emitter,
+      AiChatSseEventWriter eventWriter) {
+    return rejectIfRateLimited(userId, emitter, eventWriter, aiRateLimiter)
+        || rejectIfBudgetExceeded(tokenBudgetService, userId, emitter, eventWriter);
+  }
+
+  /**
+   * 内容安全拦截呈现（wire-built-unfinished-infra 任务 1.2）：发 CONTENT_BLOCKED 错误事件并 complete 会话， 与 rejectIf*
+   * 家族同构；拦截明细已由 evaluate 落 platform_content_security_event 审计，此处 WARN 留运行痕。
+   */
+  static void rejectContentBlocked(
+      SseEmitter emitter, AiChatSseEventWriter eventWriter, ContentRiskBlockedException exception) {
+    LOG.warn("AI chat input blocked by content security: {}", exception.getMessage());
+    eventWriter.sendError(emitter, "CONTENT_BLOCKED", exception.getMessage());
+    emitter.complete();
   }
 
   /**

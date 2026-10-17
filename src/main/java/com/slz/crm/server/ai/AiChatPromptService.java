@@ -1,8 +1,6 @@
 package com.slz.crm.server.ai;
 
-import com.slz.crm.platform.security.ContentSecurityResult;
 import com.slz.crm.platform.security.ContentSecurityService;
-import com.slz.crm.platform.security.ContentSourceType;
 import com.slz.crm.pojo.dto.PromptTemplateRenderDTO;
 import com.slz.crm.pojo.entity.AiConversationMemoryEntity;
 import com.slz.crm.pojo.entity.AiMessageEntity;
@@ -118,7 +116,10 @@ public class AiChatPromptService {
     List<Message> messages = new ArrayList<>();
     messages.add(new SystemMessage(build.prompt()));
     messages.addAll(loadHistory(sessionId));
-    messages.add(new UserMessage(secureUserContent(sessionId, prepared.rewrittenQuery())));
+    messages.add(
+        new UserMessage(
+            AiChatContentSecuritySupport.secureUserContent(
+                contentSecurityService, sessionId, prepared.rewrittenQuery())));
     boolean injected =
         build.slotInjected() && retrievalContext != null && !retrievalContext.isBlank();
     return new PreparedMessages(applyPromptBudget(messages), injected);
@@ -313,22 +314,6 @@ public class AiChatPromptService {
   public enum PromptSource {
     TEMPLATE,
     FALLBACK
-  }
-
-  /**
-   * 用户输入内容安全闸（wire-built-unfinished-infra 任务 1.2）：进入模型上下文前 evaluate 落审计事件，再按 服务已实现语义处置——BLOCK 抛
-   * {@link com.slz.crm.platform.security.ContentRiskBlockedException} 拦截本轮、 DEGRADE 以
-   * untrusted_content 标签降级包装、ALLOW 原文放行；服务缺席时空跳过。
-   */
-  private String secureUserContent(Long sessionId, String content) {
-    String result = content;
-    if (contentSecurityService != null) {
-      ContentSecurityResult security =
-          contentSecurityService.evaluate(
-              ContentSourceType.USER_INPUT, String.valueOf(sessionId), content);
-      result = contentSecurityService.wrapUntrustedContent(content, security);
-    }
-    return result;
   }
 
   private List<Message> loadHistory(Long sessionId) {
