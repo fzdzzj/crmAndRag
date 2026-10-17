@@ -4,9 +4,12 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.slz.crm.common.enumeration.ErrorCode;
+import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.server.constant.ResourceTypeConstant;
 import com.slz.crm.server.service.DataScopeService;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -92,9 +95,9 @@ public class QueryWrapperAspect {
    */
   @Around("mapperMethodsWithoutWrapper()")
   @SuppressWarnings({
-    "PMD.AvoidCatchingGenericException", // 反射invoke+proceed多源，失败回退原方法防中断
-    "PMD.OnlyOneReturn", // 4 处回退分支（未登录/不受控表/无重载/反射失败）语义各异，单出口化损害切面可读性（tighten-pmd-residual-325 任务
-    // 6.3）
+    "PMD.AvoidCatchingGenericException", // 反射invoke异常多源，统一解包转 12002 阻断（fail-closed）
+    "PMD.OnlyOneReturn", // 3 处放行分支（未登录/不受控表/无重载）与正常转发出口语义各异，单出口化损害切面可读性（tighten-pmd-residual-325
+    // 任务 6.3）
   })
   public Object aroundQueryWithoutWrapper(ProceedingJoinPoint joinPoint) throws Throwable {
     String methodName = joinPoint.getSignature().getName();
@@ -104,7 +107,7 @@ public class QueryWrapperAspect {
     // 1. 获取当前用户
     RoleAO currentUser = com.slz.crm.common.untils.BaseUnit.getCurrentRole();
     if (currentUser == null) {
-      LOGGER.warn("当前用户未登录,直接执行原方法");
+      LOGGER.debug("系统/后台任务无当前用户，跳过数据权限注入");
       return joinPoint.proceed();
     }
 
@@ -135,13 +138,22 @@ public class QueryWrapperAspect {
         tableName,
         methodName);
 
-    // 6. 调用带 Wrapper 的方法
+    // 6. 调用带 Wrapper 的方法（fail-closed：转发失败严禁回退 proceed()，否则无 Wrapper 全量查询放行）
     try {
       Object mapper = joinPoint.getTarget();
       return methodWithWrapper.invoke(mapper, wrapper);
     } catch (Exception e) {
-      LOGGER.error("调用带QueryWrapper的方法失败,回退到原方法", e);
-      return joinPoint.proceed();
+      final Throwable cause;
+      if (e instanceof InvocationTargetException invocationTargetException) {
+        cause = invocationTargetException.getTargetException();
+      } else {
+        cause = e;
+      }
+      if (cause instanceof BaseException baseException) {
+        throw baseException;
+      }
+      LOGGER.error("调用带QueryWrapper的方法失败,拒绝查询", e);
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "数据权限方法转发失败: " + cause.getMessage());
     }
   }
 
@@ -201,13 +213,13 @@ public class QueryWrapperAspect {
    * @param joinPoint 连接点
    * @param wrapper QueryWrapper 对象
    */
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 数据权限外呼服务多源，失败仅告警不阻断查询
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 通用捕获兜底转 12002 阻断（fail-closed，严禁吞咽）
   private void addDataScopeCondition(JoinPoint joinPoint, QueryWrapper<?> wrapper) {
     try {
       // 1. 获取当前用户
       RoleAO currentUser = com.slz.crm.common.untils.BaseUnit.getCurrentRole();
       if (currentUser == null) {
-        LOGGER.warn("当前用户未登录,不添加数据权限条件");
+        LOGGER.debug("系统/后台任务无当前用户，跳过数据权限注入");
       } else {
         // 2. 从方法签名中提取表名
         String tableName = extractTableName(joinPoint);
@@ -227,7 +239,11 @@ public class QueryWrapperAspect {
         }
       }
     } catch (Exception e) {
-      LOGGER.error("添加数据权限条件失败", e);
+      if (e instanceof BaseException baseException) {
+        throw baseException;
+      }
+      LOGGER.error("添加数据权限条件失败,拒绝查询", e);
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "数据权限过滤失败，拒绝查询");
     }
   }
 
@@ -237,13 +253,13 @@ public class QueryWrapperAspect {
    * @param joinPoint 连接点
    * @param wrapper LambdaQueryWrapper 对象
    */
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 数据权限外呼服务多源，失败仅告警不阻断查询
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 通用捕获兜底转 12002 阻断（fail-closed，严禁吞咽）
   private void addDataScopeCondition(JoinPoint joinPoint, LambdaQueryWrapper<?> wrapper) {
     try {
       // 1. 获取当前用户
       RoleAO currentUser = com.slz.crm.common.untils.BaseUnit.getCurrentRole();
       if (currentUser == null) {
-        LOGGER.warn("当前用户未登录,不添加数据权限条件");
+        LOGGER.debug("系统/后台任务无当前用户，跳过数据权限注入");
       } else {
         // 2. 从方法签名中提取表名
         String tableName = extractTableName(joinPoint);
@@ -263,7 +279,11 @@ public class QueryWrapperAspect {
         }
       }
     } catch (Exception e) {
-      LOGGER.error("添加数据权限条件失败(Lambda)", e);
+      if (e instanceof BaseException baseException) {
+        throw baseException;
+      }
+      LOGGER.error("添加数据权限条件失败(Lambda),拒绝查询", e);
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "数据权限过滤失败，拒绝查询");
     }
   }
 
