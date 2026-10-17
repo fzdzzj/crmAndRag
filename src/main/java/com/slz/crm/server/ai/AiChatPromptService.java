@@ -1,5 +1,8 @@
 package com.slz.crm.server.ai;
 
+import com.slz.crm.platform.security.ContentSecurityResult;
+import com.slz.crm.platform.security.ContentSecurityService;
+import com.slz.crm.platform.security.ContentSourceType;
 import com.slz.crm.pojo.dto.PromptTemplateRenderDTO;
 import com.slz.crm.pojo.entity.AiConversationMemoryEntity;
 import com.slz.crm.pojo.entity.AiMessageEntity;
@@ -52,6 +55,13 @@ public class AiChatPromptService {
 
   /** 短问改写只影响检索/模型输入，不改变 ai_message 中的用户原文。 */
   @Autowired private AiShortQuestionRewriter shortQuestionRewriter;
+
+  /**
+   * 内容安全闸（wire-built-unfinished-infra 任务 1.2）：组装进模型上下文前对用户输入 evaluate+wrap； 生产 bean 恒在，手工装配单测可缺席 →
+   * 组装空跳过。
+   */
+  @Autowired(required = false)
+  private ContentSecurityService contentSecurityService;
 
   /** 提示词模板服务：运行时模板态渲染入口；渲染异常时回退类路径静态文本（aichat-prompt-template-integration 任务 2.1）。 */
   @Autowired(required = false)
@@ -108,7 +118,7 @@ public class AiChatPromptService {
     List<Message> messages = new ArrayList<>();
     messages.add(new SystemMessage(build.prompt()));
     messages.addAll(loadHistory(sessionId));
-    messages.add(new UserMessage(prepared.rewrittenQuery()));
+    messages.add(new UserMessage(secureUserContent(sessionId, prepared.rewrittenQuery())));
     boolean injected =
         build.slotInjected() && retrievalContext != null && !retrievalContext.isBlank();
     return new PreparedMessages(applyPromptBudget(messages), injected);
@@ -303,6 +313,22 @@ public class AiChatPromptService {
   public enum PromptSource {
     TEMPLATE,
     FALLBACK
+  }
+
+  /**
+   * 用户输入内容安全闸（wire-built-unfinished-infra 任务 1.2）：进入模型上下文前 evaluate 落审计事件，再按 服务已实现语义处置——BLOCK 抛
+   * {@link com.slz.crm.platform.security.ContentRiskBlockedException} 拦截本轮、 DEGRADE 以
+   * untrusted_content 标签降级包装、ALLOW 原文放行；服务缺席时空跳过。
+   */
+  private String secureUserContent(Long sessionId, String content) {
+    String result = content;
+    if (contentSecurityService != null) {
+      ContentSecurityResult security =
+          contentSecurityService.evaluate(
+              ContentSourceType.USER_INPUT, String.valueOf(sessionId), content);
+      result = contentSecurityService.wrapUntrustedContent(content, security);
+    }
+    return result;
   }
 
   private List<Message> loadHistory(Long sessionId) {

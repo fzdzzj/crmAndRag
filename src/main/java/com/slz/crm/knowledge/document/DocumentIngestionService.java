@@ -14,10 +14,18 @@ import com.slz.crm.platform.contract.CrmVectorStore;
 import com.slz.crm.platform.contract.UserContext;
 import com.slz.crm.platform.resilience.DependencyRecoveryPolicy;
 import com.slz.crm.platform.resilience.DependencyUnavailableException;
+import com.slz.crm.platform.security.ContentRiskBlockedException;
+import com.slz.crm.platform.security.ContentSecurityResult;
+import com.slz.crm.platform.security.ContentSecurityService;
+import com.slz.crm.platform.security.ContentSourceType;
 import com.slz.crm.server.mapper.DocumentVectorChunkMapper;
 import com.slz.crm.server.mapper.KnowledgeBaseMapper;
 import com.slz.crm.server.mapper.UploadedFileMapper;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HexFormat;
@@ -64,6 +72,13 @@ public class DocumentIngestionService {
 
   /** 依赖恢复策略（wire-ingestion-recovery-replay 任务 2）：熔断开闸进 PENDING，其余进 FAILED。 */
   private final DependencyRecoveryPolicy<UploadedFileEntity, UploadedFileEntity> recoveryPolicy;
+
+  /**
+   * 内容安全闸（wire-built-unfinished-infra 任务 1.2）：入库前对文档全文 evaluate，BLOCK 拒绝且零写入。 生产 bean 恒在；兼容构造的单测可缺席
+   * → 摄取空跳过，故字段注入不扰动既有三构造器。
+   */
+  @Autowired(required = false)
+  private ContentSecurityService contentSecurityService;
 
   @Autowired
   public DocumentIngestionService(
@@ -158,9 +173,14 @@ public class DocumentIngestionService {
       throw new IllegalArgumentException("不支持的文档类型: " + command.filename());
     }
 
+    // wire-built-unfinished-infra 任务 1.2：先缓冲全文做内容安全评估，BLOCK 在任何存储/落库动作前拒绝
+    byte[] contentBytes = readAllBytes(command.content());
+    evaluateDocumentSecurity(command, contentBytes);
+
     String documentId = UUID.randomUUID().toString().replace("-", "");
     String storageKey =
-        fileStorageService.store(command.content(), command.filename(), command.contentType());
+        fileStorageService.store(
+            new ByteArrayInputStream(contentBytes), command.filename(), command.contentType());
     UploadedFileEntity file =
         DocumentIngestionSupport.createUploadedFile(
             command, documentId, storageKey, sha256OfStoredObject(storageKey));
@@ -190,6 +210,28 @@ public class DocumentIngestionService {
       RuntimeException wrapped = new IllegalStateException("文档入库失败", exception);
       markFailed(file, wrapped);
       throw wrapped;
+    }
+  }
+
+  /** 文档内容安全闸：存储/落库前 evaluate（事件落审计，source 取知识库 ID）；BLOCK 立即拒绝，DEGRADE/ALLOW 继续原摄取链。 */
+  private void evaluateDocumentSecurity(DocumentIngestionCommand command, byte[] contentBytes) {
+    if (contentSecurityService != null) {
+      ContentSecurityResult security =
+          contentSecurityService.evaluate(
+              ContentSourceType.DOCUMENT,
+              String.valueOf(command.knowledgeBaseId()),
+              new String(contentBytes, StandardCharsets.UTF_8));
+      if (security.isBlocked()) {
+        throw new ContentRiskBlockedException(security);
+      }
+    }
+  }
+
+  private byte[] readAllBytes(InputStream content) {
+    try {
+      return content.readAllBytes();
+    } catch (IOException exception) {
+      throw new UncheckedIOException("读取文档内容失败", exception);
     }
   }
 
