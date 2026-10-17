@@ -85,4 +85,11 @@ public interface UserService {
    * @return 在职用户选择项列表
    */
   List<UserOptionVO> listActiveOptions();
+
+  /**
+   * 用户登出并使当前 Token 失效（harden-login-security H-9）。
+   *
+   * @param token 待作废的 JWT Token
+   */
+  void logout(String token);
 }

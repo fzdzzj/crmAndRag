@@ -26,7 +26,7 @@ public class WebMvcConfiguration extends WebMvcConfigurationSupport {
 
   /** 公共排除路径：登录/健康检查/公开接口通用，OpenAPI 路径仅 dev 环境放行。 */
   private String[] publicPaths() {
-    List<String> paths = new ArrayList<>(List.of("/login", "/health", "/public/**"));
+    List<String> paths = new ArrayList<>(List.of("/login", "/user/login", "/health", "/public/**"));
     if (exposesOpenApi()) {
       paths.addAll(List.of("/v3/api-docs", "/v3/api-docs.*", "/swagger-ui/**", "/swagger-ui.html"));
     }

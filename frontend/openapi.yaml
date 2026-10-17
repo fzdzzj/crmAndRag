@@ -1255,6 +1255,17 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+  /user/logout:
+    post:
+      tags:
+      - user-controller
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultString"
   /user/login:
     post:
       tags:

@@ -10,7 +10,9 @@ import com.slz.crm.pojo.dto.GetUserDTO;
 import com.slz.crm.pojo.dto.UserDTO;
 import com.slz.crm.pojo.vo.UserOptionVO;
 import com.slz.crm.pojo.vo.UserVO;
+import com.slz.crm.server.properties.JwtProperties;
 import com.slz.crm.server.service.UserService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.*;
 public class UserController {
 
   private final UserService userService;
+  @Autowired private JwtProperties jwtProperties;
 
   @Autowired
   public UserController(UserService userService) {
@@ -40,6 +43,20 @@ public class UserController {
   private Result<String> login(@Valid @RequestBody UserDTO userDTO) {
     String token = userService.login(userDTO);
     return Result.success(token);
+  }
+
+  /**
+   * 用户登出
+   *
+   * @param request HTTP 请求
+   * @return 登出结果
+   */
+  @PostMapping("/logout")
+  public Result<String> logout(HttpServletRequest request) {
+    String tokenName = (jwtProperties != null) ? jwtProperties.getTokenName() : "token";
+    String token = request.getHeader(tokenName);
+    userService.logout(token);
+    return Result.success("登出成功");
   }
 
   /**

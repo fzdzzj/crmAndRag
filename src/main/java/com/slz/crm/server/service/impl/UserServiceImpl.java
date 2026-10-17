@@ -10,7 +10,6 @@ import com.slz.crm.common.exiception.ServiceException;
 import com.slz.crm.common.untils.*;
 import com.slz.crm.pojo.dto.GetUserDTO;
 import com.slz.crm.pojo.dto.UserDTO;
-import com.slz.crm.pojo.entity.RoleEntity;
 import com.slz.crm.pojo.entity.UserEntity;
 import com.slz.crm.pojo.vo.UserOptionVO;
 import com.slz.crm.pojo.vo.UserVO;
@@ -22,9 +21,10 @@ import com.slz.crm.server.mapper.UserMapper;
 import com.slz.crm.server.properties.JwtProperties;
 import com.slz.crm.server.service.DataConvertService;
 import com.slz.crm.server.service.UserService;
+import com.slz.crm.server.service.support.LoginAttemptService;
+import com.slz.crm.server.service.support.TokenBlacklistService;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.stream.Collectors;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.CacheEvict;
@@ -44,39 +44,25 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
 
   @Autowired private DataConvertService dataConvertService;
 
+  @Autowired private LoginAttemptService loginAttemptService;
+
+  @Autowired private TokenBlacklistService tokenBlacklistService;
+
   @Override
   public String login(UserDTO userDTO) {
-    // 先将 Base64 加密的密码解密为明文
-    String rawPassword = BaseUnit.decryptBase64(userDTO.getPassword());
+    UserLoginSupport.checkLocked(loginAttemptService, userDTO.getEmail());
 
+    String rawPassword = BaseUnit.decryptBase64(userDTO.getPassword());
     UserEntity user =
         userMapper.selectOne(
             new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getEmail, userDTO.getEmail()));
 
-    if (user == null || !PasswordHashUtil.matches(rawPassword, user.getPassword())) {
-      throw new BaseException(ErrorCode.PASSWORD_OR_EMAIL_ERROR);
-    }
-
-    // 惰性透明升级：存量 MD5 密文在首次成功登录后改写为 BCrypt
-    if (PasswordHashUtil.isMd5(user.getPassword())) {
-      UserEntity upgrade = new UserEntity();
-      upgrade.setId(user.getId());
-      upgrade.setPassword(PasswordHashUtil.hash(rawPassword));
-      userMapper.updateById(upgrade);
-    }
-
-    // 检查用户角色是否被删除
-    if (user.getRoleId() != null && user.getRoleId() != 0) {
-      RoleEntity role = roleMapper.selectById(user.getRoleId());
-      if (role == null || Boolean.TRUE.equals(role.getIsDeleted())) {
-        throw new BaseException("该用户角色已被删除，无法登录，请联系管理员");
-      }
-    }
+    UserLoginSupport.verifyCredentials(user, rawPassword, userDTO.getEmail(), loginAttemptService);
+    UserLoginSupport.upgradeLegacyPassword(user, rawPassword, userMapper);
+    UserLoginSupport.validateUserRole(user, roleMapper);
 
     Map<String, Object> map = new HashMap<>();
-
     map.put("userID", user.getId());
-
     return JwtUntil.createJWT(jwtProperties.getSecretKey(), jwtProperties.getTtl(), map);
   }
 
@@ -328,32 +314,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
             new LambdaQueryWrapper<UserEntity>()
                 .eq(UserEntity::getStatus, 1)
                 .orderByAsc(UserEntity::getId));
-    List<UserOptionVO> result;
-    if (users.isEmpty()) {
-      result = Collections.emptyList();
-    } else {
-      Set<Long> deptIds =
-          users.stream()
-              .map(UserEntity::getDeptId)
-              .filter(Objects::nonNull)
-              .collect(Collectors.toSet());
-      Map<Long, String> deptNameMap =
-          deptIds.isEmpty() ? Collections.emptyMap() : dataConvertService.getDeptNames(deptIds);
-      result =
-          users.stream()
-              .map(
-                  user -> {
-                    UserOptionVO vo = new UserOptionVO();
-                    vo.setId(user.getId());
-                    vo.setRealName(user.getRealName());
-                    vo.setDeptId(user.getDeptId());
-                    if (user.getDeptId() != null) {
-                      vo.setDeptName(deptNameMap.get(user.getDeptId()));
-                    }
-                    return vo;
-                  })
-              .collect(Collectors.toList());
+    return UserDeptSupport.toActiveOptions(users, dataConvertService);
+  }
+
+  @Override
+  public void logout(String token) {
+    if (token != null && !token.isBlank() && tokenBlacklistService != null) {
+      tokenBlacklistService.addToBlacklist(token);
     }
-    return result;
   }
 }

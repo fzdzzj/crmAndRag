@@ -105,6 +105,12 @@ public final class OpenEndpointRegistry {
     list.add(new Entry("GET", "/user/my", "自服务：用户查自己信息（业务必需登录即可用）", "UserController#getMyUser"));
     list.add(
         new Entry("GET", "/user/options", "自服务：在职用户下拉（协助人选择器，登录即可用）", "UserController#options"));
+    list.add(
+        new Entry(
+            "POST",
+            "/user/logout",
+            "自服务：用户主动登出并废止令牌（harden-login-security H-9，登录即可用）",
+            "UserController#logout"));
     // apply-permission-matrix 任务 3.3（拍板工程默认 2）：静态 Excel 模板（无数据暴露面，导入流程依赖）
     list.add(
         new Entry(
