@@ -1,6 +1,6 @@
 # 主 Agent 轮换交接活看板 (Active Main Agent Handoff)
 
-> **更新时间**：2026-10-17（写端点校验收口卡闭环）
+> **更新时间**：2026-10-17（公海认领/分派竞态 CAS 修复卡闭环）
 > **维护契约**：**本文件必须采用整体覆盖更新（Rolling Overwrite），严禁无限追加历史流水账**！
 > **适用对象**：**新打开主 Agent 对话窗口时第一必读入口**。读完即可立即进入指导工作状态。
 
@@ -8,9 +8,9 @@
 
 ## 1. 现状快照 (Current State Snapshot)
 
-- **当前主干版本**：`master@73e365a`（本卡 `add-write-endpoint-validation` merge 笔 `73e365a`，6+1 笔，A 档复核 GO）
-- **测试基线**：Surefire 254 份报告 / 1570 用例 / 0 失败（本卡 +86 反向用例）、Failsafe 31/118/7 skipped，`scripts/test-baseline.txt` 权威对账（纠偏笔 6d61488 剔除在途卡残留报告后的真实值）
-- **门禁状态**：四静态全 0 违规，聚合门禁 `merge-gate.sh` --with-verify 9/9 全 PASS（Docker 29.6.2 在线：surefire 1570 单测 / 前端 197 用例，Docker MySQL V1~V42 真库迁移全绿（下一可用号仍 V43），SchemaDrift / PermissionCoverage 双 0 CRITICAL）
+- **当前主干版本**：`master@99c936b`（本卡 `fix-pool-claim-race` merge 笔 `99c936b`，3+1 笔，B 档复核 GO，CI Run 39006614489 6/6 全绿）
+- **测试基线**：Surefire 254 份报告 / 1573 用例 / 0 失败（本卡 +3 CAS 竞态用例：冲突×2 + 配额临界）、Failsafe 31/118/7 skipped，`scripts/test-baseline.txt` 权威对账（source-revision=8587689）
+- **门禁状态**：四静态全 0 违规，聚合门禁 `merge-gate.sh` --with-verify 9/9 全 PASS（Docker 29.6.2 在线：surefire 1573 单测 / 前端 197 用例，Docker MySQL V1~V42 真库迁移全绿（下一可用号仍 V43），SchemaDrift / PermissionCoverage 双 0 CRITICAL）
 - **工作树拓扑**：
   - 观察树：`D:\code\crmAndRag`（承载执行日志 `docs/`、任务卡与交接 `work/`）
   - 权威树（主干）：`D:\code\crmAndRag-merge-add-knowledge-admin-api`（分支检出、门禁运行、代码合并唯一法定树）
@@ -19,41 +19,42 @@
 
 ## 2. 核心架构与现行能力面
 
-1. **写端点校验收口（刚刚合入）**：86 处写端点 `@RequestBody` 参数 100% 挂 `@Valid`（27 controller，域分组三笔 39+26+20）；DTO 校验注解按契约 required 对表零超约束——openapi.yaml 字段级 required 仅 AI 聊天 2 处且对应注解已在位，欠约束=0 全仓级证明；86 反向用例（28 测试类参数化）统一走全局 50002 handler（HTTP 200 + code 50002 系 J-4 在案现状契约）；27 controller + 28 测试类共 61 文件；基线 1484→1570。
-2. **OBS-1 机械核对脚本吞错修复**：`scripts/tests/review-mechanical-check.sh` 移除 3 处真吞错（`g()` 包装 `|| true` / master-tree 两行 / 末尾 `exit 0`），核对失败经子 shell 临时文件累计真实传非 0 退出码；保留 2 处 `grep -c` 合法 0 匹配不动；维持非门禁定位（不接 CI / merge-gate）；两向自测 0/2 留证；纯 scripts 修复 Java 侧零改动基线持平；「恒 exit 0」过期口径已同步 AGENTS.md 与 `docs/review-intensity-policy.md` §五。
-3. **queryUser 数据权限部门隔离**：AI 工具 queryUser 按当前操作用户 deptId 过滤（仅同部门可见，非豁免无部门 fail-closed 空列表）；豁免对齐既有口径（超管 roleId=1 全量，三条依据 PermissionsInterceptor L97 / DataScopeLevelResolver L43-46 / DataScopeUserScopeGuard L26-27）；工具描述同步防幻觉；零迁移/零权限常量/零冻结契约/零前端改动；surefire +4（四向单测：同部门/跨部门/豁免/无部门，@AfterEach 防 ThreadLocal 泄漏）。
-4. **向量运维端点统一收口**：`POST /knowledge/admin/sync/{entity}` 五实体枚举校验（customer/contract/contactTask/businessActivity/salesOpportunity，非法 400）+ `/sync/all` 逐实体委托返回计数映射；两端点复用 KNOWLEDGE_ADMIN_MANAGE(900)；前端知识管理页运维卡片（五实体入口 + 最近同步结果 + 确认弹窗）；单测全 mock 零真实重嵌入（首次真实调用须 Owner 授权）；旧散落 reingestAll 端点全保留零改动（diff 最小决策留痕）；Playwright 检查点 +4；surefire +8、前端 +9。
-5. **客户流失预警与自动化再激活**：确定性规则（三源皆空：已完成跟进/商业活动/合同回款 + @Value 60 天窗口）扫描私海客户 → hasInProgressTask 幂等建高优待办（描述含诊断→Insight→Action 引导）→ 每日 4 点错峰调度；POST/GET /customer/churn/warning/* 复用 117/113；前端客户列表流失筛选 + 一键触发 + 3 Playwright 检查点；零 LLM 零迁移。
-6. **CustomerInsightPanel 双宿主接线**：客户详情弹窗（CompanyEditModal 只读路径）嵌入「客户诊断」区 + AI 助手抽屉上下文诊断面板（路由 query filters.id 优先 / 对话内 CUSTOMER 来源兜底，📊 药丸联动），created 反馈与刷新双宿主齐备；Insight → Action 最后一公里收口；+4 Vitest 至 188 用例。
-7. **AI 诊断建议一键转 Action**：后端 InsightToActionService 纯结构化映射（零外呼），诊断 actionSuggestions[index] → 复用既有草稿 DTO → PendingActionService.submitDraft 返回 pendingId；端点 POST /ai/insight/customer/{companyId}/to-action 挂 CUSTOMER_VIEW_COMPANY(117)，actionType 仅 CREATE_CONTACT_TASK / CREATE_BUSINESS_ACTIVITY；前端 CustomerInsightPanel.vue 转待办/转活动 + hook + 5 Vitest。
-8. **销售线索管理与一键转化商机漏斗**：
+1. **公海认领/分派竞态 CAS 修复（刚刚合入）**：读-判-写压缩为单条条件 UPDATE（谓词 `pool_status=1 AND is_deleted=0`，PK 定位 affected∈{0,1}）；50 上限以 sys_user 行锁串行化（`FOR UPDATE` 先锁后计数，quota+CAS+提交同事务）；锁序统一「先用户后客户」零死锁面；零迁移零 version 列；错误码复用 50002/20003；+3 用例（CAS 冲突×2 / 配额临界），既有 9 用例零删除仅断言形状适配；基线 1570→1573。
+2. **写端点校验收口**：86 处写端点 `@RequestBody` 参数 100% 挂 `@Valid`（27 controller，域分组三笔 39+26+20）；DTO 校验注解按契约 required 对表零超约束——openapi.yaml 字段级 required 仅 AI 聊天 2 处且对应注解已在位，欠约束=0 全仓级证明；86 反向用例（28 测试类参数化）统一走全局 50002 handler（HTTP 200 + code 50002 系 J-4 在案现状契约）；27 controller + 28 测试类共 61 文件；基线 1484→1570。
+3. **OBS-1 机械核对脚本吞错修复**：`scripts/tests/review-mechanical-check.sh` 移除 3 处真吞错（`g()` 包装 `|| true` / master-tree 两行 / 末尾 `exit 0`），核对失败经子 shell 临时文件累计真实传非 0 退出码；保留 2 处 `grep -c` 合法 0 匹配不动；维持非门禁定位（不接 CI / merge-gate）；两向自测 0/2 留证；纯 scripts 修复 Java 侧零改动基线持平；「恒 exit 0」过期口径已同步 AGENTS.md 与 `docs/review-intensity-policy.md` §五。
+4. **queryUser 数据权限部门隔离**：AI 工具 queryUser 按当前操作用户 deptId 过滤（仅同部门可见，非豁免无部门 fail-closed 空列表）；豁免对齐既有口径（超管 roleId=1 全量，三条依据 PermissionsInterceptor L97 / DataScopeLevelResolver L43-46 / DataScopeUserScopeGuard L26-27）；工具描述同步防幻觉；零迁移/零权限常量/零冻结契约/零前端改动；surefire +4（四向单测：同部门/跨部门/豁免/无部门，@AfterEach 防 ThreadLocal 泄漏）。
+5. **向量运维端点统一收口**：`POST /knowledge/admin/sync/{entity}` 五实体枚举校验（customer/contract/contactTask/businessActivity/salesOpportunity，非法 400）+ `/sync/all` 逐实体委托返回计数映射；两端点复用 KNOWLEDGE_ADMIN_MANAGE(900)；前端知识管理页运维卡片（五实体入口 + 最近同步结果 + 确认弹窗）；单测全 mock 零真实重嵌入（首次真实调用须 Owner 授权）；旧散落 reingestAll 端点全保留零改动（diff 最小决策留痕）；Playwright 检查点 +4；surefire +8、前端 +9。
+6. **客户流失预警与自动化再激活**：确定性规则（三源皆空：已完成跟进/商业活动/合同回款 + @Value 60 天窗口）扫描私海客户 → hasInProgressTask 幂等建高优待办（描述含诊断→Insight→Action 引导）→ 每日 4 点错峰调度；POST/GET /customer/churn/warning/* 复用 117/113；前端客户列表流失筛选 + 一键触发 + 3 Playwright 检查点；零 LLM 零迁移。
+7. **CustomerInsightPanel 双宿主接线**：客户详情弹窗（CompanyEditModal 只读路径）嵌入「客户诊断」区 + AI 助手抽屉上下文诊断面板（路由 query filters.id 优先 / 对话内 CUSTOMER 来源兜底，📊 药丸联动），created 反馈与刷新双宿主齐备；Insight → Action 最后一公里收口；+4 Vitest 至 188 用例。
+8. **AI 诊断建议一键转 Action**：后端 InsightToActionService 纯结构化映射（零外呼），诊断 actionSuggestions[index] → 复用既有草稿 DTO → PendingActionService.submitDraft 返回 pendingId；端点 POST /ai/insight/customer/{companyId}/to-action 挂 CUSTOMER_VIEW_COMPANY(117)，actionType 仅 CREATE_CONTACT_TASK / CREATE_BUSINESS_ACTIVITY；前端 CustomerInsightPanel.vue 转待办/转活动 + hook + 5 Vitest。
+9. **销售线索管理与一键转化商机漏斗**：
    - 数据基座：Flyway V42 新建 `sales_lead` 线索表（意向等级/获取渠道/转化回填字段组）；
    - 业务闭环：`/sales/lead` 6 端点（录入/详情/分页/更新/删除/转化）复用既有 111/113/114/116/117 权限常量；
    - 一键转化：`convert` 单 `@Transactional` 内创建客户公司 + 首要联系人 + 可选商机并回填转化状态，事务后经 `runAfterCommitAsync` 异步派发向量同步；
    - 前端 `lead.page.vue`：线索分页列表、状态徽标筛选、录入与转化对话框闭环。
-9. **合同履约到期预警与逾期应收催款待办联动**：
-   - `ContractMapper` 扩展到期/超期与逾期未结回款统计；`ContractWarningService` 幂等生成高优先级 `ContactTask`；
-   - `ContractWarningScheduler` 每天凌晨 3 点运行；端点 `/contract/warning/*` 挂载 215/214；前端 `contract.page.vue` 预警快捷筛选与一键生成待办。
-10. **CRM 客户公海池与全生命周期流转闭环**：
-   - Flyway V41 组合索引 + `customer_pool_log` 流转表；公海查询避开私海切面，认领配额 50 上限拦截 20003；
-   - `CustomerPoolRecycleScheduler` 每天回收超时私海；`BusinessActivity` 联动刷新活跃度；前端 `pool.page.vue` 专属视图。
-11. **AI 智能商业诊断与会话交互深化**：
+10. **合同履约到期预警与逾期应收催款待办联动**：
+    - `ContractMapper` 扩展到期/超期与逾期未结回款统计；`ContractWarningService` 幂等生成高优先级 `ContactTask`；
+    - `ContractWarningScheduler` 每天凌晨 3 点运行；端点 `/contract/warning/*` 挂载 215/214；前端 `contract.page.vue` 预警快捷筛选与一键生成待办。
+11. **CRM 客户公海池与全生命周期流转闭环**：
+    - Flyway V41 组合索引 + `customer_pool_log` 流转表；公海查询避开私海切面，认领配额 50 上限拦截 20003；
+    - `CustomerPoolRecycleScheduler` 每天回收超时私海；`BusinessActivity` 联动刷新活跃度；前端 `pool.page.vue` 专属视图。
+12. **AI 智能商业诊断与会话交互深化**：
     - 客户 360° AI 诊断引擎：多实体聚合 + 确定性规则评分（0~100 与四级健康度）+ 风险警示；
     - `ModelProvider` 商业画像摘要与拜访建议，双层安全降级杜绝 500；会话首问后异步提炼标题 + 4 枚快捷药丸指令。
-12. **RAG 检索与五业务实体语义检索完全体**：
+13. **RAG 检索与五业务实体语义检索完全体**：
     - 知识库混合检索（向量 + FULLTEXT ngram）+ RRF 融合，支持父子块切分；
     - 5 大业务实体语义检索汇入 Qdrant `crm_entity`，事务后异步派发；严格四档数据权限闸 + 逐命中纵深防御。
-13. **AI 助手工具面与权限治理**：
+14. **AI 助手工具面与权限治理**：
     - 32 个 AI 工具（23 查询 + 9 草稿）方法级 `@RequirePermission`，用户状态检查前置；
     - Schema 漂移门禁：`KnownDriftRegistry` 豁免在册，真库 CRITICAL=0。
 
 ---
 
-## 3. 当前在途与候选队列（基于 2026-10-17 写端点校验收口卡闭环刷新）
+## 3. 当前在途与候选队列（基于 2026-10-17 公海竞态 CAS 修复卡闭环刷新）
 
-- **在途待合入卡**：`harden-oppo-stage-approval`（D4，B 档，分支在途，基点 17008e2）
-- **下一批队列**：I-2 `fix-pool-claim-race`（公海认领/分派并发竞态改造）→ 暗线① `wire-built-unfinished-infra`（「已建未接线」家族接线合卡）；D6 `add-confirm-reaudit-coverage`（C 档测试加固）待派，提示词锚点按届时 master 实测
-- **候选池总账**：`work/_paa-candidates-pool-v2.md`（104 发现 / 64 合并候选，A16/B35/C13；本批 37 推进中、下批 18、暂缓 9）
+- **在途待合入卡**：`harden-oppo-stage-approval`（D4，B 档，分支在途，基点 17008e2；合并时基线台账需重算——§119 教训②）
+- **下一卡**：暗线① `wire-built-unfinished-infra`（B 档，提示词 + clean verify 补丁已交付待派）；其后 D6 `add-confirm-reaudit-coverage`（C 档测试加固）待派，提示词锚点按届时 master 实测
+- **候选池总账**：`work/_paa-candidates-pool-v2.md`（104 发现 / 64 合并候选，A16/B35/C13；本批 37 推进中——J-1 写端点校验与 I-2 公海竞态两卡已闭环，下批 18、暂缓 9）
 - **长期储备**：在线考试子域（`work/_online-exam-backlog.md` 留档）、多模态图文混合检索。
 
 ---

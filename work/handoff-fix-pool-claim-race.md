@@ -90,3 +90,5 @@ CustomerPoolServiceTest 12 用例 = 9 既有（断言形状适配）+ 3 新增�
 - 本卡写集：CustomerPoolServiceImpl.java / CustomerPoolServiceTest.java / scripts/test-baseline.txt / openspec/changes/fix-pool-claim-race/proposal.md+tasks.md / work/task-card-fix-pool-claim-race.md / 本 handoff——零 frontend/、零 db/migration/、零权限常量文件。
 - 完工树净：`git status --porcelain` 仅剩他人卡面白名单（add-confirm-reaudit-coverage / wire-built-unfinished-infra 两 openspec 目录 + 3 张他人任务卡）；本卡 openspec 目录与任务卡已随物料笔入库。
 - 分支 `feature/fix-pool-claim-race`；**未 merge、未 push**（完工停步等 Owner）。
+
+> 合入 master@99c936b（merge --no-ff，3+1 笔），B 档复核 GO（raw：work/tmp/pcr-review/）
