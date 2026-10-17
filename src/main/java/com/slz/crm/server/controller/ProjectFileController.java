@@ -8,6 +8,7 @@ import com.slz.crm.pojo.dto.ProjectFileDTO;
 import com.slz.crm.pojo.dto.ProjectFileQueryDTO;
 import com.slz.crm.pojo.vo.ProjectFileVO;
 import com.slz.crm.server.service.ProjectFileService;
+import jakarta.validation.Valid;
 import java.util.List;
 import lombok.Data;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -95,7 +96,7 @@ public class ProjectFileController {
   public Result<Page<ProjectFileVO>> queryPage(
       @RequestParam(defaultValue = "1") Integer pageNum,
       @RequestParam(defaultValue = "10") Integer pageSize,
-      @RequestBody(required = false) ProjectFileQueryDTO queryDTO) {
+      @Valid @RequestBody(required = false) ProjectFileQueryDTO queryDTO) {
     return Result.success(projectFileService.queryPage(pageNum, pageSize, queryDTO));
   }
 

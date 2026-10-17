@@ -7,6 +7,7 @@ import com.slz.crm.common.result.Result;
 import com.slz.crm.pojo.dto.TaskCommentDTO;
 import com.slz.crm.pojo.vo.TaskCommentVO;
 import com.slz.crm.server.service.TaskCommentService;
+import jakarta.validation.Valid;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,7 +24,7 @@ public class TaskCommentController {
   /** 创建任务评论 */
   @PostMapping("/create")
   @RequirePermission(PermissionOperates.TASK_CREATE_TASK)
-  public Result<Boolean> create(@RequestBody TaskCommentDTO taskCommentDTO) {
+  public Result<Boolean> create(@Valid @RequestBody TaskCommentDTO taskCommentDTO) {
     Boolean result = taskCommentService.create(taskCommentDTO);
     return Result.success(result);
   }
@@ -31,7 +32,7 @@ public class TaskCommentController {
   /** 批量删除任务评论 */
   @DeleteMapping("/batch")
   @RequirePermission(PermissionOperates.TASK_DELETE_TASK)
-  public Result<Integer> deleteByIds(@RequestBody List<Long> idList) {
+  public Result<Integer> deleteByIds(@Valid @RequestBody List<Long> idList) {
     Integer count = taskCommentService.deleteByIds(idList);
     return Result.success(count);
   }
@@ -47,7 +48,7 @@ public class TaskCommentController {
   /** 更新任务评论 */
   @PutMapping("/update")
   @RequirePermission(PermissionOperates.TASK_UPDATE_TASK)
-  public Result<Boolean> update(@RequestBody TaskCommentDTO taskCommentDTO) {
+  public Result<Boolean> update(@Valid @RequestBody TaskCommentDTO taskCommentDTO) {
     Boolean result = taskCommentService.update(taskCommentDTO);
     return Result.success(result);
   }

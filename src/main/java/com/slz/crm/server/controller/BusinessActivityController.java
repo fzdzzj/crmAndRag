@@ -21,6 +21,7 @@ import com.slz.crm.pojo.vo.BusinessActivityVO;
 import com.slz.crm.server.service.ApprovalAttachmentService;
 import com.slz.crm.server.service.AttachmentAccessService;
 import com.slz.crm.server.service.BusinessActivityService;
+import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Set;
 import lombok.Data;
@@ -49,7 +50,7 @@ public class BusinessActivityController {
    */
   @PostMapping
   @RequirePermission(PermissionOperates.SALES_CREATE_BUSINESS_ACTIVITY)
-  public Result<Boolean> create(@RequestBody BusinessActivityDTO dto) {
+  public Result<Boolean> create(@Valid @RequestBody BusinessActivityDTO dto) {
     return Result.success(businessActivityService.create(dto));
   }
 
@@ -61,7 +62,7 @@ public class BusinessActivityController {
    */
   @DeleteMapping
   @RequirePermission(PermissionOperates.SALES_DELETE_BUSINESS_ACTIVITY)
-  public Result<Integer> delete(@RequestBody List<Long> idList) {
+  public Result<Integer> delete(@Valid @RequestBody List<Long> idList) {
     return Result.success(businessActivityService.deleteByIds(idList));
   }
 
@@ -73,7 +74,8 @@ public class BusinessActivityController {
    */
   @PutMapping
   @RequirePermission(PermissionOperates.SALES_UPDATE_BUSINESS_ACTIVITY)
-  public Result<Integer> update(@RequestBody List<BusinessActivityDTO> businessActivityDTOList) {
+  public Result<Integer> update(
+      @Valid @RequestBody List<BusinessActivityDTO> businessActivityDTOList) {
     return Result.success(businessActivityService.updateList(businessActivityDTOList));
   }
 
@@ -107,7 +109,7 @@ public class BusinessActivityController {
   public Result<Page<BusinessActivityVO>> activityQuery(
       @RequestParam Integer pageNum,
       @RequestParam Integer pageSize,
-      @RequestBody BusinessActivityQueryDTO dto) {
+      @Valid @RequestBody BusinessActivityQueryDTO dto) {
     Page<BusinessActivityVO> page =
         businessActivityService.businessActivityQuery(pageNum, pageSize, dto);
     return Result.success(page);
@@ -210,7 +212,7 @@ public class BusinessActivityController {
   @RequirePermission(PermissionOperates.SALES_UPDATE_BUSINESS_ACTIVITY)
   public Result<Boolean> addContacts(
       @PathVariable("activityId") Long activityId,
-      @RequestBody List<AddActivityContactRequestDTO> contactRequestList) {
+      @Valid @RequestBody List<AddActivityContactRequestDTO> contactRequestList) {
     return Result.success(
         businessActivityService.addContactsToActivity(activityId, contactRequestList));
   }
@@ -228,7 +230,7 @@ public class BusinessActivityController {
   @RequirePermission(PermissionOperates.SALES_UPDATE_BUSINESS_ACTIVITY)
   public Result<Boolean> addUsers(
       @PathVariable("activityId") Long activityId,
-      @RequestBody List<AddActivityUserRequestDTO> userRequestList) {
+      @Valid @RequestBody List<AddActivityUserRequestDTO> userRequestList) {
     return Result.success(businessActivityService.addUsersToActivity(activityId, userRequestList));
   }
 
@@ -245,7 +247,7 @@ public class BusinessActivityController {
   @RequirePermission(PermissionOperates.SALES_DELETE_BUSINESS_ACTIVITY)
   public Result<Boolean> deleteAssociations(
       @PathVariable("activityId") Long activityId,
-      @RequestBody BatchDeleteActivityAssociationRequestDTO request) {
+      @Valid @RequestBody BatchDeleteActivityAssociationRequestDTO request) {
     return Result.success(businessActivityService.deleteAssociations(activityId, request));
   }
 

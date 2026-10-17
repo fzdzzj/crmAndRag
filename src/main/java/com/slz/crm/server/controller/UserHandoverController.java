@@ -9,6 +9,7 @@ import com.slz.crm.pojo.dto.UserHandoverQueryDTO;
 import com.slz.crm.pojo.vo.HandoverStatisticsVO;
 import com.slz.crm.pojo.vo.UserHandoverVO;
 import com.slz.crm.server.service.UserHandoverService;
+import jakarta.validation.Valid;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,7 +36,7 @@ public class UserHandoverController {
    */
   @PostMapping("/execute")
   @RequirePermission(PermissionOperates.SYSTEM_UPDATE_USER)
-  public Result<UserHandoverVO> executeHandover(@RequestBody UserHandoverDTO dto) {
+  public Result<UserHandoverVO> executeHandover(@Valid @RequestBody UserHandoverDTO dto) {
     UserHandoverVO result = userHandoverService.executeHandover(dto);
     return Result.success(result);
   }
@@ -49,7 +50,7 @@ public class UserHandoverController {
   @PostMapping("/query")
   @RequirePermission(PermissionOperates.SYSTEM_VIEW_USER)
   public Result<Page<UserHandoverVO>> queryHandoverRecords(
-      @RequestBody UserHandoverQueryDTO queryDTO) {
+      @Valid @RequestBody UserHandoverQueryDTO queryDTO) {
     Page<UserHandoverVO> result = userHandoverService.queryHandoverRecords(queryDTO);
     return Result.success(result);
   }
