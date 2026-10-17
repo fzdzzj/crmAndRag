@@ -87,9 +87,49 @@ public class SalesOpportunityServiceImpl
         id, salesOpportunityIngestionService, this::getById);
   }
 
+  /**
+   * 阶段跃迁阻断校验（harden-oppo-stage-approval，任务 1.2）。
+   *
+   * <p>需审批判定复用审批域既有流转合法性口径 {@link SalesStageApprovalSupport#isValidStageTransition}
+   * （SalesStageApprovalServiceImpl 创建链 L148 / submitDraft L226 同源），不新造规则。目标阶段按该口径需
+   * 审批（合法正向流转）且相对库内现值发生跃迁时，查询已通过审批记录 （{@code
+   * SalesStageApprovalMapper#selectApprovedApprovalsByOpportunityId}，approval_status=1）作目标阶段
+   * 已通过审批校验，缺失即抛业务异常，杜绝前端绕过审批流直接修改商机阶段。
+   *
+   * @param dto 更新请求（含目标阶段）
+   */
+  private void requireApprovedStageTransition(SalesOpportunityDTO dto) {
+    SalesOpportunityEntity current = salesOpportunityMapper.selectById(dto.getId());
+    int targetStage = dto.getStage();
+    // 需审批才强校验：库内现值存在、stage 发生跃迁、且按审批域既有口径（isValidStageTransition）
+    // 属合法正向流转（= 审批域定义的「需审批」）。商机不存在/阶段无值/非跃迁/非需审批流转
+    // 均交既有 update 行为兜底，本卡只补审批绕过阻断，不新增流转规则。
+    boolean requiresApprovedRecord =
+        current != null
+            && current.getStage() != null
+            && targetStage != current.getStage()
+            && SalesStageApprovalSupport.isValidStageTransition(current.getStage(), targetStage);
+    if (requiresApprovedRecord) {
+      List<SalesStageApprovalEntity> approved =
+          salesStageApprovalMapper.selectApprovedApprovalsByOpportunityId(dto.getId());
+      boolean covered =
+          approved.stream().anyMatch(a -> Objects.equals(a.getTargetStage(), targetStage));
+      if (!covered) {
+        throw new BaseException(
+            ErrorCode.OPPORTUNITY_MUST_BE_CLOSED,
+            String.format(
+                "销售阶段推进需先完成审批：当前阶段到阶段 %s (%s) 的推进尚无已通过的审批记录，请经由审批流程操作",
+                targetStage, SalesStageApprovalSupport.convertStageToChinese(targetStage)));
+      }
+    }
+  }
+
   @Override
   @CacheEvict(value = "opportunityName", key = "#salesOpportunityDTO.id")
   public boolean update(SalesOpportunityDTO salesOpportunityDTO) {
+    // harden-oppo-stage-approval：阶段跃迁至需审批阶段时强校验已通过审批记录，杜绝绕过审批流直接跳阶段。
+    requireApprovedStageTransition(salesOpportunityDTO);
+
     SalesOpportunityEntity salesOpportunityEntity = new SalesOpportunityEntity();
     BeanUtils.copyProperties(salesOpportunityDTO, salesOpportunityEntity);
     salesOpportunityEntity.setCreatorId(BaseUnit.getCurrentId());
