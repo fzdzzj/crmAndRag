@@ -11,6 +11,7 @@ import com.slz.crm.pojo.dto.UserDTO;
 import com.slz.crm.pojo.vo.UserOptionVO;
 import com.slz.crm.pojo.vo.UserVO;
 import com.slz.crm.server.service.UserService;
+import jakarta.validation.Valid;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,7 +37,7 @@ public class UserController {
    * @return jwt token
    */
   @PostMapping("/login")
-  private Result<String> login(@RequestBody UserDTO userDTO) {
+  private Result<String> login(@Valid @RequestBody UserDTO userDTO) {
     String token = userService.login(userDTO);
     return Result.success(token);
   }
@@ -49,7 +50,7 @@ public class UserController {
    */
   @PostMapping("/add")
   @RequirePermission(PermissionOperates.SYSTEM_CREATE_USER)
-  private Result<String> addUser(@RequestBody UserDTO userDTO) {
+  private Result<String> addUser(@Valid @RequestBody UserDTO userDTO) {
     String password = userService.addUser(userDTO);
     return Result.success(password);
   }
@@ -92,7 +93,7 @@ public class UserController {
    */
   @PostMapping("/password")
   //    @RequirePermission(PermissionOperates.SYSTEM_UPDATE_PASSWORD)
-  private Result<Boolean> updatePassword(@RequestBody String password) {
+  private Result<Boolean> updatePassword(@Valid @RequestBody String password) {
     userService.updatePassword(password);
     return Result.success();
   }
@@ -106,7 +107,7 @@ public class UserController {
   @PostMapping("/password/reset")
   @RequirePermission(PermissionOperates.SYSTEM_UPDATE_USER)
   private Result<Boolean> resetUserPassword(
-      @RequestBody com.slz.crm.pojo.dto.ResetUserPasswordDTO resetUserPasswordDTO) {
+      @Valid @RequestBody com.slz.crm.pojo.dto.ResetUserPasswordDTO resetUserPasswordDTO) {
     boolean b =
         userService.resetUserPassword(
             resetUserPasswordDTO.getUserId(), resetUserPasswordDTO.getNewPassword());
@@ -121,7 +122,7 @@ public class UserController {
    */
   @PostMapping("/update")
   @RequirePermission(PermissionOperates.SYSTEM_UPDATE_USER)
-  private Result<String> updateUser(@RequestBody UserDTO userDTO) {
+  private Result<String> updateUser(@Valid @RequestBody UserDTO userDTO) {
     userService.updateUser(userDTO, userDTO.getId());
     return Result.success();
   }
@@ -133,7 +134,7 @@ public class UserController {
    * @return
    */
   @PostMapping("/update/my")
-  private Result<String> updateUserMy(@RequestBody UserDTO userDTO) {
+  private Result<String> updateUserMy(@Valid @RequestBody UserDTO userDTO) {
     userService.updateUser(userDTO, BaseUnit.getCurrentId());
     return Result.success();
   }

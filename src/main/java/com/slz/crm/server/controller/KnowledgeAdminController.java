@@ -18,6 +18,7 @@ import com.slz.crm.server.service.KbAdminRetrievalStrategyWriteService;
 import com.slz.crm.server.service.KbRetrievalStrategyItem;
 import com.slz.crm.server.service.KnowledgeAdminService;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -110,7 +111,7 @@ public class KnowledgeAdminController {
   @PostMapping("/retrieval/test")
   @RequirePermission(PermissionOperates.KNOWLEDGE_ADMIN_MANAGE)
   public Result<KnowledgeAdminRetrievalResponse> retrievalTest(
-      @RequestBody KnowledgeAdminRetrievalRequest req) {
+      @Valid @RequestBody KnowledgeAdminRetrievalRequest req) {
     KnowledgeAdminRetrievalResponse resp = knowledgeAdminService.retrievalTest(req);
     return Result.success(resp);
   }

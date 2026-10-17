@@ -7,6 +7,7 @@ import com.slz.crm.common.result.Result;
 import com.slz.crm.pojo.dto.OrderDTO;
 import com.slz.crm.pojo.vo.OrderVO;
 import com.slz.crm.server.service.ContractOrderItemService;
+import jakarta.validation.Valid;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,7 +29,7 @@ public class ContractOrderItemController {
    */
   @PostMapping
   @RequirePermission(PermissionOperates.SALES_APPEND_ORDER)
-  public Result<Integer> append(@RequestBody List<OrderDTO> orders) {
+  public Result<Integer> append(@Valid @RequestBody List<OrderDTO> orders) {
     List<OrderVO> createdOrders = contractOrderItemService.createBatch(orders);
     return Result.success(createdOrders.size());
   }
@@ -41,7 +42,7 @@ public class ContractOrderItemController {
    */
   @DeleteMapping
   @RequirePermission(PermissionOperates.SALES_UPDATE_ORDER)
-  public Result<Integer> delete(@RequestBody List<Long> ids) {
+  public Result<Integer> delete(@Valid @RequestBody List<Long> ids) {
     return Result.success(contractOrderItemService.batchDelete(ids));
   }
 
@@ -56,7 +57,9 @@ public class ContractOrderItemController {
   @PostMapping("/query")
   @RequirePermission(PermissionOperates.SALES_VIEW_ORDER)
   public Result<Page<OrderVO>> orderQuery(
-      @RequestParam Integer pageNum, @RequestParam Integer pageSize, @RequestBody OrderDTO dto) {
+      @RequestParam Integer pageNum,
+      @RequestParam Integer pageSize,
+      @Valid @RequestBody OrderDTO dto) {
     return Result.success(contractOrderItemService.orderQuery(pageNum, pageSize, dto));
   }
 
@@ -81,7 +84,7 @@ public class ContractOrderItemController {
    */
   @PutMapping
   @RequirePermission(PermissionOperates.SALES_UPDATE_ORDER)
-  public Result<Integer> updateOrders(@RequestBody List<OrderDTO> orders) {
+  public Result<Integer> updateOrders(@Valid @RequestBody List<OrderDTO> orders) {
     return Result.success(contractOrderItemService.updateOrders(orders));
   }
 

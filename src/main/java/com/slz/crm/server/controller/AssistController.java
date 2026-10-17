@@ -31,6 +31,7 @@ import com.slz.crm.server.service.AssistRequestService;
 import com.slz.crm.server.service.CustomerCompanyService;
 import com.slz.crm.server.service.CustomerContactService;
 import com.slz.crm.server.service.SalesOpportunityService;
+import jakarta.validation.Valid;
 import java.util.Collections;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -86,7 +87,7 @@ public class AssistController {
   @PutMapping
   // apply-permission-matrix 任务 1.2：AI 模块协助处理
   @RequirePermission(PermissionOperates.AI_ASSIST_HANDLE)
-  public Result<Boolean> handle(@RequestBody AssistHandleDTO dto) {
+  public Result<Boolean> handle(@Valid @RequestBody AssistHandleDTO dto) {
     return Result.success(assistRequestService.handleAssist(dto));
   }
 
@@ -123,7 +124,7 @@ public class AssistController {
   @PostMapping("/reapply")
   // apply-permission-matrix 任务 1.2：AI 模块协助申请
   @RequirePermission(PermissionOperates.AI_ASSIST_APPLY)
-  public Result<Long> reapply(@RequestBody AssistReapplyDTO dto) {
+  public Result<Long> reapply(@Valid @RequestBody AssistReapplyDTO dto) {
     return Result.success(
         assistRequestService.reapply(dto.getOriginalAssistId(), dto.getAssistApplyList()));
   }
@@ -132,7 +133,7 @@ public class AssistController {
   @PostMapping("/append")
   // apply-permission-matrix 任务 1.2：AI 模块协助申请
   @RequirePermission(PermissionOperates.AI_ASSIST_APPLY)
-  public Result<Boolean> append(@RequestBody AssistAppendDTO dto) {
+  public Result<Boolean> append(@Valid @RequestBody AssistAppendDTO dto) {
     assistRequestService.appendAssists(dto.getOriginalAssistId(), dto.getAssistApplyList());
     return Result.success(true);
   }
@@ -144,7 +145,7 @@ public class AssistController {
   public Result<Boolean> apply(
       @RequestParam String modelName,
       @RequestParam Long recordId,
-      @RequestBody List<AssistApplyItem> applyList) {
+      @Valid @RequestBody List<AssistApplyItem> applyList) {
     assistRequestService.applyAssists(modelName, recordId, applyList);
     return Result.success(true);
   }
@@ -174,7 +175,8 @@ public class AssistController {
   @PostMapping("/{id}/messages")
   // apply-permission-matrix 任务 1.2：AI 模块协助申请
   @RequirePermission(PermissionOperates.AI_ASSIST_APPLY)
-  public Result<Boolean> sendMessage(@PathVariable Long id, @RequestBody AssistMessageDTO dto) {
+  public Result<Boolean> sendMessage(
+      @PathVariable Long id, @Valid @RequestBody AssistMessageDTO dto) {
     assistMessageService.sendText(id, dto == null ? null : dto.getContent());
     return Result.success(true);
   }

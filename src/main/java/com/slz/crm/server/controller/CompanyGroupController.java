@@ -6,6 +6,7 @@ import com.slz.crm.common.result.Result;
 import com.slz.crm.pojo.dto.CompanyGroupDTO;
 import com.slz.crm.pojo.entity.CompanyGroupEntity;
 import com.slz.crm.server.service.CompanyGroupService;
+import jakarta.validation.Valid;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,7 +55,7 @@ public class CompanyGroupController {
    */
   @PostMapping
   @RequirePermission(PermissionOperates.CUSTOMER_ADD_COMPANY)
-  public Result<CompanyGroupEntity> add(@RequestBody CompanyGroupDTO dto) {
+  public Result<CompanyGroupEntity> add(@Valid @RequestBody CompanyGroupDTO dto) {
     return Result.success(companyGroupService.add(dto));
   }
 
@@ -66,7 +67,7 @@ public class CompanyGroupController {
    */
   @PutMapping
   @RequirePermission(PermissionOperates.SYSTEM_MANAGE_ORG)
-  public Result<CompanyGroupEntity> update(@RequestBody CompanyGroupDTO dto) {
+  public Result<CompanyGroupEntity> update(@Valid @RequestBody CompanyGroupDTO dto) {
     return Result.success(companyGroupService.update(dto));
   }
 

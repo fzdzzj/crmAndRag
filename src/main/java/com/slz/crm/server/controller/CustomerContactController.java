@@ -11,6 +11,7 @@ import com.slz.crm.pojo.vo.CustomerContactVO;
 import com.slz.crm.pojo.vo.GroupResultVO;
 import com.slz.crm.pojo.vo.UserVO;
 import com.slz.crm.server.service.CustomerContactService;
+import jakarta.validation.Valid;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,7 +47,7 @@ public class CustomerContactController {
    */
   @PutMapping
   @RequirePermission(PermissionOperates.CUSTOMER_UPDATE_CONTACT)
-  private Result<Integer> update(@RequestBody List<CustomerContactDTO> list) {
+  private Result<Integer> update(@Valid @RequestBody List<CustomerContactDTO> list) {
     int count = customerContactService.updateList(list);
     return Result.success(count);
   }
@@ -59,7 +60,7 @@ public class CustomerContactController {
    */
   @PostMapping
   @RequirePermission(PermissionOperates.CUSTOMER_ADD_CONTACT)
-  private Result<Integer> insert(@RequestBody CustomerContactDTO customerContactDTO) {
+  private Result<Integer> insert(@Valid @RequestBody CustomerContactDTO customerContactDTO) {
     return Result.success(customerContactService.insert(customerContactDTO) != null ? 1 : 0);
   }
 
@@ -71,7 +72,7 @@ public class CustomerContactController {
    */
   @DeleteMapping
   @RequirePermission(PermissionOperates.CUSTOMER_DELETE_CONTACT)
-  private Result<Integer> delete(@RequestBody List<Long> idList) {
+  private Result<Integer> delete(@Valid @RequestBody List<Long> idList) {
     return Result.success(customerContactService.deleteByIds(idList));
   }
 
@@ -83,7 +84,7 @@ public class CustomerContactController {
    */
   @PutMapping("/recover")
   @RequirePermission(PermissionOperates.CUSTOMER_RECOVER_CONTACT)
-  private Result<Integer> recover(@RequestBody List<Long> idList) {
+  private Result<Integer> recover(@Valid @RequestBody List<Long> idList) {
     int count = customerContactService.deleteOrRecoverByIds(idList, false);
     return Result.success(count);
   }
@@ -197,7 +198,7 @@ public class CustomerContactController {
    */
   @DeleteMapping("/logical/batch")
   @RequirePermission(PermissionOperates.CUSTOMER_DELETE_CONTACT)
-  public Result<Integer> batchLogicalDelete(@RequestBody List<Long> idList) {
+  public Result<Integer> batchLogicalDelete(@Valid @RequestBody List<Long> idList) {
     return Result.success(customerContactService.batchLogicalDeleteByIds(idList));
   }
 

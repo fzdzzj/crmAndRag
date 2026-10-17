@@ -6,6 +6,7 @@ import com.slz.crm.common.result.Result;
 import com.slz.crm.pojo.dto.SysDeptDTO;
 import com.slz.crm.pojo.entity.SysDeptEntity;
 import com.slz.crm.server.service.SysDeptService;
+import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -47,7 +48,7 @@ public class SysDeptController {
    */
   @PostMapping
   @RequirePermission(PermissionOperates.SYSTEM_CREATE_USER)
-  public Result<Boolean> add(@RequestBody SysDeptDTO dto) {
+  public Result<Boolean> add(@Valid @RequestBody SysDeptDTO dto) {
     return Result.success(sysDeptService.add(dto));
   }
 
@@ -59,7 +60,7 @@ public class SysDeptController {
    */
   @PutMapping
   @RequirePermission(PermissionOperates.SYSTEM_UPDATE_USER)
-  public Result<Boolean> update(@RequestBody SysDeptDTO dto) {
+  public Result<Boolean> update(@Valid @RequestBody SysDeptDTO dto) {
     return Result.success(sysDeptService.update(dto));
   }
 

@@ -9,6 +9,7 @@ import com.slz.crm.pojo.vo.CustomerCompanyVO;
 import com.slz.crm.pojo.vo.CustomerPoolLogVO;
 import com.slz.crm.server.schedule.CustomerPoolRecycleScheduler;
 import com.slz.crm.server.service.CustomerPoolService;
+import jakarta.validation.Valid;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -66,7 +67,7 @@ public class CustomerPoolController {
   /** 主管分派公海客户给指定人员（复用 113 更新权限；校验目标私海配额）。 */
   @PostMapping("/assign")
   @RequirePermission(PermissionOperates.CUSTOMER_UPDATE_CUSTOMER_COMPANY)
-  public Result<Boolean> assign(@RequestBody CustomerPoolAssignDTO dto) {
+  public Result<Boolean> assign(@Valid @RequestBody CustomerPoolAssignDTO dto) {
     return Result.success(customerPoolService.assign(dto));
   }
 

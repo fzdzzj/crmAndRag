@@ -10,6 +10,7 @@ import com.slz.crm.pojo.dto.SalesLeadQueryDTO;
 import com.slz.crm.pojo.vo.LeadConvertVO;
 import com.slz.crm.pojo.vo.SalesLeadVO;
 import com.slz.crm.server.service.SalesLeadService;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -30,7 +31,7 @@ public class SalesLeadController {
    */
   @PostMapping
   @RequirePermission(PermissionOperates.CUSTOMER_ADD_COMPANY)
-  public Result<SalesLeadVO> add(@RequestBody SalesLeadDTO dto) {
+  public Result<SalesLeadVO> add(@Valid @RequestBody SalesLeadDTO dto) {
     return Result.success(salesLeadService.add(dto));
   }
 
@@ -57,7 +58,7 @@ public class SalesLeadController {
   @PostMapping("/query")
   @RequirePermission(PermissionOperates.CUSTOMER_QUERY_COMPANY)
   public Result<Page<SalesLeadVO>> query(
-      @RequestBody(required = false) SalesLeadQueryDTO query,
+      @Valid @RequestBody(required = false) SalesLeadQueryDTO query,
       @RequestParam(defaultValue = "1") Integer pageNum,
       @RequestParam(defaultValue = "10") Integer pageSize) {
     return Result.success(salesLeadService.queryPage(query, pageNum, pageSize));
@@ -71,7 +72,7 @@ public class SalesLeadController {
    */
   @PutMapping
   @RequirePermission(PermissionOperates.CUSTOMER_UPDATE_CUSTOMER_COMPANY)
-  public Result<Boolean> update(@RequestBody SalesLeadDTO dto) {
+  public Result<Boolean> update(@Valid @RequestBody SalesLeadDTO dto) {
     return Result.success(salesLeadService.update(dto));
   }
 
@@ -95,7 +96,7 @@ public class SalesLeadController {
    */
   @PostMapping("/convert")
   @RequirePermission(PermissionOperates.CUSTOMER_ADD_COMPANY)
-  public Result<LeadConvertVO> convert(@RequestBody LeadConvertDTO dto) {
+  public Result<LeadConvertVO> convert(@Valid @RequestBody LeadConvertDTO dto) {
     return Result.success(salesLeadService.convert(dto));
   }
 }

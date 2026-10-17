@@ -7,6 +7,7 @@ import com.slz.crm.pojo.dto.RoleANDPermissionDTO;
 import com.slz.crm.pojo.vo.AuditorVO;
 import com.slz.crm.pojo.vo.PermissionGroupedVO;
 import com.slz.crm.server.service.PermissionService;
+import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
@@ -55,7 +56,7 @@ public class PermissionController {
   @PostMapping("/addORDeletePermissionsToRole")
   @RequirePermission(PermissionOperates.SYSTEM_ASSIGN_PERMISSION)
   public Result<Boolean> addORDetelePermissionsToRole(
-      @RequestBody RoleANDPermissionDTO roleANDPermissionDTOS) {
+      @Valid @RequestBody RoleANDPermissionDTO roleANDPermissionDTOS) {
     return Result.success(permissionService.addOrDeletePermissionsToRole(roleANDPermissionDTOS));
   }
 

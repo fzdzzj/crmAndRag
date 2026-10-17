@@ -7,6 +7,7 @@ import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.pojo.vo.AiConfirmResultVO;
 import com.slz.crm.pojo.vo.AiPendingActionVO;
 import com.slz.crm.server.service.PendingActionService;
+import jakarta.validation.Valid;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,7 +53,7 @@ public class AiActionController {
   // apply-permission-matrix 任务 1.2：AI 模块确认执行待确认操作（编辑草稿）
   @RequirePermission(PermissionOperates.AI_ACTION_CONFIRM)
   public Result<AiPendingActionVO> edit(
-      @PathVariable String pendingId, @RequestBody Map<String, Object> body) {
+      @PathVariable String pendingId, @Valid @RequestBody Map<String, Object> body) {
     Long userId = BaseUnit.getCurrentId();
 
     String newPayload = body.get("payload") != null ? body.get("payload").toString() : null;
