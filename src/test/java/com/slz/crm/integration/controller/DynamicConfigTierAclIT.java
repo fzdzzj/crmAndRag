@@ -189,7 +189,7 @@ class DynamicConfigTierAclIT extends AbstractMySqlIT {
                 .header("token", token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
-                    "{\"key\":\"ai.model.chatModel\",\"value\":\"qwen-turbo\",\"remark\":\"成本档越权\"}"))
+                    "{\"key\":\"business.rateLimit.perMinute\",\"value\":\"15\",\"remark\":\"成本档越权\"}"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.code").value(96005));
     mockMvc
@@ -221,7 +221,7 @@ class DynamicConfigTierAclIT extends AbstractMySqlIT {
                 .header("token", adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
-                    "{\"key\":\"ai.model.chatModel\",\"value\":\"qwen-turbo\",\"remark\":\"超管调档\"}"))
+                    "{\"key\":\"business.rateLimit.perMinute\",\"value\":\"15\",\"remark\":\"超管调档\"}"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.code").value(1));
   }

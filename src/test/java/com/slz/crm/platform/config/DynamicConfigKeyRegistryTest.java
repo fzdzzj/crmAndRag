@@ -17,21 +17,21 @@ class DynamicConfigKeyRegistryTest {
   @Test
   @DisplayName("合法值通过校验并规范化为存储文本")
   void validValuesAccepted() {
-    ConfigValueType.Parsed temp = registry.validate("ai.model.temperature", "0.3");
+    ConfigValueType.Parsed temp = registry.validate("rag.retrieval.minScore", "0.3");
     assertThat(temp.valid()).isTrue();
     assertThat(temp.typed()).isEqualTo(0.3d);
     assertThat(temp.canonical()).isEqualTo("0.3");
 
     // 边界值（含上下界）必须放行
-    assertThat(registry.validate("ai.model.temperature", "1.0").valid()).isTrue();
-    assertThat(registry.validate("ai.model.temperature", "0.0").valid()).isTrue();
+    assertThat(registry.validate("rag.retrieval.minScore", "1.0").valid()).isTrue();
+    assertThat(registry.validate("rag.retrieval.minScore", "0.0").valid()).isTrue();
     assertThat(registry.validate("rag.retrieval.topK", "8").typed()).isEqualTo(8);
     assertThat(registry.validate("rag.retrieval.topK", "1").valid()).isTrue();
     assertThat(registry.validate("rag.retrieval.topK", "100").valid()).isTrue();
 
     // 枚举白名单
-    assertThat(registry.validate("ai.model.provider", "openai-compatible").valid()).isTrue();
-    assertThat(registry.validate("ai.model.provider", "vllm").valid()).isTrue();
+    assertThat(registry.validate("rag.retrieval.fusion.mode", "weighted").valid()).isTrue();
+    assertThat(registry.validate("rag.retrieval.fusion.mode", "rrf").valid()).isTrue();
 
     // 布尔
     assertThat(registry.validate("rag.retrieval.strictKb", "true").typed()).isEqualTo(true);
@@ -54,20 +54,20 @@ class DynamicConfigKeyRegistryTest {
   @Test
   @DisplayName("类型不符/越界/枚举外/空值一律拒绝且不产生规范值")
   void invalidValuesRejected() {
-    // 范围越界：温度 > 1.0 或 < 0.0
-    assertRejected("ai.model.temperature", "1.5");
-    assertRejected("ai.model.temperature", "-0.1");
-    assertRejected("ai.model.temperature", "abc");
+    // 范围越界：minScore > 1.0 或 < 0.0
+    assertRejected("rag.retrieval.minScore", "1.5");
+    assertRejected("rag.retrieval.minScore", "-0.1");
+    assertRejected("rag.retrieval.minScore", "abc");
     // topK 越界（1~100）与类型不符
     assertRejected("rag.retrieval.topK", "0");
     assertRejected("rag.retrieval.topK", "-5");
     assertRejected("rag.retrieval.topK", "1.5");
     assertRejected("rag.retrieval.topK", "abc");
     assertRejected("rag.retrieval.topK", "101");
-    // maxTokens 越界
-    assertRejected("ai.model.maxTokens", "999999");
-    // 枚举外 Provider（未知模型/Provider 名）
-    assertRejected("ai.model.provider", "openai");
+    // perMinute 越界（1~10000）
+    assertRejected("business.rateLimit.perMinute", "99999");
+    // 枚举外融合模式
+    assertRejected("rag.retrieval.fusion.mode", "openai");
     // 布尔只收 true/false
     assertRejected("rag.retrieval.strictKb", "yes");
     // STRING_LIST：非 JSON / 空列表 / 含空条目

@@ -38,8 +38,9 @@
 > `rag.generation`），登记 3 个生成侧 Self-RAG 反思配置键，新调用实时读取生效、非法/缺失 fail-safe 回落——
 > `rag.generation.selfrag.mode`（默认 rule，非法值回落默认）/ `rag.generation.selfrag.llm.timeout-ms`（默认 3000）/
 > `rag.generation.selfrag.llm.max-claims`（默认 20）。三键全定级为 COST 档（超管专写，适用成本键申请-审批流）。
-> 定级状态（add-dynamic-config-key-tier-acl，2026-10-09；add-self-rag-reflection 扩为 66 键）：注册表 66 键全集完成三档定级，各表新增「权限档位」列——
-> OPERATIONAL 34 键 = 608 持有者可写，COST 25 键 / STRUCTURAL 7 键 = 超管专写；608 语义与三档全清单见文末
+> 定级状态（add-dynamic-config-key-tier-acl，2026-10-09；add-self-rag-reflection 扩为 66 键；wire-built-unfinished-infra
+> 2026-10-17 摘除 ai.model.* 六死键后为 60 键）：注册表 60 键全集完成三档定级，各表新增「权限档位」列——
+> OPERATIONAL 32 键 = 608 持有者可写，COST 23 键 / STRUCTURAL 5 键 = 超管专写；608 语义与三档全清单见文末
 > 「键级权限分层（tier ACL）」节。
 
 ## rag.retrieval.* —— 检索管线（Lane B）
@@ -203,18 +204,19 @@
 > `@RequirePermission(PLATFORM_DYNAMIC_CONFIG_MANAGE)`（608「平台动态配置管理」，V30 `__dynamic_config_permission_seed`
 > 注册并授权全部业务角色，超管经拦截器直通）。服务层写路径 `DynamicConfigAccessGuards.requireKeyWriteAccess`
 > 按键档位闸门：OPERATIONAL 档键对 608 持有者放开，COST / STRUCTURAL 档键仍超管专写（FORBIDDEN 96005）；
-> 读端点与 cache/refresh 由 608 方法级注解承接鉴权。定级封闭表 = `ConfigKeyTierPolicy`（66 键与注册表一一对应，
+> 读端点与 cache/refresh 由 608 方法级注解承接鉴权。定级封闭表 = `ConfigKeyTierPolicy`（60 键与注册表一一对应，
 > census 防呆测试 `ConfigKeyTierPolicyTest` 锁死全集），改档需 owner 拍板并同步本节与各表「权限档位」列。
 
-- **OPERATIONAL（运营调参档，34 键，608 持有者可写）**：检索参数与融合/重排权重、图文路由、邻居与父块、意图类目、提示词与采样参数、业务功能开关、熔断治理参数等——热调无边际成本、可随时回落。
-- **COST（成本开关档，25 键，超管专写）**：LLM 重排/压缩/Self-RAG自评、查询增强（多查询/HyDE/衍生问题）、VLM 视觉转写、摄取恢复重放、管理端真向量、限流配额、token 预算、模型选择等费用红线族——开关拨动直接产生真实模型调用费用。
-- **STRUCTURAL（变更管理档，7 键，超管专写）**：切分策略与分块尺寸、嵌入模型、模型 Provider、数据范围安全语义等——热改会造成新旧数据切片/嵌入标准不一致，属变更管理而非运行时开关。
+- **OPERATIONAL（运营调参档，32 键，608 持有者可写）**：检索参数与融合/重排权重、图文路由、邻居与父块、意图类目、提示词与采样参数、业务功能开关、熔断治理参数等——热调无边际成本、可随时回落。
+- **COST（成本开关档，23 键，超管专写）**：LLM 重排/压缩/Self-RAG自评、查询增强（多查询/HyDE/衍生问题）、VLM 视觉转写、摄取恢复重放、管理端真向量、限流配额、token 预算等费用红线族——开关拨动直接产生真实模型调用费用。
+- **STRUCTURAL（变更管理档，5 键，超管专写）**：切分策略与分块尺寸、数据范围安全语义等——热改会造成新旧数据切片/嵌入标准不一致，属变更管理而非运行时开关。
+- **摘除记录（wire-built-unfinished-infra，2026-10-17）**：`ai.model.provider/chatModel/visionModel/embeddingModel/temperature/maxTokens` 六键全仓零消费，从注册表与三档封闭集同步摘除；模型选择只走静态绑定 `platform.ai.model.*`（`ModelProviderProperties`），「ai.model」命名空间保留白名单。
 
-**COST 25 键全清单**：`ai.model.chatModel`、`ai.model.visionModel`、`business.rateLimit.perMinute`、`business.quota.maxTokensPerSession`、`rag.retrieval.admin-vector.enabled`、`rag.retrieval.vision-pdf.enabled`、`rag.retrieval.vision-pdf.min-text-chars`、`rag.retrieval.vision-pdf.max-pages`、`rag.retrieval.rerank.mode`、`rag.retrieval.rerank.llm.timeout-ms`、`rag.retrieval.rerank.llm.max-candidates`、`rag.context.token-budget`、`rag.context.compressor.mode`、`rag.context.compressor.llm.timeout-ms`、`rag.query.multi-query.enabled`、`rag.query.multi-query.variants`、`rag.query.hyde.enabled`、`rag.query.hyde.timeout-ms`、`rag.query.derived-questions.enabled`、`rag.query.derived-questions.max-per-chunk`、`rag.ingest.replay-enabled`、`rag.ingest.replay-batch-size`、`rag.generation.selfrag.mode`、`rag.generation.selfrag.llm.timeout-ms`、`rag.generation.selfrag.llm.max-claims`。
+**COST 23 键全清单**：`business.rateLimit.perMinute`、`business.quota.maxTokensPerSession`、`rag.retrieval.admin-vector.enabled`、`rag.retrieval.vision-pdf.enabled`、`rag.retrieval.vision-pdf.min-text-chars`、`rag.retrieval.vision-pdf.max-pages`、`rag.retrieval.rerank.mode`、`rag.retrieval.rerank.llm.timeout-ms`、`rag.retrieval.rerank.llm.max-candidates`、`rag.context.token-budget`、`rag.context.compressor.mode`、`rag.context.compressor.llm.timeout-ms`、`rag.query.multi-query.enabled`、`rag.query.multi-query.variants`、`rag.query.hyde.enabled`、`rag.query.hyde.timeout-ms`、`rag.query.derived-questions.enabled`、`rag.query.derived-questions.max-per-chunk`、`rag.ingest.replay-enabled`、`rag.ingest.replay-batch-size`、`rag.generation.selfrag.mode`、`rag.generation.selfrag.llm.timeout-ms`、`rag.generation.selfrag.llm.max-claims`。
 
-**STRUCTURAL 7 键全清单**：`ai.model.provider`、`ai.model.embeddingModel`、`rag.retrieval.chunkSize`、`rag.retrieval.chunkOverlap`、`rag.chunking.strategy`、`rag.chunking.max-chunk-size`、`business.dataScope.enabled`。
+**STRUCTURAL 5 键全清单**：`rag.retrieval.chunkSize`、`rag.retrieval.chunkOverlap`、`rag.chunking.strategy`、`rag.chunking.max-chunk-size`、`business.dataScope.enabled`。
 
-**OPERATIONAL 34 键全清单**：`ai.prompt.system`、`ai.model.temperature`、`ai.model.maxTokens`、`rag.retrieval.topK`、`rag.retrieval.minScore`、`rag.retrieval.strictKb`、`rag.retrieval.query-rewrite.enabled`、`rag.retrieval.fusion.mode`、`rag.retrieval.fusion.rrf-k`、`rag.retrieval.rerank.vector-weight`、`rag.retrieval.rerank.bm25-weight`、`rag.retrieval.rerank.candidate-multiplier`、`rag.retrieval.image-text-route-weight`、`rag.retrieval.image-vector-route-weight`、`rag.context.neighbors`、`rag.context.parent-expand`、`rag.intent.filterEnabled`、`rag.intent.categories`、`rag.intent.keywords`、`business.assist.reminderEnabled`、`business.feature.aiAssistantEnabled`、`business.assistant.imageCacheMaxEntries`、`platform.resilience.failure-threshold`、`platform.resilience.open-duration-ms`、`platform.resilience.failure-threshold.model-chat`、`platform.resilience.open-duration-ms.model-chat`、`platform.resilience.failure-threshold.model-embed`、`platform.resilience.open-duration-ms.model-embed`、`platform.resilience.failure-threshold.model-vision`、`platform.resilience.open-duration-ms.model-vision`、`platform.resilience.failure-threshold.vector-qdrant`、`platform.resilience.open-duration-ms.vector-qdrant`、`platform.resilience.failure-threshold.storage-minio`、`platform.resilience.open-duration-ms.storage-minio`。
+**OPERATIONAL 32 键全清单**：`ai.prompt.system`、`rag.retrieval.topK`、`rag.retrieval.minScore`、`rag.retrieval.strictKb`、`rag.retrieval.query-rewrite.enabled`、`rag.retrieval.fusion.mode`、`rag.retrieval.fusion.rrf-k`、`rag.retrieval.rerank.vector-weight`、`rag.retrieval.rerank.bm25-weight`、`rag.retrieval.rerank.candidate-multiplier`、`rag.retrieval.image-text-route-weight`、`rag.retrieval.image-vector-route-weight`、`rag.context.neighbors`、`rag.context.parent-expand`、`rag.intent.filterEnabled`、`rag.intent.categories`、`rag.intent.keywords`、`business.assist.reminderEnabled`、`business.feature.aiAssistantEnabled`、`business.assistant.imageCacheMaxEntries`、`platform.resilience.failure-threshold`、`platform.resilience.open-duration-ms`、`platform.resilience.failure-threshold.model-chat`、`platform.resilience.open-duration-ms.model-chat`、`platform.resilience.failure-threshold.model-embed`、`platform.resilience.open-duration-ms.model-embed`、`platform.resilience.failure-threshold.model-vision`、`platform.resilience.open-duration-ms.model-vision`、`platform.resilience.failure-threshold.vector-qdrant`、`platform.resilience.open-duration-ms.vector-qdrant`、`platform.resilience.failure-threshold.storage-minio`、`platform.resilience.open-duration-ms.storage-minio`。
 
 **新增键定级维护约定**：新键注册进 `DynamicConfigKeyRegistry` 时必须同步在 `ConfigKeyTierPolicy` 显式登记档位——未登记键 census 防呆测试即红（解析顺序：sensitive=true 防御性映射 COST → 显式登记表 → 默认 OPERATIONAL，但封闭集校验要求登记齐全）。档位升降（尤其 OPERATIONAL ↔ COST/STRUCTURAL）需 owner 拍板，同步改 `ConfigKeyTierPolicy`、`ConfigKeyTierPolicyTest` 与本清单各表「权限档位」列及本节。
 

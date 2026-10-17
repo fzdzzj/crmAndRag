@@ -247,7 +247,7 @@ class DynamicConfigAdminServiceTest {
     UserContextHolder.runWith(
         normalUser(),
         () ->
-            assertThatThrownBy(() -> service.rollback("ai.model.chatModel", 1, ""))
+            assertThatThrownBy(() -> service.rollback("business.rateLimit.perMinute", 1, ""))
                 .isInstanceOf(ServiceException.class)
                 .extracting(e -> ((ServiceException) e).getCode())
                 .isEqualTo(PlatformErrorCode.FORBIDDEN.getCode()));
@@ -259,7 +259,7 @@ class DynamicConfigAdminServiceTest {
     UserContextHolder.runWith(
         normalUser(),
         () ->
-            assertThatThrownBy(() -> service.deleteOverride("ai.model.chatModel", ""))
+            assertThatThrownBy(() -> service.deleteOverride("business.rateLimit.perMinute", ""))
                 .isInstanceOf(ServiceException.class)
                 .extracting(e -> ((ServiceException) e).getCode())
                 .isEqualTo(PlatformErrorCode.FORBIDDEN.getCode()));
@@ -271,7 +271,7 @@ class DynamicConfigAdminServiceTest {
     UserContextHolder.runWith(
         admin(),
         () -> {
-          ConfigItemView view = service.updateValue("ai.model.chatModel", "qwen-turbo", "超管调档");
+          ConfigItemView view = service.updateValue("business.rateLimit.perMinute", "15", "超管调档");
           assertThat(view.version()).isEqualTo(1);
         });
   }

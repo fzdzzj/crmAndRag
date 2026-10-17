@@ -12,13 +12,13 @@ import org.springframework.stereotype.Component;
 /**
  * 动态配置键注册表：平台已知配置键的“schema 唯一来源”（校验护栏）。
  *
- * <p>覆盖 spec-delta（D10）优先纳入的动态配置范围：提示词、模型 Provider/名称/温度/最大 token、 限流与配额阈值、检索
- * topK/阈值/分块参数、strict-KB 空匹配兜底开关（D16）、 意图类目与关键词 / intent-filter-enabled（D17）、图片缓存上限（D13）、业务功能开关；
- * register-rag-retrieval-dynamic-keys（2026-09-25）补登记 11 个检索管线键；
- * register-rag-context-query-dynamic-keys（2026-09-25）扩 {@code rag.context}/{@code rag.chunking}/
- * {@code rag.query} 三命名空间并登记 13 个检索周边键（默认值 = 各消费点代码内联缺省）。 wire-circuit-per-dependency-override 任务
- * 2：在 {@code platform.resilience} 命名空间下为五依赖
+ * <p>覆盖 spec-delta（D10）优先纳入的动态配置范围：提示词、限流与配额阈值、检索 topK/阈值/分块参数、strict-KB 空匹配兜底开关（D16）、 意图类目与关键词 /
+ * intent-filter-enabled（D17）、图片缓存上限（D13）、业务功能开关； register-rag-retrieval-dynamic-keys（2026-09-25）补登记
+ * 11 个检索管线键； register-rag-context-query-dynamic-keys（2026-09-25）扩 {@code rag.context}/{@code
+ * rag.chunking}/ {@code rag.query} 三命名空间并登记 13 个检索周边键（默认值 = 各消费点代码内联缺省）。
+ * wire-circuit-per-dependency-override 任务 2：在 {@code platform.resilience} 命名空间下为五依赖
  * （model-chat/model-embed/model-vision/vector-qdrant/storage-minio）追加 10 个按依赖名覆盖熔断参数键。
+ * wire-built-unfinished-infra（2026-10-17）：{@code ai.model.*} 六键全仓零消费，整族摘除（模型选择走静态绑定）。
  *
  * <p>命名空间约定（任务 16 起五命名空间，2026-09-25 扩为八个，wire-circuit-dynamic-config
  * 扩为九个，wire-ingestion-recovery-replay 扩为十个，add-self-rag-reflection 扩为十一个）：{@code ai.prompt}/{@code
@@ -152,80 +152,11 @@ public class DynamicConfigKeyRegistry {
             false,
             20000),
 
-        // ---------------- ai.model.*：模型 Provider / 名称 / 参数 ----------------
-        def(
-            objectMapper,
-            "ai.model.provider",
-            "ai.model",
-            ConfigValueType.STRING,
-            "dashscope",
-            "模型 Provider 类型，取值：dashscope | openai-compatible | vllm（对齐静态配置 platform.ai.model.provider）。"
-                + "影响面：ModelProvider 抽象的路由选择（Lane B/C 消费）。",
-            null,
-            null,
-            Set.of("dashscope", "openai-compatible", "vllm"),
-            false,
-            100),
-        def(
-            objectMapper,
-            "ai.model.chatModel",
-            "ai.model",
-            ConfigValueType.STRING,
-            "qwen-plus",
-            "对话模型名（如 qwen-plus/qwen-turbo）。影响面：助手对话与工具调用（对齐 platform.ai.model.chat-model）。",
-            null,
-            null,
-            Set.of(),
-            false,
-            200),
-        def(
-            objectMapper,
-            "ai.model.visionModel",
-            "ai.model",
-            ConfigValueType.STRING,
-            "qwen-vl-plus",
-            "视觉理解模型名（如 qwen-vl-plus）。影响面：图片理解/OCR（对齐 platform.ai.model.vision-model）。",
-            null,
-            null,
-            Set.of(),
-            false,
-            200),
-        def(
-            objectMapper,
-            "ai.model.embeddingModel",
-            "ai.model",
-            ConfigValueType.STRING,
-            "text-embedding-v3",
-            "向量化模型名（须与 Qdrant 集合维度一致，改动需重建集合——破坏性，谨慎）。影响面：知识库嵌入（对齐 platform.ai.model.embedding-model）。",
-            null,
-            null,
-            Set.of(),
-            false,
-            200),
-        def(
-            objectMapper,
-            "ai.model.temperature",
-            "ai.model",
-            ConfigValueType.DOUBLE,
-            "0.3",
-            "对话采样温度，范围 0.0~1.0（业务场景偏低保证稳定）。影响面：所有助手生成。",
-            "0.0",
-            "1.0",
-            Set.of(),
-            false,
-            100),
-        def(
-            objectMapper,
-            "ai.model.maxTokens",
-            "ai.model",
-            ConfigValueType.INTEGER,
-            "2048",
-            "单次对话最大输出 token 数，范围 1~32000（对齐静态 max-tokens）。影响面：生成长度上限。",
-            "1",
-            "32000",
-            Set.of(),
-            false,
-            100),
+        // wire-built-unfinished-infra 任务 1.2（2026-10-17）：ai.model.*
+        // 六键（provider/chatModel/visionModel/
+        // embeddingModel/temperature/maxTokens）为全仓零消费死键，已整族摘除——模型选择只走静态绑定
+        // platform.ai.model.*（ModelProviderProperties），动态配置不再登记「运营改了静默不生效」的幻觉键；
+        // "ai.model" 命名空间保留于 NAMESPACES 白名单（V6 DDL 约定沿用，供未来动态桥接复用）。
 
         // ---------------- business.*：限流 / 配额阈值（Lane D 消费） ----------------
         def(

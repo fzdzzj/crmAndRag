@@ -8,9 +8,12 @@ import java.util.Set;
 /**
  * 动态配置键三档定级封闭表（add-dynamic-config-key-tier-acl 任务 1.3）。
  *
- * <p>与 {@link DynamicConfigKeyRegistry} 的 66 键全集一一对应（2026-10-10 实测普查）：OPERATIONAL 34 （608 持有者可写，含
- * P-ac per-KB 12 键白名单全集）/ COST 25（超管专写——LLM 重排/压缩/Self-RAG自评、查询增强、VLM 转写、重放、限流配额、模型选择等费用红线族）/
- * STRUCTURAL 7（超管专写——切分策略/分块尺寸、嵌入模型、 Provider、数据范围安全语义等变更管理键）。
+ * <p>与 {@link DynamicConfigKeyRegistry} 的 60 键全集一一对应（2026-10-17 实测普查，wire-built-unfinished-infra 摘除
+ * ai.model.* 五+1 死键后）：OPERATIONAL 32（608 持有者可写，含 P-ac per-KB 12 键白名单全集）/ COST 23（超管专写——LLM
+ * 重排/压缩/Self-RAG自评、查询增强、VLM 转写、重放、限流配额等费用红线族）/ STRUCTURAL 5（超管专写——切分策略/分块尺寸、 数据范围安全语义等变更管理键）。
+ *
+ * <p>ai.model.* 六键（provider/chatModel/visionModel/embeddingModel/temperature/maxTokens）已于
+ * 2026-10-17 从注册表与定级表同步摘除（零消费死键，消除「登记即生效」幻觉）；模型选择仍走静态绑定 platform.ai.model.*。
  *
  * <p>解析顺序（tierOf）：sensitive=true 防御性映射 COST → 显式登记表 → 默认 OPERATIONAL。封闭性由 census 防呆测试 {@code
  * ConfigKeyTierPolicyTest} 锁死：注册表新增键未在此登记即红。改档需 owner 拍板并同步 docs/dynamic-config-keys.md（「权限档位」列与
@@ -22,12 +25,10 @@ public final class ConfigKeyTierPolicy {
 
   private ConfigKeyTierPolicy() {}
 
-  /** OPERATIONAL 档封闭集（34 键：运营调参，608 可写） */
+  /** OPERATIONAL 档封闭集（32 键：运营调参，608 可写） */
   private static final Set<String> OPERATIONAL_KEYS =
       Set.of(
           "ai.prompt.system",
-          "ai.model.temperature",
-          "ai.model.maxTokens",
           "rag.retrieval.topK",
           "rag.retrieval.minScore",
           "rag.retrieval.strictKb",
@@ -60,11 +61,9 @@ public final class ConfigKeyTierPolicy {
           "platform.resilience.failure-threshold.storage-minio",
           "platform.resilience.open-duration-ms.storage-minio");
 
-  /** COST 档封闭集（25 键：成本开关，超管专写） */
+  /** COST 档封闭集（23 键：成本开关，超管专写） */
   private static final Set<String> COST_KEYS =
       Set.of(
-          "ai.model.chatModel",
-          "ai.model.visionModel",
           "business.rateLimit.perMinute",
           "business.quota.maxTokensPerSession",
           "rag.retrieval.admin-vector.enabled",
@@ -89,11 +88,9 @@ public final class ConfigKeyTierPolicy {
           "rag.generation.selfrag.llm.timeout-ms",
           "rag.generation.selfrag.llm.max-claims");
 
-  /** STRUCTURAL 档封闭集（7 键：变更管理，超管专写） */
+  /** STRUCTURAL 档封闭集（5 键：变更管理，超管专写） */
   private static final Set<String> STRUCTURAL_KEYS =
       Set.of(
-          "ai.model.provider",
-          "ai.model.embeddingModel",
           "rag.retrieval.chunkSize",
           "rag.retrieval.chunkOverlap",
           "rag.chunking.strategy",
