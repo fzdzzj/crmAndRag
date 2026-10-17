@@ -1,6 +1,6 @@
 # 主 Agent 轮换交接活看板 (Active Main Agent Handoff)
 
-> **更新时间**：2026-10-18（harden-login-security 登录链路安全加固包全链闭环）
+> **更新时间**：2026-10-18（harden-datascope-fail-closed 数据权限切面 Fail-Closed 治理全链闭环）
 > **维护契约**：**本文件必须采用整体覆盖更新（Rolling Overwrite），严禁无限追加历史流水账**！
 > **适用对象**：**新打开主 Agent 对话窗口时第一必读入口**。读完即可立即进入指导工作状态。
 
@@ -8,9 +8,9 @@
 
 ## 1. 现状快照 (Current State Snapshot)
 
-- **当前主干版本**：`master@693abf7`（harden-login-security merge `df9571f` + 基线 `693abf7`，CI Run `39052170052` 6/6 全绿）
-- **测试基线**：Surefire 261 份报告 / 1620 用例 / 0 失败（+4 套件 / +32 用例；基线 1588→1620）、Failsafe 31/118/7 skipped，`scripts/test-baseline.txt` 权威对账（source-revision=df9571f，干净戳）
-- **门禁状态**：四静态全 0 违规，聚合门禁 `merge-gate.sh` 8/8 全 PASS（surefire 1620 单测 / 前端 197 用例，Docker MySQL V1~V42 真库迁移全绿（下一可用号仍 V43），SchemaDrift / PermissionCoverage 双 0 CRITICAL）
+- **当前主干版本**：`master@0469eab`（harden-datascope-fail-closed merge `3731118` + 基线 `0469eab`，CI Run `39062425815` 6/6 全绿）
+- **测试基线**：Surefire 262 份报告 / 1628 用例 / 0 失败（+1 套件 / +8 用例；基线 1620→1628）、Failsafe 31/118/7 skipped，`scripts/test-baseline.txt` 权威对账（source-revision=3731118，干净戳）
+- **门禁状态**：四静态全 0 违规，聚合门禁 `merge-gate.sh` 8/8 全 PASS（surefire 1628 单测 / 前端 197 用例，Docker MySQL V1~V42 真库迁移全绿（下一可用号仍 V43），SchemaDrift / PermissionCoverage 双 0 CRITICAL）
 - **工作树拓扑**：
   - 观察树：`D:\code\crmAndRag`（承载执行日志 `docs/`、任务卡与交接 `work/`）
   - 权威树（主干）：`D:\code\crmAndRag-merge-add-knowledge-admin-api`（分支检出、门禁运行、代码合并唯一法定树）
@@ -19,33 +19,31 @@
 
 ## 2. 核心架构与现行能力面
 
-1. **登录链路安全加固包（H-8/H-9/H-10，刚刚合入）**：
-   - **H-8 白名单精准收敛**：彻底移除 `JWTInterceptor` 中 `contains("/login")` 模糊子串匹配，提取 `isPublicPath()` 精确放行 `/login`、`/user/login`、`/health` 及 `/public/**` 前缀，参数化反向用例覆盖伪造绕过路径。
-   - **H-9 Token 登出黑名单与即时感知**：`POST /user/logout` 端点（`OpenEndpointRegistry` 登记 `INTENTIONAL_OPEN`），Caffeine 本地缓存（TTL 1h），`JWTInterceptor` 前置黑名单拦截（12003）+ 状态即时感知（冻结 12006 / 离职 12007 前置 fail-closed 阻断）。
-   - **H-10 登录防爆破限流**：`LoginAttemptService`（Caffeine，Email 账号与客户端 IP 双维度独立计数），5 次连续失败锁定 15 分钟并提示剩余分钟数，登录成功清除计数；单副本无状态契约，零新增外部依赖；基线 1588→1620（+32 用例）。
-2. **商机阶段流转审批阻断（D4）**：`SalesOpportunityServiceImpl.update` 前置流转阻断，调用 `SalesStageApprovalSupport.isValidStageTransition` 判定合法正向需审批阶段流转，严格等价匹配审批记录 `targetStage`；无审批记录阻断抛出 30003 `OPPORTUNITY_MUST_BE_CLOSED`；实体不存在/阶段未变/倒流放行；+4 四向单测；基线 1584→1588。
-3. **确认链路写权限再审计测试加固（D6）**：`PendingActionConfirmPermissionAuditTest` 从 `PendingActionServiceImpl.confirm` 业务入口穿透实体归属校验与终态判定，无权限时 fail-closed——三重断言：12002 `PERMISSION_DENIED` + 实体状态保持 `PENDING` 且无 CAS 更新写 + 执行器/校验器零交互；变异测试验证非空洞；+1 单测；基线 1583→1584。
-4. **已建未接线基建接线合卡（暗线①闭环）**：TokenBudget 预算闸接入聊天流入口（`doStreamChat` 先查后扣，超限返回 SSE `TOKEN_BUDGET_EXCEEDED` 错误事件并 complete；默认 `enabled=false` 灰度旁路）；ContentSecurity 两处接线（对话入口改写问句 evaluate + wrap，BLOCK 抛异常转 SSE `CONTENT_BLOCKED` 不入库，DEGRADE 标签包装，ALLOW 原文；摄取入口全量缓冲 evaluate，BLOCK 零文件写零落库）；`ai.model.*` 6 个死配置键自注册表与三档封闭集彻底摘除，动态配置键总数 66→60，测试样例键换血，活代码 0 悬空；+10 单测，基线 1573→1583。
-5. **公海认领/分派竞态 CAS 修复**：读-判-写压缩为单条条件 UPDATE（谓词 `pool_status=1 AND is_deleted=0`，PK 定位 affected∈{0,1}）；50 上限以 sys_user 行锁串行化（`FOR UPDATE` 先锁后计数，quota+CAS+提交同事务）；锁序统一「先用户后客户」零死锁面；零迁移零 version 列；错误码复用 50002/20003；+3 用例；基线 1570→1573。
-6. **写端点校验收口**：86 处写端点 `@RequestBody` 参数 100% 挂 `@Valid`（27 controller，域分组三笔 39+26+20）；DTO 校验注解按契约 required 对表零超约束；86 反向用例（28 测试类参数化）统一走全局 50002 handler；基线 1484→1570。
-7. **OBS-1 机械核对脚本吞错修复**：`scripts/tests/review-mechanical-check.sh` 移除 3 处真吞错，核对失败经子 shell 临时文件累计真实传非 0 退出码；保留 2 处 `grep -c` 合法 0 匹配；维持非门禁定位；两向自测 0/2 留证；纯 scripts 修复 Java 零改动基线持平。
-8. **queryUser 数据权限部门隔离**：AI 工具 queryUser 按当前操作用户 deptId 过滤（仅同部门可见，非豁免无部门 fail-closed 空列表）；豁免对齐既有口径（超管 roleId=1 全量）；工具描述同步防幻觉；零迁移/零权限常量/零冻结契约/零前端改动；surefire +4。
-9. **向量运维端点统一收口**：`POST /knowledge/admin/sync/{entity}` 五实体枚举校验 + `/sync/all` 逐实体委托返回计数映射；复用 KNOWLEDGE_ADMIN_MANAGE(900)；前端运维卡片与确认弹窗；单测全 mock 零真实重嵌入；surefire +8、前端 +9。
-10. **客户流失预警与自动化再激活**：确定性规则（三源皆空 + 60 天窗口）扫描私海客户 → hasInProgressTask 幂等建高优待办 → 每日 4 点错峰调度；前端流失筛选与一键触发；零 LLM 零迁移。
-11. **CustomerInsightPanel 双宿主接线**：客户详情弹窗与 AI 助手抽屉上下文诊断面板双宿主齐备；created 反馈与刷新双宿主联动；Insight → Action 最后一公里收口。
-12. **AI 诊断建议一键转 Action**：后端 InsightToActionService 纯结构化映射（零外呼），诊断建议一键转待办/转活动，复用既有草稿 DTO；端点挂 CUSTOMER_VIEW_COMPANY(117)。
-13. **销售线索管理与一键转化商机漏斗**：Flyway V42 `sales_lead` 表；`/sales/lead` 6 端点复用既有权限；单事务转化客户+联系人+商机并异步向量同步；前端列表与转化弹窗。
-14. **合同履约到期预警与逾期应收催款待办联动**：ContractMapper 到期/超期与逾期未结回款统计；幂等生成高优 ContactTask；每天 3 点调度；前端预警快捷筛选与一键生成待办。
-15. **CRM 客户公海池与全生命周期流转闭环**：Flyway V41 组合索引 + `customer_pool_log` 流转表；认领配额 50 上限拦截 20003；定时回收超时私海；商业活动联动刷新活跃度。
-16. **AI 智能商业诊断与会话交互深化**：客户 360° 诊断多实体聚合规则评分（0~100）+ ModelProvider 商业画像与建议，双层安全降级杜绝 500；首问提炼标题与快捷指令药丸。
-17. **RAG 检索与五业务实体语义检索完全体**：知识库混合检索（向量 + FULLTEXT ngram）+ RRF 融合，父子块切分；5 大业务实体向量语义检索汇入 Qdrant，事务后异步派发；严格四档数据权限闸。
+1. **数据权限切面 Fail-Closed 治理（I-1，刚刚合入）**：`QueryWrapperAspect` 彻底移除数据权限条件注入与重载方法转发异常时的日志吞咽与静默放行逻辑（消除 fail-open 越权隐患），统一解包并包装重抛为 `BaseException(PERMISSION_DENIED, "数据权限过滤失败，拒绝查询")`（12002）；系统/后台任务无上下文用户（`currentUser == null`）及非托管表严格放行并记录 debug 审计日志；+8 靶向单测；基线 1620→1628。
+2. **登录链路安全加固包（H-8/H-9/H-10）**：`JWTInterceptor` 白名单精准收敛（移除 contains 模糊匹配），`POST /user/logout` + Caffeine 本地黑名单与用户冻结/离职即时感知；`LoginAttemptService` 双维度防爆破限流（5次错锁15分）；单副本无状态契约零新增依赖；基线 1588→1620。
+3. **商机阶段流转审批阻断（D4）**：`SalesOpportunityServiceImpl.update` 前置流转阻断，调用 `SalesStageApprovalSupport.isValidStageTransition` 判定合法正向需审批阶段流转，严格等价匹配审批记录 `targetStage`；无审批记录阻断抛出 30003 `OPPORTUNITY_MUST_BE_CLOSED`；实体不存在/阶段未变/倒流放行；+4 四向单测；基线 1584→1588。
+4. **确认链路写权限再审计测试加固（D6）**：`PendingActionConfirmPermissionAuditTest` 从 `PendingActionServiceImpl.confirm` 业务入口穿透实体归属校验与终态判定，无权限时 fail-closed——三重断言：12002 `PERMISSION_DENIED` + 实体状态保持 `PENDING` 且无 CAS 更新写 + 执行器/校验器零交互；变异测试验证非空洞；+1 单测；基线 1583→1584。
+5. **已建未接线基建接线合卡（暗线①闭环）**：TokenBudget 预算闸接入聊天流入口（超限返回 SSE `TOKEN_BUDGET_EXCEEDED` 错误事件；默认灰度旁路）；ContentSecurity 问句与摄取双重拦截（BLOCK 抛异常转 SSE `CONTENT_BLOCKED` 零落库）；6 个死配置键彻底摘除，动态配置键总数 66→60；+10 单测，基线 1573→1583。
+6. **公海认领/分派竞态 CAS 修复**：读-判-写压缩为单条条件 UPDATE（谓词 `pool_status=1 AND is_deleted=0`，PK 定位 affected∈{0,1}）；50 上限以 sys_user 行锁串行化（`FOR UPDATE` 先锁后计数，quota+CAS+提交同事务）；锁序统一「先用户后客户」零死锁面；错误码复用 50002/20003；+3 用例；基线 1570→1573。
+7. **写端点校验收口**：86 处写端点 `@RequestBody` 参数 100% 挂 `@Valid`（27 controller）；DTO 校验注解按契约 required 对表零超约束；86 反向用例统一走全局 50002 handler；基线 1484→1570。
+8. **OBS-1 机械核对脚本吞错修复**：`scripts/tests/review-mechanical-check.sh` 移除 3 处真吞错，核对失败累计传真实非 0 退出码；保留 2 处 `grep -c` 合法 0 匹配；纯 scripts 修复基线持平。
+9. **queryUser 数据权限部门隔离**：AI 工具 queryUser 按当前操作用户 deptId 过滤（仅同部门可见，非豁免无部门 fail-closed 空列表）；豁免对齐既有口径（超管 roleId=1 全量）；surefire +4。
+10. **向量运维端点统一收口**：`POST /knowledge/admin/sync/{entity}` 五实体枚举校验 + `/sync/all` 逐实体委托返回计数映射；复用 KNOWLEDGE_ADMIN_MANAGE(900)；前端运维卡片与确认弹窗；surefire +8、前端 +9。
+11. **客户流失预警与自动化再激活**：确定性规则（三源皆空 + 60 天窗口）扫描私海客户 → hasInProgressTask 幂等建高优待办 → 每日 4 点错峰调度；前端流失筛选与一键触发。
+12. **CustomerInsightPanel 双宿主接线**：客户详情弹窗与 AI 助手抽屉上下文诊断面板双宿主齐备；created 反馈与刷新双宿主联动；Insight → Action 最后一公里收口。
+13. **AI 诊断建议一键转 Action**：后端 InsightToActionService 纯结构化映射（零外呼），诊断建议一键转待办/转活动，复用既有草稿 DTO；端点挂 CUSTOMER_VIEW_COMPANY(117)。
+14. **销售线索管理与一键转化商机漏斗**：Flyway V42 `sales_lead` 表；`/sales/lead` 6 端点复用既有权限；单事务转化客户+联系人+商机并异步向量同步；前端列表与转化弹窗。
+15. **合同履约到期预警与逾期应收催款待办联动**：ContractMapper 到期/超期与逾期未结回款统计；幂等生成高优 ContactTask；每天 3 点调度；前端预警快捷筛选与一键生成待办。
+16. **CRM 客户公海池与全生命周期流转闭环**：Flyway V41 组合索引 + `customer_pool_log` 流转表；认领配额 50 上限拦截 20003；定时回收超时私海；商业活动联动刷新活跃度。
+17. **AI 智能商业诊断与会话交互深化**：客户 360° 诊断多实体聚合规则评分（0~100）+ ModelProvider 商业画像与建议；首问提炼标题与快捷指令药丸。
+18. **RAG 检索与五业务实体语义检索完全体**：知识库混合检索（向量 + FULLTEXT ngram）+ RRF 融合，父子块切分；5 大业务实体向量语义检索汇入 Qdrant；严格四档数据权限闸。
 
 ---
 
-## 3. 当前在途与候选队列（harden-login-security 闭环刷新）
+## 3. 当前在途与候选队列（harden-datascope-fail-closed 闭环刷新）
 
-- **在途待合入卡**：**0 张！**（`harden-login-security` 已全链合入 master 并通过 CI）
-- **下批候选池总账**：`work/_paa-candidates-pool-v2.md`（104 发现 / 64 合并候选，A16/B35/C13；下批推荐立项序列：I-1 数据权限切面 fail-open 拍板修复 → I-4 单副本部署契约约束 → 暂缓池活化取舍）。
+- **在途待合入卡**：**0 张！**（`harden-datascope-fail-closed` 已全链合入 master 并通过 CI）
+- **下批候选池总账**：`work/_paa-candidates-pool-v2.md`（104 发现 / 64 合并候选，A16/B35/C13；下批推荐立项序列：I-4 单副本部署契约约束 → 暂缓池活化取舍 / wire-customer-insight-panel 前端体验微调）。
 - **长期储备**：在线考试子域（`work/_online-exam-backlog.md` 留档）、多模态图文混合检索。
 
 ---
