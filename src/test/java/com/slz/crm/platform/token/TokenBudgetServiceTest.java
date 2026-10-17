@@ -36,6 +36,8 @@ class TokenBudgetServiceTest {
 
   @Test
   void shouldRejectDailyBudgetBoundary() {
+    // 接线后默认灰度关闭（TokenBudgetProperties 默认 false），闸行为测试显式开启
+    properties.setEnabled(true);
     TokenBudgetRequest request =
         new TokenBudgetRequest(TokenBudgetScope.USER, "user:1", TokenUsageType.CHAT, 20);
     when(mapper.selectList(any())).thenReturn(List.of(usage(90L)));
@@ -52,6 +54,7 @@ class TokenBudgetServiceTest {
 
   @Test
   void shouldAllowWithinDailyAndMonthlyBudget() {
+    properties.setEnabled(true);
     TokenBudgetRequest request =
         new TokenBudgetRequest(TokenBudgetScope.USER, "user:1", TokenUsageType.CHAT, 20);
     when(mapper.selectList(any())).thenReturn(List.of(usage(50L)));

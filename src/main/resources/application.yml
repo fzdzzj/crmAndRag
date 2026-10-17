@@ -116,7 +116,7 @@ platform:
       provider: ${SLZ_AI_PROVIDER:dashscope}
       base-url: ${SLZ_AI_BASE_URL:}
       api-key: ${SLZ_AI_API_KEY:}
-      # 对话/视觉/嵌入默认模型名（可被 Lane E 动态配置覆盖）
+      # 对话/视觉/嵌入默认模型名（静态绑定生效；动态 ai.model.* 键为零消费死键，已于 2026-10-17 从注册表摘除）
       chat-model: ${SLZ_AI_CHAT_MODEL:qwen-plus}
       vision-model: ${SLZ_AI_VISION_MODEL:qwen-vl-plus}
       embedding-model: ${SLZ_AI_EMBEDDING_MODEL:text-embedding-v3}

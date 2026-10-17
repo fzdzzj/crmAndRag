@@ -9,12 +9,14 @@ package com.slz.crm.platform.contract;
  *
  * <ul>
  *   <li>{@code ai.prompt.system} 系统提示词
- *   <li>{@code ai.model.temperature} / {@code ai.model.maxTokens}
  *   <li>{@code rag.retrieval.topK} / {@code rag.retrieval.minScore} / {@code
  *       rag.retrieval.strictKb}
  *   <li>{@code assistant.imageCacheMaxEntries} 图片理解缓存上限（D13）
  *   <li>{@code assistant.intent.categories} 意图/类目（D17）
  * </ul>
+ *
+ * <p>变更记录：{@code ai.model.*} 六键于 2026-10-17 摘除（wire-built-unfinished-infra，零消费死键）， 模型选择走静态绑定 {@code
+ * platform.ai.model.*}。
  *
  * <p>线程安全：实现需支持并发读；热生效由实现内部缓存保证（有界刷新）。
  */

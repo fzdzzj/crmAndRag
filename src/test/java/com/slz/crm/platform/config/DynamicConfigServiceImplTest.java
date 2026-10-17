@@ -54,7 +54,7 @@ class DynamicConfigServiceImplTest {
   void absentConfigReturnsDefault() {
     when(itemMapper.selectOne(any())).thenReturn(null);
     assertThat(service.get("rag.retrieval.topK", Integer.class, 5)).isEqualTo(5);
-    assertThat(service.get("ai.model.temperature", Double.class, 0.3d)).isEqualTo(0.3d);
+    assertThat(service.get("rag.retrieval.minScore", Double.class, 0.2d)).isEqualTo(0.2d);
   }
 
   @Test

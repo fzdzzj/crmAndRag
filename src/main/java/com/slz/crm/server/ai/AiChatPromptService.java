@@ -1,5 +1,6 @@
 package com.slz.crm.server.ai;
 
+import com.slz.crm.platform.security.ContentSecurityService;
 import com.slz.crm.pojo.dto.PromptTemplateRenderDTO;
 import com.slz.crm.pojo.entity.AiConversationMemoryEntity;
 import com.slz.crm.pojo.entity.AiMessageEntity;
@@ -52,6 +53,13 @@ public class AiChatPromptService {
 
   /** 短问改写只影响检索/模型输入，不改变 ai_message 中的用户原文。 */
   @Autowired private AiShortQuestionRewriter shortQuestionRewriter;
+
+  /**
+   * 内容安全闸（wire-built-unfinished-infra 任务 1.2）：组装进模型上下文前对用户输入 evaluate+wrap； 生产 bean 恒在，手工装配单测可缺席 →
+   * 组装空跳过。
+   */
+  @Autowired(required = false)
+  private ContentSecurityService contentSecurityService;
 
   /** 提示词模板服务：运行时模板态渲染入口；渲染异常时回退类路径静态文本（aichat-prompt-template-integration 任务 2.1）。 */
   @Autowired(required = false)
@@ -108,7 +116,10 @@ public class AiChatPromptService {
     List<Message> messages = new ArrayList<>();
     messages.add(new SystemMessage(build.prompt()));
     messages.addAll(loadHistory(sessionId));
-    messages.add(new UserMessage(prepared.rewrittenQuery()));
+    messages.add(
+        new UserMessage(
+            AiChatContentSecuritySupport.secureUserContent(
+                contentSecurityService, sessionId, prepared.rewrittenQuery())));
     boolean injected =
         build.slotInjected() && retrievalContext != null && !retrievalContext.isBlank();
     return new PreparedMessages(applyPromptBudget(messages), injected);

@@ -6,6 +6,8 @@ import com.slz.crm.platform.contract.AssistantChatRequest;
 import com.slz.crm.platform.contract.ModelProvider;
 import com.slz.crm.platform.contract.SseEventName;
 import com.slz.crm.platform.contract.UserContext;
+import com.slz.crm.platform.security.ContentRiskBlockedException;
+import com.slz.crm.platform.token.TokenBudgetService;
 import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.entity.AiChatImageEntity;
 import com.slz.crm.pojo.entity.AiMessageEntity;
@@ -76,6 +78,10 @@ public class AiChatServiceImpl implements AiChatService {
 
   @Autowired private AiRateLimiter aiRateLimiter;
 
+  /** Token 预算闸（wire-built-unfinished-infra 任务 1.2）：生产 bean 恒在；手工装配单测可缺席 → 闸空跳过。 */
+  @Autowired(required = false)
+  private TokenBudgetService tokenBudgetService;
+
   @Autowired(required = false)
   private AiChatImageService aiChatImageService;
 
@@ -145,7 +151,8 @@ public class AiChatServiceImpl implements AiChatService {
         return;
       }
 
-      if (AiChatResumeSupport.rejectIfRateLimited(userId, emitter, eventWriter, aiRateLimiter)) {
+      if (AiChatResumeSupport.rejectIfThrottled(
+          aiRateLimiter, tokenBudgetService, userId, emitter, eventWriter)) {
         return;
       }
 
@@ -169,6 +176,9 @@ public class AiChatServiceImpl implements AiChatService {
       }
 
       dispatchChatStream(currentUser, request, emitter, session, imagePrep, needTitle);
+    } catch (ContentRiskBlockedException exception) {
+      // wire-built-unfinished-infra 任务 1.2：内容安全 BLOCK 复用 SSE 错误事件语义明示拦截原因，不并入通用模型失败
+      AiChatResumeSupport.rejectContentBlocked(emitter, eventWriter, exception);
     } catch (Exception exception) {
       log.error("AI chat failed, sessionId={}", request.sessionId(), exception);
       eventWriter.sendError(emitter, "LLM_ERROR", "模型调用失败，请稍后重试");
