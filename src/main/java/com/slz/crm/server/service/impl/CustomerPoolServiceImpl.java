@@ -1,6 +1,7 @@
 package com.slz.crm.server.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.exiception.BaseException;
@@ -89,13 +90,9 @@ public class CustomerPoolServiceImpl implements CustomerPoolService {
     assertInPublicPool(company, "认领");
 
     Long previousOwner = company.getOwnerId();
-    CustomerCompanyEntity update = new CustomerCompanyEntity();
-    update.setId(id);
-    update.setPoolStatus(CustomerPoolConstant.POOL_STATUS_PRIVATE);
-    update.setOwnerId(currentId);
-    update.setPoolReleaseTime(null);
-    update.setPoolReleaseReason(null);
-    customerCompanyMapper.updateById(update);
+    if (!casToPrivate(id, currentId)) {
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "客户已被他人认领或状态已变更，无法认领");
+    }
 
     insertLog(
         id, currentId, CustomerPoolConstant.ACTION_CLAIM, previousOwner, currentId, "业务员自助认领");
@@ -154,13 +151,9 @@ public class CustomerPoolServiceImpl implements CustomerPoolService {
     assertInPublicPool(company, "分派");
 
     Long previousOwner = company.getOwnerId();
-    CustomerCompanyEntity update = new CustomerCompanyEntity();
-    update.setId(id);
-    update.setPoolStatus(CustomerPoolConstant.POOL_STATUS_PRIVATE);
-    update.setOwnerId(dto.getTargetUserId());
-    update.setPoolReleaseTime(null);
-    update.setPoolReleaseReason(null);
-    customerCompanyMapper.updateById(update);
+    if (!casToPrivate(id, dto.getTargetUserId())) {
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "客户已被他人认领或状态已变更，无法分派");
+    }
 
     insertLog(
         id,
@@ -226,7 +219,21 @@ public class CustomerPoolServiceImpl implements CustomerPoolService {
     }
   }
 
+  /**
+   * 私海保有量配额闸（fix-pool-claim-race 任务 1.2 原子化收口）：先以 {@code SELECT ... FOR UPDATE} 锁定目标用户行，
+   * 再计数校验。仅锁用户行即可让同一业务员的并发认领/分派在配额检查处串行化——后到者必然在先到者提交后才执行 计数，从而读到先到者新增的私海持有量，杜绝「N 个并发都读到 holding=49
+   * 全放行」突破 50 上限。
+   *
+   * <p>锁序统一为「先锁 sys_user 行，再改 customer_company 行」，与回池/自动回收路径无反向锁序，规避死锁。 持有行 FOR UPDATE 与 UPDATE
+   * 内嵌计数子查询两个备选被否决：前者锁不住并发新认领的行（不在持有行锁集内）， 后者派生表在 RR 下走快照读同样不串行化。目标用户行不存在时退化为现状语义（不新增存在性校验，避免变更
+   * 分派行为面）。
+   */
   private void assertQuotaNotExceeded(Long userId) {
+    userMapper.selectList(
+        new LambdaQueryWrapper<UserEntity>()
+            .select(UserEntity::getId)
+            .eq(UserEntity::getId, userId)
+            .last("FOR UPDATE"));
     Long holding =
         customerCompanyMapper.selectCount(
             new LambdaQueryWrapper<CustomerCompanyEntity>()
@@ -236,6 +243,29 @@ public class CustomerPoolServiceImpl implements CustomerPoolService {
     if (holding != null && holding >= CustomerPoolConstant.PRIVATE_POOL_QUOTA) {
       throw new BaseException(ErrorCode.CUSTOMER_POOL_QUOTA_EXCEEDED);
     }
+  }
+
+  /**
+   * 认领/分派共用的 CAS 收口（fix-pool-claim-race 任务 1.2）：单条条件 UPDATE 把「读-判-写」压缩为原子语句， WHERE 公海态谓词（id +
+   * pool_status=公海 + 未删除）在写入时刻复验，并发后到者 affected=0，由调用方抛 「已被认领/状态已变更」业务错误（错误码复用 {@link
+   * #assertInPublicPool} 的 PARAM_FORMAT_ERROR 语义）。
+   *
+   * <p>SET 显式置空 pool_release_time/pool_release_reason：实体默认 NOT_NULL 更新策略下 updateById 置 null
+   * 是空操作，此处按流转状态机「公海→私海清除退回痕迹」的既有语义真正落库清除。
+   *
+   * @return true=抢占成功（affected=1）；false=客户已被并发认领或状态已变更（affected=0）
+   */
+  private boolean casToPrivate(Long id, Long targetOwnerId) {
+    LambdaUpdateWrapper<CustomerCompanyEntity> cas =
+        new LambdaUpdateWrapper<CustomerCompanyEntity>()
+            .set(CustomerCompanyEntity::getPoolStatus, CustomerPoolConstant.POOL_STATUS_PRIVATE)
+            .set(CustomerCompanyEntity::getOwnerId, targetOwnerId)
+            .set(CustomerCompanyEntity::getPoolReleaseTime, null)
+            .set(CustomerCompanyEntity::getPoolReleaseReason, null)
+            .eq(CustomerCompanyEntity::getId, id)
+            .eq(CustomerCompanyEntity::getPoolStatus, CustomerPoolConstant.POOL_STATUS_PUBLIC)
+            .eq(CustomerCompanyEntity::getIsDeleted, false);
+    return customerCompanyMapper.update(null, cas) == 1;
   }
 
   private boolean isOwner(Long currentId, CustomerCompanyEntity company) {

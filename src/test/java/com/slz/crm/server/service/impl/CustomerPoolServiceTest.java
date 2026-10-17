@@ -5,10 +5,17 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.BaseUnit;
@@ -23,12 +30,16 @@ import com.slz.crm.server.mapper.CustomerPoolLogMapper;
 import com.slz.crm.server.mapper.SysDeptMapper;
 import com.slz.crm.server.mapper.UserMapper;
 import java.util.List;
+import java.util.Map;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -36,7 +47,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 /**
  * 客户公海池业务服务单测（add-customer-public-sea-pool 任务 6.1）。
  *
- * <p>覆盖认领（含私海 50 配额满额拦截）、主动退回（负责人/主管权限分支）、主管分派（权限与目标配额）、流转日志查询。 通过 {@code BaseUnit.setCurrentRole}
+ * <p>覆盖认领（含私海 50 配额满额拦截）、主动退回（负责人/主管权限分支）、主管分派（权限与目标配额）、流转日志查询， 以及并发 CAS
+ * 语义（fix-pool-claim-race：条件更新 affected=0 冲突、配额检查先锁用户行再计数）。 通过 {@code BaseUnit.setCurrentRole}
  * 驱动当前用户，mock mapper 隔离数据库；语义向量 hook 依赖未装配时整体跳过（不阻断业务流）。
  */
 @DisplayName("客户公海池业务服务")
@@ -51,6 +63,18 @@ class CustomerPoolServiceTest {
   @InjectMocks private CustomerPoolServiceImpl service;
 
   private static final long OPERATOR_ID = 1001L;
+
+  /**
+   * 纯 Mockito 测试 JVM 无 MyBatis-Plus 启动流程，配额锁（LambdaQueryWrapper&lt;UserEntity&gt;）与 CAS wrapper 的
+   * lambda 列名解析依赖实体 TableInfo 缓存，按 CustomerIngestionServiceTest 先例显式初始化。
+   */
+  @BeforeAll
+  static void initTableInfo() {
+    TableInfoHelper.initTableInfo(
+        new MapperBuilderAssistant(new MybatisConfiguration(), ""), CustomerCompanyEntity.class);
+    TableInfoHelper.initTableInfo(
+        new MapperBuilderAssistant(new MybatisConfiguration(), ""), UserEntity.class);
+  }
 
   @BeforeEach
   void setUp() {
@@ -84,26 +108,45 @@ class CustomerPoolServiceTest {
   }
 
   @Test
-  @DisplayName("认领：配额未满合法认领，更新状态与负责人并插入 CLAIM 日志")
+  @DisplayName("认领：配额未满合法认领，CAS 条件更新置私海并插入 CLAIM 日志")
   void claim_happyPath_updatesPoolAndLogsClaim() {
     CustomerCompanyEntity company = publicCompany(5001L);
     when(customerCompanyMapper.selectById(5001L)).thenReturn(company);
     when(customerCompanyMapper.selectCount(any())).thenReturn(10L);
+    when(customerCompanyMapper.update(any(), any())).thenReturn(1); // CAS 抢占成功
     when(customerPoolLogMapper.insert(any())).thenReturn(1);
 
     assertTrue(service.claim(5001L));
 
-    ArgumentCaptor<CustomerCompanyEntity> update =
-        ArgumentCaptor.forClass(CustomerCompanyEntity.class);
-    verify(customerCompanyMapper).updateById(update.capture());
-    assertEquals(CustomerPoolConstant.POOL_STATUS_PRIVATE, update.getValue().getPoolStatus());
-    assertEquals(Long.valueOf(OPERATOR_ID), update.getValue().getOwnerId());
+    LambdaUpdateWrapper<CustomerCompanyEntity> cas = captureCasUpdate();
+    String sqlSet = cas.getSqlSet();
+    assertTrue(sqlSet.contains("pool_status="));
+    assertTrue(sqlSet.contains("owner_id="));
+    assertTrue(sqlSet.contains("pool_release_time="));
+    assertTrue(sqlSet.contains("pool_release_reason="));
+    String where = cas.getSqlSegment();
+    assertTrue(where.contains("id ="));
+    assertTrue(where.contains("pool_status ="));
+    assertTrue(where.contains("is_deleted ="));
+    Map<String, Object> params = cas.getParamNameValuePairs();
+    assertTrue(params.containsValue(5001L));
+    assertTrue(params.containsValue(Long.valueOf(OPERATOR_ID)));
+    assertTrue(params.containsValue(CustomerPoolConstant.POOL_STATUS_PUBLIC));
 
     ArgumentCaptor<CustomerPoolLogEntity> log =
         ArgumentCaptor.forClass(CustomerPoolLogEntity.class);
     verify(customerPoolLogMapper).insert(log.capture());
     assertEquals(CustomerPoolConstant.ACTION_CLAIM, log.getValue().getActionType());
     assertEquals(Long.valueOf(OPERATOR_ID), log.getValue().getNewOwnerId());
+  }
+
+  /** 捕获认领/分派 CAS 条件更新的 wrapper 参数（update(null, wrapper) 单参形态）。 */
+  @SuppressWarnings("unchecked")
+  private LambdaUpdateWrapper<CustomerCompanyEntity> captureCasUpdate() {
+    ArgumentCaptor<LambdaUpdateWrapper<CustomerCompanyEntity>> captor =
+        ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+    verify(customerCompanyMapper).update(isNull(), captor.capture());
+    return captor.getValue();
   }
 
   @Test
@@ -114,7 +157,8 @@ class CustomerPoolServiceTest {
     BaseException ex = assertThrows(BaseException.class, () -> service.claim(5001L));
     assertEquals(ErrorCode.CUSTOMER_POOL_QUOTA_EXCEEDED.getCode(), ex.getCode());
     verify(customerCompanyMapper, never()).updateById(any());
-    verify(customerPoolLogMapper, never()).insert(any());
+    verify(customerCompanyMapper, never()).update(any(), any());
+    verifyNoInteractions(customerPoolLogMapper);
   }
 
   @Test
@@ -126,6 +170,40 @@ class CustomerPoolServiceTest {
     BaseException ex = assertThrows(BaseException.class, () -> service.claim(5001L));
     assertEquals(ErrorCode.PARAM_FORMAT_ERROR.getCode(), ex.getCode());
     verify(customerPoolLogMapper, never()).insert(any());
+  }
+
+  @Test
+  @DisplayName("认领：CAS affected=0（并发被抢）抛状态变更错误且零副作用")
+  void claim_casConflict_throwsWithNoSideEffects() {
+    when(customerCompanyMapper.selectCount(any())).thenReturn(10L);
+    when(customerCompanyMapper.selectById(5001L)).thenReturn(publicCompany(5001L));
+    when(customerCompanyMapper.update(any(), any())).thenReturn(0); // 并发先到者已抢走
+
+    BaseException ex = assertThrows(BaseException.class, () -> service.claim(5001L));
+    assertEquals(ErrorCode.PARAM_FORMAT_ERROR.getCode(), ex.getCode());
+    assertTrue(ex.getMessage().contains("已被他人认领"));
+    verifyNoInteractions(customerPoolLogMapper);
+    verify(customerCompanyMapper, never()).updateById(any());
+  }
+
+  @Test
+  @DisplayName("配额临界并发：先锁用户行再计数（同用户串行化），满 50 拒绝且零写库")
+  void claim_quotaCritical_locksUserRowBeforeCount() {
+    when(customerCompanyMapper.selectCount(any())).thenReturn(50L); // 先到者提交后重新计数已满
+
+    BaseException ex = assertThrows(BaseException.class, () -> service.claim(5001L));
+    assertEquals(ErrorCode.CUSTOMER_POOL_QUOTA_EXCEEDED.getCode(), ex.getCode());
+
+    ArgumentCaptor<LambdaQueryWrapper<UserEntity>> lock =
+        ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+    verify(userMapper).selectList(lock.capture());
+    assertTrue(lock.getValue().getSqlSegment().contains("FOR UPDATE"));
+    InOrder inOrder = inOrder(userMapper, customerCompanyMapper);
+    inOrder.verify(userMapper).selectList(any());
+    inOrder.verify(customerCompanyMapper).selectCount(any());
+    verify(customerCompanyMapper, never()).selectById(any());
+    verify(customerCompanyMapper, never()).update(any(), any());
+    verifyNoInteractions(customerPoolLogMapper);
   }
 
   @Test
@@ -198,12 +276,13 @@ class CustomerPoolServiceTest {
   }
 
   @Test
-  @DisplayName("分派：主管合法分派，校验目标配额后插入 ASSIGN 日志")
+  @DisplayName("分派：主管合法分派，CAS 条件更新置私海并插入 ASSIGN 日志")
   void assign_managerHappyPath_updatesAndLogsAssign() {
     when(userMapper.selectById(OPERATOR_ID)).thenReturn(userWithRole(1L));
     when(customerCompanyMapper.selectCount(any())).thenReturn(5L); // 目标配额未满
     CustomerCompanyEntity company = publicCompany(7002L);
     when(customerCompanyMapper.selectById(7002L)).thenReturn(company);
+    when(customerCompanyMapper.update(any(), any())).thenReturn(1); // CAS 抢占成功
     when(customerPoolLogMapper.insert(any())).thenReturn(1);
 
     CustomerPoolAssignDTO dto = new CustomerPoolAssignDTO();
@@ -213,11 +292,17 @@ class CustomerPoolServiceTest {
 
     assertTrue(service.assign(dto));
 
-    ArgumentCaptor<CustomerCompanyEntity> update =
-        ArgumentCaptor.forClass(CustomerCompanyEntity.class);
-    verify(customerCompanyMapper).updateById(update.capture());
-    assertEquals(CustomerPoolConstant.POOL_STATUS_PRIVATE, update.getValue().getPoolStatus());
-    assertEquals(Long.valueOf(8888L), update.getValue().getOwnerId());
+    LambdaUpdateWrapper<CustomerCompanyEntity> cas = captureCasUpdate();
+    String sqlSet = cas.getSqlSet();
+    assertTrue(sqlSet.contains("pool_status="));
+    assertTrue(sqlSet.contains("owner_id="));
+    String where = cas.getSqlSegment();
+    assertTrue(where.contains("id ="));
+    assertTrue(where.contains("pool_status ="));
+    assertTrue(where.contains("is_deleted ="));
+    Map<String, Object> params = cas.getParamNameValuePairs();
+    assertTrue(params.containsValue(7002L));
+    assertTrue(params.containsValue(Long.valueOf(8888L)));
 
     ArgumentCaptor<CustomerPoolLogEntity> log =
         ArgumentCaptor.forClass(CustomerPoolLogEntity.class);
@@ -225,6 +310,25 @@ class CustomerPoolServiceTest {
     assertEquals(CustomerPoolConstant.ACTION_ASSIGN, log.getValue().getActionType());
     assertEquals(Long.valueOf(8888L), log.getValue().getNewOwnerId());
     assertEquals(Long.valueOf(OPERATOR_ID), log.getValue().getOperatorId());
+  }
+
+  @Test
+  @DisplayName("分派：CAS affected=0（并发被抢）抛状态变更错误且零副作用")
+  void assign_casConflict_throwsWithNoSideEffects() {
+    when(userMapper.selectById(OPERATOR_ID)).thenReturn(userWithRole(1L));
+    when(customerCompanyMapper.selectCount(any())).thenReturn(10L);
+    when(customerCompanyMapper.selectById(7002L)).thenReturn(publicCompany(7002L));
+    when(customerCompanyMapper.update(any(), any())).thenReturn(0); // 并发先到者已抢走
+
+    CustomerPoolAssignDTO dto = new CustomerPoolAssignDTO();
+    dto.setCompanyId(7002L);
+    dto.setTargetUserId(8888L);
+
+    BaseException ex = assertThrows(BaseException.class, () -> service.assign(dto));
+    assertEquals(ErrorCode.PARAM_FORMAT_ERROR.getCode(), ex.getCode());
+    assertTrue(ex.getMessage().contains("已被他人认领"));
+    verifyNoInteractions(customerPoolLogMapper);
+    verify(customerCompanyMapper, never()).updateById(any());
   }
 
   @Test
