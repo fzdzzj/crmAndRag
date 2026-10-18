@@ -1,12 +1,13 @@
 package com.slz.crm.pojo.vo;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.slz.crm.pojo.ao.Privacy;
 import java.time.LocalDateTime;
 import lombok.Data;
 
 /** 销售线索视图对象（add-lead-management-and-conversion-funnel 任务 2.1）。 */
 @Data
-public class SalesLeadVO {
+public class SalesLeadVO implements Privacy {
   /** 线索ID */
   private Long id;
 
@@ -60,4 +61,17 @@ public class SalesLeadVO {
   /** 更新时间 */
   @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
   private LocalDateTime updateTime;
+
+  /** 隐私脱敏（harden-user-password-and-privacy 任务 2.2：线索电话/邮箱无权限置 ***） */
+  @Override
+  public Boolean phone() {
+    this.phone = "***";
+    return true;
+  }
+
+  @Override
+  public Boolean email() {
+    this.email = "***";
+    return true;
+  }
 }

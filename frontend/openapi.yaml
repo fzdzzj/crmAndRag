@@ -1229,7 +1229,7 @@ paths:
         content:
           application/json:
             schema:
-              type: string
+              $ref: "#/components/schemas/UserUpdatePasswordDTO"
         required: true
       responses:
         "200":
@@ -6774,6 +6774,18 @@ components:
           type: string
         data:
           type: string
+    UserUpdatePasswordDTO:
+      type: object
+      properties:
+        oldPassword:
+          type: string
+          minLength: 1
+        newPassword:
+          type: string
+          minLength: 1
+      required:
+      - newPassword
+      - oldPassword
     ResetUserPasswordDTO:
       type: object
       properties:

@@ -293,6 +293,9 @@ public enum ErrorCode {
   /** 功能未启用 */
   NOT_ENABLED(92027, "功能未启用", "error.not.enabled"),
 
+  /** 密码错误（harden-user-password-and-privacy 任务 1.2：自服务改密旧密校验失败） */
+  PASSWORD_ERROR(92028, "密码错误", "error.password.error"),
+
   // ========== AI 助手错误 (93001-93999) ==========
   /** 确认已超时 */
   AI_ACTION_TIMEOUT(93001, "确认已超时，请重新发起", "error.ai.action.timeout"),
