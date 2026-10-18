@@ -27,12 +27,14 @@ import com.slz.crm.server.service.support.TokenBlacklistService;
 import com.slz.crm.server.service.support.UserPasswordSupport;
 import java.time.LocalDateTime;
 import java.util.*;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> implements UserService {
 
@@ -174,6 +176,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
       throw new BaseException(ErrorCode.ID_NOT_EXISTS.getMessage().formatted("用户"));
     }
 
+    // 终极超管防篡改：非超管本人禁止重置超管密码（12002）
+    if (targetUser.getRoleId() != null
+        && Objects.equals(targetUser.getRoleId(), 1L)
+        && !Objects.equals(BaseUnit.getCurrentId(), targetUser.getId())) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "仅超级管理员本人可重置超级管理员密码");
+    }
+
     // 验证新密码不能为空
     if (newPassword == null || newPassword.trim().isEmpty()) {
       throw new BaseException(ErrorCode.PARAM_EMPTY.getMessage().formatted("新密码"));
@@ -187,6 +196,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     if (i == 0) {
       throw new ServiceException(ErrorCode.UPDATE_FAILED.getMessage());
     }
+    log.info("管理员重置用户密码成功: operatorId={}, targetUserId={}", BaseUnit.getCurrentId(), userId);
     return true;
   }
 
