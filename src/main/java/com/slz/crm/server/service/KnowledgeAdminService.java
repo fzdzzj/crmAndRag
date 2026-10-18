@@ -20,15 +20,12 @@ import com.slz.crm.platform.contract.DynamicConfigService;
 import com.slz.crm.platform.contract.RetrievalDefaults;
 import com.slz.crm.platform.contract.UserContext;
 import com.slz.crm.platform.contract.UserContextHolder;
-import com.slz.crm.platform.quota.QuotaDecision;
-import com.slz.crm.platform.quota.QuotaDimension;
 import com.slz.crm.platform.quota.RequestQuotaService;
 import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.dto.KnowledgeAdminRetrievalRequest;
 import com.slz.crm.pojo.vo.KnowledgeAdminRetrievalResponse;
 import com.slz.crm.pojo.vo.KnowledgeBaseVO;
 import com.slz.crm.pojo.vo.KnowledgeFileVO;
-import com.slz.crm.server.ai.port.KnowledgeRetrievalPort;
 import com.slz.crm.server.mapper.DocumentVectorChunkMapper;
 import com.slz.crm.server.mapper.KnowledgeBaseMapper;
 import com.slz.crm.server.mapper.UploadedFileMapper;
@@ -252,7 +249,7 @@ public class KnowledgeAdminService {
       throw new IllegalArgumentException("检索 query 不能为空");
     }
     boolean useVector = Boolean.TRUE.equals(req.getUseVector());
-    if (useVector && !adminVectorEnabled()) {
+    if (useVector && !vectorSupport().adminVectorEnabled()) {
       throw new BaseException(ErrorCode.SERVICE_UNAVAILABLE, "管理端真向量检索未开启");
     }
     int topK = resolveTopK(req.getTopK(), useVector);
@@ -270,9 +267,9 @@ public class KnowledgeAdminService {
     response.setCandidates(List.of());
     if (!authorizedKbIds.isEmpty()) {
       if (useVector) {
-        acquireAdminVectorQuota(user);
+        vectorSupport().acquireQuota(user);
         response.setCandidates(
-            retrieveVectorCandidates(req.getQuery(), topK, user, authorizedKbIds));
+            vectorSupport().retrieveCandidates(req.getQuery(), topK, user, authorizedKbIds));
       } else if (sparseRecallService != null) {
         response.setCandidates(
             sparseRecallService.recall(req.getQuery(), authorizedKbIds, null, topK).stream()
@@ -307,53 +304,16 @@ public class KnowledgeAdminService {
     return result;
   }
 
-  @SuppressWarnings("PMD.AvoidCatchingGenericException")
-  private boolean adminVectorEnabled() {
-    boolean enabled = false;
-    if (dynamicConfigService != null) {
-      try {
-        enabled =
-            Boolean.TRUE.equals(
-                dynamicConfigService.get(
-                    "rag.retrieval.admin-vector.enabled", Boolean.class, Boolean.FALSE));
-      } catch (RuntimeException ex) {
-        // 动态配置读取故障必须保持管理端真向量关闭，避免故障时意外产生模型调用。
-        log.warn("读取管理端真向量开关失败，按关闭处理", ex);
-      }
-    }
-    return enabled;
-  }
+  /** 管理端真向量检索协作对象（懒初始化，与 DataScopeServiceImpl 协作对象同一模式；竞态只会产生等价实例）。 */
+  private KnowledgeAdminVectorSupport vectorSupport;
 
-  private void acquireAdminVectorQuota(UserContext user) {
-    if (requestQuotaService == null) {
-      throw new BaseException(ErrorCode.SERVICE_UNAVAILABLE, "管理端真向量配额服务不可用");
+  private KnowledgeAdminVectorSupport vectorSupport() {
+    if (vectorSupport == null) {
+      vectorSupport =
+          new KnowledgeAdminVectorSupport(
+              dynamicConfigService, requestQuotaService, retrievalService);
     }
-    QuotaDecision decision =
-        requestQuotaService.tryAcquire(
-            QuotaDimension.ADMIN_VECTOR_USER, String.valueOf(user.userId()));
-    if (!decision.allowed()) {
-      throw new BaseException(ErrorCode.RATE_LIMIT_EXCEEDED, "管理端真向量检索请求频率超限");
-    }
-  }
-
-  private List<KnowledgeAdminRetrievalResponse.Candidate> retrieveVectorCandidates(
-      String query, int topK, UserContext user, List<Long> authorizedKbIds) {
-    if (retrievalService == null) {
-      throw new IllegalStateException("向量检索服务未装配");
-    }
-    KnowledgeRetrievalPort.RetrievalQuery retrievalQuery =
-        new KnowledgeRetrievalPort.RetrievalQuery(
-            query,
-            user.userId(),
-            authorizedKbIds.stream().map(String::valueOf).toList(),
-            topK,
-            null,
-            null);
-    KnowledgeRetrievalPort.RetrievalResult retrievalResult =
-        retrievalService.retrieve(retrievalQuery);
-    return retrievalResult.sources().stream()
-        .map(KnowledgeAdminResponseMapper::toCandidate)
-        .toList();
+    return vectorSupport;
   }
 
   /**
