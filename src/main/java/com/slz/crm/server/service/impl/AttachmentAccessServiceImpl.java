@@ -91,6 +91,8 @@ public class AttachmentAccessServiceImpl implements AttachmentAccessService {
             contactTaskMapper,
             salesStageApprovalMapper,
             assistRequestMapper,
+            contractMapper,
+            contractOrderItemMapper,
             permissionService,
             projectFileReader,
             this::departmentManagerReadReserved,

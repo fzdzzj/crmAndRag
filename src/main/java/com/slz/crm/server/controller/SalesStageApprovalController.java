@@ -56,22 +56,8 @@ public class SalesStageApprovalController {
     // 1. 创建审批记录
     SalesStageApprovalVO vo = salesStageApprovalService.approveStage(dto.getSalesStageApproval());
 
-    // 2. 处理附件（普通上传）- 非必填项
-    // 检查列表中是否存在有效的附件（fileData 和 fileName 不为空）
-    if (dto.getApprovalAttachment() != null && !dto.getApprovalAttachment().isEmpty()) {
-      List<ApprovalAttachmentDTO> validAttachments =
-          dto.getApprovalAttachment().stream()
-              .filter(
-                  attachment ->
-                      attachment.getFileData() != null
-                          && !attachment.getFileData().isEmpty()
-                          && attachment.getFileName() != null
-                          && !attachment.getFileName().isEmpty())
-              .collect(toList());
-      if (!validAttachments.isEmpty()) {
-        approvalAttachmentService.saveAttachments(vo.getId(), validAttachments);
-      }
-    }
+    // 2. 处理附件（普通上传）- 非必填项，复用统一保存链
+    saveApprovalAttachments(vo.getId(), dto.getApprovalAttachment());
 
     return Result.success(vo);
   }

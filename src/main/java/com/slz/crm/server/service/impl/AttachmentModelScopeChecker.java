@@ -5,10 +5,14 @@ import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.pojo.entity.AssistRequestEntity;
 import com.slz.crm.pojo.entity.BusinessActivityEntity;
 import com.slz.crm.pojo.entity.ContactTaskEntity;
+import com.slz.crm.pojo.entity.ContractEntity;
+import com.slz.crm.pojo.entity.ContractOrderItemEntity;
 import com.slz.crm.pojo.entity.SalesStageApprovalEntity;
 import com.slz.crm.server.mapper.AssistRequestMapper;
 import com.slz.crm.server.mapper.BusinessActivityMapper;
 import com.slz.crm.server.mapper.ContactTaskMapper;
+import com.slz.crm.server.mapper.ContractMapper;
+import com.slz.crm.server.mapper.ContractOrderItemMapper;
 import com.slz.crm.server.mapper.SalesStageApprovalMapper;
 import com.slz.crm.server.service.PermissionService;
 import java.util.Objects;
@@ -16,7 +20,8 @@ import java.util.Objects;
 /**
  * 附件模型分支读写判定协作类（tighten-pmd-residual-325 任务 6.4 批C补拆：拆自 {@link AttachmentAccessServiceImpl}，行为等价）。
  *
- * <p>职责：按 modelName 路由的业务记录级读/写范围判定（活动/联络任务/审批/协助交付物）。 用户状态与超管闸门仍归主服务；部门上司读写预留点经回调注入，签名契约不迁移。
+ * <p>职责：按 modelName 路由的业务记录级读/写范围判定（活动/联络任务/审批/协助交付物/订单项经合同归属）。
+ * 用户状态与超管闸门仍归主服务；部门上司读写预留点经回调注入，签名契约不迁移。
  */
 class AttachmentModelScopeChecker {
 
@@ -30,6 +35,8 @@ class AttachmentModelScopeChecker {
   private final ContactTaskMapper contactTaskMapper;
   private final SalesStageApprovalMapper salesStageApprovalMapper;
   private final AssistRequestMapper assistRequestMapper;
+  private final ContractMapper contractMapper;
+  private final ContractOrderItemMapper contractOrderItemMapper;
   private final PermissionService permissionService;
   private final ProjectFileAttachmentReader projectFileReader;
   private final ProjectFileAttachmentReader.ReservedRead reservedRead;
@@ -40,6 +47,8 @@ class AttachmentModelScopeChecker {
       ContactTaskMapper contactTaskMapper,
       SalesStageApprovalMapper salesStageApprovalMapper,
       AssistRequestMapper assistRequestMapper,
+      ContractMapper contractMapper,
+      ContractOrderItemMapper contractOrderItemMapper,
       PermissionService permissionService,
       ProjectFileAttachmentReader projectFileReader,
       ProjectFileAttachmentReader.ReservedRead reservedRead,
@@ -48,6 +57,8 @@ class AttachmentModelScopeChecker {
     this.contactTaskMapper = contactTaskMapper;
     this.salesStageApprovalMapper = salesStageApprovalMapper;
     this.assistRequestMapper = assistRequestMapper;
+    this.contractMapper = contractMapper;
+    this.contractOrderItemMapper = contractOrderItemMapper;
     this.permissionService = permissionService;
     this.projectFileReader = projectFileReader;
     this.reservedRead = reservedRead;
@@ -88,9 +99,27 @@ class AttachmentModelScopeChecker {
                 && (Objects.equals(approval.getApplicantId(), userId)
                     || Objects.equals(approval.getApproverId(), userId));
           }
+          case ModelName.CONTRACT_ORDER_ITEM -> canWriteContractOrderItem(recordId, userId);
           default -> false;
         };
     return owned || reservedWrite.reserved(modelName, recordId, userId);
+  }
+
+  /**
+   * 订单项写权限判定（harden-security-attachment-reset-and-invoice 任务 1.1）：订单项无属主字段， 经 {@code contractId}
+   * 反查合同后与合同归属共用同一判断（合同负责人或创建人），与读侧订单反查语义一致。
+   */
+  private boolean canWriteContractOrderItem(Long recordId, Long userId) {
+    boolean result = false;
+    ContractOrderItemEntity orderItem = contractOrderItemMapper.selectById(recordId);
+    if (orderItem != null && orderItem.getContractId() != null) {
+      ContractEntity contract = contractMapper.selectById(orderItem.getContractId());
+      result =
+          contract != null
+              && (Objects.equals(contract.getOwnerId(), userId)
+                  || Objects.equals(contract.getCreatorId(), userId));
+    }
+    return result;
   }
 
   private boolean canReadContactTaskAttachments(String modelName, Long recordId, Long userId) {

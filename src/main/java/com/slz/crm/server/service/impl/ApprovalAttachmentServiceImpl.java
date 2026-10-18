@@ -79,29 +79,6 @@ public class ApprovalAttachmentServiceImpl
   }
 
   @Override
-  public void removeByApprovalIds(List<Long> ids) {
-    // 兼容旧方法，通过审批 ID 查询附件，然后删除
-    List<ApprovalAttachmentEntity> entities =
-        baseMapper.selectList(
-            new LambdaQueryWrapper<ApprovalAttachmentEntity>()
-                .in(ApprovalAttachmentEntity::getAndId, ids)
-                .eq(ApprovalAttachmentEntity::getModelName, ModelName.APPROVAL_ATTACHMENT));
-
-    if (entities != null && !entities.isEmpty()) {
-      List<Long> attachmentIds =
-          entities.stream().map(ApprovalAttachmentEntity::getId).collect(Collectors.toList());
-      removeByIds(attachmentIds, ModelName.APPROVAL_ATTACHMENT);
-    }
-  }
-
-  @Override
-  @Privacy
-  public List<ApprovalAttachmentVO> getByApprovalIds(List<Long> approvalIds) {
-    // 兼容旧方法，使用默认的模型名称
-    return getByAndIds(approvalIds, ModelName.APPROVAL_ATTACHMENT);
-  }
-
-  @Override
   public void saveAttachments(Long approvalId, List<ApprovalAttachmentDTO> attachmentDTOList) {
     // 兼容旧方法，使用默认的模型名称
     saveAttachments(approvalId, ModelName.APPROVAL_ATTACHMENT, attachmentDTOList);

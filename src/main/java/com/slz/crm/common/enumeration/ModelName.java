@@ -9,6 +9,9 @@ public final class ModelName {
   /** 商业活动模块名称 */
   public static final String BUSINESS_ACTIVITY = "business_activity";
 
+  /** 订单项模块名称（harden-security-attachment-reset-and-invoice：订单项上传写权限按合同归属判定） */
+  public static final String CONTRACT_ORDER_ITEM = "contract_order_item";
+
   /** 项目文件模块名称 */
   public static final String PROJECT_FILE = "project_file";
 
