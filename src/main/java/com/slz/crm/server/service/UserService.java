@@ -65,6 +65,17 @@ public interface UserService {
   void updateUser(UserDTO userDTO, Long id);
 
   /**
+   * 自服务更新当前登录用户的基本信息（harden-user-self-update 任务 1.1）。
+   *
+   * <p>与 {@link #updateUser(UserDTO, Long)} 管理员通道隔离：特权治理字段（roleId/deptId/status） 任何非空直接 fail-closed
+   * 拒绝；更新构造严格限定 realName/phone/email 白名单， 目标行强制绑定上下文注入的 currentUserId。
+   *
+   * @param userDTO 用户数据
+   * @param currentUserId 当前登录用户ID
+   */
+  void updateMyInfo(UserDTO userDTO, Long currentUserId);
+
+  /**
    * 根据ID删除
    *
    * @param id

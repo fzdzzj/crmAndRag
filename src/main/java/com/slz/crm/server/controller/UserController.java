@@ -147,12 +147,15 @@ public class UserController {
   /**
    * 更新当前用户信息(无法修改密码)
    *
+   * <p>harden-user-self-update 任务 1.2：自服务端点走专用防线 {@link UserService#updateMyInfo}， 与管理员通道 {@code
+   * POST /user/update} 解耦，特权字段（角色/部门/状态）在服务层 fail-closed 拒绝。
+   *
    * @param userDTO 用户信息
    * @return
    */
   @PostMapping("/update/my")
   private Result<String> updateUserMy(@Valid @RequestBody UserDTO userDTO) {
-    userService.updateUser(userDTO, BaseUnit.getCurrentId());
+    userService.updateMyInfo(userDTO, BaseUnit.getCurrentId());
     return Result.success();
   }
 
