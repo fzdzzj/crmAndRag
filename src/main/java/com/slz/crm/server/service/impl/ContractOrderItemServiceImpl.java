@@ -7,10 +7,13 @@ import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.ForeignKeyDeleteUtil;
 import com.slz.crm.pojo.dto.OrderDTO;
+import com.slz.crm.pojo.entity.ContractEntity;
 import com.slz.crm.pojo.entity.ContractOrderItemEntity;
 import com.slz.crm.pojo.vo.OrderVO;
 import com.slz.crm.server.annotation.Privacy;
+import com.slz.crm.server.mapper.ContractMapper;
 import com.slz.crm.server.mapper.ContractOrderItemMapper;
+import com.slz.crm.server.service.BusinessRecordAccessService;
 import com.slz.crm.server.service.ContractOrderItemService;
 import java.util.ArrayList;
 import java.util.List;
@@ -27,6 +30,10 @@ public class ContractOrderItemServiceImpl
   @Autowired private ContractOrderItemMapper contractOrderItemMapper;
 
   @Autowired private ForeignKeyDeleteUtil foreignKeyDeleteUtil;
+
+  @Autowired private ContractMapper contractMapper;
+
+  @Autowired private BusinessRecordAccessService businessRecordAccessService;
 
   @Override
   @Transactional(rollbackFor = Exception.class)
@@ -131,6 +138,17 @@ public class ContractOrderItemServiceImpl
     if (contractOrderItemEntity == null) {
       throw new BaseException(ErrorCode.ORDER_NOT_EXISTS);
     }
+
+    // 对象级读权限断言挂在所属合同上（harden-consistency-datascope-and-gate 模块 B）：
+    // 订单记录自身无独立属主语义，读权限随合同；所属合同缺失视为数据不完整，一律 fail-closed。
+    ContractEntity contract =
+        contractOrderItemEntity.getContractId() == null
+            ? null
+            : contractMapper.selectById(contractOrderItemEntity.getContractId());
+    if (contract == null) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED);
+    }
+    businessRecordAccessService.assertCanReadContract(contract);
 
     return OrderVO.fromEntity(contractOrderItemEntity);
   }

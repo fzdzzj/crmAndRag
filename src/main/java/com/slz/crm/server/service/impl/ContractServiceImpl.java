@@ -18,6 +18,7 @@ import com.slz.crm.pojo.vo.OrderVO;
 import com.slz.crm.server.annotation.Privacy;
 import com.slz.crm.server.mapper.ContractMapper;
 import com.slz.crm.server.mapper.SalesOpportunityMapper;
+import com.slz.crm.server.service.BusinessRecordAccessService;
 import com.slz.crm.server.service.ContractOrderItemService;
 import com.slz.crm.server.service.ContractService;
 import com.slz.crm.server.service.DataConvertService;
@@ -40,6 +41,7 @@ public class ContractServiceImpl extends ServiceImpl<ContractMapper, ContractEnt
   @Autowired private ForeignKeyDeleteUtil foreignKeyDeleteUtil;
   @Autowired private ContractOrderItemService contractOrderItemService;
   @Autowired private DataConvertService dataConvertService;
+  @Autowired private BusinessRecordAccessService businessRecordAccessService;
 
   /** 合同语义向量摄取（add-unified-business-semantic-retrieval 任务 2.2；缺失时 hook 整体跳过）。 */
   @Autowired(required = false)
@@ -165,15 +167,19 @@ public class ContractServiceImpl extends ServiceImpl<ContractMapper, ContractEnt
       throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
 
-    // 1. 获取合同基本信息
-    ContractVO contractVO = this.getContractById(id);
+    // 1. 获取合同实体并做对象级读权限断言（越权 12002，先于任何附属数据查询）
+    ContractEntity entity = getById(id);
+    if (entity == null) {
+      throw new BaseException(ErrorCode.CONTRACT_NOT_EXISTS);
+    }
+    businessRecordAccessService.assertCanReadContract(entity);
 
     // 2. 获取关联订单信息
     List<OrderVO> ordersVO = contractOrderItemService.getOrderListByContractId(id);
 
     // 3. 组装返回结果
     ContractANDOrderVO vo = new ContractANDOrderVO();
-    vo.setContract(contractVO);
+    vo.setContract(toContractVO(entity));
     vo.setOrders(ordersVO);
 
     return vo;
@@ -186,6 +192,11 @@ public class ContractServiceImpl extends ServiceImpl<ContractMapper, ContractEnt
       throw new BaseException(ErrorCode.CONTRACT_NOT_EXISTS);
     }
 
+    return toContractVO(entity);
+  }
+
+  /** 实体转 VO 并回填公司/商机/负责人/创建人名称。 */
+  private ContractVO toContractVO(ContractEntity entity) {
     String companyName = dataConvertService.getCompanyName(entity.getCompanyId());
     String opportunityName = dataConvertService.getOpportunityName(entity.getOpportunityId());
     String ownerName = dataConvertService.getUserName(entity.getOwnerId());

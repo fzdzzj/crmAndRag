@@ -4,6 +4,8 @@ import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.pojo.ao.RoleAO;
+import com.slz.crm.pojo.entity.ContactTaskEntity;
+import com.slz.crm.pojo.entity.ContractEntity;
 import com.slz.crm.pojo.entity.CustomerCompanyEntity;
 import com.slz.crm.pojo.entity.CustomerContactEntity;
 import com.slz.crm.pojo.entity.SalesOpportunityEntity;
@@ -26,6 +28,8 @@ public class BusinessRecordAccessServiceImpl implements BusinessRecordAccessServ
   private static final String OPPORTUNITY_RESOURCE = "sales_opportunity";
   private static final String COMPANY_RESOURCE = "customer_company";
   private static final String CONTACT_RESOURCE = "customer_contact";
+  private static final String CONTRACT_RESOURCE = "contract";
+  private static final String CONTACT_TASK_RESOURCE = "contact_task";
 
   private final DataScopeService dataScopeService;
   private final AssistScopeService assistScopeService;
@@ -71,6 +75,45 @@ public class BusinessRecordAccessServiceImpl implements BusinessRecordAccessServ
         visibleIds(assistScopeService.visibleContactIds(current.getId())).contains(contact.getId());
     assertAllowed(inDataScope || inAssistScope);
     return inAssistScope;
+  }
+
+  @Override
+  public boolean assertCanReadContract(ContractEntity contract) {
+    if (contract == null || contract.getId() == null) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED);
+    }
+    RoleAO current = requireCurrentUser();
+    // relatedUserIds 覆盖创建人与负责人：SELF 级即命中本人相关；DEPT/DEPT_AND_CHILD 级按
+    // 这批用户的部门归属判同部门；超管（roleId=1）在 canReadResource 内直接 ALL 放行；
+    // 显式共享与标签绑定亦由 canReadResource 收口。
+    boolean allowed =
+        dataScopeService.canReadResource(
+            current,
+            CONTRACT_RESOURCE,
+            contract.getId(),
+            contract.getCreatorId(),
+            contract.getOwnerId());
+    assertAllowed(allowed);
+    return allowed;
+  }
+
+  @Override
+  public boolean assertCanReadTask(ContactTaskEntity task) {
+    if (task == null || task.getId() == null) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED);
+    }
+    RoleAO current = requireCurrentUser();
+    // relatedUserIds 覆盖创建人、任务执行人（负责人）与指派人，语义同合同侧。
+    boolean allowed =
+        dataScopeService.canReadResource(
+            current,
+            CONTACT_TASK_RESOURCE,
+            task.getId(),
+            task.getCreatorId(),
+            task.getAssigneeId(),
+            task.getAssignerId());
+    assertAllowed(allowed);
+    return allowed;
   }
 
   private RoleAO requireCurrentUser() {

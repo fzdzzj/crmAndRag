@@ -1,6 +1,10 @@
 package com.slz.crm.server.ai;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.slz.crm.common.enumeration.ErrorCode;
+import com.slz.crm.common.exiception.BaseException;
+import com.slz.crm.common.untils.BaseUnit;
+import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.dto.BusinessActivityQueryDTO;
 import com.slz.crm.pojo.dto.ContactTaskDTO;
 import com.slz.crm.pojo.dto.ContractDTO;
@@ -110,10 +114,16 @@ public class AiQueryToolExecutors {
   }
 
   public Object executeGetOrderDetail(Map<String, Object> args, ToolContext toolContext) {
+    requireLoggedInRole();
     return contractOrderItemService.getDetailById(toLong(args.get("orderId")));
   }
 
+  /**
+   * 按条件分页查询合同（结构化查询工具）：方法本身只做身份守卫；非超管的数据范围收敛依赖 QueryWrapperAspect 在 Mapper 层注入（{@code contract}
+   * 为受管表），不在此重复实现过滤。
+   */
   public Object executeQueryContract(Map<String, Object> args, ToolContext toolContext) {
+    requireLoggedInRole();
     ContractDTO dto = new ContractDTO();
     dto.setContractName((String) args.get("contractName"));
     Page<ContractVO> page =
@@ -159,7 +169,12 @@ public class AiQueryToolExecutors {
     return AiExtendedQueryToolExecutors.toCompanyGroupRows(groups);
   }
 
+  /**
+   * 按条件分页查询回款记录（结构化查询工具）：身份守卫同 {@link #executeQueryContract}， 数据范围收敛依赖 QueryWrapperAspect 在 Mapper
+   * 层注入（{@code payment_record} 为受管表）。
+   */
   public Object executeQueryPayment(Map<String, Object> args, ToolContext toolContext) {
+    requireLoggedInRole();
     PaymentRecordDTO dto = new PaymentRecordDTO();
     dto.setContractId(toLong(args.get("contractId")));
     Page<PaymentRecordVO> page =
@@ -168,7 +183,9 @@ public class AiQueryToolExecutors {
     return trimPageResult(page.getRecords());
   }
 
+  /** 按条件分页查询发票记录（结构化查询工具）：身份守卫同 {@link #executeQueryContract}。 */
   public Object executeQueryInvoice(Map<String, Object> args, ToolContext toolContext) {
+    requireLoggedInRole();
     InvoiceInfoDTO dto = new InvoiceInfoDTO();
     dto.setContractId(toLong(args.get("contractId")));
     dto.setInvoiceNo((String) args.get("invoiceNo"));
@@ -178,8 +195,12 @@ public class AiQueryToolExecutors {
     return trimPageResult(page.getRecords());
   }
 
-  /** extend-ai-query-tools 任务 2.1：按条件分页查询联络任务。 */
+  /**
+   * extend-ai-query-tools 任务 2.1：按条件分页查询联络任务（结构化查询工具）：身份守卫同 {@link #executeQueryContract}，数据范围收敛依赖
+   * QueryWrapperAspect（{@code contact_task} 为受管表）。
+   */
   public Object executeQueryContactTask(Map<String, Object> args, ToolContext toolContext) {
+    requireLoggedInRole();
     ContactTaskDTO dto = new ContactTaskDTO();
     dto.setAssigneeId(toLong(args.get("assigneeId")));
     dto.setCompanyId(toLong(args.get("companyId")));
@@ -191,8 +212,9 @@ public class AiQueryToolExecutors {
     return trimPageResult(page.getRecords());
   }
 
-  /** extend-ai-query-tools 任务 2.2：按任务ID分页查询任务评论。 */
+  /** extend-ai-query-tools 任务 2.2：按任务ID分页查询任务评论（任务读权限断言在 TaskCommentServiceImpl 内）。 */
   public Object executeQueryTaskComment(Map<String, Object> args, ToolContext toolContext) {
+    requireLoggedInRole();
     Long taskId = toLong(args.get("taskId"));
     if (taskId == null) {
       throw new IllegalArgumentException("taskId 不能为空");
@@ -223,8 +245,9 @@ public class AiQueryToolExecutors {
     return result;
   }
 
-  /** extend-ai-query-tools 任务 2.4：按合同ID查询合同详情（含订单信息）。 */
+  /** extend-ai-query-tools 任务 2.4：按合同ID查询合同详情（含订单信息；合同读权限断言在 ContractServiceImpl 内）。 */
   public Object executeGetContractDetail(Map<String, Object> args, ToolContext toolContext) {
+    requireLoggedInRole();
     Long contractId = toLong(args.get("contractId"));
     if (contractId == null) {
       throw new IllegalArgumentException("contractId 不能为空");
@@ -289,6 +312,17 @@ public class AiQueryToolExecutors {
       throw new IllegalArgumentException("companyId 不能为空");
     }
     return customerInsightService.diagnose(companyId);
+  }
+
+  /**
+   * AI 工具上下文守卫（harden-consistency-datascope-and-gate 模块 B）：详情类与结构化查询类工具 执行前必须存在有效登录身份；身份缺失时
+   * fail-closed 拦截（12002），杜绝无主数据查询。
+   */
+  private void requireLoggedInRole() {
+    RoleAO role = BaseUnit.getCurrentRole();
+    if (role == null || role.getId() == null) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED);
+    }
   }
 
   private <T> List<T> trimPageResult(List<T> records) {
