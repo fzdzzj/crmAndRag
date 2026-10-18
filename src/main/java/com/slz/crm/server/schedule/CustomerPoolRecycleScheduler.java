@@ -21,6 +21,8 @@ import org.springframework.stereotype.Component;
  * 手动触发用于测试与运维（本卡零新权限，复用 113）。
  *
  * <p>并发幂等：单机 Spring {@code @Scheduled} + 条件 SQL（只扫私海 overdue 行）天然幂等；扫描后以 id 收敛再逐行更新并插日志。
+ *
+ * <p>单副本假设：无锁单机调度（Spring @Scheduled，无分布式锁），多副本部署会并发触发重复回收扫描。
  */
 @Slf4j
 @Component

@@ -30,6 +30,8 @@ import org.springframework.stereotype.Component;
  *   <li>流转语义：成功转 COMPLETED；熔断仍开保持 PENDING（零费用）；授权拒绝或身份失效转 FAILED 终态；
  *   <li>单篇容错：单篇异常记录日志并继续，不中断当轮批量重放。
  * </ul>
+ *
+ * <p>单副本假设：无锁单机调度（Spring @Scheduled，无分布式锁），多副本部署会重复重放同批 PENDING 文档。
  */
 @Component
 public class IngestionReplayScheduler {

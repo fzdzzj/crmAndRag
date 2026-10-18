@@ -17,6 +17,12 @@ services:
     image: crm-platform:local
     container_name: crm-app
     restart: unless-stopped
+    # 单副本部署契约：进程内状态（配额计数/流注册表/熔断状态/业务单号序号等 8 大组件）与
+    # 6 大 @Scheduled 定时任务均不支持横向扩容，显式锁定 replicated 模式且副本数为 1；
+    # 组件清单与多副本后果见 deploy/README.md《单副本单体部署契约与进程内状态组件清单》
+    deploy:
+      mode: replicated
+      replicas: 1
     depends_on:
       mysql:
         condition: service_healthy
@@ -43,6 +49,8 @@ services:
       SLZ_FLYWAY_ENABLED: ${SLZ_FLYWAY_ENABLED:-true}
       SLZ_AUTO_TABLE_MODE: none
       SLZ_ACTUATOR_PROTECTED: "true"
+      # ---- 部署架构假设（单副本单体，ProductionConfigurationGuard 第 8 项启动期校验）----
+      PLATFORM_ARCHITECTURE_SINGLE_REPLICA: "true"
       # ---- JWT / 附件令牌（prod guard 要求非默认强值）----
       SLZ_JWT_SECRET_KEY: ${SLZ_JWT_SECRET_KEY:?set in .env}
       SLZ_JWT_TTL: ${SLZ_JWT_TTL:-3600000}

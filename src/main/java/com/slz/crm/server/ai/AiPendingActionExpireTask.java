@@ -7,7 +7,11 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-/** AI 待确认操作过期定时任务 每分钟扫描 PENDING 且 expire_time < now 的记录，批量置为 EXPIRED */
+/**
+ * AI 待确认操作过期定时任务 每分钟扫描 PENDING 且 expire_time < now 的记录，批量置为 EXPIRED。
+ *
+ * <p>单副本假设：无锁单机调度（Spring @Scheduled，无分布式锁），多副本部署会重复扫描置 EXPIRED（幂等但浪费）。
+ */
 @Slf4j
 @Component
 // test-hygiene 任务 2.1：测试环境隔离，生产默认开（matchIfMissing=true 保证未配置时照常调度）
