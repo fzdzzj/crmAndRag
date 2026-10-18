@@ -1,5 +1,6 @@
 package com.slz.crm.unit.service;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -8,9 +9,12 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
+import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.pojo.ao.RoleAO;
+import com.slz.crm.pojo.entity.ContactTaskEntity;
+import com.slz.crm.pojo.entity.ContractEntity;
 import com.slz.crm.pojo.entity.CustomerCompanyEntity;
 import com.slz.crm.pojo.entity.CustomerContactEntity;
 import com.slz.crm.pojo.entity.SalesOpportunityEntity;
@@ -107,6 +111,103 @@ class BusinessRecordAccessServiceTest {
 
     assertThrows(BaseException.class, () -> service.assertCanReadCompany(company));
     assertThrows(BaseException.class, () -> service.assertCanReadContact(contact));
+  }
+
+  @Test
+  @DisplayName("合同在正常数据范围内放行，相关用户按创建人+负责人传入")
+  void contractWithinDataScopeAllowsRead() {
+    ContractEntity contract = new ContractEntity();
+    contract.setId(80L);
+    contract.setCreatorId(7L);
+    contract.setOwnerId(8L);
+    when(dataScopeService.canReadResource(any(), eq("contract"), eq(80L), eq(7L), eq(8L)))
+        .thenReturn(true);
+
+    boolean allowed = service.assertCanReadContract(contract);
+
+    assertTrue(allowed);
+  }
+
+  @Test
+  @DisplayName("合同不在数据范围内时以 12002 拒绝")
+  void contractOutOfScopeDeniedWithPermissionDenied() {
+    ContractEntity contract = contract(80L, 8L, 9L);
+    when(dataScopeService.canReadResource(any(), eq("contract"), eq(80L), any(Long[].class)))
+        .thenReturn(false);
+
+    BaseException ex =
+        assertThrows(BaseException.class, () -> service.assertCanReadContract(contract));
+
+    assertEquals(ErrorCode.PERMISSION_DENIED.getCode(), ex.getCode());
+  }
+
+  @Test
+  @DisplayName("合同实体缺失时 fail-closed 拒绝")
+  void nullContractDeniedWithPermissionDenied() {
+    BaseException ex = assertThrows(BaseException.class, () -> service.assertCanReadContract(null));
+
+    assertEquals(ErrorCode.PERMISSION_DENIED.getCode(), ex.getCode());
+  }
+
+  @Test
+  @DisplayName("无登录身份时合同读取直接拒绝")
+  void contractDeniedWithoutLoginIdentity() {
+    BaseUnit.removeCurrentId();
+
+    BaseException ex =
+        assertThrows(
+            BaseException.class, () -> service.assertCanReadContract(contract(80L, 7L, 8L)));
+
+    assertEquals(ErrorCode.PERMISSION_DENIED.getCode(), ex.getCode());
+  }
+
+  @Test
+  @DisplayName("任务在正常数据范围内放行，相关用户按创建人+执行人+指派人传入")
+  void taskWithinDataScopeAllowsRead() {
+    ContactTaskEntity task = new ContactTaskEntity();
+    task.setId(90L);
+    task.setCreatorId(7L);
+    task.setAssigneeId(9L);
+    task.setAssignerId(10L);
+    when(dataScopeService.canReadResource(
+            any(), eq("contact_task"), eq(90L), eq(7L), eq(9L), eq(10L)))
+        .thenReturn(true);
+
+    boolean allowed = service.assertCanReadTask(task);
+
+    assertTrue(allowed);
+  }
+
+  @Test
+  @DisplayName("任务不在数据范围内时以 12002 拒绝")
+  void taskOutOfScopeDeniedWithPermissionDenied() {
+    ContactTaskEntity task = new ContactTaskEntity();
+    task.setId(90L);
+    task.setCreatorId(8L);
+    task.setAssigneeId(9L);
+    task.setAssignerId(10L);
+    when(dataScopeService.canReadResource(any(), eq("contact_task"), eq(90L), any(Long[].class)))
+        .thenReturn(false);
+
+    BaseException ex = assertThrows(BaseException.class, () -> service.assertCanReadTask(task));
+
+    assertEquals(ErrorCode.PERMISSION_DENIED.getCode(), ex.getCode());
+  }
+
+  @Test
+  @DisplayName("任务实体缺失时 fail-closed 拒绝")
+  void nullTaskDeniedWithPermissionDenied() {
+    BaseException ex = assertThrows(BaseException.class, () -> service.assertCanReadTask(null));
+
+    assertEquals(ErrorCode.PERMISSION_DENIED.getCode(), ex.getCode());
+  }
+
+  private ContractEntity contract(Long id, Long creatorId, Long ownerId) {
+    ContractEntity contract = new ContractEntity();
+    contract.setId(id);
+    contract.setCreatorId(creatorId);
+    contract.setOwnerId(ownerId);
+    return contract;
   }
 
   private SalesOpportunityEntity opportunity(Long id) {

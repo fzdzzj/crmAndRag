@@ -9,13 +9,21 @@
 # 跑不过就不许合。风格照 scripts/fail-fast-gate.sh：自带断言、每个子门禁有具名失败出口，不靠 grep 拼凑。
 #
 # 用法：
-#   bash scripts/merge-gate.sh                # 默认序列（下面 1/2/4/5/6 步）
-#   bash scripts/merge-gate.sh --with-verify  # 追加第 3 步 failsafe 集成测试
+#   bash scripts/merge-gate.sh                # 默认序列（除 [it] 外的全部子门禁）
+#   bash scripts/merge-gate.sh --with-verify  # 追加 failsafe 集成测试
 #   bash scripts/merge-gate.sh --help
 #
 # 子门禁（失败出口一律带方括号 id，便于从日志里直接认出是哪一步红）：
 #   [unit]        mvn -B -ntp test                    surefire 单元 + 契约 + H2 上下文冒烟，无 Docker 无外网
+#   [checkstyle]  mvn -B -ntp checkstyle:check        Checkstyle 规范门禁（error 级违规即红）；判定读者 = pom 的
+#                 failOnViolation + violationSeverity（规则集 src/main/resources/checkstyle.xml）。
+#                 与 CI static-analysis-gate job（.github/workflows/ci.yml）的 checkstyle:check 同源；
+#                 CI 上该命令还连带触发 pom 绑定在 validate 阶段的同名检查，本地显式单点调用让它在
+#                 聚合输出里有具名 PASS/FAIL，不依赖"有人记得 pom 里绑过阶段"（harness-gates spec R4）。
 #   [spotbugs]    mvn -B -ntp spotbugs:check          High 级缺陷扫描；判定依据 pom.xml 的 threshold + excludeFilterFile
+#   [spotless]    mvn -B -ntp spotless:check          Spotless 格式门禁（googleJavaFormat）；判定读者 = pom 的
+#                 spotless <java> 配置（插件块无 <skip>）。与 CI static-analysis-gate job 的
+#                 spotless:check 同源，语义同上：显式单点调用，不依赖 validate 阶段的隐式绑定。
 #   [pmd]         mvn -B -ntp pmd:check               声明规则集（src/main/resources/pmd-rules.xml，25 条）的代码异味扫描；
 #                 条数读者 = pom 的 <maxAllowedViolations>。**单独调用、不挂 [it]**：pmd 虽绑在 verify 阶段，
 #                 而默认序列根本不跑 verify（--with-verify 才有 [it]），挂在 verify 上等于不设门禁。
@@ -71,7 +79,9 @@ done
 # 不跑十分钟 Maven 的前提下验证聚合逻辑（哪一步红、退出码、有没有指名）。默认值就是上面注释里写的真命令，
 # 正常调用不需要设任何变量；口径同 scripts/check-test-baseline.sh 的 BASELINE_* 测试钩子。
 cmd_unit=${MERGE_GATE_CMD_UNIT:-mvn -B -ntp test}
+cmd_checkstyle=${MERGE_GATE_CMD_CHECKSTYLE:-mvn -B -ntp checkstyle:check}
 cmd_spotbugs=${MERGE_GATE_CMD_SPOTBUGS:-mvn -B -ntp spotbugs:check}
+cmd_spotless=${MERGE_GATE_CMD_SPOTLESS:-mvn -B -ntp spotless:check}
 cmd_pmd=${MERGE_GATE_CMD_PMD:-mvn -B -ntp pmd:check}
 cmd_it=${MERGE_GATE_CMD_IT:-mvn -B -ntp verify}
 cmd_baseline=${MERGE_GATE_CMD_BASELINE:-bash scripts/check-test-baseline.sh}
@@ -106,7 +116,12 @@ run_gate() {
 }
 
 run_gate unit "surefire 单元与契约门禁" "$cmd_unit"
+# [checkstyle]/[spotless]：CI static-analysis-gate 同源补齐（harden-consistency-datascope-and-gate 任务 3.1）。
+# 此前本地聚合门禁缺这两道，代码本地全绿合入后仍可能在远端 static-analysis 因格式/规范挂红，
+# 门禁同源性被打破；两道都显式单点调用，不依赖 pom 绑在 validate 阶段的隐式执行。
+run_gate checkstyle "Checkstyle 规范门禁" "$cmd_checkstyle"
 run_gate spotbugs "SpotBugs High 门禁" "$cmd_spotbugs"
+run_gate spotless "Spotless 代码格式门禁" "$cmd_spotless"
 # [pmd] 显式单点调用 pmd:check：pmd 在 pom 里绑的是 verify 阶段，默认序列不跑 verify，
 # 指望 [it] 顺带等于没有这道门禁（harness-gates 已确认的坑，spec R4「绑在默认不跑的阶段上的检查」）。
 run_gate pmd "PMD 声明规则集门禁（条数读者 = pom 的 maxAllowedViolations）" "$cmd_pmd"
@@ -166,7 +181,7 @@ if [ "${#failed[@]}" -eq 0 ]; then
 fi
 
 echo "::error::merge-gate 失败，未通过的子门禁：${failed[*]}" >&2
-echo "        逐项排查命令：unit→mvn -B -ntp test｜spotbugs→mvn -B -ntp spotbugs:check｜pmd→mvn -B -ntp pmd:check｜it→mvn -B -ntp verify｜" >&2
+echo "        逐项排查命令：unit→mvn -B -ntp test｜checkstyle→mvn -B -ntp checkstyle:check｜spotbugs→mvn -B -ntp spotbugs:check｜spotless→mvn -B -ntp spotless:check｜pmd→mvn -B -ntp pmd:check｜it→mvn -B -ntp verify｜" >&2
 echo "        baseline→bash scripts/check-test-baseline.sh（口径外残留按输出逐份列名处置）｜hook→见 frontend/AGENTS.md Git Hook Policy｜" >&2
 echo "        frontend-unit→pnpm -C frontend test｜" >&2
 echo "        bijection→bash scripts/tests/spotbugs-exclude-staleness-check.sh｜" >&2

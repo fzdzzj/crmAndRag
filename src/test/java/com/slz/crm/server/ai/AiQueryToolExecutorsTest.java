@@ -8,6 +8,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.slz.crm.common.enumeration.ErrorCode;
+import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.dto.BusinessActivityQueryDTO;
@@ -21,6 +23,7 @@ import com.slz.crm.pojo.vo.ContractANDOrderVO;
 import com.slz.crm.pojo.vo.ContractNumVO;
 import com.slz.crm.pojo.vo.CustomerCompanyVO;
 import com.slz.crm.pojo.vo.OpportunityDetailVO;
+import com.slz.crm.pojo.vo.OrderVO;
 import com.slz.crm.pojo.vo.SalesNumVO;
 import com.slz.crm.pojo.vo.SalesStageApprovalVO;
 import com.slz.crm.pojo.vo.TaskCommentVO;
@@ -111,6 +114,7 @@ class AiQueryToolExecutorsTest {
 
   @Test
   void executeQueryContactTask_parsesArgumentsAndReturnsPageRecords() {
+    BaseUnit.setCurrentRole(buildRole(3001L, 3L, 11L));
     ContactTaskVO vo = new ContactTaskVO();
     vo.setId(10L);
     vo.setTaskTitle("跟进任务1");
@@ -147,6 +151,7 @@ class AiQueryToolExecutorsTest {
 
   @Test
   void executeQueryTaskComment_validTaskId_callsService() {
+    BaseUnit.setCurrentRole(buildRole(3001L, 3L, 11L));
     TaskCommentVO comment = new TaskCommentVO();
     comment.setId(1L);
     comment.setContent("评论内容");
@@ -169,6 +174,7 @@ class AiQueryToolExecutorsTest {
 
   @Test
   void executeQueryTaskComment_missingTaskId_throwsIllegalArgumentException() {
+    BaseUnit.setCurrentRole(buildRole(3001L, 3L, 11L));
     assertThatThrownBy(() -> executors.executeQueryTaskComment(Map.of(), null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("taskId 不能为空");
@@ -226,6 +232,7 @@ class AiQueryToolExecutorsTest {
 
   @Test
   void executeGetContractDetail_validId_callsService() {
+    BaseUnit.setCurrentRole(buildRole(3001L, 3L, 11L));
     ContractANDOrderVO vo = new ContractANDOrderVO();
     when(contractService.getDetailById(66L)).thenReturn(vo);
 
@@ -237,6 +244,7 @@ class AiQueryToolExecutorsTest {
 
   @Test
   void executeGetContractDetail_missingId_throwsIllegalArgumentException() {
+    BaseUnit.setCurrentRole(buildRole(3001L, 3L, 11L));
     assertThatThrownBy(() -> executors.executeGetContractDetail(Map.of(), null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("contractId 不能为空");
@@ -309,6 +317,7 @@ class AiQueryToolExecutorsTest {
 
   @Test
   void trimPageResult_trimsOverTenRecords() {
+    BaseUnit.setCurrentRole(buildRole(3001L, 3L, 11L));
     List<ContactTaskVO> records = new ArrayList<>();
     for (int i = 0; i < 15; i++) {
       ContactTaskVO item = new ContactTaskVO();
@@ -614,6 +623,48 @@ class AiQueryToolExecutorsTest {
     assertThatThrownBy(() -> executors.executeGetCustomerInsight(Map.of(), null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("companyId 不能为空");
+  }
+
+  /** harden-consistency-datascope-and-gate 任务 2.2：无登录身份时详情类与结构化查询类工具一律 fail-closed。 */
+  @Test
+  void detailAndStructuredQueryTools_failClosedWithoutLoginIdentity() {
+    Map<String, Object> args = Map.of();
+    assertThatThrownBy(() -> executors.executeGetOrderDetail(args, null))
+        .isInstanceOf(BaseException.class);
+    assertThatThrownBy(() -> executors.executeQueryContract(args, null))
+        .isInstanceOf(BaseException.class);
+    assertThatThrownBy(() -> executors.executeQueryPayment(args, null))
+        .isInstanceOf(BaseException.class);
+    assertThatThrownBy(() -> executors.executeQueryInvoice(args, null))
+        .isInstanceOf(BaseException.class);
+    assertThatThrownBy(() -> executors.executeQueryContactTask(args, null))
+        .isInstanceOf(BaseException.class);
+    assertThatThrownBy(() -> executors.executeQueryTaskComment(args, null))
+        .isInstanceOf(BaseException.class);
+    assertThatThrownBy(() -> executors.executeGetContractDetail(args, null))
+        .isInstanceOf(BaseException.class);
+  }
+
+  /** harden-consistency-datascope-and-gate 任务 2.2：fail-closed 拦截码为 12002 PERMISSION_DENIED。 */
+  @Test
+  void executeGetOrderDetail_withoutIdentity_failsClosedWithPermissionDenied() {
+    assertThatThrownBy(() -> executors.executeGetOrderDetail(Map.of("orderId", 15L), null))
+        .isInstanceOf(BaseException.class)
+        .hasFieldOrPropertyWithValue("code", ErrorCode.PERMISSION_DENIED.getCode());
+  }
+
+  /** harden-consistency-datascope-and-gate 任务 2.3：合法属主携带身份时订单详情正常委托。 */
+  @Test
+  void executeGetOrderDetail_withIdentity_callsDetailService() {
+    BaseUnit.setCurrentRole(buildRole(3001L, 3L, 11L));
+    OrderVO vo = new OrderVO();
+    vo.setId(15L);
+    when(contractOrderItemService.getDetailById(15L)).thenReturn(vo);
+
+    Object result = executors.executeGetOrderDetail(Map.of("orderId", 15L), null);
+
+    assertThat(result).isSameAs(vo);
+    verify(contractOrderItemService).getDetailById(15L);
   }
 
   /** add-queryuser-dept-isolation 测试辅助：构造当前操作用户（id/roleId/deptId）。 */

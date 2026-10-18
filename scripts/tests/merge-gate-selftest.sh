@@ -9,6 +9,8 @@
 # 场景 12 把真实的 scripts/check-test-baseline.sh 拷进夹具仓根（含夹具 pom / 台账 / 报告），锁住
 # 「残留报告抬高基线计数」缺口修复经 merge-gate 聚合后的四态：干净→绿、口径外残留→红且逐份列名、
 # 清掉那一份→回绿（不必 clean）、pom 不可解析→fail-closed 判红。
+# 场景 13（harden-consistency-datascope-and-gate 任务 3.2）锁 CI 同源补齐的两道静态门禁
+# [checkstyle]/[spotless]：默认序列有具名 PASS、失败被指名到聚合出口、MERGE_GATE_CMD_* 覆盖参数真被透传执行。
 #
 # 无 Docker、无外网、不跑 Maven —— 靠 merge-gate.sh 顶部声明的 MERGE_GATE_* 测试钩子注入桩命令，
 # 口径同 scripts/check-test-baseline.sh 的 BASELINE_* 钩子。真实门禁各自的正确性由自己的
@@ -63,6 +65,7 @@ run_case() { # <outfile> [额外 env 赋值...]
   shift
   (
     export MERGE_GATE_CMD_UNIT="$OK_CMD" MERGE_GATE_CMD_SPOTBUGS="$OK_CMD" MERGE_GATE_CMD_PMD="$OK_CMD" \
+      MERGE_GATE_CMD_CHECKSTYLE="$OK_CMD" MERGE_GATE_CMD_SPOTLESS="$OK_CMD" \
       MERGE_GATE_CMD_IT="$OK_CMD" MERGE_GATE_CMD_BASELINE="$OK_CMD" \
       MERGE_GATE_CMD_BIJECTION="$OK_CMD" MERGE_GATE_CMD_FRONTEND="$OK_CMD" \
       MERGE_GATE_CMD_PMD_BASELINE="$OK_CMD"
@@ -81,10 +84,12 @@ expect_eq "1 全部子门禁通过时聚合零退出" "0" "$rc"
 expect_has "1 输出里每个子门禁都留了 PASS" "PASS [unit]" "$work/all-green.out"
 
 # ---------------------------------------------------------------- 2. 任一子门禁失败 → 非零且指名
-for id in unit spotbugs pmd baseline bijection pmd-baseline; do
+for id in unit checkstyle spotbugs spotless pmd baseline bijection pmd-baseline; do
   case "$id" in
   unit) env_over="MERGE_GATE_CMD_UNIT=$BAD_CMD" ;;
+  checkstyle) env_over="MERGE_GATE_CMD_CHECKSTYLE=$BAD_CMD" ;;
   spotbugs) env_over="MERGE_GATE_CMD_SPOTBUGS=$BAD_CMD" ;;
+  spotless) env_over="MERGE_GATE_CMD_SPOTLESS=$BAD_CMD" ;;
   pmd) env_over="MERGE_GATE_CMD_PMD=$BAD_CMD" ;;
   baseline) env_over="MERGE_GATE_CMD_BASELINE=$BAD_CMD" ;;
   bijection) env_over="MERGE_GATE_CMD_BIJECTION=$BAD_CMD" ;;
@@ -115,6 +120,7 @@ run_case_verify() { # <outfile> [额外 env...]
   shift
   (
     export MERGE_GATE_CMD_UNIT="$OK_CMD" MERGE_GATE_CMD_SPOTBUGS="$OK_CMD" MERGE_GATE_CMD_PMD="$OK_CMD" \
+      MERGE_GATE_CMD_CHECKSTYLE="$OK_CMD" MERGE_GATE_CMD_SPOTLESS="$OK_CMD" \
       MERGE_GATE_CMD_IT="$OK_CMD" MERGE_GATE_CMD_BASELINE="$OK_CMD" \
       MERGE_GATE_CMD_BIJECTION="$OK_CMD" MERGE_GATE_CMD_FRONTEND="$OK_CMD" \
       MERGE_GATE_CMD_PMD_BASELINE="$OK_CMD"
@@ -149,6 +155,7 @@ expect_eq "6 未知参数退出 2" "2" "$rc"
 rc=$( (
   export MERGE_GATE_CMD_UNIT="$OK_CMD" MERGE_GATE_CMD_SPOTBUGS="$OK_CMD" MERGE_GATE_CMD_BASELINE="$OK_CMD"
   export MERGE_GATE_CMD_FRONTEND="$OK_CMD" MERGE_GATE_CMD_PMD="$OK_CMD" MERGE_GATE_CMD_PMD_BASELINE="$OK_CMD"
+  export MERGE_GATE_CMD_CHECKSTYLE="$OK_CMD" MERGE_GATE_CMD_SPOTLESS="$OK_CMD"
   cd "$repo_root" && bash "$gate"
 ) >"$work/real-existence.out" 2>&1; echo $? )
 expect_eq "7 真实 [hook]+[bijection] 在当前工作副本上为零退出" "0" "$rc"
@@ -162,6 +169,7 @@ printf '<project/>\n' >"$work/pom-nowiring.xml"
 rc=$( (
   export MERGE_GATE_CMD_UNIT="$OK_CMD" MERGE_GATE_CMD_SPOTBUGS="$OK_CMD" MERGE_GATE_CMD_BASELINE="$OK_CMD"
   export MERGE_GATE_CMD_FRONTEND="$OK_CMD" MERGE_GATE_CMD_PMD="$OK_CMD" MERGE_GATE_CMD_PMD_BASELINE="$OK_CMD"
+  export MERGE_GATE_CMD_CHECKSTYLE="$OK_CMD" MERGE_GATE_CMD_SPOTLESS="$OK_CMD"
   export MERGE_GATE_HOOKS_DIR="$work/hooks-ok"
   export SPOTBUGS_POM_FILE="$work/pom-nowiring.xml"
   cd "$repo_root" && bash "$gate"
@@ -197,6 +205,7 @@ crlf_gate() { # <outfile> <snapshot>
     export MERGE_GATE_CMD_UNIT="$OK_CMD" MERGE_GATE_CMD_SPOTBUGS="$OK_CMD" MERGE_GATE_CMD_BASELINE="$OK_CMD"
     export MERGE_GATE_CMD_FRONTEND="$OK_CMD" MERGE_GATE_HOOKS_DIR="$work/hooks-ok"
     export MERGE_GATE_CMD_PMD="$OK_CMD" MERGE_GATE_CMD_PMD_BASELINE="$OK_CMD"
+    export MERGE_GATE_CMD_CHECKSTYLE="$OK_CMD" MERGE_GATE_CMD_SPOTLESS="$OK_CMD"
     export SPOTBUGS_EXCLUDE_FILE="$work/exclude-crlf.xml" SPOTBUGS_HIGH_SNAPSHOT="$snap"
     cd "$repo_root" && bash "$gate"
   ) >"$out" 2>&1
@@ -253,6 +262,7 @@ pmd_gate() { # <outfile> <ledger> <pom>
   local out=$1 ledger=$2 pompom=$3
   (
     export MERGE_GATE_CMD_UNIT="$OK_CMD" MERGE_GATE_CMD_SPOTBUGS="$OK_CMD" MERGE_GATE_CMD_PMD="$OK_CMD"
+    export MERGE_GATE_CMD_CHECKSTYLE="$OK_CMD" MERGE_GATE_CMD_SPOTLESS="$OK_CMD"
     export MERGE_GATE_CMD_IT="$OK_CMD" MERGE_GATE_CMD_BASELINE="$OK_CMD" MERGE_GATE_CMD_FRONTEND="$OK_CMD"
     export MERGE_GATE_CMD_BIJECTION="$OK_CMD" MERGE_GATE_HOOKS_DIR="$work/hooks-ok"
     export PMD_REPORT="$work/pmd-report.xml" PMD_BASELINE_LEDGER="$ledger" PMD_POM_FILE="$pompom"
@@ -328,6 +338,7 @@ mk_pmd_ledger "$work/pmd-ledger-zero.txt" 0 0
 mk_pmd_pom "$work/pmd-pom-zero.xml" 0 0
 (
   export MERGE_GATE_CMD_UNIT="$OK_CMD" MERGE_GATE_CMD_SPOTBUGS="$OK_CMD" MERGE_GATE_CMD_PMD="$OK_CMD"
+  export MERGE_GATE_CMD_CHECKSTYLE="$OK_CMD" MERGE_GATE_CMD_SPOTLESS="$OK_CMD"
   export MERGE_GATE_CMD_IT="$OK_CMD" MERGE_GATE_CMD_BASELINE="$OK_CMD" MERGE_GATE_CMD_FRONTEND="$OK_CMD"
   export MERGE_GATE_CMD_BIJECTION="$OK_CMD" MERGE_GATE_HOOKS_DIR="$work/hooks-ok"
   export PMD_REPORT="$work/pmd-report-zero.xml" PMD_BASELINE_LEDGER="$work/pmd-ledger-zero.txt"
@@ -344,6 +355,7 @@ cp "$work/pmd-report-zero.xml" "$work/pmd-report-zero-stale.xml"
 touch -t 200001010000 "$work/pmd-report-zero-stale.xml"
 (
   export MERGE_GATE_CMD_UNIT="$OK_CMD" MERGE_GATE_CMD_SPOTBUGS="$OK_CMD" MERGE_GATE_CMD_PMD="$OK_CMD"
+  export MERGE_GATE_CMD_CHECKSTYLE="$OK_CMD" MERGE_GATE_CMD_SPOTLESS="$OK_CMD"
   export MERGE_GATE_CMD_IT="$OK_CMD" MERGE_GATE_CMD_BASELINE="$OK_CMD" MERGE_GATE_CMD_FRONTEND="$OK_CMD"
   export MERGE_GATE_CMD_BIJECTION="$OK_CMD" MERGE_GATE_HOOKS_DIR="$work/hooks-ok"
   export PMD_REPORT="$work/pmd-report-zero-stale.xml" PMD_BASELINE_LEDGER="$work/pmd-ledger-zero.txt"
@@ -433,6 +445,31 @@ rc=$(scope_case "$work/scope-badpom.out")
 expect_eq "12 pom 无插件块时聚合非零" "1" "$rc"
 expect_has "12 拒绝裁决理由被透传" "拒绝裁决" "$work/scope-badpom.out"
 cp "$work/scope-pom-ok.xml" "$scope_root/pom.xml"
+
+# ---------------------------------------------------------------- 13. [checkstyle]/[spotless]（G-6 同源补齐）
+# 场景 2 已锁"失败被指名"；本场景锁默认序列里两道新静态门禁的具名 PASS、失败出口与覆盖参数透传。
+rc=$(run_case "$work/static-all.out")
+expect_eq "13 默认序列含两道静态门禁时零退出" "0" "$rc"
+expect_has "13 [checkstyle] 默认跑并 PASS" "PASS [checkstyle]" "$work/static-all.out"
+expect_has "13 [spotless] 默认跑并 PASS" "PASS [spotless]" "$work/static-all.out"
+
+rc=$(run_case "$work/cs-fail.out" "MERGE_GATE_CMD_CHECKSTYLE=$BAD_CMD")
+expect_eq "13 checkstyle 失败时聚合非零" "1" "$rc"
+expect_has "13 失败被指名到 [checkstyle]" "FAIL [checkstyle]" "$work/cs-fail.out"
+expect_has "13 尾部清单列出 checkstyle" "未通过的子门禁：checkstyle" "$work/cs-fail.out"
+
+rc=$(run_case "$work/sl-fail.out" "MERGE_GATE_CMD_SPOTLESS=$BAD_CMD")
+expect_eq "13 spotless 失败时聚合非零" "1" "$rc"
+expect_has "13 失败被指名到 [spotless]" "FAIL [spotless]" "$work/sl-fail.out"
+expect_has "13 尾部清单列出 spotless" "未通过的子门禁：spotless" "$work/sl-fail.out"
+
+rc=$(run_case "$work/cs-override.out" "MERGE_GATE_CMD_CHECKSTYLE=sh -c 'echo CS-OVERRIDE-MARKER'")
+expect_eq "13 checkstyle 覆盖参数生效时零退出" "0" "$rc"
+expect_has "13 checkstyle 覆盖命令真被执行" "CS-OVERRIDE-MARKER" "$work/cs-override.out"
+
+rc=$(run_case "$work/sl-override.out" "MERGE_GATE_CMD_SPOTLESS=sh -c 'echo SL-OVERRIDE-MARKER'")
+expect_eq "13 spotless 覆盖参数生效时零退出" "0" "$rc"
+expect_has "13 spotless 覆盖命令真被执行" "SL-OVERRIDE-MARKER" "$work/sl-override.out"
 
 echo
 if [ "$failures" -gt 0 ]; then

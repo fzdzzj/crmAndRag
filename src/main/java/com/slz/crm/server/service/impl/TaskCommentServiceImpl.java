@@ -7,11 +7,14 @@ import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.pojo.dto.TaskCommentDTO;
+import com.slz.crm.pojo.entity.ContactTaskEntity;
 import com.slz.crm.pojo.entity.TaskCommentEntity;
 import com.slz.crm.pojo.entity.UserEntity;
 import com.slz.crm.pojo.vo.TaskCommentVO;
+import com.slz.crm.server.mapper.ContactTaskMapper;
 import com.slz.crm.server.mapper.TaskCommentMapper;
 import com.slz.crm.server.mapper.UserMapper;
+import com.slz.crm.server.service.BusinessRecordAccessService;
 import com.slz.crm.server.service.TaskCommentService;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -28,6 +31,10 @@ public class TaskCommentServiceImpl extends ServiceImpl<TaskCommentMapper, TaskC
   @Autowired private TaskCommentMapper taskCommentMapper;
 
   @Autowired private UserMapper userMapper;
+
+  @Autowired private ContactTaskMapper contactTaskMapper;
+
+  @Autowired private BusinessRecordAccessService businessRecordAccessService;
 
   @Override
   @Transactional(rollbackFor = Exception.class)
@@ -120,6 +127,8 @@ public class TaskCommentServiceImpl extends ServiceImpl<TaskCommentMapper, TaskC
     if (taskId == null) {
       result = new ArrayList<>();
     } else {
+      // 评论随任务读取：先做任务对象级读权限断言（越权 12002，不泄露任务存在性）
+      assertTaskReadable(taskId);
 
       List<TaskCommentEntity> entities =
           list(
@@ -143,6 +152,8 @@ public class TaskCommentServiceImpl extends ServiceImpl<TaskCommentMapper, TaskC
     if (taskId == null) {
       result = new Page<>();
     } else {
+      // 分页重载与列表重载同闸：绕过列表口的分页调用不构成旁路
+      assertTaskReadable(taskId);
 
       Page<TaskCommentEntity> page = new Page<>(pageNum, pageSize);
       Page<TaskCommentEntity> pageResult =
@@ -164,6 +175,18 @@ public class TaskCommentServiceImpl extends ServiceImpl<TaskCommentMapper, TaskC
       result = resultPage;
     }
     return result;
+  }
+
+  /**
+   * 按任务ID做对象级读权限断言（harden-consistency-datascope-and-gate 模块 B）：任务不存在与越权 统一以 12002 fail-closed
+   * 拒绝，不向调用方区分"任务缺失"与"无权访问"。
+   */
+  private void assertTaskReadable(Long taskId) {
+    ContactTaskEntity task = contactTaskMapper.selectById(taskId);
+    if (task == null) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED);
+    }
+    businessRecordAccessService.assertCanReadTask(task);
   }
 
   /** 将Entity转换为VO，并设置评论人姓名 */
