@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.PasswordHashUtil;
 import com.slz.crm.pojo.dto.UserUpdatePasswordDTO;
@@ -97,6 +98,7 @@ class UserPasswordUpdateTest {
                 userService.updatePassword(
                     dtoOf("wrongOld789", NEW_RAW_PASSWORD), CURRENT_USER_ID));
 
+    assertEquals(ErrorCode.PASSWORD_ERROR.getCode(), ex.getCode());
     assertEquals("密码错误", ex.getMessage());
     verify(userMapper, never()).updateById(any(UserEntity.class));
   }

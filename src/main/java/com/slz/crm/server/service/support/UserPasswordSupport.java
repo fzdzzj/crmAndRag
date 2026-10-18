@@ -43,7 +43,7 @@ public final class UserPasswordSupport {
     String decryptedNew = BaseUnit.decryptBase64(encryptedNewPassword);
     // 原密码核验失败抛 92028/密码错误，不泄露差异原因
     if (!PasswordHashUtil.matches(decryptedOld, user.getPassword())) {
-      throw new BaseException(ErrorCode.PASSWORD_ERROR.getMessage());
+      throw new BaseException(ErrorCode.PASSWORD_ERROR);
     }
     if (Objects.equals(decryptedOld, decryptedNew)) {
       throw new BaseException("新密码不能与原密码相同");
