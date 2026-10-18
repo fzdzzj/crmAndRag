@@ -250,6 +250,30 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
   }
 
   /**
+   * 自服务更新当前登录用户基本信息（harden-user-self-update 任务 1.1：防自服务提权）。
+   *
+   * <p>第一层 fail-closed：特权治理字段（roleId/deptId/status）任何非空直接拒绝（12002）； 第二层白名单：SQL 更新构造仅允许
+   * realName/phone/email（构造拆至 {@link UserSelfUpdateSupport}）， 目标行强制绑定 currentUserId，不信任请求体中的任何身份字段。
+   *
+   * @param userDTO 用户数据传输对象
+   * @param currentUserId 当前登录用户ID（上下文注入）
+   */
+  @Override
+  @CacheEvict(value = "userName", key = "#currentUserId")
+  public void updateMyInfo(UserDTO userDTO, Long currentUserId) {
+    if (userDTO.getRoleId() != null || userDTO.getDeptId() != null || userDTO.getStatus() != null) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "自服务禁止修改角色、部门或状态等特权信息");
+    }
+
+    int i =
+        userMapper.update(
+            null, UserSelfUpdateSupport.buildWhitelistWrapper(userDTO, currentUserId));
+    if (i == 0) {
+      throw new BaseException(ErrorCode.UPDATE_FAILED.getMessage());
+    }
+  }
+
+  /**
    * @param id
    * @return
    */

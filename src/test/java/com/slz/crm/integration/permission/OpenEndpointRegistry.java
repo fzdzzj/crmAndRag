@@ -101,7 +101,10 @@ public final class OpenEndpointRegistry {
             "POST", "/user/password", "自服务：用户改自己密码（业务必需登录即可用）", "UserController#updatePassword"));
     list.add(
         new Entry(
-            "POST", "/user/update/my", "自服务：用户改自己信息（业务必需登录即可用）", "UserController#updateUserMy"));
+            "POST",
+            "/user/update/my",
+            "自服务：用户改自己基本信息（仅限姓名/手机/邮箱，严禁篡改角色/部门/状态，登录即可用）",
+            "UserController#updateUserMy"));
     list.add(new Entry("GET", "/user/my", "自服务：用户查自己信息（业务必需登录即可用）", "UserController#getMyUser"));
     list.add(
         new Entry("GET", "/user/options", "自服务：在职用户下拉（协助人选择器，登录即可用）", "UserController#options"));
