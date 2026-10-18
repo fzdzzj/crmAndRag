@@ -15,6 +15,7 @@ import com.slz.crm.knowledge.entity.KnowledgeBaseEntity;
 import com.slz.crm.knowledge.entity.UploadedFileEntity;
 import com.slz.crm.knowledge.retrieval.KnowledgeRetrievalServiceImpl;
 import com.slz.crm.knowledge.retrieval.SparseRecallService;
+import com.slz.crm.platform.contract.CrmVectorStore;
 import com.slz.crm.platform.contract.DynamicConfigService;
 import com.slz.crm.platform.contract.RetrievalDefaults;
 import com.slz.crm.platform.contract.UserContext;
@@ -28,6 +29,7 @@ import com.slz.crm.pojo.vo.KnowledgeAdminRetrievalResponse;
 import com.slz.crm.pojo.vo.KnowledgeBaseVO;
 import com.slz.crm.pojo.vo.KnowledgeFileVO;
 import com.slz.crm.server.ai.port.KnowledgeRetrievalPort;
+import com.slz.crm.server.mapper.DocumentVectorChunkMapper;
 import com.slz.crm.server.mapper.KnowledgeBaseMapper;
 import com.slz.crm.server.mapper.UploadedFileMapper;
 import java.io.InputStream;
@@ -50,6 +52,8 @@ public class KnowledgeAdminService {
   private final SparseRecallService sparseRecallService;
   private final DynamicConfigService dynamicConfigService;
   private final RequestQuotaService requestQuotaService;
+  private final CrmVectorStore vectorStore;
+  private final DocumentVectorChunkMapper chunkMapper;
 
   @org.springframework.beans.factory.annotation.Autowired
   public KnowledgeAdminService(
@@ -60,7 +64,9 @@ public class KnowledgeAdminService {
       KnowledgeRetrievalServiceImpl retrievalService,
       SparseRecallService sparseRecallService,
       DynamicConfigService dynamicConfigService,
-      RequestQuotaService requestQuotaService) {
+      RequestQuotaService requestQuotaService,
+      CrmVectorStore vectorStore,
+      DocumentVectorChunkMapper chunkMapper) {
     this.knowledgeBaseMapper = knowledgeBaseMapper;
     this.uploadedFileMapper = uploadedFileMapper;
     this.authorizationService = authorizationService;
@@ -69,9 +75,34 @@ public class KnowledgeAdminService {
     this.sparseRecallService = sparseRecallService;
     this.dynamicConfigService = dynamicConfigService;
     this.requestQuotaService = requestQuotaService;
+    this.vectorStore = vectorStore;
+    this.chunkMapper = chunkMapper;
   }
 
-  /** 兼容仅覆盖当前用户桥接逻辑的单元测试；生产装配使用六参构造注入稀疏召回服务。 */
+  /** 兼容既有 8 参装配（试点 IT / 旧调用方）；未注入双清依赖时 {@link #deleteFile} 会显式失败。 */
+  public KnowledgeAdminService(
+      KnowledgeBaseMapper knowledgeBaseMapper,
+      UploadedFileMapper uploadedFileMapper,
+      KnowledgeBaseAuthorizationService authorizationService,
+      DocumentIngestionService ingestionService,
+      KnowledgeRetrievalServiceImpl retrievalService,
+      SparseRecallService sparseRecallService,
+      DynamicConfigService dynamicConfigService,
+      RequestQuotaService requestQuotaService) {
+    this(
+        knowledgeBaseMapper,
+        uploadedFileMapper,
+        authorizationService,
+        ingestionService,
+        retrievalService,
+        sparseRecallService,
+        dynamicConfigService,
+        requestQuotaService,
+        null,
+        null);
+  }
+
+  /** 兼容仅覆盖当前用户桥接逻辑的单元测试；生产装配使用十参构造注入稀疏召回与双清依赖。 */
   public KnowledgeAdminService(
       KnowledgeBaseMapper knowledgeBaseMapper,
       UploadedFileMapper uploadedFileMapper,
@@ -186,14 +217,26 @@ public class KnowledgeAdminService {
     return result;
   }
 
+  /**
+   * 删除知识库文件（harden-consistency-datascope-and-gate 模块 A，台账 C-11）：软删 {@code uploaded_file}
+   * 的同时联动物理双清——清空向量库中该文档全部点位与 {@code document_vector_chunk} 切片快照行， 保证稀疏路（JOIN 软删过滤）与向量路（仅按 kbId
+   * 过滤）两路检索结果一致，不留敏感残留。
+   *
+   * <p>双清依赖未装配（兼容构造路径）时 fail-closed 拒绝删除，严禁留下"软删但向量/切片仍在"的半清状态。
+   */
   public boolean deleteFile(String documentId) {
     UploadedFileEntity file =
         uploadedFileMapper.selectOne(
             new QueryWrapper<UploadedFileEntity>().eq("document_id", documentId));
     boolean result = false;
     if (file != null) {
+      if (vectorStore == null || chunkMapper == null) {
+        throw new IllegalStateException("向量库或切片 Mapper 未装配，拒绝执行删除双清");
+      }
       file.setIsDeleted(true);
       uploadedFileMapper.updateById(file);
+      vectorStore.deleteByDocumentId(documentId);
+      chunkMapper.deletePhysicallyByDocumentId(documentId);
       result = true;
     }
     return result;

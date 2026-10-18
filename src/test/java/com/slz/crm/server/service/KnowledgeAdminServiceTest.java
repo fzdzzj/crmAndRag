@@ -15,6 +15,7 @@ import com.slz.crm.knowledge.entity.UploadedFileEntity;
 import com.slz.crm.knowledge.retrieval.KnowledgeRetrievalServiceImpl;
 import com.slz.crm.knowledge.retrieval.RetrievalCandidate;
 import com.slz.crm.knowledge.retrieval.SparseRecallService;
+import com.slz.crm.platform.contract.CrmVectorStore;
 import com.slz.crm.platform.contract.DynamicConfigService;
 import com.slz.crm.platform.contract.SourceReference;
 import com.slz.crm.platform.contract.UserContext;
@@ -28,6 +29,7 @@ import com.slz.crm.pojo.vo.KnowledgeAdminRetrievalResponse;
 import com.slz.crm.pojo.vo.KnowledgeBaseVO;
 import com.slz.crm.pojo.vo.KnowledgeFileVO;
 import com.slz.crm.server.ai.port.KnowledgeRetrievalPort;
+import com.slz.crm.server.mapper.DocumentVectorChunkMapper;
 import com.slz.crm.server.mapper.KnowledgeBaseMapper;
 import com.slz.crm.server.mapper.UploadedFileMapper;
 import java.util.List;
@@ -52,6 +54,8 @@ class KnowledgeAdminServiceTest {
   @Mock private SparseRecallService sparseRecallService;
   @Mock private DynamicConfigService dynamicConfigService;
   @Mock private RequestQuotaService requestQuotaService;
+  @Mock private CrmVectorStore vectorStore;
+  @Mock private DocumentVectorChunkMapper chunkMapper;
   @Mock private MultipartFile multipartFile;
 
   @InjectMocks private KnowledgeAdminService knowledgeAdminService;
@@ -419,6 +423,33 @@ class KnowledgeAdminServiceTest {
       verifyNoInteractions(sparseRecallService);
       verify(requestQuotaService).tryAcquire(QuotaDimension.ADMIN_VECTOR_USER, "1");
     }
+  }
+
+  @Test
+  void deleteFile_existingDocument_softDeletesAndPhysicallyPurgesVectorsAndChunks() {
+    UploadedFileEntity file = uploadedFile(1L, "doc-1", "1");
+    when(uploadedFileMapper.selectOne(any())).thenReturn(file);
+
+    boolean deleted = knowledgeAdminService.deleteFile("doc-1");
+
+    assertTrue(deleted);
+    ArgumentCaptor<UploadedFileEntity> fileCaptor =
+        ArgumentCaptor.forClass(UploadedFileEntity.class);
+    verify(uploadedFileMapper).updateById(fileCaptor.capture());
+    assertTrue(fileCaptor.getValue().getIsDeleted());
+    verify(vectorStore).deleteByDocumentId("doc-1");
+    verify(chunkMapper).deletePhysicallyByDocumentId("doc-1");
+  }
+
+  @Test
+  void deleteFile_missingDocument_returnsFalseWithoutAnyPurge() {
+    when(uploadedFileMapper.selectOne(any())).thenReturn(null);
+
+    boolean deleted = knowledgeAdminService.deleteFile("doc-missing");
+
+    assertFalse(deleted);
+    verify(uploadedFileMapper, never()).updateById(any());
+    verifyNoInteractions(vectorStore, chunkMapper);
   }
 
   private UploadedFileEntity uploadedFile(Long id, String documentId, String kbId) {
