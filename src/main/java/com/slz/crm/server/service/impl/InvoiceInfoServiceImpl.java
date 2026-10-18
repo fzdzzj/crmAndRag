@@ -5,11 +5,13 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.exiception.BaseException;
+import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.common.untils.NumberGenerator;
 import com.slz.crm.pojo.dto.InvoiceInfoDTO;
 import com.slz.crm.pojo.entity.ContractEntity;
 import com.slz.crm.pojo.entity.InvoiceInfoEntity;
 import com.slz.crm.pojo.entity.PaymentRecordEntity;
+import com.slz.crm.pojo.entity.UserEntity;
 import com.slz.crm.pojo.vo.InvoiceInfoVO;
 import com.slz.crm.server.mapper.ContractMapper;
 import com.slz.crm.server.mapper.InvoiceInfoMapper;
@@ -18,6 +20,7 @@ import com.slz.crm.server.mapper.UserMapper;
 import com.slz.crm.server.service.InvoiceInfoService;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -291,12 +294,20 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
 
     InvoiceInfoEntity entity = invoiceInfoMapper.selectById(id);
     if (entity == null) {
-      throw new BaseException("开票信息不存在");
+      throw new BaseException(ErrorCode.DATA_NULL, "开票信息不存在");
     }
 
     // 检查是否已作废（status=1）
     if (entity.getStatus() == 1) {
-      throw new BaseException("发票已作废，无法重复作废");
+      throw new BaseException(ErrorCode.BUSINESS_ERROR, "发票已作废，无法重复作废");
+    }
+
+    // 作废权限：仅发票创建人或超级管理员可作废（12002）
+    Long currentUserId = BaseUnit.getCurrentId();
+    UserEntity operator = userMapper.selectById(currentUserId);
+    boolean isSuperAdmin = operator != null && Objects.equals(operator.getRoleId(), 1L);
+    if (!isSuperAdmin && !Objects.equals(entity.getCreatorId(), currentUserId)) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "仅发票创建人或超级管理员可作废发票");
     }
 
     // 更新为已作废状态（status=1）
