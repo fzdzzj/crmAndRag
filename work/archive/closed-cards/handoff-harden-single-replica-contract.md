@@ -56,8 +56,11 @@ git checkout -- frontend/typed-router.d.ts         # 还原 vitest 行尾噪声
 
 注：merge-gate 后台输出经 `tail -40` 截存，前四门（unit/spotbugs/pmd/baseline）的逐行 PASS 未逐字留档，以脚本最终裁定行与 exit 0 为准；B 档复核复跑即可取得全量逐门记录。
 
-## 6. 下一步（owner 动作）
+## 6. 闭环终态记录（2026-10-18）
 
-1. 按复核档位矩阵派发 B 档独立复核 sub agent（复核提示词由主 agent 生成）。
-2. 复核回贴 GO 后于权威树执行 `git merge --no-ff`（merge 后按惯例重跑 clean verify + `--update` 刷新台账至 merge commit）。
-3. push 仍需 owner 显式授权。
+- **合并提交**：`b602122`（merge --no-ff feature/harden-single-replica-contract 入 master，3 笔全入主干）；
+- **基线提交**：`22fad6b`（test(baseline): update clean baseline to b602122）；
+- **远端 CI**：GitHub Actions Run `39091524290` 6/6 全绿（Frontend 197 / OpenAPI / fail-fast / static-analysis / thread-pool-metrics / build-and-gate 1636 单测 + 118 集成测试）；
+- **测试基线**：Surefire 263 份报告 / 1636 用例 / 0 失败（+1 套件，+8 用例），Failsafe 31 份报告 / 118 用例 / 7 skipped，`source-revision=b602122`；
+- **复核裁决**：B 档独立复核 🟢 GO（报告落盘 `work/archive/closed-cards/review-harden-single-replica-contract-b.md`），4 项 MINOR 记录在案不阻断，全链闭环合入主干。
+
