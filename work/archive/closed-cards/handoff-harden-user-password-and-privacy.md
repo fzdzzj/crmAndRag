@@ -98,4 +98,13 @@
 
 ## 7. 停步声明
 
-执行完毕，全部任务已勾选（openspec/changes/harden-user-password-and-privacy/tasks.md，每项附 6 空格缩进实测依据）。**未 merge、未 push**，等待 Owner 派发 B 档独立复核；复核通过后由 Owner 授权合并。
+执行完毕，全部任务已勾选（openspec/changes/archive/harden-user-password-and-privacy/tasks.md，每项附 6 空格缩进实测依据）。**未 merge、未 push**，等待 Owner 派发 B 档独立复核；复核通过后由 Owner 授权合并。
+
+## 8. 闭环记录（M1 合并 + M2 归档）
+
+- **复核结论**：B 档独立复核初评 NO-GO（F-1 MAJOR：`BaseException(String)` 构造器致 code=null 降级为 0）；经 `527bebc`（修复代码）与 `67c7cfd`（物料对齐）返场修复后快速复验 **GO ✅**，0 阻断。
+- **主干合并（M1）**：Merge 提交 `347c13e`（非快进），基线对账提交 `9e7faf3`（Surefire 266 报告 / 1647 用例 / 0 失败，Failsafe 31 报告 / 118 用例 / 7 跳过，Docker Testcontainers 全量验证 10 分 40 秒全绿）。
+- **前端类型闭环**：远端 CI 阶段 1 动态 `pnpm gen:api` 触发 `useUser.ts` 类型检查报错，通过 `4ca292e` 补齐 `useResetPassword` 参数模型与 `ChangePasswordModal.vue` 原密码输入项，前后端改密契约与 UI 全链路闭环。
+- **持续集成（CI）**：GitHub Actions Run `39126608681` 6/6 全绿（Build / Frontend / OpenAPI / FailFast / Static / Metrics 全 PASS）。
+- **状态**：本卡全链完成，归档入 `work/archive/closed-cards/`。
+
