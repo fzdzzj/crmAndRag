@@ -10,6 +10,7 @@ import com.slz.crm.common.exiception.ServiceException;
 import com.slz.crm.common.untils.*;
 import com.slz.crm.pojo.dto.GetUserDTO;
 import com.slz.crm.pojo.dto.UserDTO;
+import com.slz.crm.pojo.dto.UserUpdatePasswordDTO;
 import com.slz.crm.pojo.entity.UserEntity;
 import com.slz.crm.pojo.vo.UserOptionVO;
 import com.slz.crm.pojo.vo.UserVO;
@@ -23,6 +24,7 @@ import com.slz.crm.server.service.DataConvertService;
 import com.slz.crm.server.service.UserService;
 import com.slz.crm.server.service.support.LoginAttemptService;
 import com.slz.crm.server.service.support.TokenBlacklistService;
+import com.slz.crm.server.service.support.UserPasswordSupport;
 import java.time.LocalDateTime;
 import java.util.*;
 import org.springframework.beans.BeanUtils;
@@ -159,18 +161,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
   }
 
   @Override
-  public boolean updatePassword(String password) {
-    Long currentId = BaseUnit.getCurrentId();
-    // 先将 Base64 加密的密码解密为明文
-    String decryptedPassword = BaseUnit.decryptBase64(password);
-    UserEntity userEntity = new UserEntity();
-    userEntity.setId(currentId);
-    userEntity.setPassword(PasswordHashUtil.hash(decryptedPassword));
-    int i = userMapper.updateById(userEntity);
-    if (i == 0) {
-      throw new ServiceException(ErrorCode.UPDATE_FAILED.getMessage());
-    }
-    return true;
+  public boolean updatePassword(UserUpdatePasswordDTO dto, Long currentId) {
+    return UserPasswordSupport.changePassword(
+        userMapper, currentId, dto.getOldPassword(), dto.getNewPassword());
   }
 
   @Override

@@ -8,6 +8,7 @@ import com.slz.crm.common.untils.BaseUnit;
 import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.dto.GetUserDTO;
 import com.slz.crm.pojo.dto.UserDTO;
+import com.slz.crm.pojo.dto.UserUpdatePasswordDTO;
 import com.slz.crm.pojo.vo.UserOptionVO;
 import com.slz.crm.pojo.vo.UserVO;
 import com.slz.crm.server.properties.JwtProperties;
@@ -103,15 +104,15 @@ public class UserController {
   }
 
   /**
-   * 更新密码
+   * 更新密码（harden-user-password-and-privacy 任务 1.1：自服务改密须核验原密码）
    *
-   * @param password 新密码
+   * @param dto 原密码与新密码
    * @return
    */
   @PostMapping("/password")
   //    @RequirePermission(PermissionOperates.SYSTEM_UPDATE_PASSWORD)
-  private Result<Boolean> updatePassword(@Valid @RequestBody String password) {
-    userService.updatePassword(password);
+  private Result<Boolean> updatePassword(@Valid @RequestBody UserUpdatePasswordDTO dto) {
+    userService.updatePassword(dto, BaseUnit.getCurrentId());
     return Result.success();
   }
 

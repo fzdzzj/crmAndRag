@@ -110,17 +110,19 @@ public class PrivacyAspect {
           if (isSelf(currentRole.getId(), o)) {
             return;
           }
-          // 查看Phone权限
+          // 查看Phone权限（harden-user-password-and-privacy 任务 2.1：phone/mobile 同权，
+          // 切面此前漏调 o.mobile() 致联系人手机号脱敏死代码，全链路裸奔）
           if (!permissionService.hasPermission(
               PermissionOperates.PRIVACY_PHONE_VIEW, permissionsEntityList)) {
             o.phone();
+            o.mobile();
           }
           // 查看Email权限
           if (!permissionService.hasPermission(
               PermissionOperates.PRIVACY_EMAIL_VIEW, permissionsEntityList)) {
             o.email();
           }
-          // 说明：当前隐私字段仅 phone/email，新增隐私字段需同步 PRIVACY_*_VIEW 权限与切面分支
+          // 说明：当前隐私字段为 phone/mobile/email，新增隐私字段需同步 PRIVACY_*_VIEW 权限与切面分支
 
         });
   }

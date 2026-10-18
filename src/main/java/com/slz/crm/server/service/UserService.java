@@ -3,6 +3,7 @@ package com.slz.crm.server.service;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.slz.crm.pojo.dto.GetUserDTO;
 import com.slz.crm.pojo.dto.UserDTO;
+import com.slz.crm.pojo.dto.UserUpdatePasswordDTO;
 import com.slz.crm.pojo.vo.UserOptionVO;
 import com.slz.crm.pojo.vo.UserVO;
 import java.util.List;
@@ -41,12 +42,13 @@ public interface UserService {
   Page<UserVO> getAllUser(Integer pageNum, Integer pageSize);
 
   /**
-   * 更新当前登录用户的密码
+   * 更新当前登录用户的密码（harden-user-password-and-privacy 任务 1.1：需核验原密码）
    *
-   * @param password 新密码
+   * @param dto 原密码与新密码
+   * @param currentId 当前登录用户ID
    * @return 是否更新成功
    */
-  boolean updatePassword(String password);
+  boolean updatePassword(UserUpdatePasswordDTO dto, Long currentId);
 
   /**
    * 管理员重置指定用户的密码

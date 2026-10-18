@@ -17,6 +17,7 @@ import com.slz.crm.pojo.entity.SalesLeadEntity;
 import com.slz.crm.pojo.entity.SalesOpportunityEntity;
 import com.slz.crm.pojo.vo.LeadConvertVO;
 import com.slz.crm.pojo.vo.SalesLeadVO;
+import com.slz.crm.server.annotation.Privacy;
 import com.slz.crm.server.mapper.CustomerCompanyMapper;
 import com.slz.crm.server.mapper.CustomerContactMapper;
 import com.slz.crm.server.mapper.SalesLeadMapper;
@@ -95,6 +96,7 @@ public class SalesLeadServiceImpl extends ServiceImpl<SalesLeadMapper, SalesLead
   }
 
   @Override
+  @Privacy
   public SalesLeadVO getDetail(Long id) {
     return SalesLeadAssembler.toView(requireLead(id), userMapper);
   }
@@ -139,6 +141,7 @@ public class SalesLeadServiceImpl extends ServiceImpl<SalesLeadMapper, SalesLead
   }
 
   @Override
+  @Privacy
   public Page<SalesLeadVO> queryPage(SalesLeadQueryDTO query, Integer pageNum, Integer pageSize) {
     if (query == null) {
       query = new SalesLeadQueryDTO();
