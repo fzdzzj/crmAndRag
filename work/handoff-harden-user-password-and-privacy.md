@@ -4,16 +4,26 @@
 - 执行者：执行子 agent（ZCode，Owner 亲自派发）
 - 权威工作树：`D:\code\crmAndRag-merge-add-knowledge-admin-api`
 - 分支：`feature/harden-user-password-and-privacy`，基于 master `63d9122` 检出
-- 分支 tip：`2838060`
-- 状态：**未 merge 未 push**，停步等 Owner 派发 B 档独立复核
+- 分支 tip：`527bebc`（返场 F-1 代码修复；其后另有本文件所在物料提交一笔，见 §1 末行）
+- 状态：**未 merge 未 push**；B 档独立复核判 NO-GO（F-1 MAJOR：92028 未透传），返场修复已完成，停步等 Owner 派发快速复验
 
-## 1. 分支提交序列（3 笔）
+## 1. 分支提交序列（6 笔 = 前序 4 笔 + 返场修复 2 笔）
 
 | SHA | 说明 |
 | --- | --- |
 | `04c8c00` | feat(security): harden password change verification and activate mobile privacy desensitization |
 | `180b700` | test(baseline): update clean baseline for harden-user-password-and-privacy |
 | `2838060` | fix: bump frontend error code parity count to 99 for PASSWORD_ERROR 92028 |
+| `9f67fba` | docs: record harden-user-password-and-privacy handoff and tasks evidence（本文件初版，初版漏记本笔致 §1 曾漂移为 3 笔） |
+| `527bebc` | fix(security): throw BaseException with ErrorCode to propagate 92028 to client（返场 F-1：2 文件 +3/−1） |
+| 本笔 | docs: record F-1 fix evidence and align handoff commit sequence（返场物料：handoff 提交序列对齐 + tasks.md 1.2 补 F-1 证据） |
+
+### 1.1 返场修复记录（2026-10-18，B 档复核 F-1 MAJOR）
+
+- 根因：`UserPasswordSupport.java:46` 原抛 `new BaseException(ErrorCode.PASSWORD_ERROR.getMessage())`，走 `BaseException(String)` 构造器致 code=null，经 GlobalExceptionHandler 降级为 code=0，前端 92028 映射成死映射（复核 MAJOR）。
+- 修复：`527bebc` 单行改 `throw new BaseException(ErrorCode.PASSWORD_ERROR)`（枚举构造器同时赋 code=92028 与 message）；`UserPasswordUpdateTest` 用例 2 补 `assertEquals(ErrorCode.PASSWORD_ERROR.getCode(), ex.getCode())` 与 message 断言。
+- 复验门禁（全部本轮实测）：靶向 4 类 10/10 绿；`spotbugs:check pmd:check` 0 违规；基线对账直接 EXIT=0（surefire 1647 / failsafe 118，未动基线文件）；merge-gate **8/8 全 PASS，GATE_EXIT=0**（日志 `work/_f1-mergegate.log`）；`frontend/typed-router.d.ts` 已 `git checkout --` 还原。
+- 红线复核：返场两笔零碰 db/migration、pom.xml、typed-router.d.ts；提交信息单行内联 ASCII；未执行 git merge / git push。
 
 ## 2. 写集统计（63d9122..2838060，15 文件 +381/−28）
 
