@@ -71,3 +71,12 @@
 - 安全语义：`UserServiceImpl#updateMyInfo`（fail-closed 位置）+ `UserSelfUpdateSupport#buildWhitelistWrapper`（白名单边界）+ 决策 5（@CacheEvict 补齐是否认可）；
 - 测试有效性：`UserSelfUpdateSecurityTest` 五用例与 proposal §2.4 五条覆盖逐条对表；
 - 基线口径：`scripts/test-baseline.txt` surefire.tests=1641 与 `work/_hus-verify.log` 汇总行互证。
+
+## 8 · 闭环终态记录（2026-10-18）
+
+- **合并提交**：`2bfe2f3`（merge --no-ff feature/harden-user-self-update 入 master，3 笔全入主干）；
+- **基线提交**：`0a952a8`（test(baseline): update clean baseline to 2bfe2f3）；
+- **远端 CI**：GitHub Actions Run `39102043542` 6/6 全绿（Frontend 197 / OpenAPI / fail-fast / static-analysis / thread-pool-metrics / build-and-gate 1641 单测 + 118 集成测试）；
+- **测试基线**：Surefire 264 份报告 / 1641 用例 / 0 失败（+1 套件，+5 用例），Failsafe 31 份报告 / 118 用例 / 7 skipped，`source-revision=2bfe2f3`；
+- **复核裁决**：A 档独立复核 🟢 GO（CRITICAL 0 / MAJOR 0 / MINOR 0，报告落盘 `work/archive/closed-cards/review-harden-user-self-update-a.md`），全链闭环合入主干。
+
