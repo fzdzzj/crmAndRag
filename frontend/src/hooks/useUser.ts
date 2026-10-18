@@ -24,6 +24,7 @@ import type {
   PostUserHandoverExecuteResponse,
   PostUserHandoverQueryData,
   PostUserHandoverQueryResponse,
+  PostUserPasswordData,
   PostUserPasswordResetData,
   PostUserUpdateData,
 } from '@/api/axios';
@@ -194,13 +195,13 @@ export function useCreateUser() {
 
 export function useResetPassword() {
   return useMutation({
-    mutationFn: (data: string) =>
+    mutationFn: (data: { oldPassword: string; newPassword: string }) =>
       postUserPassword({
         client: apiClient,
-        body: window.btoa(data),
-        // 后端 @RequestBody String 会把 JSON 字符串的引号一起读进来，
-        // 必须用 text/plain 发送原始 base64 才能正确解码
-        headers: { 'Content-Type': 'text/plain' },
+        body: {
+          oldPassword: window.btoa(data.oldPassword),
+          newPassword: window.btoa(data.newPassword),
+        } satisfies NonNullable<PostUserPasswordData['body']>,
       }),
   });
 }

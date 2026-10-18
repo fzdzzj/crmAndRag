@@ -13,19 +13,22 @@ import {
 
 const open = ref(false);
 const formRef = ref();
-const passwordForm = ref({ newPassword: '' });
+const passwordForm = ref({ oldPassword: '', newPassword: '' });
 const rules: Record<string, Rule[]> = {
+  oldPassword: [{ required: true, message: '请输入原密码', trigger: 'blur' }],
   newPassword: [{ required: true, message: '请输入新密码', trigger: 'blur' }],
 };
 const { mutate: resetPassword, isPending } = useResetPassword();
 
 const openModal = () => {
+  passwordForm.value.oldPassword = '';
   passwordForm.value.newPassword = '';
   open.value = true;
 };
 
 const closeModal = () => {
   open.value = false;
+  passwordForm.value.oldPassword = '';
   passwordForm.value.newPassword = '';
 };
 
@@ -33,7 +36,7 @@ const submit = async () => {
   if (!(await validateForm(formRef.value))) {
     return;
   }
-  resetPassword(passwordForm.value.newPassword, {
+  resetPassword(passwordForm.value, {
     onSuccess: () => {
       message.success('密码修改成功');
       closeModal();
@@ -59,6 +62,12 @@ defineExpose({ openModal });
       :label-col="{ span: 6 }"
       :wrapper-col="{ span: 16 }"
     >
+      <a-form-item label="原密码" name="oldPassword" required>
+        <a-input-password
+          v-model:value="passwordForm.oldPassword"
+          placeholder="请输入原密码"
+        />
+      </a-form-item>
       <a-form-item label="新密码" name="newPassword" required>
         <a-input-password
           v-model:value="passwordForm.newPassword"
