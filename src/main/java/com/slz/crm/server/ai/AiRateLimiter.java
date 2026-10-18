@@ -10,8 +10,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
- * AI 请求限流器：按用户滑动窗口（60 秒），上限取 {@code crm.ai.rate-limit-per-minute}（默认 10）。 单实例部署用内存实现即可；超限由调用方返回
- * RATE_LIMITED，不消耗 LLM 调用。
+ * AI 请求限流器：按用户滑动窗口（60 秒），上限取 {@code crm.ai.rate-limit-per-minute}（默认 10）。 单副本假设：滑动窗口计数落在进程内
+ * ConcurrentHashMap，无跨实例共享，多副本部署下限流上限按副本数放大、形同虚设；超限由调用方返回 RATE_LIMITED，不消耗 LLM 调用。
  */
 @Component
 public class AiRateLimiter {

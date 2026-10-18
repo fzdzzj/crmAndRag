@@ -34,6 +34,8 @@ import org.springframework.stereotype.Component;
  * <String, Integer>}/{@code <String, Long>}，生产装配构造器传 {@code name ->
  * resolver.resolveXxx(name)}；出厂两个测试构造器（固定参数版 / 7 参时钟版）签名不变、内部包装恒定函数，
  * 既有断言零破坏。每次失败判定经函数实时读依赖名对应值，覆盖值新写即刻生效；在飞 OPEN 窗口不追溯。
+ *
+ * <p>单副本假设：熔断三态、故障计数与指标计数器均为进程内 ConcurrentHashMap，无跨实例共享；多副本部署会导致熔断状态分裂。
  */
 @Component
 public class DependencyResilienceExecutor {

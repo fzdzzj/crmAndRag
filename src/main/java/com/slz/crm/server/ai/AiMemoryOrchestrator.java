@@ -33,6 +33,8 @@ import org.springframework.stereotype.Component;
  * 会话记忆加工编排器。
  *
  * <p>意图/摘要是可失败的旁路任务：D 执行器缺失或饱和时直接跳过；单飞去重由本类按会话 CAS。
+ *
+ * <p>单副本假设：无锁单机调度（Spring @Scheduled，无分布式锁），多副本部署会重复清理与重复加工会话记忆。
  */
 @Slf4j
 @Component

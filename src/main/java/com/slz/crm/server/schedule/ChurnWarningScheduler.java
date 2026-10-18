@@ -12,6 +12,8 @@ import org.springframework.stereotype.Component;
  * <p>每天凌晨 4 点（{@code 0 0 4 * * ?}）自动扫描私海客户并生成「流失预警」待办，与合同预警（凌晨 3 点）错峰一小时， 避免同一时刻抢占数据库；幂等防重由 {@link
  * CustomerChurnWarningService#scanAndGenerateChurnWarningTasks()} 内部保证。 {@code scheduledScan}
  * 与手动触发端点 {@code POST /customer/churn/warning/scan} 同源，便于测试与运维。
+ *
+ * <p>单副本假设：无锁单机调度（Spring @Scheduled，无分布式锁），多副本部署会并发触发重复派发流失预警待办。
  */
 @Slf4j
 @Component

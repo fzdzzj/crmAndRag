@@ -12,6 +12,8 @@ import org.springframework.stereotype.Component;
  * <p>每天凌晨 3 点（{@code 0 0 3 * * ?}）自动扫描到期/临期合同与逾期应收账款合同，并为合同负责人生成 {@code ContactTask} 待办。幂等防重由
  * {@link ContractWarningService#scanAndGenerateWarningTasks()} 内部保证 （同合同同预警类型进行中任务存在时跳过）。{@code
  * scheduledScan} 与手动触发端点 {@code /contract/warning/trigger} 同源，便于测试与运维。
+ *
+ * <p>单副本假设：无锁单机调度（Spring @Scheduled，无分布式锁），多副本部署会并发触发重复派发合同预警待办。
  */
 @Slf4j
 @Component
