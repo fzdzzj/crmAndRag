@@ -16,7 +16,8 @@ type ResetPasswordPayload = NonNullable<PostUserPasswordResetData['body']>;
 
 const resetPasswordOpen = ref(false);
 const formRef = ref();
-const form = ref<Pick<ResetPasswordPayload, 'userId'> & { newPassword: string }>({
+// userId 由 openResetPasswordModal 打开弹窗时回填，初始仅填 newPassword
+const form = ref<{ userId?: number; newPassword: string }>({
   newPassword: '',
 });
 const rules: Record<string, Rule[]> = {
