@@ -6794,6 +6794,10 @@ components:
           format: int64
         newPassword:
           type: string
+          minLength: 1
+      required:
+      - newPassword
+      - userId
     UserHandoverQueryDTO:
       type: object
       properties:

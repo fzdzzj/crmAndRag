@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.slz.crm.common.enumeration.ErrorCode;
+import com.slz.crm.common.enumeration.ModelName;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.AttachmentDownloadTokenUtil;
 import com.slz.crm.common.untils.BaseUnit;
@@ -77,6 +78,12 @@ public class ProjectFileServiceImpl extends ServiceImpl<ProjectFileMapper, Proje
 
     Long currentUserId = BaseUnit.getCurrentId();
 
+    // 记录级写权限：仅业务相关人可向该活动上传附件，越权拦截（12002）
+    if (!attachmentAccessService.canWriteAttachments(
+        ModelName.BUSINESS_ACTIVITY, activityId, currentUserId)) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "无权向该业务活动上传附件");
+    }
+
     // 记录已上传到磁盘的文件，用于失败时回滚
     List<File> uploadedFiles = new ArrayList<>();
 
@@ -132,6 +139,12 @@ public class ProjectFileServiceImpl extends ServiceImpl<ProjectFileMapper, Proje
     }
 
     Long currentUserId = BaseUnit.getCurrentId();
+
+    // 记录级写权限：订单项无属主字段，按合同归属判定，越权拦截（12002）
+    if (!attachmentAccessService.canWriteAttachments(
+        ModelName.CONTRACT_ORDER_ITEM, orderId, currentUserId)) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "无权向该订单上传附件");
+    }
 
     // 记录已上传到磁盘的文件，用于失败时回滚
     List<File> uploadedFiles = new ArrayList<>();

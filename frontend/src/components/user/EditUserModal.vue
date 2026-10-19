@@ -21,7 +21,10 @@ type UpdateUserForm = NonNullable<PostUserUpdateData['body']>;
 
 const resetPasswordModalRef = ref<InstanceType<typeof ResetPasswordModal>>();
 const openResetPasswordModal = () => {
-  resetPasswordModalRef.value?.openResetPasswordModal(form.value.id);
+  // 契约收紧后重置入口的 userId 为必填，缺失时不发起重置
+  if (form.value.id != null) {
+    resetPasswordModalRef.value?.openResetPasswordModal(form.value.id);
+  }
 };
 const { data: roles } = useQueryRoles({ all: true });
 const { data: depts } = useQueryDepts();

@@ -25,7 +25,8 @@ public class ResourceTypeConstant {
           "contact_task",
           "sales_stage_approval",
           "payment_record",
-          "project_file");
+          "project_file",
+          "invoice_info");
 
   /**
    * 每个表需要检查的用户字段
@@ -35,17 +36,18 @@ public class ResourceTypeConstant {
    * <p>用于第一级权限(仅查看自己的),检查这些字段是否等于当前用户ID
    */
   public static final Map<String, List<String>> TABLE_USER_FIELDS =
-      Map.of(
-          "customer_company", List.of("creator_id"),
-          "customer_contact", List.of("creator_id"),
-          "sales_opportunity", List.of("creator_id", "owner_id"),
-          "contract_order_item", List.of("creator_id"),
-          "contract", List.of("creator_id"),
-          "business_activity", List.of("creator_id"),
-          "contact_task", List.of("creator_id", "assignee_id", "assigner_id"),
-          "sales_stage_approval", List.of("applicant_id", "approver_id"),
-          "payment_record", List.of("creator_id"),
-          "project_file", List.of("uploader_id"));
+      Map.ofEntries(
+          Map.entry("customer_company", List.of("creator_id")),
+          Map.entry("customer_contact", List.of("creator_id")),
+          Map.entry("sales_opportunity", List.of("creator_id", "owner_id")),
+          Map.entry("contract_order_item", List.of("creator_id")),
+          Map.entry("contract", List.of("creator_id")),
+          Map.entry("business_activity", List.of("creator_id")),
+          Map.entry("contact_task", List.of("creator_id", "assignee_id", "assigner_id")),
+          Map.entry("sales_stage_approval", List.of("applicant_id", "approver_id")),
+          Map.entry("payment_record", List.of("creator_id")),
+          Map.entry("project_file", List.of("uploader_id")),
+          Map.entry("invoice_info", List.of("creator_id")));
 
   /**
    * 判断表是否需要权限管理

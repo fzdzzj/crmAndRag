@@ -16,25 +16,6 @@ public interface ApprovalAttachmentService {
   void saveBatch(List<ApprovalAttachmentDTO> approvalAttachmentDTO);
 
   /**
-   * 根据审批ID删除审批附件（已废弃）
-   *
-   * @param ids 审批ID列表
-   * @deprecated
-   */
-  @Deprecated
-  void removeByApprovalIds(List<Long> ids);
-
-  /**
-   * 根据审批ID获取审批附件列表（已废弃）
-   *
-   * @param approvalIds 审批ID列表
-   * @return 审批附件列表
-   * @deprecated 使用 {@link #getByAndIds(List, String)} 替代
-   */
-  @Deprecated
-  List<ApprovalAttachmentVO> getByApprovalIds(List<Long> approvalIds);
-
-  /**
    * 保存附件列表（支持普通上传）（已废弃）
    *
    * @param approvalId 审批ID
