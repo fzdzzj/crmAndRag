@@ -45,7 +45,8 @@ final class BusinessActivityRelationSupport {
             businessActivityUserMapper.existsByActivityIdAndUserId(
                 businessActivityEntity.getId(), userDTO.getUserId());
         if (count == 1) {
-          throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_USER_DUPLICATE);
+          throw new BaseException(
+              ErrorCode.PARAM_FORMAT_ERROR, MessageConstant.BUSINESS_ACTIVITY_USER_DUPLICATE);
         }
         BusinessActivityUserEntity userEntity = new BusinessActivityUserEntity();
         BeanUtils.copyProperties(userDTO, userEntity);
@@ -89,7 +90,9 @@ final class BusinessActivityRelationSupport {
             businessActivityContactMapper.existsByActivityIdAndContactId(
                 businessActivityEntity.getId(), contactDTO.getContactId());
         if (count == 1) {
-          throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_CONTACT_ALREADY_EXIST);
+          throw new BaseException(
+              ErrorCode.PARAM_FORMAT_ERROR,
+              MessageConstant.BUSINESS_ACTIVITY_CONTACT_ALREADY_EXIST);
         }
         BusinessActivityContactEntity contactEntity = new BusinessActivityContactEntity();
         BeanUtils.copyProperties(contactDTO, contactEntity);
@@ -132,7 +135,8 @@ final class BusinessActivityRelationSupport {
           businessActivityContactMapper.existsByActivityIdAndContactId(
               activityId, requestDTO.getContactId());
       if (count > 0) {
-        throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_CONTACT_ALREADY_EXIST);
+        throw new BaseException(
+            ErrorCode.PARAM_FORMAT_ERROR, MessageConstant.BUSINESS_ACTIVITY_CONTACT_ALREADY_EXIST);
       }
 
       // 创建新的关联记录
@@ -162,7 +166,8 @@ final class BusinessActivityRelationSupport {
           businessActivityUserMapper.existsByActivityIdAndUserId(
               activityId, requestDTO.getUserId());
       if (count > 0) {
-        throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_USER_DUPLICATE);
+        throw new BaseException(
+            ErrorCode.PARAM_FORMAT_ERROR, MessageConstant.BUSINESS_ACTIVITY_USER_DUPLICATE);
       }
 
       // 创建新的关联记录

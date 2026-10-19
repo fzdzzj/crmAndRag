@@ -23,30 +23,27 @@ import org.junit.jupiter.api.Test;
  * GlobalExceptionHandler} 降级后对客户端呈现为 {@code code=0}，错误码语义丢失。本测试在源码层把该构造器 在 {@code src/main}
  * 中的使用锁死为「零」，防止后续新代码再次把 code 写丢。
  *
- * <p>唯一豁免：{@code MessageConstant.BUSINESS_ACTIVITY_USER_DUPLICATE} 与 {@code
- * BUSINESS_ACTIVITY_CONTACT_ALREADY_EXIST} 在 {@link ErrorCode} 中确无对应常量，按卡面红线「零新增错误码常量」
- * 单列待裁决并保持原字符串构造，不擅自加码。豁免项以「精确文案 + 出现次数」双约束，新增同类调用会立刻红。
+ * <p>合法形态严格限定为「裸枚举常量」两种：{@code new BaseException(ErrorCode.X)} 与 {@code new
+ * BaseException(ErrorCode.X, 原文案)}。{@code ErrorCode.X.getMessage()} 单参（本卡收敛前的 56 处形态）与 {@code new
+ * BaseException()} 空参一律判违规——前者会让 {@code code} 再次丢失，后者连文案都没有；零豁免。
+ *
+ * <p>原待裁决 4 处（商业活动关联「已存在」）已于返场轮次按 Owner 拍板映射为 {@code PARAM_FORMAT_ERROR}(50002)，白名单随之清空，任何新增单
+ * String 构造都会立刻红。
  */
 @DisplayName("BaseException 单参构造器收敛门禁")
 class BaseExceptionConvergenceTest {
 
-  /** 待裁决豁免（ErrorCode 无对应码，Owner 裁决前保持原样）。 */
-  private static final List<String> PENDING_DECISION_FRAGMENTS =
-      List.of(
-          "MessageConstant.BUSINESS_ACTIVITY_USER_DUPLICATE",
-          "MessageConstant.BUSINESS_ACTIVITY_CONTACT_ALREADY_EXIST");
-
-  /** 待裁决豁免的期望出现次数（4 处：用户重复 ×2 + 联系人重复 ×2）。 */
-  private static final int EXPECTED_PENDING_DECISION_COUNT = 4;
+  /** 允许的实参形态：裸枚举常量，或「裸枚举常量 + 自定义文案」；其余（含 .getMessage()、空参）均违规。 */
+  private static final Pattern ENUM_CONSTRUCTOR_ARGS =
+      Pattern.compile("ErrorCode\\.[A-Z0-9_]+(\\s*,\\s*.+)?");
 
   @Test
-  @DisplayName("src/main 不得再出现 BaseException 单 String 构造（豁免项除外）")
+  @DisplayName("src/main 不得再出现 BaseException 单 String 构造（零豁免）")
   void noSingleStringConstructorInMainSources() throws IOException {
     Path root = Paths.get("src/main/java");
     assertThat(Files.isDirectory(root)).as("源码根目录必须可定位: %s", root.toAbsolutePath()).isTrue();
 
     List<String> offenders = new ArrayList<>();
-    List<String> pendingDecision = new ArrayList<>();
     int totalSites = 0;
 
     try (Stream<Path> files = Files.walk(root)) {
@@ -64,11 +61,7 @@ class BaseExceptionConvergenceTest {
           int argsEnd = matchingParen(flattened, argsStart - 1);
           String args = flattened.substring(argsStart, argsEnd).trim();
           from = argsEnd;
-          if (args.isEmpty() || args.startsWith("ErrorCode.")) {
-            continue;
-          }
-          if (PENDING_DECISION_FRAGMENTS.stream().anyMatch(args::startsWith)) {
-            pendingDecision.add(file.getFileName() + " -> " + args);
+          if (isConvergedArgs(args)) {
             continue;
           }
           offenders.add(file.getFileName() + " -> new BaseException(" + args + ")");
@@ -80,9 +73,6 @@ class BaseExceptionConvergenceTest {
     assertThat(offenders)
         .as("单 String 构造器会让 code 丢失（降级 code=0），必须改用 BaseException(ErrorCode...)：%s", offenders)
         .isEmpty();
-    assertThat(pendingDecision)
-        .as("待裁决豁免项必须是卡面登记的 4 处，新增同类调用必须显式裁决")
-        .hasSize(EXPECTED_PENDING_DECISION_COUNT);
   }
 
   @Test
@@ -112,6 +102,41 @@ class BaseExceptionConvergenceTest {
     assertThat(new BaseException(ErrorCode.DATA_DELETE_FAILED, "删除失败，请注意用户状态").getCode())
         .isEqualTo(91003);
     assertThat(new BaseException(ErrorCode.SYSTEM_BUSY, "生成回款单号失败").getCode()).isEqualTo(90001);
+  }
+
+  @Test
+  @DisplayName("自证：裸枚举常量（单参）与「枚举 + 原文案」（双参）判为合规")
+  void acceptsBareEnumArgsConstructorForms() {
+    assertThat(isConvergedArgs("ErrorCode.PARAM_EMPTY")).isTrue();
+    assertThat(isConvergedArgs("ErrorCode.PARAM_FORMAT_ERROR, MessageConstant.X")).isTrue();
+    assertThat(
+            isConvergedArgs(
+                "ErrorCode.ID_NOT_EXISTS, ErrorCode.ID_NOT_EXISTS.getMessage().formatted(\"客户\")"))
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("自证：.getMessage() 单参 / 空参 / 字符串形态一律判违规（重引入即红）")
+  void rejectsLegacySingleStringArgsConstructorForms() {
+    assertThat(isConvergedArgs("")).as("空参构造 new BaseException() 必须判违规").isFalse();
+    assertThat(isConvergedArgs("ErrorCode.PARAM_EMPTY.getMessage()"))
+        .as("正是本卡收敛前的 56 处形态，必须判违规")
+        .isFalse();
+    assertThat(isConvergedArgs("ErrorCode.ID_NOT_EXISTS.getMessage().formatted(\"客户\")"))
+        .as(".formatted 变体同样不得放行")
+        .isFalse();
+    assertThat(isConvergedArgs("\"用户不存在，请重新登录\"")).as("字符串字面量必须判违规").isFalse();
+    assertThat(isConvergedArgs("MessageConstant.BUSINESS_ACTIVITY_USER_DUPLICATE"))
+        .as("MessageConstant 常量形态必须判违规")
+        .isFalse();
+    assertThat(isConvergedArgs("String.format(ErrorCode.EXCEL_FORMAT_ERROR.getMessage(), 1)"))
+        .as("String.format 包裹的 .getMessage() 必须判违规")
+        .isFalse();
+  }
+
+  /** 实参判定：唯一放行形态是裸枚举常量（可带自定义文案）；空参、字符串、.getMessage() 链式调用全部违规。 */
+  private static boolean isConvergedArgs(String args) {
+    return ENUM_CONSTRUCTOR_ARGS.matcher(args).matches();
   }
 
   /** 从开括号位置起做括号配平，返回配对闭括号下标（参数里含 {@code String.format(...)} 等嵌套调用）。 */
