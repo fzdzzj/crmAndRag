@@ -74,34 +74,24 @@ public class SQLExceptionHandler {
     return result;
   }
 
-  /** 根据唯一索引名映射到业务字段名（需根据实际表结构维护） */
+  /**
+   * 根据唯一索引名映射到业务字段名（映射单源：application.yml 的 slz.database-field-map）。
+   *
+   * <p>索引名格式通常为 "表名.索引名"（如 "sys_user.uk_phone"）；无表名前缀（如缺少必填字段路径传入的裸列名） 或未知索引名时一律回落默认值「数据」。
+   */
   private String getFieldNameByIndex(String indexName) {
-    // 示例：索引名与业务字段的映射关系
-    // 格式通常为 "表名.索引名"，如 "sys_user.uk_phone"
     String[] parts = indexName.split("\\.");
     final String result;
     if (parts.length < 2) {
       result = "数据";
     } else {
-      String index = parts[1]; // 提取索引名（如 'uk_phone'）
-
-      // 维护索引名到业务字段名的映射
-      result =
-          switch (index) {
-            case "uk_phone" -> "手机号";
-            case "uk_email" -> "邮箱";
-            case "uk_company_name" -> "企业名字";
-            case "idx_mobile" -> "联系电话";
-            case "uk_contract_no" -> "合同编号";
-            case "uk_payment_no" -> "支付编号";
-            case "uk_invoice_no" -> "发票编号";
-            default -> "数据"; // 未知索引名，返回默认值
-          };
+      // 提取索引名（如 'uk_phone'）后查配置，未知索引名返回默认值
+      result = databaseFieldMap.getOrDefault(parts[1], "数据");
     }
     return result;
   }
 
-  /** 根据字段名获取该字段的评论 TODO注意维护 */
+  /** 根据字段名获取该字段的中文名（映射单源同上，缺失时回落「未知字段」） */
   private String getNameByIndex(String indexName) {
     return databaseFieldMap.get(indexName) == null ? "未知字段" : databaseFieldMap.get(indexName);
   }
