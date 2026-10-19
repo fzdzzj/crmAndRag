@@ -14,7 +14,7 @@
 - [x] 2.2 PaymentRecordServiceImpl.deleteByIds（:174-190）同型改造（paymentStatus=2），与 2.1 形态对齐
       补勾依据（2026-10-19 同上 diff 实测）：deleteByIds（新 :175-184）＝ `set(getPaymentStatus,2).in(getId,idList)` + `update(null, wrapper)`；两处语句形状逐字对齐（仅实体/状态列/SET 值不同）。
 - [x] 2.3 等价性论证落 handoff：仅更新存在行、返回计数含义、零 @Version/@TableLogic/MetaObjectHandler（立项实测）、重复 id 计数以实际行数为准（行为差异点单列）
-      补勾依据（2026-10-19 `grep -n "@Version|@TableLogic" InvoiceInfoEntity.java PaymentRecordEntity.java` 零命中、`grep -rn "MetaObjectHandler" src/main/java` 零命中实测）：论证见 work/handoff-fix-engineering-debt-nplus1-loop-clone.md §3（含重复 id「旧 2 / 新 1」差异单列）。
+      补勾依据（2026-10-19 `grep -n "@Version|@TableLogic" InvoiceInfoEntity.java PaymentRecordEntity.java` 零命中、`grep -rn "MetaObjectHandler" src/main/java` 零命中实测）：论证见 work/handoff-fix-engineering-debt-nplus1-loop-clone.md §2（含重复 id「旧 2 / 新 1」差异单列）。
 - [x] 2.4 靶向测试：两服务各断言单条 update（SET 状态列 + IN idList）、逐条 selectById/updateById 零调用、返回计数正确
       补勾依据（2026-10-19 `mvn -B -ntp "-Dtest=InvoiceInfoDeleteByIdsBatchTest,PaymentRecordDeleteByIdsBatchTest" test` 实测）：各 Tests run: 3 全绿；捕获 wrapper 断言 sqlSet 含 status= / payment_status=、sqlSegment 含 id IN、参数含状态值 1/2 与两个 id，selectById/updateById never()，计数 2；重复 id 场景计数以实际行数 1 为准。
 
