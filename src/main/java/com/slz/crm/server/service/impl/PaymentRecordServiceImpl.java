@@ -1,6 +1,7 @@
 package com.slz.crm.server.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.slz.crm.common.enumeration.ErrorCode;
@@ -176,17 +177,10 @@ public class PaymentRecordServiceImpl extends ServiceImpl<PaymentRecordMapper, P
       throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
 
-    // 软删除：将回款状态设置为已作废（status=2）
-    int count = 0;
-    for (Long id : idList) {
-      PaymentRecordEntity entity = paymentRecordMapper.selectById(id);
-      if (entity != null) {
-        // 将状态设置为已作废
-        entity.setPaymentStatus(2);
-        count += paymentRecordMapper.updateById(entity);
-      }
-    }
-    return count;
+    // 软删除：将回款状态设置为已作废（paymentStatus=2），单条 IN 批量更新（仅命中存在的行）
+    LambdaUpdateWrapper<PaymentRecordEntity> wrapper = new LambdaUpdateWrapper<>();
+    wrapper.set(PaymentRecordEntity::getPaymentStatus, 2).in(PaymentRecordEntity::getId, idList);
+    return paymentRecordMapper.update(null, wrapper);
   }
 
   @Override

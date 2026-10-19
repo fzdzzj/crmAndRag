@@ -16,7 +16,11 @@ import com.slz.crm.server.mapper.*;
 import com.slz.crm.server.service.UserHandoverService;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -198,18 +202,56 @@ public class UserHandoverServiceImpl extends ServiceImpl<UserHandoverMapper, Use
     return convertToVOPage(result);
   }
 
-  /** 将实体分页结果转换为VO分页结果 */
+  /** 将实体分页结果转换为VO分页结果（页内用户名批量回填，避免逐行 3 次用户查询的 N+1） */
   private Page<UserHandoverVO> convertToVOPage(Page<UserHandoverEntity> entityPage) {
     Page<UserHandoverVO> voPage =
         new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
 
+    List<UserHandoverEntity> entities = entityPage.getRecords();
+    Map<Long, String> userNameMap = batchGetUserNames(entities);
+
     List<UserHandoverVO> voList = new ArrayList<>();
-    for (UserHandoverEntity entity : entityPage.getRecords()) {
-      voList.add(buildHandoverVO(entity));
+    for (UserHandoverEntity entity : entities) {
+      voList.add(
+          UserHandoverVO.fromEntity(
+              entity,
+              userNameMap.get(entity.getFromUserId()),
+              userNameMap.get(entity.getToUserId()),
+              userNameMap.get(entity.getOperatorId())));
     }
     voPage.setRecords(voList);
 
     return voPage;
+  }
+
+  /** 批量取页内 from/to/operator 三类用户姓名：去重后单次 selectBatchIds 建 Map */
+  private Map<Long, String> batchGetUserNames(List<UserHandoverEntity> entities) {
+    Set<Long> userIds = new LinkedHashSet<>();
+    for (UserHandoverEntity entity : entities) {
+      collectUserId(userIds, entity.getFromUserId());
+      collectUserId(userIds, entity.getToUserId());
+      collectUserId(userIds, entity.getOperatorId());
+    }
+
+    Map<Long, String> userNameMap = new HashMap<>();
+    if (!userIds.isEmpty()) {
+      List<UserEntity> users = userMapper.selectBatchIds(userIds);
+      if (users != null) {
+        for (UserEntity user : users) {
+          if (user != null) {
+            userNameMap.put(user.getId(), user.getRealName());
+          }
+        }
+      }
+    }
+    return userNameMap;
+  }
+
+  /** 收集非空用户ID（null 用户ID 在旧逐条实现中本来就不查库、姓名直接为 null） */
+  private static void collectUserId(Set<Long> userIds, Long userId) {
+    if (userId != null) {
+      userIds.add(userId);
+    }
   }
 
   @Override

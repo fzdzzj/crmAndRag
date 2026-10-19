@@ -217,6 +217,9 @@ slz:
   # 未配置时应用启动直接失败（fail-fast），本地开发请在 .env 设置 SLZ_ATTACH_TOKEN_KEY
   attach-token:
     secret-key: ${SLZ_ATTACH_TOKEN_KEY:}
+  # 字段名/唯一索引名 → 业务字段名映射（SQLExceptionHandler 唯一维护点）：
+  # 外键列名（如 user_id）供 handleDataIntegrityViolationException 用，
+  # 唯一索引名（如 uk_phone）供 handleDuplicateKeyException 用。
   database-field-map: '{
     "approval_id": "审批ID",
     "company_id": "客户ID",
@@ -237,7 +240,14 @@ slz:
     "payment_id": "回款ID",
     "applicant_id": "申请人ID",
     "approver_id": "审批人ID",
-    "task_id": "任务ID"}'
+    "task_id": "任务ID",
+    "uk_phone": "手机号",
+    "uk_email": "邮箱",
+    "uk_company_name": "企业名字",
+    "idx_mobile": "联系电话",
+    "uk_contract_no": "合同编号",
+    "uk_payment_no": "支付编号",
+    "uk_invoice_no": "发票编号"}'
   composite-unique-index-map: '{
     "uk_share_unique": "共享",
     "uk_role_permission": "角色权限",
