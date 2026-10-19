@@ -3,13 +3,13 @@
 - 分支：`feature/fix-minor-debt-family`（从权威树 `master` = `370c7d2` 检出）
 - 权威工作树：`D:\code\crmAndRag-merge-add-knowledge-admin-api`
 - 卡面：`openspec/changes/fix-minor-debt-family/{proposal.md,tasks.md}`
-- 状态：**六模块全部落地 + 定向/全量门禁自跑留证；严格停步：未 merge、未 push**，待 Owner 派发 A 档独立复核。
+- 状态：**六模块全部落地 + A 档独立复核（1 MAJOR / 8 MINOR）+ 返场补丁（MAJOR-1 收紧 + 4 处拍板项 + 文档 MINOR）；严格停步：未 merge、未 push**，待 Owner 核验返场证据后提请合并授权。
 
 ---
 
 ## 0. 一句话结论
 
-六项 MINOR 债务全部处置完毕：M-1 把 `src/main` 里 **95 处**「单 String 构造器」调用点收敛到既有 `ErrorCode` 枚举（**零新增错误码常量**，4 处确无对应码者按卡面红线单列待裁决并保持原样）；摄取 BLOCK 统一 96004；摄取改「声明尺寸前置校验 + 有界读取」；assign 补目标用户存在/在职闸（前置于配额行锁）；release 改显式 `UpdateWrapper set null` 真落库；TokenBudget 三个共享可变字段确认无锁后加 `volatile` 并补并发契约断言。
+六项 MINOR 债务全部处置完毕 + A 档复核后的返场补丁：M-1 把 `src/main` 里 **95/95 处**「单 String 构造器」调用点收敛到既有 `ErrorCode` 枚举（**零新增错误码常量**；原 4 处「商业活动关联已存在」待裁决项已于返场轮次按 Owner 拍板映射 `PARAM_FORMAT_ERROR`(50002)，收敛门禁白名单清零）；摄取 BLOCK 统一 96004；摄取改「声明尺寸前置校验 + 有界读取」；assign 补目标用户存在/在职闸（前置于配额行锁）；release 改显式 `UpdateWrapper set null` 真落库；TokenBudget 三个共享可变字段确认无锁后加 `volatile` 并补并发契约断言。
 
 ---
 
@@ -58,11 +58,11 @@
 | 21 | `server/service/impl/UserLoginSupport.java:56` | 该用户角色已被删除，无法登录，请联系管理员 | `ROLE_NOT_EXISTS` | 13001 | 字面语义一致（角色不存在） |
 | 22 | `server/service/impl/UserServiceImpl.java:299` | 删除失败，请注意用户状态 | `DATA_DELETE_FAILED` | 91003 | 字面语义一致（删除失败） |
 | 23 | `server/service/support/UserPasswordSupport.java:50` | 新密码不能与原密码相同 | `PARAM_FORMAT_ERROR` | 50002 | 请求参数校验失败；§127 的 `PASSWORD_ERROR`(92028) 专指旧密校验失败，不复用 |
-| 24 | `server/service/impl/InvoiceInfoServiceImpl.java:72`（与 #2 同点，重列以对齐卡面「InvoiceInfoServiceImpl:70-105 多处」） | — | — | — | — |
+| 24 | `server/service/impl/PaymentRecordServiceImpl.java:70` | 合同不存在 | `CONTRACT_NOT_EXISTS` | 31001 | 与 #2 同语义（原表遗漏此点，返场轮次补漏） |
 
-> 行 24 仅用于对齐卡面行号描述，实际改动点见 #2–#8（InvoiceInfoServiceImpl 共 7 处：72/79/83/105/133/140/181）。
+> 上表 24 行 = 字面量口径的真实 24 处改动点，无占位行；`InvoiceInfoServiceImpl` 共 7 处（72/79/83/105/133/140/181）。
 
-### 1.3 映射表 · `MessageConstant` 13 处（9 映射 + 4 待裁决）
+### 1.3 映射表 · `MessageConstant` 13 处（9 映射 + 4 拍板映射）
 
 | 调用点 | 原 MessageConstant | 新 ErrorCode | code | 理由 |
 | --- | --- | --- | --- | --- |
@@ -73,14 +73,18 @@
 | `PermissionServiceImpl.java:139` | `PERMISSION_IS_NOT_EXIST` | `ID_NOT_EXISTS` | 92008 | 无 `PERMISSION_NOT_EXISTS` 码，取泛化「按 ID 不存在」 |
 | `UserServiceImpl.java:88`、`:243` | `MASTER_IS_ONE` | `ADMIN_EXISTS_ONLY_ONE` | 13002 | 两者文案一字不差（终极管理员只能存在一位） |
 
-**待裁决 4 处（按卡面红线保持原字符串构造，未加码）**：
+**原「待裁决 4 处」→ 返场轮次按 Owner 拍板 b 方案映射（`PARAM_FORMAT_ERROR` 50002，零新增码）**：
 
-| 调用点 | MessageConstant | 文案 | 为什么待裁决 |
-| --- | --- | --- | --- |
-| `BusinessActivityRelationSupport.java:47`、`:160` | `BUSINESS_ACTIVITY_USER_DUPLICATE` | 商业活动用户关联已存在 | 枚举只有 `BUSINESS_ACTIVITY_USER_NOT_EXISTS`（不存在），**没有「已存在」语义**的码 |
-| `BusinessActivityRelationSupport.java:89`、`:130` | `BUSINESS_ACTIVITY_CONTACT_ALREADY_EXIST` | 商业活动联系人已存在 | 同上 |
+| 调用点（`BusinessActivityRelationSupport.java`） | MessageConstant | 文案 | 新 ErrorCode | code | 理由 |
+| --- | --- | --- | --- | --- | --- |
+| `:48`（`applyActivityUserRelations` 新增重复） | `BUSINESS_ACTIVITY_USER_DUPLICATE` | 商业活动用户关联已存在 | `PARAM_FORMAT_ERROR` | 50002 | 请求侧关联重复校验（判存→插入循环内，尚未写库），与同卡 `PermissionServiceImpl:173/190` 先例同口径；无域内「已存在」专用码 |
+| `:165`（`addUserRelations` 已存在关联） | `BUSINESS_ACTIVITY_USER_DUPLICATE` | 商业活动用户关联已存在 | `PARAM_FORMAT_ERROR` | 50002 | 同上 |
+| `:92`（`applyActivityContactRelations` 新增重复） | `BUSINESS_ACTIVITY_CONTACT_ALREADY_EXIST` | 商业活动联系人已存在 | `PARAM_FORMAT_ERROR` | 50002 | 同上 |
+| `:135`（`addContactRelations` 已存在关联） | `BUSINESS_ACTIVITY_CONTACT_ALREADY_EXIST` | 商业活动联系人已存在 | `PARAM_FORMAT_ERROR` | 50002 | 同上 |
 
-> 若 Owner 裁决「用 `PARAM_FORMAT_ERROR`（50002）」或「新增 92016+（违反零新增红线则需解冻）」，这 4 处可一次改完，源码已被收敛门禁测试白名单显式圈定（见 §1.6）。
+- 4 处一致写法：`new BaseException(ErrorCode.PARAM_FORMAT_ERROR, MessageConstant.X)`（2 参保留原常量整串，含 `BUSINESS_ACTIVITY_…:` 前缀，客户端文案与 legacy 逐字一致）。
+- 码断言：`BusinessActivityRelationSupportTest` 4 例（4 个调用方各 1），在真实 service 方法路径断言 `code == 50002` 且 `getMessage()` 等于原常量整串。
+- 收敛门禁白名单随之清零（见 §1.7），任何新增单 String 构造立刻红。
 
 ### 1.4 映射表 · `.getMessage()` 56 处（恒等映射）+ `String.format` 2 处
 
@@ -122,9 +126,11 @@
 
 ### 1.7 收敛门禁测试（防回归）
 
-新增 `src/test/java/com/slz/crm/common/exiception/BaseExceptionConvergenceTest.java`（4 例）：
+新增 `src/test/java/com/slz/crm/common/exiception/BaseExceptionConvergenceTest.java`（**6 例**，返场轮次由 4 例增至 6 例）：
 
-- 源码扫描：`src/main` 下**不得再出现** `BaseException` 非枚举构造；扫描点数量下限断言防止文件遍历假绿；待裁决白名单**精确 4 处**（新增同类调用立刻红）。
+- 源码扫描：`src/main` 下**不得再出现** `BaseException` 非枚举构造；扫描点数量下限断言防止文件遍历假绿；**白名单已清零**（零豁免，任何新增单 String 构造立刻红）。
+- 实参形态**严格枚举匹配**（返场轮次收紧，原 `args.startsWith("ErrorCode.")` 会放行 `.getMessage()`）：只认 `ErrorCode.IDENT` 与 `ErrorCode.IDENT, 原文案`；`.getMessage()` 链式、空参、字符串 / `MessageConstant` / `String.format(...)` 形态一律判违规。
+- 两条负向自证用例：违规样本（含 `.getMessage()`、`String.format(...getMessage())`、空参、字面量、`MessageConstant`）断言判红；合法枚举形态断言判绿。
 - 构造器契约：2 参枚举构造透传真实 code 且保留自定义文案；1 参枚举构造文案取枚举值。
 - 码族抽样：10003 / 92026 / 50002 / 91003 / 90001 各断言一次。
 - 单 String 构造器仍保留（测试可用），仅 `src/main` 禁用。
@@ -181,7 +187,8 @@
   `.set(poolStatus, 公海).set(ownerId, null).set(poolReleaseTime, now).set(poolReleaseReason, reason).eq(id).eq(isDeleted, false)`，`update(null, wrapper)`。
   置空语义按流转状态机「私海→公海写退回痕迹、公海→私海清除痕迹」保持（`casToPrivate` 侧不变）。
 - 靶向测试（`CustomerPoolServiceTest.release_byOwner_updatesAndLogsRelease` 重写）：断言 SQL SET 子句含 4 列、**绑定参数里出现 null**（证明 `owner_id` 置空真进了 SQL 而非被 NOT_NULL 丢弃）、WHERE 含 id、`updateById` 零调用、RELEASE 日志 reason 落库。
-  > 说明：单测是 Mockito 层，无法真连库验证行；「DB 行真被清空」的等价证明 = 显式 SET 子句含 `owner_id` 且绑定参数为 null（这正是 NOT_NULL 策略丢失的部分）。真库回环由既有 `CustomerPoolServiceIT` 系列覆盖语义不变。
+  > 说明：单测是 Mockito 层，无法真连库验证行；「DB 行真被清空」的等价证明 = 显式 SET 子句含 `owner_id` 且绑定参数为 null（这正是 NOT_NULL 策略丢失的部分）。
+  > **证据缺口（返场轮次如实修正）**：全仓**不存在** `CustomerPoolServiceIT`（也没有任何含 release 的 `*IT`），原稿「真库回环由既有 `CustomerPoolServiceIT` 系列覆盖」为不实引用，已删除。release 的「DB 行真清空」**无真库回环实测**，现仅 Mockito 层等价证明；已登记待办池（另卡补 `CustomerPoolReleaseIT`，本卡不新增 IT、不改门禁）。
 
 ---
 
@@ -212,47 +219,49 @@ mvn -B -ntp -o test "-Dtest=BaseExceptionConvergenceTest,DocumentIngestionSizeLi
 
 结果：`Tests run: 103, Failures: 0, Errors: 0, Skipped: 0` / **BUILD SUCCESS**。
 
+返场定向复跑（`mvn -B -ntp -o test "-Dtest=BaseExceptionConvergenceTest,BusinessActivityRelationSupportTest"`，日志 `work/_reentry-targeted.log`）：`Tests run: 10, Failures: 0, Errors: 0, Skipped: 0`（6 + 4）/ **BUILD SUCCESS**。
+
 ### 7.2 全量 `mvn -B -ntp clean verify`
 
-日志：`work/_verify-fix-minor.log`（Docker 在线，Testcontainers MySQL 真跑）。
+日志：`work/_reentry-verify.log`（返场补丁后复跑；Docker 在线，Testcontainers MySQL 真跑）。
 
-- surefire：`Tests run: 1714, Failures: 0, Errors: 0, Skipped: 0`（基线 1697 → **+17**，与 §8 净增例数一致）
-- failsafe：`Tests run: 118, Failures: 0, Errors: 0, Skipped: 7`（与基线 31 报告 / 118 例 / 7 跳过一致）
-- `pmd:check`：0 violations；`BUILD SUCCESS`
+- surefire：`Tests run: 1720, Failures: 0, Errors: 0, Skipped: 0`，报告 **275**（master 基线 1697 → **+23**，与 §8 净增例数一致；首轮 1714 → 返场 +6）
+- failsafe：`Tests run: 118, Failures: 0, Errors: 0, Skipped: 7`，报告 **31**（与基线一致）
+- `pmd:check`：0 violations；checkstyle / spotless / spotbugs 全绿；**BUILD SUCCESS**（EXIT=0）
 - 首次跑曾因 PMD 类级门限红（`CustomerPoolServiceImpl` 77/151 > 75/150），按 §4 抽类后复跑全绿；**该红为保留现场，未绕过任何门禁**。
 
 ### 7.3 基线（surefire/failsafe 回归基线）
 
-- `bash scripts/check-test-baseline.sh --update`（Git Bash，一次性、树净、紧接 clean verify 之后）→ `EXIT=0`：
+- `bash scripts/check-test-baseline.sh --update`（Git Bash，一次性、树净、紧接 clean verify 之后；日志 `work/_reentry-baseline.log`）→ `EXIT=0`：
   ```
-  surefire.reports=274  surefire.tests=1714  surefire.skipped=0
+  surefire.reports=275  surefire.tests=1720  surefire.skipped=0
   failsafe.reports=31   failsafe.tests=118   failsafe.skipped=7
-  # source-revision=f2aebe4  # measured-at=2026-10-19T02:54:27Z
+  # source-revision=0d07514  # measured-at=2026-10-19T05:07:11Z
   ```
 - 校验模式 `bash scripts/check-test-baseline.sh` → `回归基线门禁通过`，`EXIT=0`。
-- 基线笔：`5510db9 test(baseline): update clean baseline to f2aebe4`。
-- 只增不减核对：surefire 1697 → **1714**（+17），failsafe 118 → 118（不变），报告数 270 → 274。
+- 基线笔：`a8d136f test(baseline): update clean baseline to 0d07514`。
+- 只增不减核对：surefire 1697 → **1720**（+23），failsafe 118 → 118（不变），报告数 270 → **275**。
 
 ### 7.4 `merge-gate.sh`
 
-命令：`bash scripts/merge-gate.sh`（默认序列），日志 `work/_mergegate-fix-minor.log`。
+命令：`bash scripts/merge-gate.sh`（默认序列），日志 `work/_reentry-mergegate.log`（HEAD=`a8d136f`）。
 
 **结果：10/10 PASS**，末行 `== merge-gate 通过：所有已执行的子门禁绿 ==`：
 
 | # | 门禁 | 结果 |
 | --- | --- | --- |
-| 1 | `[unit]` surefire | PASS（1714 例） |
-| 2 | `[checkstyle]` | PASS |
+| 1 | `[unit]` surefire | PASS（1720 例） |
+| 2 | `[checkstyle]` | PASS（0 violations） |
 | 3 | `[spotbugs]` High | PASS |
-| 4 | `[spotless]` | PASS |
+| 4 | `[spotless]` | PASS（1128 files clean） |
 | 5 | `[pmd]` | PASS（violations=0） |
-| 6 | `[baseline]` 回归基线 | PASS |
-| 7 | `[frontend-unit]` | PASS |
+| 6 | `[baseline]` 回归基线 | PASS（275/1720 + 31/118/7） |
+| 7 | `[frontend-unit]` | PASS（21 files / 197 tests） |
 | 8 | `[hook]` | PASS |
 | 9 | `[bijection]` | PASS（12 豁免 ↔ 12 High） |
 | 10 | `[pmd-baseline]` | PASS（实测 0 == 登记 0 == pom 0） |
 
-- `frontend/typed-router.d.ts` 被 `[frontend-unit]`（vitest）改写了行尾噪声，**已立即 `git checkout --` 还原**，最终树中该文件零改动。
+- `frontend/typed-router.d.ts` 被 `[frontend-unit]`（vitest）重新生成（生成物噪声，与本分支无关），**已立即 `git checkout --` 还原**，最终树中该文件零改动。
 - `[it]` 默认序列不跑（已由 §7.2 的 `clean verify` 单独覆盖，failsafe 报告即本次产物）。
 
 ---
@@ -261,7 +270,8 @@ mvn -B -ntp -o test "-Dtest=BaseExceptionConvergenceTest,DocumentIngestionSizeLi
 
 | 类型 | 文件 | 例数 | 覆盖 |
 | --- | --- | --- | --- |
-| 新增 | `src/test/java/com/slz/crm/common/exiception/BaseExceptionConvergenceTest.java` | 4 | M-1 源码门禁 + 构造器码透传 |
+| 新增 | `src/test/java/com/slz/crm/common/exiception/BaseExceptionConvergenceTest.java` | 6（返场 +2） | M-1 源码门禁（严格枚举形态）+ 2 例负向自证 + 构造器码透传 |
+| 新增 | `src/test/java/com/slz/crm/server/service/impl/BusinessActivityRelationSupportTest.java` | 4（返场新增） | 原 4 处待裁决映射点：50002 + 原文案 |
 | 新增 | `src/test/java/com/slz/crm/knowledge/document/DocumentIngestionSizeLimitTest.java` | 4 | 尺寸上限前置校验 + 有界读取边界 |
 | 新增 | `src/test/java/com/slz/crm/server/handler/GlobalExceptionHandlerContentRiskTest.java` | 2 | 96004 收口与不泄漏 |
 | 新增 | `src/test/java/com/slz/crm/platform/token/TokenBudgetPropertiesConcurrencyTest.java` | 3 | volatile 契约 + 灰度默认值 |
@@ -269,14 +279,14 @@ mvn -B -ntp -o test "-Dtest=BaseExceptionConvergenceTest,DocumentIngestionSizeLi
 | 修改 | `DocumentIngestionServiceTest.java` | 12（断言增强） | BLOCK 码 96004 |
 | 修改 | `UserPasswordUpdateTest.java` | 4（断言增强） | 新旧密码相同 → 50002 |
 
-> 净新增用例：**17 例**（4 + 4 + 2 + 3 + 4），其余为既有用例的断言增强（不增不减）。surefire 基线只增不减，见 §7.3。
+> 净新增用例：**23 例**（首轮 17 + 返场 2 + 返场 4），其余为既有用例的断言增强（不增不减）。surefire 基线只增不减，见 §7.3。
 
 ---
 
 ## 9. 假设与偏差汇总（复核请逐条看）
 
 1. **M-1 范围超卡面 grep 口径**（24 → 95 处），理由与可回退方案见 §1.1。
-2. **4 处 `MessageConstant` 保持原样**（待裁决），已用门禁测试白名单显式圈定。
+2. **原 4 处 `MessageConstant` 待裁决项已拍板落地**：返场轮次按 Owner 拍板映射 `PARAM_FORMAT_ERROR`(50002) + 保留原文案，收敛门禁白名单清零（不再留待办）。
 3. `InvoiceInfoServiceImpl` 内 `开票信息不存在` 存在 `ID_NOT_EXISTS` 与既有 `DATA_NULL` 两种码（§1.5 ①），未强改既有那处。
 4. `release` 的「DB 行真清空」在单测层以「SQL SET 含 `owner_id` + 绑定参数为 null」等价证明（§5 说明）。
 5. TokenBudget 判定为「确认存在无锁共享可变状态」→ 已修（非弃置）。
@@ -287,4 +297,33 @@ mvn -B -ntp -o test "-Dtest=BaseExceptionConvergenceTest,DocumentIngestionSizeLi
 
 ## 10. 停步声明
 
-按卡面要求**严格停步**：未 `git merge`、未 `git push`。分支 `feature/fix-minor-debt-family` 保留在权威工作树，等待 Owner 派发 A 档独立复核。
+按卡面要求**严格停步**：未 `git merge`、未 `git push`。分支 `feature/fix-minor-debt-family` 保留在权威工作树，等待 Owner 核验返场证据后提请合并授权。
+
+---
+
+## 11. 返场补丁（A 档复核后：MAJOR-1 + 拍板项 + 文档 MINOR）
+
+### 11.1 做了什么
+
+1. **MAJOR-1 收紧（防回归）**：`BaseExceptionConvergenceTest` 原 `args.startsWith("ErrorCode.")` 会放行 `new BaseException(ErrorCode.X.getMessage())` 与本卡收敛前的 56 处形态，也会跳过 `new BaseException()` 空参。改为**严格枚举形态正则** `ErrorCode\.[A-Z0-9_]+(\s*,\s*.+)?`：只认 `ErrorCode.IDENT` 与 `ErrorCode.IDENT, 原文案`；`.getMessage()` 链式、`.formatted(..)` 单参、空参、字符串字面量、`MessageConstant` 常量、`String.format(...getMessage()...)` 全部判违规。
+2. **两条负向自证用例**：`acceptsBareEnumArgsConstructorForms`（合法枚举形态判绿）与 `rejectsLegacySingleStringArgsConstructorForms`（6 个违规样本判红，含 `.getMessage()` 与空参）。
+3. **4 处待裁决按 Owner 拍板 b 方案落地**：`BusinessActivityRelationSupport` 的 `:48/:165`（`BUSINESS_ACTIVITY_USER_DUPLICATE`）与 `:92/:135`（`BUSINESS_ACTIVITY_CONTACT_ALREADY_EXIST`）改为 `new BaseException(ErrorCode.PARAM_FORMAT_ERROR, 原 MessageConstant)`（50002，零新增码，文案整串保留）；门禁白名单**删除**（零豁免），新增 `BusinessActivityRelationSupportTest` 4 例在真实 service 方法路径断言 `code == 50002` 且文案保留。
+4. **文档 MINOR 三处**：映射表补漏 `PaymentRecordServiceImpl:70`（合同不存在 → `CONTRACT_NOT_EXISTS` 31001）并删除原 #24 占位行；`release` 的 `CustomerPoolServiceIT` **不实引用删除**，如实标注「全仓无该 IT、真库回环缺失、登记待办池（另卡补 `CustomerPoolReleaseIT`）」；口径统一为 **95/95 收敛**。
+5. 未做（按提示词边界）：第 4 节「白名单锁点位」仅在未执行第 2 节时必做，本笔已执行第 2 节故白名单直接清零。
+
+### 11.2 证据（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| 定向复跑（`BaseExceptionConvergenceTest` + `BusinessActivityRelationSupportTest`） | `Tests run: 10, Failures: 0, Errors: 0, Skipped: 0` / BUILD SUCCESS（`work/_reentry-targeted.log`） |
+| `mvn -B -ntp clean verify` | surefire **1720/0/0**（275 报告）、failsafe **118/0/0/7**（31 报告）、checkstyle 0、spotless 1128 clean、spotbugs PASS、pmd 0、**BUILD SUCCESS**（`work/_reentry-verify.log`） |
+| 基线 `--update`（树净） | `source-revision=0d07514`、275/1720/0 + 31/118/7，`EXIT=0`；校验模式 `EXIT=0`（`work/_reentry-baseline.log`） |
+| `merge-gate.sh` | **10/10 PASS**，末行「merge-gate 通过」；typed-router 生成物已 checkout 还原（`work/_reentry-mergegate.log`） |
+| 只增不减 | surefire 1697（master）→ **1720**（+23）；failsafe 118 不变；报告 270 → 275 |
+
+### 11.3 新 tip 与提交
+
+- 代码笔 `0d07514 fix(m1): tighten convergence guard and map 4 pending sites to 50002`
+- 基线笔 `a8d136f test(baseline): update clean baseline to 0d07514`
+- 本 handoff/tasks 证据笔（1 行 ASCII subject）紧随其后；三笔均单行 ASCII、线性无 merge，**未 merge、未 push**。
+- 说明：因基线 `--update` 要求树净（`git diff-index --quiet HEAD`），docs 笔只能在基线笔与 merge-gate 之后落，故为 3 笔而非 2 笔——与首轮「docs → baseline → docs」同型。
