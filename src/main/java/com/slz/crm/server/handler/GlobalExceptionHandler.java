@@ -4,6 +4,8 @@ import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.exiception.ServiceException;
 import com.slz.crm.common.result.Result;
+import com.slz.crm.platform.contract.PlatformErrorCode;
+import com.slz.crm.platform.security.ContentRiskBlockedException;
 import com.slz.crm.platform.trace.RequestTraceKey;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Objects;
@@ -71,6 +73,18 @@ public class GlobalExceptionHandler {
       result = Result.error(ex.getMessage());
     }
     return result;
+  }
+
+  /**
+   * 内容风险拦截统一出口（fix-minor-debt-family 任务 2.2）：BLOCK 一律回平台契约码 96004， 不透出命中的具体规则或原始内容；此前该类异常无码，会落
+   * {@code code=0} 兜底。
+   */
+  @ExceptionHandler(ContentRiskBlockedException.class)
+  public Result<String> contentRiskBlocked(
+      ContentRiskBlockedException e, HttpServletRequest request) {
+    log.warn("内容风险拦截：{}，{}", traceContext(request), e.getMessage());
+    return Result.error(
+        PlatformErrorCode.CONTENT_RISK.getCode(), PlatformErrorCode.CONTENT_RISK.getMessage());
   }
 
   @ExceptionHandler(MethodArgumentTypeMismatchException.class)

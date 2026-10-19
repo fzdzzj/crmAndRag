@@ -37,7 +37,8 @@ public final class UserPasswordSupport {
       String encryptedNewPassword) {
     UserEntity user = userMapper.selectById(currentId);
     if (user == null) {
-      throw new BaseException(ErrorCode.ID_NOT_EXISTS.getMessage().formatted("用户"));
+      throw new BaseException(
+          ErrorCode.ID_NOT_EXISTS, ErrorCode.ID_NOT_EXISTS.getMessage().formatted("用户"));
     }
     String decryptedOld = BaseUnit.decryptBase64(encryptedOldPassword);
     String decryptedNew = BaseUnit.decryptBase64(encryptedNewPassword);
@@ -46,7 +47,7 @@ public final class UserPasswordSupport {
       throw new BaseException(ErrorCode.PASSWORD_ERROR);
     }
     if (Objects.equals(decryptedOld, decryptedNew)) {
-      throw new BaseException("新密码不能与原密码相同");
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "新密码不能与原密码相同");
     }
     UserEntity update = new UserEntity();
     update.setId(currentId);

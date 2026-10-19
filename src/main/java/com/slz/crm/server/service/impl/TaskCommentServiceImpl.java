@@ -43,7 +43,7 @@ public class TaskCommentServiceImpl extends ServiceImpl<TaskCommentMapper, TaskC
         || taskCommentDTO.getTaskId() == null
         || taskCommentDTO.getContent() == null
         || taskCommentDTO.getContent().trim().isEmpty()) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR.getMessage());
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR);
     }
     TaskCommentEntity taskCommentEntity = new TaskCommentEntity();
     BeanUtils.copyProperties(taskCommentDTO, taskCommentEntity);
@@ -59,7 +59,7 @@ public class TaskCommentServiceImpl extends ServiceImpl<TaskCommentMapper, TaskC
   @Transactional(rollbackFor = Exception.class)
   public Boolean deleteById(Long id) {
     if (id == null) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR.getMessage());
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR);
     }
     return removeById(id);
   }
@@ -68,7 +68,7 @@ public class TaskCommentServiceImpl extends ServiceImpl<TaskCommentMapper, TaskC
   @Transactional(rollbackFor = Exception.class)
   public Integer deleteByIds(List<Long> idList) {
     if (idList == null || idList.isEmpty()) {
-      throw new BaseException(ErrorCode.PARAM_EMPTY.getMessage());
+      throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
     return taskCommentMapper.deleteBatchIds(idList);
   }
@@ -77,7 +77,7 @@ public class TaskCommentServiceImpl extends ServiceImpl<TaskCommentMapper, TaskC
   @Transactional(rollbackFor = Exception.class)
   public Boolean update(TaskCommentDTO taskCommentDTO) {
     if (taskCommentDTO == null || taskCommentDTO.getId() == null) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR.getMessage());
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR);
     }
 
     TaskCommentEntity entity = new TaskCommentEntity();
@@ -89,12 +89,12 @@ public class TaskCommentServiceImpl extends ServiceImpl<TaskCommentMapper, TaskC
   @Override
   public TaskCommentVO getById(Long id) {
     if (id == null) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR.getMessage());
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR);
     }
 
     TaskCommentEntity entity = taskCommentMapper.selectById(id);
     if (entity == null) {
-      throw new BaseException(ErrorCode.DATA_NULL.getMessage());
+      throw new BaseException(ErrorCode.DATA_NULL);
     }
 
     return convertToVO(entity);

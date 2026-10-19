@@ -45,7 +45,7 @@ public class BusinessActivityContactServiceImpl
   @Transactional(rollbackFor = Exception.class)
   public Integer deleteByIds(List<Long> idList) {
     if (idList == null || idList.isEmpty()) {
-      throw new BaseException(ErrorCode.PARAM_EMPTY.getMessage());
+      throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
     return businessActivityContactMapper.deleteBatchIds(idList);
   }
@@ -137,12 +137,12 @@ public class BusinessActivityContactServiceImpl
   public BusinessActivityContactVO getDetailById(Long id) {
     // 参数校验
     if (id == null) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR.getMessage());
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR);
     }
 
     BusinessActivityContactEntity entity = getById(id);
     if (entity == null) {
-      throw new BaseException(ErrorCode.BUSINESS_ACTIVITY_CONTACT_NOT_EXISTS.getMessage());
+      throw new BaseException(ErrorCode.BUSINESS_ACTIVITY_CONTACT_NOT_EXISTS);
     }
 
     BusinessActivityContactVO vo = new BusinessActivityContactVO();

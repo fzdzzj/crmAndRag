@@ -66,7 +66,7 @@ public class JWTInterceptor implements HandlerInterceptor {
 
       UserEntity user = userMapper.selectById(userID);
       if (user == null) {
-        throw new BaseException("用户不存在，请重新登录");
+        throw new BaseException(ErrorCode.TOKEN_INVALID, "用户不存在，请重新登录");
       }
 
       checkUserStatus(user);

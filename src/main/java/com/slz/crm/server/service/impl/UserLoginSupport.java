@@ -53,7 +53,7 @@ final class UserLoginSupport {
     if (user.getRoleId() != null && user.getRoleId() != 0) {
       RoleEntity role = roleMapper.selectById(user.getRoleId());
       if (role == null || Boolean.TRUE.equals(role.getIsDeleted())) {
-        throw new BaseException("该用户角色已被删除，无法登录，请联系管理员");
+        throw new BaseException(ErrorCode.ROLE_NOT_EXISTS, "该用户角色已被删除，无法登录，请联系管理员");
       }
     }
   }

@@ -1,6 +1,8 @@
 package com.slz.crm.knowledge.document;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.slz.crm.common.enumeration.ErrorCode;
+import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.knowledge.auth.KnowledgeBaseAuthorizationService;
 import com.slz.crm.knowledge.embedding.EmbeddingService;
 import com.slz.crm.knowledge.entity.DocumentVectorChunkEntity;
@@ -54,6 +56,12 @@ public class DocumentIngestionService {
   public static final String REINGEST_EVENT_TYPE = "KNOWLEDGE_REINGEST";
 
   public static final String REINGEST_ACTION = "reingest";
+
+  /**
+   * 单文档摄取字节上限（fix-minor-debt-family 任务 3.1）：与 {@code spring.servlet.multipart.max-file-size} 的
+   * 100MB 对齐——HTTP 层已挡住更大的上传，摄取侧再留一道有界缓冲闸，杜绝直接喂流时的无上限 {@code readAllBytes} 缓冲。
+   */
+  static final long MAX_DOCUMENT_BYTES = 100L * 1024 * 1024;
 
   private final KnowledgeBaseMapper knowledgeBaseMapper;
   private final UploadedFileMapper uploadedFileMapper;
@@ -174,7 +182,10 @@ public class DocumentIngestionService {
     }
 
     // wire-built-unfinished-infra 任务 1.2：先缓冲全文做内容安全评估，BLOCK 在任何存储/落库动作前拒绝
-    byte[] contentBytes = readAllBytes(command.content());
+    // fix-minor-debt-family 任务 3.1：改为「声明尺寸前置校验 + 有界读取」，取代无上限 readAllBytes 全量缓冲；
+    // 超限文件在读流/落库之前即以 PARAM_OUT_OF_RANGE 拒绝，语义方向与 BLOCK 一致（只会更早拒绝）。
+    assertWithinDeclaredSize(command);
+    byte[] contentBytes = readAllBytesBounded(command.content(), MAX_DOCUMENT_BYTES);
     evaluateDocumentSecurity(command, contentBytes);
 
     String documentId = UUID.randomUUID().toString().replace("-", "");
@@ -227,12 +238,37 @@ public class DocumentIngestionService {
     }
   }
 
-  private byte[] readAllBytes(InputStream content) {
+  /** 声明尺寸前置校验：{@code fileSize} 已知时在读流之前拒绝，省掉一次必然作废的全量缓冲。 */
+  private void assertWithinDeclaredSize(DocumentIngestionCommand command) {
+    Long declared = command.fileSize();
+    if (declared != null && declared > MAX_DOCUMENT_BYTES) {
+      throw oversizedDocument(declared);
+    }
+  }
+
+  /**
+   * 有界读取（任务 3.1）：最多读 {@code maxBytes + 1} 字节，超出即中止并拒绝，峰值内存不超过上限。
+   *
+   * <p>用于 {@code fileSize} 缺失或不可信的场景（命令契约里该字段可空），行为与 {@code readAllBytes} 的分块读取一致，
+   * 区别只是不再对任意大小的流无限扩张缓冲。
+   */
+  static byte[] readAllBytesBounded(InputStream content, long maxBytes) {
     try {
-      return content.readAllBytes();
+      byte[] data = content.readNBytes((int) Math.min(maxBytes, Integer.MAX_VALUE - 16L) + 1);
+      if (data.length > maxBytes) {
+        throw oversizedDocument(data.length);
+      }
+      return data;
     } catch (IOException exception) {
       throw new UncheckedIOException("读取文档内容失败", exception);
     }
+  }
+
+  /** 超限统一拒绝：复用既有 PARAM_OUT_OF_RANGE，不新增错误码常量。 */
+  private static BaseException oversizedDocument(long actualBytes) {
+    return new BaseException(
+        ErrorCode.PARAM_OUT_OF_RANGE,
+        "文档超过最大可摄取大小 " + MAX_DOCUMENT_BYTES + " 字节，实际 " + actualBytes + " 字节");
   }
 
   /**

@@ -32,7 +32,8 @@ final class UserDeptSupport {
     }
     SysDeptEntity dept = sysDeptMapper.selectById(deptId);
     if (dept == null) {
-      throw new BaseException(ErrorCode.ID_NOT_EXISTS.getMessage().formatted("部门"));
+      throw new BaseException(
+          ErrorCode.ID_NOT_EXISTS, ErrorCode.ID_NOT_EXISTS.getMessage().formatted("部门"));
     }
     if (!Objects.equals(dept.getStatus(), 1)) {
       throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "部门已停用，请选择启用中的部门");

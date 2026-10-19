@@ -1,6 +1,7 @@
 package com.slz.crm.server.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.enumeration.ModelName;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.pojo.dto.AddActivityContactRequestDTO;
@@ -44,7 +45,8 @@ final class BusinessActivityRelationSupport {
             businessActivityUserMapper.existsByActivityIdAndUserId(
                 businessActivityEntity.getId(), userDTO.getUserId());
         if (count == 1) {
-          throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_USER_DUPLICATE);
+          throw new BaseException(
+              ErrorCode.PARAM_FORMAT_ERROR, MessageConstant.BUSINESS_ACTIVITY_USER_DUPLICATE);
         }
         BusinessActivityUserEntity userEntity = new BusinessActivityUserEntity();
         BeanUtils.copyProperties(userDTO, userEntity);
@@ -62,7 +64,9 @@ final class BusinessActivityRelationSupport {
           businessActivityUserMapper.deleteByActivityIdAndUserId(
               businessActivityEntity.getId(), userDTO.getUserId());
         } else {
-          throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_USER_NOT_EXIST);
+          throw new BaseException(
+              ErrorCode.BUSINESS_ACTIVITY_USER_NOT_EXISTS,
+              MessageConstant.BUSINESS_ACTIVITY_USER_NOT_EXIST);
         }
       }
     }
@@ -86,7 +90,9 @@ final class BusinessActivityRelationSupport {
             businessActivityContactMapper.existsByActivityIdAndContactId(
                 businessActivityEntity.getId(), contactDTO.getContactId());
         if (count == 1) {
-          throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_CONTACT_ALREADY_EXIST);
+          throw new BaseException(
+              ErrorCode.PARAM_FORMAT_ERROR,
+              MessageConstant.BUSINESS_ACTIVITY_CONTACT_ALREADY_EXIST);
         }
         BusinessActivityContactEntity contactEntity = new BusinessActivityContactEntity();
         BeanUtils.copyProperties(contactDTO, contactEntity);
@@ -104,7 +110,9 @@ final class BusinessActivityRelationSupport {
           businessActivityContactMapper.deleteByActivityIdAndContactId(
               businessActivityEntity.getId(), contactDTO.getContactId());
         } else {
-          throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_CONTACT_NOT_EXIST);
+          throw new BaseException(
+              ErrorCode.BUSINESS_ACTIVITY_CONTACT_NOT_EXISTS,
+              MessageConstant.BUSINESS_ACTIVITY_CONTACT_NOT_EXIST);
         }
       }
     }
@@ -127,7 +135,8 @@ final class BusinessActivityRelationSupport {
           businessActivityContactMapper.existsByActivityIdAndContactId(
               activityId, requestDTO.getContactId());
       if (count > 0) {
-        throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_CONTACT_ALREADY_EXIST);
+        throw new BaseException(
+            ErrorCode.PARAM_FORMAT_ERROR, MessageConstant.BUSINESS_ACTIVITY_CONTACT_ALREADY_EXIST);
       }
 
       // 创建新的关联记录
@@ -157,7 +166,8 @@ final class BusinessActivityRelationSupport {
           businessActivityUserMapper.existsByActivityIdAndUserId(
               activityId, requestDTO.getUserId());
       if (count > 0) {
-        throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_USER_DUPLICATE);
+        throw new BaseException(
+            ErrorCode.PARAM_FORMAT_ERROR, MessageConstant.BUSINESS_ACTIVITY_USER_DUPLICATE);
       }
 
       // 创建新的关联记录
@@ -177,7 +187,9 @@ final class BusinessActivityRelationSupport {
       for (Long contactId : contactIds) {
         int count = contactMapper.existsByActivityIdAndContactId(activityId, contactId);
         if (count == 0) {
-          throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_CONTACT_NOT_EXIST);
+          throw new BaseException(
+              ErrorCode.BUSINESS_ACTIVITY_CONTACT_NOT_EXISTS,
+              MessageConstant.BUSINESS_ACTIVITY_CONTACT_NOT_EXIST);
         }
         contactMapper.deleteByActivityIdAndContactId(activityId, contactId);
       }
@@ -191,7 +203,9 @@ final class BusinessActivityRelationSupport {
       for (Long userId : userIds) {
         int count = userRelMapper.existsByActivityIdAndUserId(activityId, userId);
         if (count == 0) {
-          throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_USER_NOT_EXIST);
+          throw new BaseException(
+              ErrorCode.BUSINESS_ACTIVITY_USER_NOT_EXISTS,
+              MessageConstant.BUSINESS_ACTIVITY_USER_NOT_EXIST);
         }
         userRelMapper.deleteByActivityIdAndUserId(activityId, userId);
       }

@@ -193,12 +193,12 @@ public class BusinessActivityServiceImpl
   public BusinessActivityVO getDetailById(Long id) {
     // 参数校验
     if (id == null) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR.getMessage());
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR);
     }
 
     BusinessActivityEntity entity = getById(id);
     if (entity == null) {
-      throw new BaseException(ErrorCode.BUSINESS_ACTIVITY_NOT_EXISTS.getMessage());
+      throw new BaseException(ErrorCode.BUSINESS_ACTIVITY_NOT_EXISTS);
     }
 
     // 相关人校验：创建人/参与人/协助人可见，超管豁免
@@ -257,7 +257,7 @@ public class BusinessActivityServiceImpl
   @Override
   public Integer deleteByIds(List<Long> idList) {
     if (idList == null || idList.isEmpty()) {
-      throw new BaseException(ErrorCode.PARAM_EMPTY.getMessage());
+      throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
 
     // 0. 级联删除协助记录
@@ -349,12 +349,12 @@ public class BusinessActivityServiceImpl
       Long activityId, List<AddActivityContactRequestDTO> contactRequestList) {
     // 参数校验
     if (activityId == null) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR.getMessage());
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR);
     }
 
     // 检查活动是否存在
     if (getById(activityId) == null) {
-      throw new BaseException(ErrorCode.BUSINESS_ACTIVITY_NOT_EXISTS.getMessage());
+      throw new BaseException(ErrorCode.BUSINESS_ACTIVITY_NOT_EXISTS);
     }
 
     if (contactRequestList != null && !contactRequestList.isEmpty()) {
@@ -371,12 +371,12 @@ public class BusinessActivityServiceImpl
       Long activityId, List<AddActivityUserRequestDTO> userRequestList) {
     // 参数校验
     if (activityId == null) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR.getMessage());
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR);
     }
 
     // 检查活动是否存在
     if (getById(activityId) == null) {
-      throw new BaseException(ErrorCode.BUSINESS_ACTIVITY_NOT_EXISTS.getMessage());
+      throw new BaseException(ErrorCode.BUSINESS_ACTIVITY_NOT_EXISTS);
     }
 
     if (userRequestList != null && !userRequestList.isEmpty()) {
@@ -393,12 +393,12 @@ public class BusinessActivityServiceImpl
       Long activityId, BatchDeleteActivityAssociationRequestDTO request) {
     // 参数校验
     if (activityId == null) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR.getMessage());
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR);
     }
 
     // 检查活动是否存在
     if (getById(activityId) == null) {
-      throw new BaseException(ErrorCode.BUSINESS_ACTIVITY_NOT_EXISTS.getMessage());
+      throw new BaseException(ErrorCode.BUSINESS_ACTIVITY_NOT_EXISTS);
     }
 
     if (request != null) {
