@@ -112,21 +112,21 @@ public class CustomerPoolServiceImpl implements CustomerPoolService {
       throw new BaseException(ErrorCode.PERMISSION_DENIED, "只能退回自己负责的客户或由主管操作");
     }
     Long previousOwner = company.getOwnerId();
-    CustomerCompanyEntity update = new CustomerCompanyEntity();
-    update.setId(id);
-    update.setPoolStatus(CustomerPoolConstant.POOL_STATUS_PUBLIC);
-    update.setOwnerId(null);
-    update.setPoolReleaseTime(LocalDateTime.now());
-    update.setPoolReleaseReason(reason == null || reason.isBlank() ? "销售主动放弃" : reason);
-    customerCompanyMapper.updateById(update);
+    String releaseReason = reason == null || reason.isBlank() ? "销售主动放弃" : reason;
+    // fix-minor-debt-family 任务 5.1：实体默认 NOT_NULL 更新策略下 updateById 置 null 是空操作，
+    // 退回公海必须把 owner_id 真正清空，故与 casToPrivate 同型改用显式 UpdateWrapper set null。
+    LambdaUpdateWrapper<CustomerCompanyEntity> releaseUpdate =
+        new LambdaUpdateWrapper<CustomerCompanyEntity>()
+            .set(CustomerCompanyEntity::getPoolStatus, CustomerPoolConstant.POOL_STATUS_PUBLIC)
+            .set(CustomerCompanyEntity::getOwnerId, null)
+            .set(CustomerCompanyEntity::getPoolReleaseTime, LocalDateTime.now())
+            .set(CustomerCompanyEntity::getPoolReleaseReason, releaseReason)
+            .eq(CustomerCompanyEntity::getId, id)
+            .eq(CustomerCompanyEntity::getIsDeleted, false);
+    customerCompanyMapper.update(null, releaseUpdate);
 
     insertLog(
-        id,
-        currentId,
-        CustomerPoolConstant.ACTION_RELEASE,
-        previousOwner,
-        null,
-        update.getPoolReleaseReason());
+        id, currentId, CustomerPoolConstant.ACTION_RELEASE, previousOwner, null, releaseReason);
     runAfterCommit("客户退回公海", id);
     return true;
   }
@@ -144,6 +144,10 @@ public class CustomerPoolServiceImpl implements CustomerPoolService {
     if (!isPoolManager(currentId)) {
       throw new BaseException(ErrorCode.PERMISSION_DENIED, "仅主管或管理员可执行分派");
     }
+    // fix-minor-debt-family 任务 4.1：目标用户存在性 + 在职校验前置于配额行锁，
+    // 既消除「分派给幽灵用户」，也避免 FOR UPDATE 命中不存在行退化为 gap 锁。
+    UserEntity targetUser = userMapper.selectById(dto.getTargetUserId());
+    CustomerPoolTargetUserGuard.assertAssignable(targetUser);
     assertQuotaNotExceeded(dto.getTargetUserId());
 
     Long id = dto.getCompanyId();
@@ -225,8 +229,10 @@ public class CustomerPoolServiceImpl implements CustomerPoolService {
    * 全放行」突破 50 上限。
    *
    * <p>锁序统一为「先锁 sys_user 行，再改 customer_company 行」，与回池/自动回收路径无反向锁序，规避死锁。 持有行 FOR UPDATE 与 UPDATE
-   * 内嵌计数子查询两个备选被否决：前者锁不住并发新认领的行（不在持有行锁集内）， 后者派生表在 RR 下走快照读同样不串行化。目标用户行不存在时退化为现状语义（不新增存在性校验，避免变更
-   * 分派行为面）。
+   * 内嵌计数子查询两个备选被否决：前者锁不住并发新认领的行（不在持有行锁集内）， 后者派生表在 RR 下走快照读同样不串行化。
+   *
+   * <p>分派路径的目标用户存在性由 {@link CustomerPoolTargetUserGuard#assertAssignable} 先行保证，本方法只负责配额锁与计数； 认领路径的
+   * userId 来自登录态，恒存在。
    */
   private void assertQuotaNotExceeded(Long userId) {
     userMapper.selectList(

@@ -207,7 +207,7 @@ class CustomerPoolServiceTest {
   }
 
   @Test
-  @DisplayName("退回：负责人可退回并插入 RELEASE 日志")
+  @DisplayName("退回：负责人可退回，显式 UpdateWrapper 真清空 owner_id 并插入 RELEASE 日志")
   void release_byOwner_updatesAndLogsRelease() {
     CustomerCompanyEntity company = privateCompany(6001L, OPERATOR_ID);
     when(customerCompanyMapper.selectById(6001L)).thenReturn(company);
@@ -215,18 +215,26 @@ class CustomerPoolServiceTest {
 
     assertTrue(service.release(6001L, "客户不匹配"));
 
-    ArgumentCaptor<CustomerCompanyEntity> update =
-        ArgumentCaptor.forClass(CustomerCompanyEntity.class);
-    verify(customerCompanyMapper).updateById(update.capture());
-    assertEquals(CustomerPoolConstant.POOL_STATUS_PUBLIC, update.getValue().getPoolStatus());
-    assertTrue(update.getValue().getOwnerId() == null);
-    assertEquals("客户不匹配", update.getValue().getPoolReleaseReason());
+    // fix-minor-debt-family 任务 5.1：实体 NOT_NULL 策略下 updateById 置空是空操作，必须走显式 set null
+    LambdaUpdateWrapper<CustomerCompanyEntity> wrapper = captureCasUpdate();
+    String sqlSet = wrapper.getSqlSet();
+    assertTrue(sqlSet.contains("pool_status="));
+    assertTrue(sqlSet.contains("owner_id="));
+    assertTrue(sqlSet.contains("pool_release_time="));
+    assertTrue(sqlSet.contains("pool_release_reason="));
+    // SET 子句绑定参数里必须出现 null，证明 owner_id 的置空真的进了 SQL（而非被 NOT_NULL 策略丢弃）
+    assertTrue(wrapper.getParamNameValuePairs().containsValue(null));
+    assertTrue(wrapper.getSqlSegment().contains("id ="));
+    assertTrue(wrapper.getParamNameValuePairs().containsValue(6001L));
+    assertTrue(wrapper.getParamNameValuePairs().containsValue("客户不匹配"));
+    verify(customerCompanyMapper, never()).updateById(any());
 
     ArgumentCaptor<CustomerPoolLogEntity> log =
         ArgumentCaptor.forClass(CustomerPoolLogEntity.class);
     verify(customerPoolLogMapper).insert(log.capture());
     assertEquals(CustomerPoolConstant.ACTION_RELEASE, log.getValue().getActionType());
     assertEquals(Long.valueOf(OPERATOR_ID), log.getValue().getOperatorId());
+    assertEquals("客户不匹配", log.getValue().getReason());
   }
 
   @Test
@@ -241,6 +249,7 @@ class CustomerPoolServiceTest {
     BaseException ex = assertThrows(BaseException.class, () -> service.release(6002L, "x"));
     assertEquals(ErrorCode.PERMISSION_DENIED.getCode(), ex.getCode());
     verify(customerCompanyMapper, never()).updateById(any());
+    verify(customerCompanyMapper, never()).update(any(), any());
     verify(customerPoolLogMapper, never()).insert(any());
   }
 
@@ -279,6 +288,7 @@ class CustomerPoolServiceTest {
   @DisplayName("分派：主管合法分派，CAS 条件更新置私海并插入 ASSIGN 日志")
   void assign_managerHappyPath_updatesAndLogsAssign() {
     when(userMapper.selectById(OPERATOR_ID)).thenReturn(userWithRole(1L));
+    when(userMapper.selectById(8888L)).thenReturn(activeUser(8888L, 5L));
     when(customerCompanyMapper.selectCount(any())).thenReturn(5L); // 目标配额未满
     CustomerCompanyEntity company = publicCompany(7002L);
     when(customerCompanyMapper.selectById(7002L)).thenReturn(company);
@@ -291,6 +301,11 @@ class CustomerPoolServiceTest {
     dto.setReason("重点客户跟进");
 
     assertTrue(service.assign(dto));
+
+    // 目标用户存在性/在职校验必须先于配额行锁（fix-minor-debt-family 任务 4.1）
+    InOrder order = inOrder(userMapper);
+    order.verify(userMapper).selectById(8888L);
+    order.verify(userMapper).selectList(any());
 
     LambdaUpdateWrapper<CustomerCompanyEntity> cas = captureCasUpdate();
     String sqlSet = cas.getSqlSet();
@@ -316,6 +331,7 @@ class CustomerPoolServiceTest {
   @DisplayName("分派：CAS affected=0（并发被抢）抛状态变更错误且零副作用")
   void assign_casConflict_throwsWithNoSideEffects() {
     when(userMapper.selectById(OPERATOR_ID)).thenReturn(userWithRole(1L));
+    when(userMapper.selectById(8888L)).thenReturn(activeUser(8888L, 5L));
     when(customerCompanyMapper.selectCount(any())).thenReturn(10L);
     when(customerCompanyMapper.selectById(7002L)).thenReturn(publicCompany(7002L));
     when(customerCompanyMapper.update(any(), any())).thenReturn(0); // 并发先到者已抢走
@@ -329,6 +345,61 @@ class CustomerPoolServiceTest {
     assertTrue(ex.getMessage().contains("已被他人认领"));
     verifyNoInteractions(customerPoolLogMapper);
     verify(customerCompanyMapper, never()).updateById(any());
+  }
+
+  @Test
+  @DisplayName("分派：目标用户不存在时拒绝，且不进入配额行锁（不产生 gap 锁）")
+  void assign_targetUserMissing_rejectedBeforeQuotaLock() {
+    when(userMapper.selectById(OPERATOR_ID)).thenReturn(userWithRole(1L));
+    when(userMapper.selectById(8888L)).thenReturn(null);
+
+    CustomerPoolAssignDTO dto = new CustomerPoolAssignDTO();
+    dto.setCompanyId(7001L);
+    dto.setTargetUserId(8888L);
+
+    BaseException ex = assertThrows(BaseException.class, () -> service.assign(dto));
+    assertEquals(ErrorCode.ID_NOT_EXISTS.getCode(), ex.getCode());
+    assertTrue(ex.getMessage().contains("目标业务员"));
+    // 存在性校验前置于配额闸：既无 FOR UPDATE 锁，也无计数/写库/日志
+    verify(userMapper, never()).selectList(any());
+    verify(customerCompanyMapper, never()).selectCount(any());
+    verify(customerCompanyMapper, never()).update(any(), any());
+    verify(customerCompanyMapper, never()).updateById(any());
+    verifyNoInteractions(customerPoolLogMapper);
+  }
+
+  @Test
+  @DisplayName("分派：目标用户冻结（roleId=0）拒绝，复用 USER_IS_FROZEN 码")
+  void assign_targetUserFrozen_rejected() {
+    assertAssignTargetRejected(activeUser(8888L, 0L, 0), ErrorCode.USER_IS_FROZEN);
+  }
+
+  @Test
+  @DisplayName("分派：目标用户离职（roleId=2）拒绝，复用 USER_IS_QUIT 码")
+  void assign_targetUserQuit_rejected() {
+    assertAssignTargetRejected(activeUser(8888L, 2L, 0), ErrorCode.USER_IS_QUIT);
+  }
+
+  @Test
+  @DisplayName("分派：目标用户其他非正常状态拒绝，复用 USER_STATUS_EXCEPTION 码")
+  void assign_targetUserStatusAbnormal_rejected() {
+    assertAssignTargetRejected(activeUser(8888L, 5L, 0), ErrorCode.USER_STATUS_EXCEPTION);
+  }
+
+  /** 目标用户非法时统一断言：码透传 + 未进入配额锁与写库。 */
+  private void assertAssignTargetRejected(UserEntity target, ErrorCode expected) {
+    when(userMapper.selectById(OPERATOR_ID)).thenReturn(userWithRole(1L));
+    when(userMapper.selectById(8888L)).thenReturn(target);
+
+    CustomerPoolAssignDTO dto = new CustomerPoolAssignDTO();
+    dto.setCompanyId(7001L);
+    dto.setTargetUserId(8888L);
+
+    BaseException ex = assertThrows(BaseException.class, () -> service.assign(dto));
+    assertEquals(expected.getCode(), ex.getCode());
+    verify(userMapper, never()).selectList(any());
+    verify(customerCompanyMapper, never()).update(any(), any());
+    verifyNoInteractions(customerPoolLogMapper);
   }
 
   @Test
@@ -356,6 +427,19 @@ class CustomerPoolServiceTest {
     UserEntity u = new UserEntity();
     u.setId(OPERATOR_ID);
     u.setRoleId(roleId);
+    return u;
+  }
+
+  /** 在职正常用户（status=1）：分派目标用户的合法形态。 */
+  private UserEntity activeUser(Long id, Long roleId) {
+    return activeUser(id, roleId, 1);
+  }
+
+  private UserEntity activeUser(Long id, Long roleId, Integer status) {
+    UserEntity u = new UserEntity();
+    u.setId(id);
+    u.setRoleId(roleId);
+    u.setStatus(status);
     return u;
   }
 }
