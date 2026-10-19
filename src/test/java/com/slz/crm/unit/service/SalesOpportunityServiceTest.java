@@ -4,19 +4,24 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.slz.crm.common.enumeration.ErrorCode;
+import com.slz.crm.common.enumeration.ModelName;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.BaseUnit;
+import com.slz.crm.common.untils.ForeignKeyDeleteUtil;
 import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.dto.SalesOpportunityDTO;
+import com.slz.crm.pojo.entity.ApprovalAttachmentEntity;
 import com.slz.crm.pojo.entity.SalesOpportunityEntity;
 import com.slz.crm.pojo.entity.SalesStageApprovalEntity;
 import com.slz.crm.server.mapper.SalesOpportunityMapper;
 import com.slz.crm.server.mapper.SalesStageApprovalMapper;
+import com.slz.crm.server.service.ApprovalAttachmentService;
 import com.slz.crm.server.service.impl.SalesOpportunityServiceImpl;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -24,6 +29,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -41,6 +47,8 @@ class SalesOpportunityServiceTest {
 
   @Mock private SalesOpportunityMapper salesOpportunityMapper;
   @Mock private SalesStageApprovalMapper salesStageApprovalMapper;
+  @Mock private ApprovalAttachmentService approvalAttachmentService;
+  @Mock private ForeignKeyDeleteUtil foreignKeyDeleteUtil;
   @InjectMocks private SalesOpportunityServiceImpl salesOpportunityService;
 
   @BeforeEach
@@ -125,6 +133,59 @@ class SalesOpportunityServiceTest {
     verify(salesStageApprovalMapper, never())
         .selectApprovedApprovalsByOpportunityId(any(Long.class));
     verify(salesOpportunityMapper).updateById(any(SalesOpportunityEntity.class));
+  }
+
+  @Test
+  @DisplayName("删除商机：先按 (model_name=approval_attachment, approvalIds) 收集附件并 canonical 删除，再走级联")
+  void shouldDeleteStageApprovalAttachmentsBeforeCascade() {
+    long opportunityId = 3001L;
+    when(salesOpportunityMapper.selectById(opportunityId))
+        .thenReturn(opportunity(opportunityId, 5));
+
+    SalesStageApprovalEntity first = new SalesStageApprovalEntity();
+    first.setId(41L);
+    SalesStageApprovalEntity second = new SalesStageApprovalEntity();
+    second.setId(42L);
+    when(salesStageApprovalMapper.selectAllApprovalsByOpportunityId(opportunityId))
+        .thenReturn(List.of(first, second));
+
+    ApprovalAttachmentEntity attachment = new ApprovalAttachmentEntity();
+    attachment.setId(71L);
+    when(approvalAttachmentService.listEntitiesByAndIds(
+            List.of(41L, 42L), ModelName.APPROVAL_ATTACHMENT))
+        .thenReturn(List.of(attachment));
+    when(salesOpportunityMapper.logicalDeleteById(opportunityId)).thenReturn(Boolean.TRUE);
+
+    assertTrue(salesOpportunityService.delete(opportunityId));
+
+    // 补删必须走 canonical removeByIds（model 判别 + 磁盘清理），且必须发生在级联物理删审批之前
+    InOrder order = inOrder(approvalAttachmentService, foreignKeyDeleteUtil);
+    order
+        .verify(approvalAttachmentService)
+        .listEntitiesByAndIds(List.of(41L, 42L), ModelName.APPROVAL_ATTACHMENT);
+    order
+        .verify(approvalAttachmentService)
+        .removeByIds(List.of(71L), ModelName.APPROVAL_ATTACHMENT);
+    order
+        .verify(foreignKeyDeleteUtil)
+        .deleteCascade(SalesOpportunityEntity.class, List.of(opportunityId), 0);
+  }
+
+  @Test
+  @DisplayName("删除商机：无阶段审批时不做附件补删")
+  void shouldSkipAttachmentCleanupWhenNoStageApprovals() {
+    long opportunityId = 3002L;
+    when(salesOpportunityMapper.selectById(opportunityId))
+        .thenReturn(opportunity(opportunityId, 5));
+    when(salesStageApprovalMapper.selectAllApprovalsByOpportunityId(opportunityId))
+        .thenReturn(List.of());
+    when(salesOpportunityMapper.logicalDeleteById(opportunityId)).thenReturn(Boolean.TRUE);
+
+    assertTrue(salesOpportunityService.delete(opportunityId));
+
+    verify(approvalAttachmentService, never()).listEntitiesByAndIds(any(), any());
+    verify(foreignKeyDeleteUtil)
+        .deleteCascade(SalesOpportunityEntity.class, List.of(opportunityId), 0);
   }
 
   private SalesOpportunityDTO dto(Long id, int stage) {

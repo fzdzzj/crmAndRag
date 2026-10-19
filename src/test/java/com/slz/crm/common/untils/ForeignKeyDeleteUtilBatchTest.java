@@ -54,14 +54,18 @@ class ForeignKeyDeleteUtilBatchTest {
   private static final String MAIN_MAPPER = "customerContactMapper";
 
   /**
-   * 已知死映射（pre-existing 配置漂移，本卡 CI 实测暴露，已登记待办池）： {@code approval_attachment} 既无 {@code approval_id}
-   * 列（V1 基座为 {@code and_id}）， {@code ApprovalAttachmentEntity} 也无 {@code approvalId} 属性；{@code
-   * ForeignKeyConfig} 的这一条从 Wave 0 起即不可解析。 语义后果：生产环境 {@code TableInfo} 已初始化，删除销售机会 → 阶段审批 →
-   * 附件这条级联会抛 {@code ID_NOT_EXISTS}， 修法（{@code and_id} 语义是「关联表 ID」泛字段，直接改列名会在多 model 间误删）需 Owner
-   * 定夺，故本卡只做测试确定性收口。
+   * 已知死映射登记表（fix-approval-attachment-cascade-dead-edge 后清空）。
+   *
+   * <p>历史：{@code approval_attachment} 既无 {@code approval_id} 列（真库只有多态列 {@code and_id}），{@code
+   * ApprovalAttachmentEntity} 也无 {@code approvalId} 属性，{@code ForeignKeyConfig} 的这条边从 Wave 0
+   * 起即不可解析；生产环境 {@code TableInfo} 已初始化时删除销售机会会抛 {@code ID_NOT_EXISTS}（见 Card
+   * fix-approval-attachment-cascade-dead-edge）。 该死边已从 {@code ForeignKeyConfig} 移除，附件改由商机删除路径按
+   * {@code (model_name, and_id)} 显式补删，故本登记表为空。
+   *
+   * <p><b>语义保持</b>：{@link #cascadeGraph(Class)} 仍按「实体是否真实声明该属性」过滤边并与本表精确对表——任何**新增**死映射
+   * （配置里写了实体不存在的属性）都会让本类立即转红，不依赖 MP {@code TableInfo} 的 JVM 初始化顺序。
    */
-  private static final Set<String> KNOWN_DEAD_RELATIONS =
-      Set.of("ApprovalAttachmentEntity#approvalId");
+  private static final Set<String> KNOWN_DEAD_RELATIONS = Set.of();
 
   private Map<String, BaseMapper> mappers;
   private ForeignKeyDeleteUtil util;

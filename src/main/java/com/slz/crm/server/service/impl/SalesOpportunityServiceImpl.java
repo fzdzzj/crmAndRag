@@ -20,6 +20,7 @@ import com.slz.crm.server.mapper.CustomerCompanyMapper;
 import com.slz.crm.server.mapper.CustomerContactMapper;
 import com.slz.crm.server.mapper.SalesOpportunityMapper;
 import com.slz.crm.server.mapper.UserMapper;
+import com.slz.crm.server.service.ApprovalAttachmentService;
 import com.slz.crm.server.service.AssistRequestService;
 import com.slz.crm.server.service.AssistScopeService;
 import com.slz.crm.server.service.BusinessRecordAccessService;
@@ -50,6 +51,9 @@ public class SalesOpportunityServiceImpl
   @Autowired private com.slz.crm.server.mapper.SalesStageApprovalMapper salesStageApprovalMapper;
   @Autowired private DataConvertService dataConvertService;
   @Autowired private AssistRequestService assistRequestService;
+
+  /** 审批附件服务：商机删除前显式清理其阶段审批附件（canonical 删除=DB 物理删+磁盘清理）。 */
+  @Autowired private ApprovalAttachmentService approvalAttachmentService;
 
   @Autowired private BusinessRecordAccessService businessRecordAccessService;
   @Autowired private AssistScopeService assistScopeService;
@@ -153,6 +157,10 @@ public class SalesOpportunityServiceImpl
       throw new BaseException(ErrorCode.OPPORTUNITY_MUST_BE_CLOSED, msg);
     }
 
+    // fix-approval-attachment-cascade-dead-edge：阶段审批附件属于审批行，必须在级联物理删审批之前显式清理
+    // （附件表是多态表 and_id+model_name，级联机器不能裸列级联；canonical 删除含磁盘清理）。
+    deleteStageApprovalAttachments(id);
+
     foreignKeyDeleteUtil.deleteCascade(SalesOpportunityEntity.class, List.of(id), 0);
     boolean deleted = salesOpportunityMapper.logicalDeleteById(id);
 
@@ -162,6 +170,48 @@ public class SalesOpportunityServiceImpl
         () -> SalesOpportunitySemanticHookSupport.deleteById(id, salesOpportunityIngestionService));
 
     return deleted;
+  }
+
+  /**
+   * 删除商机名下阶段审批的全部附件（fix-approval-attachment-cascade-dead-edge 任务 2.2）。
+   *
+   * <p><b>为什么必须显式补删</b>：{@code approval_attachment} 是多态附件表（{@code and_id} + {@code model_name}
+   * 判别），且无 {@code is_deleted} 列——删除语义是「DB 物理删 + 磁盘文件清理」。级联机器只能按单列外键递归，无法携带 {@code model_name}
+   * 判别条件（裸 {@code and_id} 级联会误删 {@code business_activity} 等其他模型同 id 的附件），也无法承载子删除的磁盘 IO， 故按 {@code
+   * (ModelName.APPROVAL_ATTACHMENT, approvalIds)} 精确收集后走 canonical {@link
+   * ApprovalAttachmentService#removeByIds}，与 {@code SalesStageApprovalController#deleteStage} 同型。
+   *
+   * <p><b>鉴权差异</b>：{@code deleteStage} 是「单条审批附件删除」的独立业务入口，须逐附件做 {@code canWriteAttachments}
+   * 判定；本方法是「商机删除」的级联清理，调用方（商机删除端点）已完成业务对象级删除权校验，级联过程不再逐附件鉴权， 否则同一事务内的清理会因附件上传人不同而部分失败。差异与理由见
+   * handoff。
+   *
+   * @param opportunityId 商机ID
+   */
+  private void deleteStageApprovalAttachments(Long opportunityId) {
+    List<SalesStageApprovalEntity> approvals =
+        salesStageApprovalMapper.selectAllApprovalsByOpportunityId(opportunityId);
+    if (approvals == null || approvals.isEmpty()) {
+      return;
+    }
+    List<Long> approvalIds =
+        approvals.stream()
+            .map(SalesStageApprovalEntity::getId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toList());
+    if (approvalIds.isEmpty()) {
+      return;
+    }
+    List<ApprovalAttachmentEntity> attachments =
+        approvalAttachmentService.listEntitiesByAndIds(approvalIds, ModelName.APPROVAL_ATTACHMENT);
+    if (attachments == null || attachments.isEmpty()) {
+      return;
+    }
+    List<Long> attachmentIds =
+        attachments.stream()
+            .map(ApprovalAttachmentEntity::getId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toList());
+    approvalAttachmentService.removeByIds(attachmentIds, ModelName.APPROVAL_ATTACHMENT);
   }
 
   @Override
