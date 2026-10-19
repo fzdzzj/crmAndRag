@@ -190,28 +190,26 @@ public class SalesOpportunityServiceImpl
   private void deleteStageApprovalAttachments(Long opportunityId) {
     List<SalesStageApprovalEntity> approvals =
         salesStageApprovalMapper.selectAllApprovalsByOpportunityId(opportunityId);
-    if (approvals == null || approvals.isEmpty()) {
-      return;
-    }
     List<Long> approvalIds =
-        approvals.stream()
-            .map(SalesStageApprovalEntity::getId)
-            .filter(Objects::nonNull)
-            .collect(Collectors.toList());
-    if (approvalIds.isEmpty()) {
-      return;
+        approvals == null
+            ? List.of()
+            : approvals.stream()
+                .map(SalesStageApprovalEntity::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+    if (!approvalIds.isEmpty()) {
+      List<ApprovalAttachmentEntity> attachments =
+          approvalAttachmentService.listEntitiesByAndIds(
+              approvalIds, ModelName.APPROVAL_ATTACHMENT);
+      if (attachments != null && !attachments.isEmpty()) {
+        List<Long> attachmentIds =
+            attachments.stream()
+                .map(ApprovalAttachmentEntity::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        approvalAttachmentService.removeByIds(attachmentIds, ModelName.APPROVAL_ATTACHMENT);
+      }
     }
-    List<ApprovalAttachmentEntity> attachments =
-        approvalAttachmentService.listEntitiesByAndIds(approvalIds, ModelName.APPROVAL_ATTACHMENT);
-    if (attachments == null || attachments.isEmpty()) {
-      return;
-    }
-    List<Long> attachmentIds =
-        attachments.stream()
-            .map(ApprovalAttachmentEntity::getId)
-            .filter(Objects::nonNull)
-            .collect(Collectors.toList());
-    approvalAttachmentService.removeByIds(attachmentIds, ModelName.APPROVAL_ATTACHMENT);
   }
 
   @Override
