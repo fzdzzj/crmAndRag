@@ -31,5 +31,5 @@
       补勾依据（2026-10-19 `D:\git\Git\bin\bash.exe scripts/check-test-baseline.sh --update` UPDATE_EXIT=0，写入 source-revision=56ca735：surefire 283/1779/0、failsafe 32/119/7；复跑校验模式 CHECK_EXIT=0；基线笔 5ec0793；日志 work/evidence/baseline-update.log、baseline-check.log）
 - [x] 4.3 merge-gate.sh 10/10（typed-router 噪声 checkout 还原）
       补勾依据（2026-10-19 `D:\git\Git\bin\bash.exe scripts/merge-gate.sh` GATE_EXIT=0，10 个 PASS：[unit]/[checkstyle]/[spotbugs]/[spotless]/[pmd]/[baseline]/[frontend-unit]/[hook]/[bijection]/[pmd-baseline]；typed-router.d.ts 噪声已 `git checkout --` 还原，frontend/ 零 diff；日志 work/evidence/merge-gate.log）
-- [x] 4.4 handoff + tasks 勾选 + 任务卡随 docs 笔提交；严格停步未 merge 未 push
-      补勾依据（2026-10-19 handoff 落 work/handoff-fix-approval-attachment-cascade-dead-edge.md，tasks 全勾，docs 笔见 branch 末笔；分支 feature/fix-approval-attachment-cascade-dead-edge 保留，未 merge、未 push；任务卡按执行提示词「不入库」保持未跟踪，差异见 handoff §12 D2）
+- [x] 4.4 handoff + tasks 勾选 + proposal/tasks 随 docs 笔提交；严格停步未 merge 未 push
+      补勾依据（2026-10-19 handoff 落 work/handoff-fix-approval-attachment-cascade-dead-edge.md，tasks 全勾；**随分支提交的是 proposal.md 与 tasks.md**（openspec/changes/fix-approval-attachment-cascade-dead-edge/ 下，见 branch docs 笔），**任务卡不入库**——work/task-card-fix-approval-attachment-cascade-dead-edge.md 因 work/ 根被 .gitignore 覆盖且未 `git add -f`，全程保持未跟踪；分支 feature/fix-approval-attachment-cascade-dead-edge 保留，未 merge、未 push）

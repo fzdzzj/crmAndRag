@@ -83,6 +83,18 @@ deleteStageApprovalAttachments(opportunityId):
 - 红线核对：未改迁移、未加依赖、未新增错误码、未动冻结契约、`frontend/` 零 diff、附件删除仅走 `removeByIds`（无 mapper 裸删）、
   未把 `and_id` 裸列写进级联图。
 
+### 3.4 事务边界：DB 原子、磁盘清理非事务
+
+`removeByIds(ids, modelName)`（`ApprovalAttachmentServiceImpl:90-107`）的执行序是 **先 `IOUtils.deleteFile(entities)` 删磁盘、后
+`deleteBatchIds(ids)` 删行**，两步都在 `@Transactional` 内，但**磁盘操作不受事务保护**。由此确立本卡边界：
+
+- **DB 侧原子**：`delete(id)` 整体在一个事务内；任何后续步骤抛错（如其它子表的级联异常）都会连带回滚附件行删除，不留半删状态。
+- **磁盘侧非事务**：一旦文件已物理删除而事务随后回滚，DB 行会被恢复成「指向已消失文件」的悬挂行——这是**既有 canonical 口径**的固有
+  性质（`removeByIds` 全仓共用，本卡未改动其顺序），不是本卡引入的缺陷，也不在本卡写集内修。
+- 反之（DB 删成功、磁盘删失败）不会发生：`IOUtils.deleteFile` 抛错时 `deleteBatchIds` 尚未执行。
+- 顺序选择（补删先于级联）在本卡不放大该风险：附件收集→删文件→删行都在同一事务、且早于级联，级联若抛错只会让「磁盘已删、DB 回滚」
+  这一既有窗口出现在补删目标上；本卡已用 IT 覆盖正常路径，异常路径按上述边界如实记录、交后续卡硬化（见 §6 F3 与待办池）。
+
 ---
 
 ## 4. 鉴权差异论证（级联清理 vs `deleteStage`）
@@ -100,8 +112,11 @@ deleteStageApprovalAttachments(opportunityId):
 ## 5. registry 清空与门禁语义保持
 
 - `KNOWN_DEAD_RELATIONS = Set.of()`（`ForeignKeyDeleteUtilBatchTest:68`）：死边不复存在，`dropped` 断言集为空。
-- 「新增死映射即红」语义**未削弱**：`cascadeGraph` 仍按「实体（含父类）是否真实声明该属性」逐边过滤，并与登记表 `assertEquals` 精确对表——
-  任何未来把不存在的属性写进 `ForeignKeyConfig` 的改动都会立刻转红，且完全不依赖 MP `TableInfo` 的 JVM 初始化顺序（这正是 2026-10-19 CI 首红的根因）。
+- 「新增死映射即红」语义**未削弱，但覆盖面须如实限定为「联系人根可达子图内」**：夹具 `newFixture` 只以
+  `cascadeGraph(CustomerContactEntity.class)`（:149）建图，`assertEquals(KNOWN_DEAD_RELATIONS, dropped)`（:196）也只在该图上执行——
+  故准确口径是「**联系人根可达子图内新增死映射即红**」；该子图之外的实体（如只挂在 `SYS_USER_RELATIONS` / `PERMISSIONS_RELATIONS` 下的
+  条目）若被写入不存在的属性，本类**不会**转红。`cascadeGraph` 本身按「实体（含父类）是否真实声明该属性」逐边过滤，且不依赖 MP
+  `TableInfo` 的 JVM 初始化顺序（这正是 2026-10-19 CI 首红的根因），这一机制未变。
 - 代价：本类不再承担「已知死边白名单」职能，登记表回到空集（基线语境下的最严档）。
 
 ---
@@ -115,6 +130,8 @@ deleteStageApprovalAttachments(opportunityId):
 | `CustomerContactEntity` | `CustomerContactServiceImpl#deleteByIds:261`、`#logicalDeleteByCascade:426`、`#batch...:437` | `CUSTOMER_CONTACT_RELATIONS → SalesOpportunityEntity(contact_id) → SalesStageApprovalEntity(opportunity_id)` | **是** | **未补删（F1）**：同上 |
 | `ContractEntity` | `ContractServiceImpl:291` | `contract → contract_order_item/payment_record/invoice_info` | 否 | 不涉及 |
 | `ContractOrderItemEntity` | `ContractOrderItemServiceImpl:101` | `contract_order_item → payment_record → invoice_info` | 否 | 不涉及 |
+| `BusinessActivityEntity` | 自身 `BusinessActivityServiceImpl#deleteByIds:258`（经 `BusinessActivityRelationSupport#deleteAttachmentsForActivity:242` 走 canonical `removeByIds`） | 自身直删清附件；**作为子表被物理级联删**：`CUSTOMER_COMPANY_RELATIONS:113`(companyId) / `SALES_OPPORTUNITY_RELATIONS:151`(opportunityId) / `SYS_USER_RELATIONS:180`(creatorId) | 否 | 走自身服务时已清；**走父对象级联时不经过该服务 → 附件孤儿（F3）**：`model_name=business_activity` 行 + 磁盘文件残留 |
+| `ContactTaskEntity` | 自身 `ContactTaskServiceImpl#deleteByIds:119` / `#deleteById:145`（`removeByAndIds` 含磁盘清理） | 自身直删清附件；**作为子表被物理级联删**：`CUSTOMER_COMPANY_RELATIONS:115`(companyId) / `CUSTOMER_CONTACT_RELATIONS:133`(contactId) / `SALES_OPPORTUNITY_RELATIONS:154`(opportunityId) | 否 | 走自身服务时已清；**走父对象级联时同上 → 附件孤儿（F3）**：`model_name=contact_task` 行 + 磁盘文件残留。含本卡修复的商机根：商机级联会物理删 `contact_task`/`business_activity` 子行，但只补删了阶段审批附件 |
 
 - **与任务卡预期不一致**：卡里写「预期仅商机删除一处」，实测为 **3 根**（商机 / 公司 / 联系人）。如实列出，未擅自扩写集。
 - 补充边界（同一盘点）：`CustomerCompanyServiceImpl#deleteById:271`（逻辑删公司）与 `#cascadeDeleteByCompanyId:298` /
@@ -124,6 +141,12 @@ deleteStageApprovalAttachments(opportunityId):
 - **F1（交后续卡，本卡不扩写集）**：公司/联系人删除路径的审批附件清理缺失。建议把 `deleteStageApprovalAttachments` 抽成可复用支持类，由三根共用（或统一收口到「附件随审批行删除」的单一入口）。风险量级：不崩、不越权，只是残留 DB 行 + 磁盘文件（孤儿），可由后续卡按同一 canonical 口径补齐。
 - **F2（顺带发现，未处理）**：`ForeignKeyConfig:95` 把 `TaskCommentEntity(taskId)` 挂在 `CUSTOMER_CONTACT_RELATIONS` 下（注释写的是「合同任务表」），
   即联系人删除会按 `task_comment.task_id == 联系人 id` 命中他人任务评论——Wave 0 起的既有配置漂移，不在本卡写集，建议单独立卡。
+- **F3（同一盘点的附件孤儿面，本卡不处理）**：`business_activity` / `contact_task` 是**常见级联子表**，被父对象物理级联删时绕开各自服务
+  （`BusinessActivityServiceImpl#deleteByIds` / `ContactTaskServiceImpl#deleteByIds` 才有 canonical 附件清理），故父对象删除会留下
+  `model_name=business_activity|contact_task` 的附件行与磁盘文件；`assist_request` 删除路径亦不清附件。另有一处硬化点：
+  `ApprovalAttachmentServiceImpl#removeByIds:90-107` 先按 `id ∈ ids AND model_name = ?` 选出 `entities` 做磁盘清理，却用
+  `deleteBatchIds(ids)` **按入参裸 id 删行**——当入参混入他模型 id 时该行会被删且**跳过**磁盘清理，删行口径应与选行口径对齐。
+  以上统一记入待办池「附件生命周期孤儿债」，不属本卡写集（本卡只补商机根的阶段审批附件）。
 
 ---
 
@@ -217,7 +240,7 @@ typed-router 生成物噪声按门禁提示 `git checkout -- frontend/typed-rout
 | id | 偏差 | 处置 |
 |----|------|------|
 | D1 | 任务卡预期「图可达 `sales_stage_approval` 的根仅商机删除一处」，实测 **3 根**（商机/公司/联系人） | 如实列入 §6；本卡只修商机根，公司/联系人根的附件残留登记为 F1 交后续卡（不擅自扩写集） |
-| D2 | 执行提示词要求任务卡 `work/task-card-*.md`「不入库」，但 `tasks.md 4.4` 与 `.gitignore`（`!work/task-card-*.md`）期望入库 | 按执行提示词保持**未跟踪**；请复核者定夺是否随 docs 笔补入 |
+| D2 | 执行提示词要求任务卡 `work/task-card-*.md`「不入库」，但 `tasks.md 4.4` 与 `.gitignore`（`!work/task-card-*.md`）期望入库 | 按执行提示词保持**未跟踪**；`tasks.md 4.4` 已订正为如实口径（任务卡不入库、proposal/tasks 随分支提交）；任务卡本体在归档阶段由 `git add -f` 复制入 closed-cards（M2） |
 | D3 | 首轮 `clean verify` 在 PMD 阶段红：`OnlyOneReturn` ×2（新支撑方法的多出口） | 重构为单出口（第二笔 `56ca735`），PMD 复跑 BUILD SUCCESS；未用 amend（红线） |
 | D4 | 新 IT 初版未加 `@Sql(/init_data.sql)`，2 errors：`sales_opportunity.company_id` 外键（`fk_opportunity_company`）缺父行 | 补 `@Sql(scripts="/init_data.sql", BEFORE_TEST_METHOD)` 提供 `customer_company`/`sys_user` 种子；对外键命名约定（auto-table 由 `*_id` 推导 FK）无改动 |
 | D5 | 前证临时用例 `preFixEvidence_deadEdgeThrowsAndRollsBack` 存在于工作分支但未随修复提交保留 | 其断言「必须抛 `ID_NOT_EXISTS`」在修复后恒红，已删除；输出摘录入 §2，原日志留证 |
