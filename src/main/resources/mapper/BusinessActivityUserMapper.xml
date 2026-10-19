@@ -20,4 +20,28 @@
             #{activityId}
         </foreach>
     </select>
+
+    <!-- A-8 集合化：一次 IN 取已存在集合（替代逐个 existsByActivityIdAndUserId） -->
+    <select id="selectExistingUserIds" resultType="java.lang.Long">
+        select user_id from business_activity_user where activity_id = #{activityId} and user_id in
+        <foreach collection="userIds" item="userId" open="(" separator="," close=")">
+            #{userId}
+        </foreach>
+    </select>
+
+    <!-- A-8 集合化：单条 delete + IN（替代逐个 deleteByActivityIdAndUserId） -->
+    <delete id="deleteByActivityIdAndUserIds">
+        delete from business_activity_user where activity_id = #{activityId} and user_id in
+        <foreach collection="userIds" item="userId" open="(" separator="," close=")">
+            #{userId}
+        </foreach>
+    </delete>
+
+    <!-- A-8 集合化：多值 INSERT（create_time 由库默认 CURRENT_TIMESTAMP 填充，与单条 insert 的列省略口径一致） -->
+    <insert id="batchInsert">
+        insert into business_activity_user (activity_id, user_id, user_role, creator_id) values
+        <foreach collection="entities" item="entity" separator=",">
+            (#{entity.activityId}, #{entity.userId}, #{entity.userRole}, #{entity.creatorId})
+        </foreach>
+    </insert>
 </mapper>

@@ -299,13 +299,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
       throw new BaseException(ErrorCode.DATA_DELETE_FAILED, "删除失败，请注意用户状态");
     }
 
-    // 使用for循环替代forEach，确保异常能正确抛出
-    for (UserEntity userEntity : userEntities) {
-      userEntity.setStatus(3);
-      userEntity.setEmail(null);
-      userEntity.setPhone(null);
-      userMapper.updateById(userEntity);
-    }
+    // 单条 update 收口（A-10）：SET status=3 + 显式 set email/phone=null（实体 NOT_NULL 策略下 updateById
+    // 无法置空，会长期占用 uk_email/uk_phone）+ WHERE id IN (idList)
+    userMapper.update(
+        null,
+        new LambdaUpdateWrapper<UserEntity>()
+            .set(UserEntity::getStatus, 3)
+            .set(UserEntity::getEmail, null)
+            .set(UserEntity::getPhone, null)
+            .in(UserEntity::getId, id));
 
     return true;
   }
