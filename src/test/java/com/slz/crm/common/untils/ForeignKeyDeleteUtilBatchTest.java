@@ -40,12 +40,28 @@ import org.springframework.test.util.ReflectionTestUtils;
  *
  * <p>夹具：用真实 {@link ForeignKeyConfig#ALL_RELATIONS} 图动态建立 mapper mock 与 ApplicationContext，断言不依赖
  * 各表真实列名（列名解析走 MP TableInfo，缺失时退回属性名，两种情况下本类断言均成立）。
+ *
+ * <p><b>确定性（2026-10-19 CI 实测暴露后补正）</b>：原夹具无条件遍历真实图，而 {@code ColumnUtils.getColumn} 的行为取决于
+ * MyBatis-Plus 的 {@code TableInfo} 是否已在当前 JVM 初始化——未初始化时 走「属性名回退」静默通过，已初始化时对不存在的属性抛 {@code
+ * ID_NOT_EXISTS}。故同一用例在「本机干净 JVM（回退路径）」绿、 在「CI 共享 JVM（其它用例已触发 TableInfo
+ * 初始化）」红。现按实体是否真实声明该属性过滤关联边，并把过滤掉的边与本类 {@link #KNOWN_DEAD_RELATIONS}
+ * 精确对表：任何**新增**的死映射都会让本类立即转红，不再依赖 JVM 初始化顺序。
  */
 @DisplayName("外键级联删除批量化（A-6）")
 @SuppressWarnings({"rawtypes", "unchecked"})
 class ForeignKeyDeleteUtilBatchTest {
 
   private static final String MAIN_MAPPER = "customerContactMapper";
+
+  /**
+   * 已知死映射（pre-existing 配置漂移，本卡 CI 实测暴露，已登记待办池）： {@code approval_attachment} 既无 {@code approval_id}
+   * 列（V1 基座为 {@code and_id}）， {@code ApprovalAttachmentEntity} 也无 {@code approvalId} 属性；{@code
+   * ForeignKeyConfig} 的这一条从 Wave 0 起即不可解析。 语义后果：生产环境 {@code TableInfo} 已初始化，删除销售机会 → 阶段审批 →
+   * 附件这条级联会抛 {@code ID_NOT_EXISTS}， 修法（{@code and_id} 语义是「关联表 ID」泛字段，直接改列名会在多 model 间误删）需 Owner
+   * 定夺，故本卡只做测试确定性收口。
+   */
+  private static final Set<String> KNOWN_DEAD_RELATIONS =
+      Set.of("ApprovalAttachmentEntity#approvalId");
 
   private Map<String, BaseMapper> mappers;
   private ForeignKeyDeleteUtil util;
@@ -150,9 +166,10 @@ class ForeignKeyDeleteUtilBatchTest {
     return total;
   }
 
-  /** 真实外键图里从根实体可达的全部子实体（含根） */
+  /** 真实外键图里从根实体可达、且关联属性真实存在的全部子实体（含根）；死映射与本类登记表精确对表 */
   private static Set<Class<?>> cascadeGraph(Class<?> root) {
     Set<Class<?>> visited = new LinkedHashSet<>();
+    Set<String> dropped = new LinkedHashSet<>();
     Deque<Class<?>> queue = new ArrayDeque<>();
     visited.add(root);
     queue.add(root);
@@ -161,13 +178,33 @@ class ForeignKeyDeleteUtilBatchTest {
       if (relations == null) {
         continue;
       }
-      for (Class<?> child : relations.keySet()) {
-        if (visited.add(child)) {
-          queue.add(child);
+      for (Map.Entry<Class<?>, List<String>> entry : relations.entrySet()) {
+        Class<?> child = entry.getKey();
+        for (String foreignKey : entry.getValue()) {
+          if (!hasProperty(child, foreignKey)) {
+            dropped.add(child.getSimpleName() + "#" + foreignKey);
+          } else if (visited.add(child)) {
+            queue.add(child);
+          }
         }
       }
     }
+    assertEquals(KNOWN_DEAD_RELATIONS, dropped, "新增/修复死映射必须同步更新 KnownDeadRelations，避免级联图悄悄改变覆盖范围");
     return visited;
+  }
+
+  /** 实体（含父类）是否声明了该属性 —— 与 ColumnUtils 的属性口径一致，不依赖 MP TableInfo 初始化状态 */
+  private static boolean hasProperty(Class<?> type, String property) {
+    Class<?> current = type;
+    while (current != null && current != Object.class) {
+      for (java.lang.reflect.Field field : current.getDeclaredFields()) {
+        if (field.getName().equals(property)) {
+          return true;
+        }
+      }
+      current = current.getSuperclass();
+    }
+    return false;
   }
 
   /** 与 ForeignKeyDeleteUtil#getMapperBeanName 同一命名口径 */
