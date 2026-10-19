@@ -9,8 +9,6 @@ import java.util.*;
  * @author evi
  */
 public class ForeignKeyConfig {
-  // 审批表关联的外键表信息：<关联表实体类, 外键字段名>
-  public static final Map<Class<?>, List<String>> APPROVAL_ATTACHMENT_RELATIONS = new HashMap<>();
   // 活动表关联的外键表信息：<关联表实体类, 外键字段名>
   public static final Map<Class<?>, List<String>> BUSINESS_ACTIVITY_RELATIONS = new HashMap<>();
   // 活动联系人表关联的外键表信息：<关联表实体类, 外键字段名>
@@ -59,7 +57,6 @@ public class ForeignKeyConfig {
   static {
 
     // 初始化所有关联关系到统一映射
-    ALL_RELATIONS.put(ApprovalAttachmentEntity.class, APPROVAL_ATTACHMENT_RELATIONS);
     ALL_RELATIONS.put(BusinessActivityEntity.class, BUSINESS_ACTIVITY_RELATIONS);
     ALL_RELATIONS.put(BusinessActivityContactEntity.class, BUSINESS_ACTIVITY_CONTACT_RELATIONS);
     ALL_RELATIONS.put(BusinessActivityUserEntity.class, BUSINESS_ACTIVITY_USER_RELATIONS);
@@ -80,8 +77,6 @@ public class ForeignKeyConfig {
     ALL_RELATIONS.put(RoleEntity.class, SYS_ROLE_RELATIONS);
     ALL_RELATIONS.put(UserEntity.class, SYS_USER_RELATIONS);
     ALL_RELATIONS.put(TaskCommentEntity.class, TASK_COMMENT_RELATIONS);
-
-    // 审批关联的表：空
 
     // 活动表关联的表：
     // 1. 商业活动-联系人关联表（business_activity_contact.activity_id）
@@ -165,10 +160,14 @@ public class ForeignKeyConfig {
     SALES_OPPORTUNITY_RELATIONS.put(
         SalesStageApprovalEntity.class, Collections.singletonList("opportunityId"));
 
-    // 销售阶段审批表关联的表：
-    // 1. 审批附件表（approval_attachment.approval_id）
-    SALES_STAGE_APPROVAL_RELATIONS.put(
-        ApprovalAttachmentEntity.class, Collections.singletonList("approvalId"));
+    // 销售阶段审批表关联的表：空
+    //
+    // 原「审批附件表（approval_attachment.approval_id）」一条已移除
+    // （fix-approval-attachment-cascade-dead-edge）：真库只有多态列 and_id（配 model_name 判别）、
+    // 实体只有 andId，approval_id 从 Wave 0 起即不可解析；生产环境 MP TableInfo 已初始化时该边必抛
+    // ID_NOT_EXISTS，导致已关闭商机删除整事务回滚。附件删除改由
+    // SalesOpportunityServiceImpl#delete 在级联前按 (ModelName.APPROVAL_ATTACHMENT, approvalIds) 显式补删
+    // （canonical removeByIds，含磁盘清理）。附件表本身不被任何其他表引用，子图为空。
 
     // 角色-权限关联表关联的表：
     // 1. 角色-权限关联表（role_permissions.role_id）
