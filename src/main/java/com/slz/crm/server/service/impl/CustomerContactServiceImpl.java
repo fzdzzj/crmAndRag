@@ -433,11 +433,8 @@ public class CustomerContactServiceImpl
       throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
 
-    Integer count = 0;
-    for (Long id : idList) {
-      count += logicalDeleteById(id);
-    }
-    return count;
+    // 一次委托批量入口：级联一趟跑全量 ids + 主表单条 IN 逻辑删（不再逐 id 自调用 logicalDeleteById）
+    return foreignKeyDeleteUtil.logicalDeleteByCascadeBatch(CustomerContactEntity.class, idList);
   }
 
   @Override

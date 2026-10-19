@@ -1,6 +1,7 @@
 package com.slz.crm.common.untils;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.metadata.TableFieldInfo;
 import com.baomidou.mybatisplus.core.metadata.TableInfo;
@@ -94,6 +95,30 @@ public class ForeignKeyDeleteUtil {
     return logicalDeleteMainRecord(entityClass, id);
   }
 
+  /**
+   * 逻辑删除多个实体及其关联数据（批量入口，级联一趟覆盖全量 ids）
+   *
+   * <p>与 {@link #logicalDeleteByCascade(Class, Long)} 的差异仅在调用次数：级联部分复用 {@link
+   * #deleteCascade}（其内部每层本就按父 id 集合 {@code in} 一次），主表逻辑删除改为单条 {@code update} 携 {@code
+   * is_deleted=true} 与 {@code id in (ids)}，因此 N 个 id 由 N 轮级联 + N 条主表 update 收敛为 1 轮级联 + 1 条
+   * update。级联层级与顺序、返回计数含义（数据库实际命中行数，重复 id 以实际行数计）与单条入口一致。
+   *
+   * @param entityClass 实体类
+   * @param ids 主表ID列表
+   * @return 主表逻辑删除成功数量
+   */
+  public <T> Integer logicalDeleteByCascadeBatch(Class<T> entityClass, List<Long> ids) {
+    Integer result = 0;
+    if (ids != null && !ids.isEmpty()) {
+      // 级联删除一趟跑全量 ids，资源类型设为null（非数据共享表）
+      deleteCascade(entityClass, ids, null);
+
+      // 逻辑删除主表记录（单条 update + IN）
+      result = logicalDeleteMainRecords(entityClass, ids);
+    }
+    return result;
+  }
+
   /** 逻辑删除主表记录 */
   @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射+ORM 多源异常，统一转
   // BaseException(DATA_DELETE_FAILED)，收窄不可行
@@ -118,6 +143,34 @@ public class ForeignKeyDeleteUtil {
       }
     } catch (Exception e) {
       log.error("逻辑删除主表记录失败: {}", entityClass.getSimpleName(), e);
+      throw new BaseException(ErrorCode.DATA_DELETE_FAILED);
+    }
+    return result;
+  }
+
+  /** 批量逻辑删除主表记录：单条 update，SET isDeleted=true + WHERE id IN (ids) */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 反射+ORM 多源异常，统一转
+  // BaseException(DATA_DELETE_FAILED)，收窄不可行
+  private <T> Integer logicalDeleteMainRecords(Class<T> entityClass, List<Long> ids) {
+    Integer result = 0;
+    String mapperBeanName = getMapperBeanName(entityClass);
+    try {
+      BaseMapper<T> mapper = applicationContext.getBean(mapperBeanName, BaseMapper.class);
+
+      // 创建更新实体，设置isDeleted=true（与单条入口同一套反射口径，列名交由 MP 映射）
+      Object updateEntity = entityClass.getDeclaredConstructor().newInstance();
+
+      try {
+        entityClass.getMethod("setIsDeleted", Boolean.class).invoke(updateEntity, true);
+        UpdateWrapper<T> wrapper = new UpdateWrapper<>();
+        wrapper.in("id", ids);
+        result = mapper.update((T) updateEntity, wrapper);
+        log.info("批量逻辑删除主表记录: {}, ids: {}, 影响行数: {}", entityClass.getSimpleName(), ids, result);
+      } catch (NoSuchMethodException e) {
+        log.warn("实体类 {} 没有isDeleted字段，跳过逻辑删除", entityClass.getSimpleName());
+      }
+    } catch (Exception e) {
+      log.error("批量逻辑删除主表记录失败: {}", entityClass.getSimpleName(), e);
       throw new BaseException(ErrorCode.DATA_DELETE_FAILED);
     }
     return result;

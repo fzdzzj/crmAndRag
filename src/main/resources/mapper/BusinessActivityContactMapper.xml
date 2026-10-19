@@ -12,4 +12,28 @@
     <delete id="deleteByActivityId" parameterType="java.lang.Long">
         delete from business_activity_contact where activity_id = #{activityId}
     </delete>
+
+    <!-- A-8 集合化：一次 IN 取已存在集合（替代逐个 existsByActivityIdAndContactId） -->
+    <select id="selectExistingContactIds" resultType="java.lang.Long">
+        select contact_id from business_activity_contact where activity_id = #{activityId} and contact_id in
+        <foreach collection="contactIds" item="contactId" open="(" separator="," close=")">
+            #{contactId}
+        </foreach>
+    </select>
+
+    <!-- A-8 集合化：单条 delete + IN（替代逐个 deleteByActivityIdAndContactId） -->
+    <delete id="deleteByActivityIdAndContactIds">
+        delete from business_activity_contact where activity_id = #{activityId} and contact_id in
+        <foreach collection="contactIds" item="contactId" open="(" separator="," close=")">
+            #{contactId}
+        </foreach>
+    </delete>
+
+    <!-- A-8 集合化：多值 INSERT（create_time 由库默认 CURRENT_TIMESTAMP 填充，与单条 insert 的列省略口径一致） -->
+    <insert id="batchInsert">
+        insert into business_activity_contact (activity_id, contact_id, contact_role, creator_id) values
+        <foreach collection="entities" item="entity" separator=",">
+            (#{entity.activityId}, #{entity.contactId}, #{entity.contactRole}, #{entity.creatorId})
+        </foreach>
+    </insert>
 </mapper>
