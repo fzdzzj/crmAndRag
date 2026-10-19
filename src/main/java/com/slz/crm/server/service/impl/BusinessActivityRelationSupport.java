@@ -1,6 +1,7 @@
 package com.slz.crm.server.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.enumeration.ModelName;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.pojo.dto.AddActivityContactRequestDTO;
@@ -62,7 +63,9 @@ final class BusinessActivityRelationSupport {
           businessActivityUserMapper.deleteByActivityIdAndUserId(
               businessActivityEntity.getId(), userDTO.getUserId());
         } else {
-          throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_USER_NOT_EXIST);
+          throw new BaseException(
+              ErrorCode.BUSINESS_ACTIVITY_USER_NOT_EXISTS,
+              MessageConstant.BUSINESS_ACTIVITY_USER_NOT_EXIST);
         }
       }
     }
@@ -104,7 +107,9 @@ final class BusinessActivityRelationSupport {
           businessActivityContactMapper.deleteByActivityIdAndContactId(
               businessActivityEntity.getId(), contactDTO.getContactId());
         } else {
-          throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_CONTACT_NOT_EXIST);
+          throw new BaseException(
+              ErrorCode.BUSINESS_ACTIVITY_CONTACT_NOT_EXISTS,
+              MessageConstant.BUSINESS_ACTIVITY_CONTACT_NOT_EXIST);
         }
       }
     }
@@ -177,7 +182,9 @@ final class BusinessActivityRelationSupport {
       for (Long contactId : contactIds) {
         int count = contactMapper.existsByActivityIdAndContactId(activityId, contactId);
         if (count == 0) {
-          throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_CONTACT_NOT_EXIST);
+          throw new BaseException(
+              ErrorCode.BUSINESS_ACTIVITY_CONTACT_NOT_EXISTS,
+              MessageConstant.BUSINESS_ACTIVITY_CONTACT_NOT_EXIST);
         }
         contactMapper.deleteByActivityIdAndContactId(activityId, contactId);
       }
@@ -191,7 +198,9 @@ final class BusinessActivityRelationSupport {
       for (Long userId : userIds) {
         int count = userRelMapper.existsByActivityIdAndUserId(activityId, userId);
         if (count == 0) {
-          throw new BaseException(MessageConstant.BUSINESS_ACTIVITY_USER_NOT_EXIST);
+          throw new BaseException(
+              ErrorCode.BUSINESS_ACTIVITY_USER_NOT_EXISTS,
+              MessageConstant.BUSINESS_ACTIVITY_USER_NOT_EXIST);
         }
         userRelMapper.deleteByActivityIdAndUserId(activityId, userId);
       }

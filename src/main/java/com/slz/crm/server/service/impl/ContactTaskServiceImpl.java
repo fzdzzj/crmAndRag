@@ -60,7 +60,7 @@ public class ContactTaskServiceImpl extends ServiceImpl<ContactTaskMapper, Conta
   @Transactional(rollbackFor = Exception.class)
   public Boolean create(ContactTaskDTO contactTaskDTO) {
     if (contactTaskDTO == null || contactTaskDTO.getTaskTitle() == null) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR.getMessage());
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR);
     }
 
     ContactTaskEntity contactTaskEntity = new ContactTaskEntity();
@@ -118,7 +118,7 @@ public class ContactTaskServiceImpl extends ServiceImpl<ContactTaskMapper, Conta
   @Transactional(rollbackFor = Exception.class)
   public Integer deleteByIds(List<Long> idList) {
     if (idList == null || idList.isEmpty()) {
-      throw new BaseException(ErrorCode.PARAM_EMPTY.getMessage());
+      throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
     // 级联删除协助记录
     assistRequestService.deleteByRecords(ModelName.CONTACT_TASK, idList);
@@ -144,7 +144,7 @@ public class ContactTaskServiceImpl extends ServiceImpl<ContactTaskMapper, Conta
   @Transactional(rollbackFor = Exception.class)
   public Boolean deleteById(Long id) {
     if (id == null) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR.getMessage());
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR);
     }
     // 级联删除协助记录
     assistRequestService.deleteByRecords(ModelName.CONTACT_TASK, List.of(id));
@@ -162,7 +162,7 @@ public class ContactTaskServiceImpl extends ServiceImpl<ContactTaskMapper, Conta
   @Transactional(rollbackFor = Exception.class)
   public Integer updateList(List<ContactTaskDTO> contactTaskDTOList) {
     if (contactTaskDTOList == null || contactTaskDTOList.isEmpty()) {
-      throw new BaseException(ErrorCode.DATA_NULL.getMessage());
+      throw new BaseException(ErrorCode.DATA_NULL);
     }
 
     List<ContactTaskEntity> entityList = new ArrayList<>();
@@ -201,7 +201,7 @@ public class ContactTaskServiceImpl extends ServiceImpl<ContactTaskMapper, Conta
   @Transactional(rollbackFor = Exception.class)
   public Boolean update(ContactTaskDTO contactTaskDTO) {
     if (contactTaskDTO == null || contactTaskDTO.getId() == null) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR.getMessage());
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR);
     }
 
     ContactTaskEntity entity = new ContactTaskEntity();
@@ -250,12 +250,12 @@ public class ContactTaskServiceImpl extends ServiceImpl<ContactTaskMapper, Conta
   @Override
   public ContactTaskVO getById(Long id) {
     if (id == null) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR.getMessage());
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR);
     }
 
     ContactTaskEntity entity = contactTaskMapper.selectById(id);
     if (entity == null) {
-      throw new BaseException(ErrorCode.DATA_NULL.getMessage());
+      throw new BaseException(ErrorCode.DATA_NULL);
     }
 
     // 相关人校验：创建人/执行人/指派人/协助人可见，超管豁免

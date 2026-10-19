@@ -105,11 +105,12 @@ public class SysDeptServiceImpl extends ServiceImpl<SysDeptMapper, SysDeptEntity
   @Transactional(rollbackFor = Exception.class)
   public Boolean update(SysDeptDTO dto) {
     if (dto == null || dto.getId() == null) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR.getMessage());
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR);
     }
     SysDeptEntity entity = getById(dto.getId());
     if (entity == null) {
-      throw new BaseException(ErrorCode.ID_NOT_EXISTS.getMessage().formatted("部门"));
+      throw new BaseException(
+          ErrorCode.ID_NOT_EXISTS, ErrorCode.ID_NOT_EXISTS.getMessage().formatted("部门"));
     }
     if (dto.getDeptName() != null && !dto.getDeptName().trim().isEmpty()) {
       applyDeptNameUpdate(entity, dto);
@@ -186,7 +187,8 @@ public class SysDeptServiceImpl extends ServiceImpl<SysDeptMapper, SysDeptEntity
     }
     SysDeptEntity parent = getById(parentId);
     if (parent == null) {
-      throw new BaseException(ErrorCode.ID_NOT_EXISTS.getMessage().formatted("上级部门"));
+      throw new BaseException(
+          ErrorCode.ID_NOT_EXISTS, ErrorCode.ID_NOT_EXISTS.getMessage().formatted("上级部门"));
     }
     // 沿父链向上遍历至根节点；用已访问集合检测环，任意深度均可靠（不设层数上限，避免深层链绕过校验）
     Set<Long> visited = new HashSet<>();
@@ -211,11 +213,12 @@ public class SysDeptServiceImpl extends ServiceImpl<SysDeptMapper, SysDeptEntity
   @Transactional(rollbackFor = Exception.class)
   public Boolean delete(Long id) {
     if (id == null) {
-      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR.getMessage());
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR);
     }
     SysDeptEntity entity = getById(id);
     if (entity == null) {
-      throw new BaseException(ErrorCode.ID_NOT_EXISTS.getMessage().formatted("部门"));
+      throw new BaseException(
+          ErrorCode.ID_NOT_EXISTS, ErrorCode.ID_NOT_EXISTS.getMessage().formatted("部门"));
     }
     // 有子部门的部门禁止删除，避免 parentId 悬空
     Long childCount =

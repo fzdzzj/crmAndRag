@@ -209,10 +209,12 @@ public class CustomerCompanyListener implements ReadListener<CustomerCompanyExce
         && !customerCompany.getPhone().isBlank()
         && !ValidationUtils.isValidMobile(customerCompany.getPhone())) {
       throw new BaseException(
+          ErrorCode.EXCEL_FORMAT_ERROR,
           String.format(ErrorCode.EXCEL_FORMAT_ERROR.getMessage(), dataList.size() + 2));
     }
     if (customerCompany.getCompanyName() == null) {
       throw new BaseException(
+          ErrorCode.EXCEL_FORMAT_ERROR,
           String.format(ErrorCode.EXCEL_FORMAT_ERROR.getMessage(), dataList.size() + 2));
     }
   }

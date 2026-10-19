@@ -80,20 +80,20 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
   public String addUser(UserDTO userDTO) {
 
     if (userDTO.getRoleId() == null) {
-      throw new BaseException(ErrorCode.ROLE_NOT_EXISTS.getMessage());
+      throw new BaseException(ErrorCode.ROLE_NOT_EXISTS);
     }
     UserDeptSupport.validateDeptId(userDTO.getDeptId(), sysDeptMapper);
     // harden-admin-uniqueness-and-hygiene 任务 1.1：终极管理员唯一性防护，禁止添加终极管理员
     if (Objects.equals(userDTO.getRoleId(), 1L)) {
-      throw new BaseException(MessageConstant.MASTER_IS_ONE);
+      throw new BaseException(ErrorCode.ADMIN_EXISTS_ONLY_ONE, MessageConstant.MASTER_IS_ONE);
     }
     // 判断邮箱格式
     if (!ValidationUtils.isValidEmail(userDTO.getEmail())) {
-      throw new BaseException(ErrorCode.EMAIL_FORMAT_ERROR.getMessage());
+      throw new BaseException(ErrorCode.EMAIL_FORMAT_ERROR);
     }
     // 判断手机号格式
     if (!ValidationUtils.isValidMobile(userDTO.getPhone())) {
-      throw new BaseException(ErrorCode.PHONE_FORMAT_ERROR.getMessage());
+      throw new BaseException(ErrorCode.PHONE_FORMAT_ERROR);
     }
 
     String password = "crm";
@@ -126,7 +126,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     UserEntity userEntity = userMapper.selectById(userId);
 
     if (userEntity == null) {
-      throw new BaseException(ErrorCode.ID_NOT_EXISTS.getMessage().formatted("用户"));
+      throw new BaseException(
+          ErrorCode.ID_NOT_EXISTS, ErrorCode.ID_NOT_EXISTS.getMessage().formatted("用户"));
     }
 
     UserVO vo = UserVO.fromEntity(userEntity);
@@ -173,7 +174,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     // 验证目标用户是否存在
     UserEntity targetUser = userMapper.selectById(userId);
     if (targetUser == null) {
-      throw new BaseException(ErrorCode.ID_NOT_EXISTS.getMessage().formatted("用户"));
+      throw new BaseException(
+          ErrorCode.ID_NOT_EXISTS, ErrorCode.ID_NOT_EXISTS.getMessage().formatted("用户"));
     }
 
     // 终极超管防篡改：非超管本人禁止重置超管密码（12002）
@@ -185,7 +187,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
 
     // 验证新密码不能为空
     if (newPassword == null || newPassword.trim().isEmpty()) {
-      throw new BaseException(ErrorCode.PARAM_EMPTY.getMessage().formatted("新密码"));
+      throw new BaseException(
+          ErrorCode.PARAM_EMPTY, ErrorCode.PARAM_EMPTY.getMessage().formatted("新密码"));
     }
 
     // 更新密码
@@ -215,7 +218,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     // 校验用户存在
     UserEntity userEntity = userMapper.selectById(id);
     if (userEntity == null) {
-      throw new BaseException(ErrorCode.ID_NOT_EXISTS.getMessage().formatted("用户"));
+      throw new BaseException(
+          ErrorCode.ID_NOT_EXISTS, ErrorCode.ID_NOT_EXISTS.getMessage().formatted("用户"));
     }
 
     // 只更新传入的非空字段；null 表示“不修改”
@@ -236,7 +240,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     }
     // harden-admin-uniqueness-and-hygiene 任务 1.2：终极管理员唯一性防护，禁止修改为终极管理员
     if (userDTO.getRoleId() != null && Objects.equals(userDTO.getRoleId(), 1L)) {
-      throw new BaseException(MessageConstant.MASTER_IS_ONE);
+      throw new BaseException(ErrorCode.ADMIN_EXISTS_ONLY_ONE, MessageConstant.MASTER_IS_ONE);
     }
     if (userDTO.getRoleId() != null) {
       wrapper.set(UserEntity::getRoleId, userDTO.getRoleId());
@@ -248,7 +252,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
 
     int i = userMapper.update(null, wrapper);
     if (i == 0) {
-      throw new BaseException(ErrorCode.UPDATE_FAILED.getMessage());
+      throw new BaseException(ErrorCode.UPDATE_FAILED);
     }
   }
 
@@ -272,7 +276,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
         userMapper.update(
             null, UserSelfUpdateSupport.buildWhitelistWrapper(userDTO, currentUserId));
     if (i == 0) {
-      throw new BaseException(ErrorCode.UPDATE_FAILED.getMessage());
+      throw new BaseException(ErrorCode.UPDATE_FAILED);
     }
   }
 
@@ -292,7 +296,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
                 .in(UserEntity::getStatus, 0, 2));
 
     if (userEntities.size() != id.size()) {
-      throw new BaseException("删除失败，请注意用户状态");
+      throw new BaseException(ErrorCode.DATA_DELETE_FAILED, "删除失败，请注意用户状态");
     }
 
     // 使用for循环替代forEach，确保异常能正确抛出

@@ -140,7 +140,7 @@ public class ContractServiceImpl extends ServiceImpl<ContractMapper, ContractEnt
   @Transactional(rollbackFor = Exception.class)
   public ContractVO createWithOrders(ContractDTO contract, List<OrderDTO> orders) {
     if (contract == null) {
-      throw new BaseException(ErrorCode.PARAM_EMPTY.getMessage());
+      throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
 
     ContractVO created = create(contract);

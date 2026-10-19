@@ -61,24 +61,24 @@ public class PaymentRecordServiceImpl extends ServiceImpl<PaymentRecordMapper, P
   /** 创建回款的关联校验：合同必须存在；指定订单明细时明细必须存在且属于该合同。返回已加载的合同。 */
   private ContractEntity validatePaymentCreate(PaymentRecordDTO dto) {
     if (dto.getContractId() == null) {
-      throw new BaseException(ErrorCode.PARAM_EMPTY.getMessage());
+      throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
 
     // 验证合同是否存在
     ContractEntity contract = contractMapper.selectById(dto.getContractId());
     if (contract == null) {
-      throw new BaseException("合同不存在");
+      throw new BaseException(ErrorCode.CONTRACT_NOT_EXISTS, "合同不存在");
     }
 
     // 如果指定了订单明细，验证订单明细是否存在
     if (dto.getOrderItemId() != null) {
       ContractOrderItemEntity orderItem = contractOrderItemMapper.selectById(dto.getOrderItemId());
       if (orderItem == null) {
-        throw new BaseException("订单明细不存在");
+        throw new BaseException(ErrorCode.ORDER_NOT_EXISTS, "订单明细不存在");
       }
       // 验证订单明细是否属于该合同
       if (!orderItem.getContractId().equals(dto.getContractId())) {
-        throw new BaseException("订单明细不属于该合同");
+        throw new BaseException(ErrorCode.ORDER_NOT_EXISTS, "订单明细不属于该合同");
       }
     }
     return contract;
@@ -124,7 +124,8 @@ public class PaymentRecordServiceImpl extends ServiceImpl<PaymentRecordMapper, P
         // 回款单号重复，重试生成新的单号
         retryCount++;
         if (retryCount >= maxRetries) {
-          throw new BaseException("生成回款单号失败：已达到最大重试次数（" + maxRetries + "次），请稍后重试");
+          throw new BaseException(
+              ErrorCode.SYSTEM_BUSY, "生成回款单号失败：已达到最大重试次数（" + maxRetries + "次），请稍后重试");
         }
         // 继续下一次循环，重新生成单号
       }
@@ -148,19 +149,19 @@ public class PaymentRecordServiceImpl extends ServiceImpl<PaymentRecordMapper, P
   @Transactional(rollbackFor = Exception.class)
   public Boolean update(PaymentRecordDTO dto) {
     if (dto.getId() == null) {
-      throw new BaseException(ErrorCode.PARAM_EMPTY.getMessage());
+      throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
 
     PaymentRecordEntity entity = paymentRecordMapper.selectById(dto.getId());
     if (entity == null) {
-      throw new BaseException("回款记录不存在");
+      throw new BaseException(ErrorCode.PAYMENT_NOT_EXISTS, "回款记录不存在");
     }
 
     // 如果修改了订单明细，验证是否属于同一合同
     if (dto.getOrderItemId() != null) {
       ContractOrderItemEntity orderItem = contractOrderItemMapper.selectById(dto.getOrderItemId());
       if (orderItem == null || !orderItem.getContractId().equals(entity.getContractId())) {
-        throw new BaseException("订单明细不属于该合同");
+        throw new BaseException(ErrorCode.ORDER_NOT_EXISTS, "订单明细不属于该合同");
       }
     }
 
@@ -172,7 +173,7 @@ public class PaymentRecordServiceImpl extends ServiceImpl<PaymentRecordMapper, P
   @Transactional(rollbackFor = Exception.class)
   public Integer deleteByIds(List<Long> idList) {
     if (idList == null || idList.isEmpty()) {
-      throw new BaseException(ErrorCode.PARAM_EMPTY.getMessage());
+      throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
 
     // 软删除：将回款状态设置为已作废（status=2）
@@ -191,12 +192,12 @@ public class PaymentRecordServiceImpl extends ServiceImpl<PaymentRecordMapper, P
   @Override
   public PaymentRecordVO getDetailById(Long id) {
     if (id == null) {
-      throw new BaseException(ErrorCode.PARAM_EMPTY.getMessage());
+      throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
 
     PaymentRecordEntity entity = paymentRecordMapper.selectById(id);
     if (entity == null) {
-      throw new BaseException("回款记录不存在");
+      throw new BaseException(ErrorCode.PAYMENT_NOT_EXISTS, "回款记录不存在");
     }
 
     return PaymentVoSupport.convertToVO(
@@ -285,12 +286,12 @@ public class PaymentRecordServiceImpl extends ServiceImpl<PaymentRecordMapper, P
   @Transactional(rollbackFor = Exception.class)
   public Boolean confirmPayment(Long id) {
     if (id == null) {
-      throw new BaseException(ErrorCode.PARAM_EMPTY.getMessage());
+      throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
 
     PaymentRecordEntity entity = paymentRecordMapper.selectById(id);
     if (entity == null) {
-      throw new BaseException("回款记录不存在");
+      throw new BaseException(ErrorCode.PAYMENT_NOT_EXISTS, "回款记录不存在");
     }
 
     // 更新为已确认状态

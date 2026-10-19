@@ -67,7 +67,7 @@ public class RoleServiceImpl implements com.slz.crm.server.service.RoleService {
   public void delete(Long roleId, Boolean isDelete) {
     // 禁止删除管理员角色（ID=1）
     if (roleId == 1L && Boolean.TRUE.equals(isDelete)) {
-      throw new BaseException("禁止删除管理员角色");
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "禁止删除管理员角色");
     }
 
     RoleEntity roleEntity = new RoleEntity();

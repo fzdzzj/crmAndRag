@@ -421,7 +421,8 @@ final class CustomerCompanySupport {
     for (Long id : idList) {
       CustomerCompanyEntity existing = lookup.apply(id);
       if (existing == null) {
-        throw new BaseException(ErrorCode.ID_NOT_EXISTS.getMessage().formatted("客户公司"));
+        throw new BaseException(
+            ErrorCode.ID_NOT_EXISTS, ErrorCode.ID_NOT_EXISTS.getMessage().formatted("客户公司"));
       }
       if (!isRecover) {
         // 恢复校验：正常记录中不允许再出现同名同部门（回收站里的重复公司恢复时会冲突）

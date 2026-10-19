@@ -3,6 +3,7 @@ package com.slz.crm.server.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.BaseUnit;
@@ -44,7 +45,7 @@ public class PermissionServiceImpl extends ServiceImpl<PermissionsMapper, Permis
   public boolean hasPermission(
       PermissionOperates targetPerm, List<PermissionsEntity> permissionList) {
     if (permissionList.isEmpty()) {
-      throw new BaseException("该用户没有权限");
+      throw new BaseException(ErrorCode.USER_NOT_EXIST_PERMISSION, "该用户没有权限");
     }
     List<Long> permissionIds = permissionList.stream().map(PermissionsEntity::getId).toList();
 
@@ -124,18 +125,18 @@ public class PermissionServiceImpl extends ServiceImpl<PermissionsMapper, Permis
     if (roleANDPermissionDTOS.getRoleId() == null
         || CollectionUtils.isEmpty(roleANDPermissionDTOS.getPermissionIds())
         || roleANDPermissionDTOS.getIsAdd() == null) {
-      throw new BaseException(MessageConstant.ROLE_PERMISSION_IS_NULL);
+      throw new BaseException(ErrorCode.PARAM_EMPTY, MessageConstant.ROLE_PERMISSION_IS_NULL);
     }
 
     RoleEntity roleEntity = roleMapper.selectById(roleANDPermissionDTOS.getRoleId());
     if (roleEntity == null) {
-      throw new BaseException(MessageConstant.ROLE_IS_NOT_EXIST);
+      throw new BaseException(ErrorCode.ROLE_NOT_EXISTS, MessageConstant.ROLE_IS_NOT_EXIST);
     }
 
     List<Integer> existPermissionIds =
         permissionsMapper.selectExistPermissionIds(roleANDPermissionDTOS.getPermissionIds());
     if (CollectionUtils.isEmpty(existPermissionIds)) {
-      throw new BaseException(MessageConstant.PERMISSION_IS_NOT_EXIST);
+      throw new BaseException(ErrorCode.ID_NOT_EXISTS, MessageConstant.PERMISSION_IS_NOT_EXIST);
     }
 
     List<Integer> notExistIds =
@@ -143,7 +144,7 @@ public class PermissionServiceImpl extends ServiceImpl<PermissionsMapper, Permis
             .filter(id -> !existPermissionIds.contains(id))
             .toList();
     if (!CollectionUtils.isEmpty(notExistIds)) {
-      throw new BaseException("权限ID " + notExistIds + " 不存在");
+      throw new BaseException(ErrorCode.ID_NOT_EXISTS, "权限ID " + notExistIds + " 不存在");
     }
 
     List<Integer> hadPermissionIds =
@@ -169,7 +170,7 @@ public class PermissionServiceImpl extends ServiceImpl<PermissionsMapper, Permis
     List<Integer> repeatIds =
         dto.getPermissionIds().stream().filter(hadPermissionIds::contains).toList();
     if (!CollectionUtils.isEmpty(repeatIds)) {
-      throw new BaseException("角色已关联权限ID " + repeatIds + "，无需重复新增");
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "角色已关联权限ID " + repeatIds + "，无需重复新增");
     }
 
     Long currentId = BaseUnit.getCurrentId();
@@ -186,7 +187,7 @@ public class PermissionServiceImpl extends ServiceImpl<PermissionsMapper, Permis
     List<Integer> notHadIds =
         dto.getPermissionIds().stream().filter(id -> !hadPermissionIds.contains(id)).toList();
     if (!CollectionUtils.isEmpty(notHadIds)) {
-      throw new BaseException("角色未关联权限ID " + notHadIds + "，无法删除");
+      throw new BaseException(ErrorCode.PARAM_FORMAT_ERROR, "角色未关联权限ID " + notHadIds + "，无法删除");
     }
 
     permissionsMapper.batchDeletePermissionToRole(dto.getRoleId(), dto.getPermissionIds());

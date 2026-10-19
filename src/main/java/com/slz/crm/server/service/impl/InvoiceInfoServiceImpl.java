@@ -63,24 +63,24 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
   /** 创建发票的关联校验：合同必须存在；指定回款记录时回款必须存在且属于该合同 */
   private void validateInvoiceCreate(InvoiceInfoDTO dto) {
     if (dto.getContractId() == null) {
-      throw new BaseException(ErrorCode.PARAM_EMPTY.getMessage());
+      throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
 
     // 验证合同是否存在
     ContractEntity contract = contractMapper.selectById(dto.getContractId());
     if (contract == null) {
-      throw new BaseException("合同不存在");
+      throw new BaseException(ErrorCode.CONTRACT_NOT_EXISTS, "合同不存在");
     }
 
     // 如果指定了回款记录，验证回款记录是否存在
     if (dto.getPaymentId() != null) {
       PaymentRecordEntity payment = paymentRecordMapper.selectById(dto.getPaymentId());
       if (payment == null) {
-        throw new BaseException("回款记录不存在");
+        throw new BaseException(ErrorCode.PAYMENT_NOT_EXISTS, "回款记录不存在");
       }
       // 验证回款记录是否属于该合同
       if (!payment.getContractId().equals(dto.getContractId())) {
-        throw new BaseException("回款记录不属于该合同");
+        throw new BaseException(ErrorCode.PAYMENT_NOT_EXISTS, "回款记录不属于该合同");
       }
     }
   }
@@ -102,7 +102,8 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
         // 发票编号重复，重试生成新的编号
         retryCount++;
         if (retryCount >= maxRetries) {
-          throw new BaseException("生成发票编号失败：已达到最大重试次数（" + maxRetries + "次），请稍后重试");
+          throw new BaseException(
+              ErrorCode.SYSTEM_BUSY, "生成发票编号失败：已达到最大重试次数（" + maxRetries + "次），请稍后重试");
         }
         // 继续下一次循环，重新生成编号
       }
@@ -124,19 +125,19 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
   @Transactional(rollbackFor = Exception.class)
   public Boolean update(InvoiceInfoDTO dto) {
     if (dto.getId() == null) {
-      throw new BaseException(ErrorCode.PARAM_EMPTY.getMessage());
+      throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
 
     InvoiceInfoEntity entity = invoiceInfoMapper.selectById(dto.getId());
     if (entity == null) {
-      throw new BaseException("开票信息不存在");
+      throw new BaseException(ErrorCode.ID_NOT_EXISTS, "开票信息不存在");
     }
 
     // 如果修改了回款记录，验证是否属于同一合同
     if (dto.getPaymentId() != null) {
       PaymentRecordEntity payment = paymentRecordMapper.selectById(dto.getPaymentId());
       if (payment == null || !payment.getContractId().equals(entity.getContractId())) {
-        throw new BaseException("回款记录不属于该合同");
+        throw new BaseException(ErrorCode.PAYMENT_NOT_EXISTS, "回款记录不属于该合同");
       }
     }
 
@@ -153,7 +154,7 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
   @Transactional(rollbackFor = Exception.class)
   public Integer deleteByIds(List<Long> idList) {
     if (idList == null || idList.isEmpty()) {
-      throw new BaseException(ErrorCode.PARAM_EMPTY.getMessage());
+      throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
 
     // 软删除：将发票状态设置为已作废（status=1）
@@ -172,12 +173,12 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
   @Override
   public InvoiceInfoVO getDetailById(Long id) {
     if (id == null) {
-      throw new BaseException(ErrorCode.PARAM_EMPTY.getMessage());
+      throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
 
     InvoiceInfoEntity entity = invoiceInfoMapper.selectById(id);
     if (entity == null) {
-      throw new BaseException("开票信息不存在");
+      throw new BaseException(ErrorCode.ID_NOT_EXISTS, "开票信息不存在");
     }
 
     return InvoiceVoSupport.convertToVO(entity, contractMapper, paymentRecordMapper, userMapper);
@@ -289,7 +290,7 @@ public class InvoiceInfoServiceImpl extends ServiceImpl<InvoiceInfoMapper, Invoi
   @Transactional(rollbackFor = Exception.class)
   public Boolean voidInvoice(Long id) {
     if (id == null) {
-      throw new BaseException(ErrorCode.PARAM_EMPTY.getMessage());
+      throw new BaseException(ErrorCode.PARAM_EMPTY);
     }
 
     InvoiceInfoEntity entity = invoiceInfoMapper.selectById(id);

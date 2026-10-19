@@ -116,6 +116,8 @@ class UserPasswordUpdateTest {
                     dtoOf(OLD_RAW_PASSWORD, OLD_RAW_PASSWORD), CURRENT_USER_ID));
 
     assertEquals("新密码不能与原密码相同", ex.getMessage());
+    // fix-minor-debt-family 任务 1.3/1.5：单 String 构造器已收敛，code 由 null 变为 50002
+    assertEquals(ErrorCode.PARAM_FORMAT_ERROR.getCode(), ex.getCode());
     verify(userMapper, never()).updateById(any(UserEntity.class));
   }
 }
