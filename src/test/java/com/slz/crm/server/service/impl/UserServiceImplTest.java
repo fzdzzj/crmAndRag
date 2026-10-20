@@ -68,6 +68,9 @@ class UserServiceImplTest {
     BaseException exception = assertThrows(BaseException.class, () -> userService.addUser(request));
 
     assertEquals(MessageConstant.MASTER_IS_ONE, exception.getMessage());
+    // harden-test-backlog-batch1 ④：MessageConstant 文案断言之外补精确码（实读 ErrorCode:71
+    // ADMIN_EXISTS_ONLY_ONE=13002）
+    assertEquals(13002, exception.getCode().intValue(), "终极管理员唯一性拒绝必须锁 ADMIN_EXISTS_ONLY_ONE 码值");
   }
 
   @Test
@@ -85,6 +88,8 @@ class UserServiceImplTest {
         assertThrows(BaseException.class, () -> userService.updateUser(request, userId));
 
     assertEquals(MessageConstant.MASTER_IS_ONE, exception.getMessage());
+    // harden-test-backlog-batch1 ④：update 路径同锁 ADMIN_EXISTS_ONLY_ONE=13002（ErrorCode:71 实读）
+    assertEquals(13002, exception.getCode().intValue(), "终极管理员唯一性拒绝必须锁 ADMIN_EXISTS_ONLY_ONE 码值");
   }
 
   @Test
@@ -96,6 +101,8 @@ class UserServiceImplTest {
     BaseException exception = assertThrows(BaseException.class, () -> userService.addUser(request));
 
     assertEquals(ErrorCode.ROLE_NOT_EXISTS.getMessage(), exception.getMessage());
+    // 同批加固（④ 邻接）：ROLE_NOT_EXISTS 也必须锁精确码（ErrorCode:68 实读 13001）
+    assertEquals(13001, exception.getCode().intValue(), "roleId 为空拒绝必须锁 ROLE_NOT_EXISTS 码值");
   }
 
   @Test
