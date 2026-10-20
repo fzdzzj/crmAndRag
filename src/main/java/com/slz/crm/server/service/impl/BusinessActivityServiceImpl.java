@@ -10,10 +10,8 @@ import com.slz.crm.knowledge.ingestion.BusinessActivityIngestionService;
 import com.slz.crm.pojo.dto.AddActivityContactRequestDTO;
 import com.slz.crm.pojo.dto.AddActivityUserRequestDTO;
 import com.slz.crm.pojo.dto.BatchDeleteActivityAssociationRequestDTO;
-import com.slz.crm.pojo.dto.BusinessActivityContactDTO;
 import com.slz.crm.pojo.dto.BusinessActivityDTO;
 import com.slz.crm.pojo.dto.BusinessActivityQueryDTO;
-import com.slz.crm.pojo.dto.BusinessActivityUserDTO;
 import com.slz.crm.pojo.entity.*;
 import com.slz.crm.pojo.vo.BusinessActivityVO;
 import com.slz.crm.server.mapper.*;
@@ -83,33 +81,19 @@ public class BusinessActivityServiceImpl
         currentId,
         businessActivityDTO.getAssistApplyList());
 
-    // 插入联系人活动关联
-    List<BusinessActivityUserDTO> userIdList = businessActivityDTO.getUserIdList();
-    List<BusinessActivityContactDTO> contactIdList = businessActivityDTO.getContactIdList();
+    // 插入联系人活动关联（E-16：构建实体列表后单次 batchInsert，替代旧 forEach 逐条 insert）
+    BusinessActivityRelationSupport.insertActivityContactRelations(
+        businessActivityEntity.getId(),
+        businessActivityDTO.getContactIdList(),
+        currentId,
+        businessActivityContactMapper);
 
-    if (contactIdList != null) {
-      contactIdList.forEach(
-          contactId -> {
-            BusinessActivityContactEntity entity = new BusinessActivityContactEntity();
-            BeanUtils.copyProperties(contactId, entity);
-
-            entity.setCreatorId(currentId);
-            entity.setActivityId(businessActivityEntity.getId());
-            businessActivityContactMapper.insert(entity);
-          });
-    }
-
-    // 插入用户活动关啦
-    if (userIdList != null) {
-      userIdList.forEach(
-          contactId -> {
-            BusinessActivityUserEntity entity = new BusinessActivityUserEntity();
-            BeanUtils.copyProperties(contactId, entity);
-            entity.setCreatorId(currentId);
-            entity.setActivityId(businessActivityEntity.getId());
-            businessActivityUserMapper.insert(entity);
-          });
-    }
+    // 插入用户活动关联（同上）
+    BusinessActivityRelationSupport.insertActivityUserRelations(
+        businessActivityEntity.getId(),
+        businessActivityDTO.getUserIdList(),
+        currentId,
+        businessActivityUserMapper);
 
     // 如果关联了联络任务，根据传入的nextTaskStatus更新任务状态
     if (businessActivityDTO.getTaskId() != null) {

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.slz.crm.server.mapper.ApprovalAttachmentMapper">
+
+    <!-- E-15：多值 INSERT 批量落库（列取 approval_attachment 现存列；upload_time 由 IOUtils.writeFile
+         显式赋值，与旧逐条 insert 等价） -->
+    <insert id="insertBatch">
+        insert into approval_attachment (and_id, model_name, file_name, file_path, file_size,
+                                         file_type, upload_time, uploader_id) values
+        <foreach collection="entities" item="entity" separator=",">
+            (#{entity.andId}, #{entity.modelName}, #{entity.fileName}, #{entity.filePath},
+             #{entity.fileSize}, #{entity.fileType}, #{entity.uploadTime}, #{entity.uploaderId})
+        </foreach>
+    </insert>
+
+</mapper>

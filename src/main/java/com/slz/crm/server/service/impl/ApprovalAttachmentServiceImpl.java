@@ -23,6 +23,8 @@ import com.slz.crm.server.mapper.UserMapper;
 import com.slz.crm.server.service.ApprovalAttachmentService;
 import com.slz.crm.server.service.AttachmentAccessService;
 import jakarta.servlet.http.HttpServletRequest;
+import java.io.File;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +35,8 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Slf4j
 @Service
@@ -56,6 +60,9 @@ public class ApprovalAttachmentServiceImpl
 
   @Autowired private AttachmentAccessService attachmentAccessService;
 
+  /** 批量落库的短事务管理器（E-15：磁盘写入已移出事务，仅批量 INSERT 走此事务）。 */
+  @Autowired private PlatformTransactionManager transactionManager;
+
   /** VO 组装与删除权判定协作类工厂：以本类既有依赖构造，保持单测零注入可测（任务 6.3 拆出）。 */
   private ApprovalAttachmentVoSupport voSupport() {
     return new ApprovalAttachmentVoSupport(
@@ -69,13 +76,48 @@ public class ApprovalAttachmentServiceImpl
         attachmentAccessService);
   }
 
+  /**
+   * 批量保存附件（E-15 行为增强）。
+   *
+   * <p>旧实现「逐条写盘 + 逐条 insert，中途失败留半提交附件」；现改为：先全部 IOUtils.writeFile 落盘（任一失败即清盘已写
+   * 文件并按原异常上抛），再在短事务内一次批量 INSERT（落库失败 → 事务回滚 + 清盘 + 原异常上抛）。对外签名与异常类型不变。
+   */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 写盘+落库多源，失败按原异常上抛并清盘补偿
   @Override
   public void saveBatch(List<ApprovalAttachmentDTO> list) {
-    for (ApprovalAttachmentDTO dto1 : list) {
-      dto1.setUploaderId(BaseUnit.getCurrentId());
-      ApprovalAttachmentEntity entity1 = IOUtils.writeFile(dto1);
-      baseMapper.insert(entity1);
+    if (list == null || list.isEmpty()) {
+      return;
     }
+
+    Long currentUserId = BaseUnit.getCurrentId();
+    List<ApprovalAttachmentEntity> entities = new ArrayList<>(list.size());
+    List<File> writtenFiles = new ArrayList<>(list.size());
+
+    try {
+      for (ApprovalAttachmentDTO dto : list) {
+        dto.setUploaderId(currentUserId);
+        ApprovalAttachmentEntity entity = IOUtils.writeFile(dto);
+        entities.add(entity);
+        writtenFiles.add(new File(entity.getFilePath(), entity.getFileName()));
+      }
+    } catch (Exception e) {
+      log.error("附件写盘失败，回滚已写入的 {} 个文件", writtenFiles.size(), e);
+      ProjectFileStorageSupport.rollbackUploadedFiles(writtenFiles);
+      throw e;
+    }
+
+    try {
+      transactionTemplate().executeWithoutResult(status -> baseMapper.insertBatch(entities));
+    } catch (Exception e) {
+      log.error("附件落库失败，回滚已写入的 {} 个文件", writtenFiles.size(), e);
+      ProjectFileStorageSupport.rollbackUploadedFiles(writtenFiles);
+      throw e;
+    }
+  }
+
+  /** 批量落库短事务：仅覆盖 INSERT，磁盘 IO 不进事务。 */
+  private TransactionTemplate transactionTemplate() {
+    return new TransactionTemplate(transactionManager);
   }
 
   @Override
