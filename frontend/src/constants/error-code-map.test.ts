@@ -17,7 +17,7 @@ import {
 // platform/contract/PlatformErrorCode.java 的枚举全集；两处清单由
 // src/test/java/com/slz/crm/contract/ErrorCodeMapParityTest.java 与 Java 反射对齐，
 // 本文件只锁住前端映射层的行为契约。
-const BACKEND_ERROR_CODE_NAMES = 99;
+const BACKEND_ERROR_CODE_NAMES = 100;
 
 describe('ApiErrorCode 常量表', () => {
   it('枚举名到码值的映射覆盖后端两个枚举的全部条目', () => {
