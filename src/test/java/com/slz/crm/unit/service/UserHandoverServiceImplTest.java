@@ -192,6 +192,150 @@ class UserHandoverServiceImplTest {
   }
 
   @Test
+  @DisplayName("A-7 null id（from）：from 为 null 时跳过该 id，to/operator 姓名正常回填")
+  void queryHandoverRecords_skipsNullFromId() {
+    doAnswer(
+            inv -> {
+              Page<UserHandoverEntity> page = inv.getArgument(0);
+              page.setTotal(1);
+              page.setRecords(List.of(handover(1L, null, 20L, OPERATOR_ID)));
+              return page;
+            })
+        .when(handoverMapper)
+        .selectPage(any(), any());
+    when(userMapper.selectBatchIds(any()))
+        .thenReturn(List.of(user(20L, "李四"), user(OPERATOR_ID, "王五")));
+
+    Page<UserHandoverVO> voPage = service.queryHandoverRecords(new UserHandoverQueryDTO());
+
+    UserHandoverVO vo = voPage.getRecords().get(0);
+    assertNull(vo.getFromUserName(), "from 为 null 时姓名必须保持 null（collectUserId 跳过该 id）");
+    assertEquals("李四", vo.getToUserName());
+    assertEquals("王五", vo.getOperatorName());
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Collection<Long>> ids = ArgumentCaptor.forClass(Collection.class);
+    verify(userMapper, times(1)).selectBatchIds(ids.capture());
+    assertEquals(2, ids.getValue().size(), "null id 不得进入批量查询集合");
+    assertTrue(ids.getValue().containsAll(List.of(20L, OPERATOR_ID)));
+    verify(userMapper, never()).selectById(anyLong());
+  }
+
+  @Test
+  @DisplayName("A-7 null id（to）：to 为 null 时跳过该 id，from/operator 姓名正常回填")
+  void queryHandoverRecords_skipsNullToId() {
+    doAnswer(
+            inv -> {
+              Page<UserHandoverEntity> page = inv.getArgument(0);
+              page.setTotal(1);
+              page.setRecords(List.of(handover(1L, 10L, null, OPERATOR_ID)));
+              return page;
+            })
+        .when(handoverMapper)
+        .selectPage(any(), any());
+    when(userMapper.selectBatchIds(any()))
+        .thenReturn(List.of(user(10L, "张三"), user(OPERATOR_ID, "王五")));
+
+    Page<UserHandoverVO> voPage = service.queryHandoverRecords(new UserHandoverQueryDTO());
+
+    UserHandoverVO vo = voPage.getRecords().get(0);
+    assertEquals("张三", vo.getFromUserName());
+    assertNull(vo.getToUserName(), "to 为 null 时姓名必须保持 null（collectUserId 跳过该 id）");
+    assertEquals("王五", vo.getOperatorName());
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Collection<Long>> ids = ArgumentCaptor.forClass(Collection.class);
+    verify(userMapper, times(1)).selectBatchIds(ids.capture());
+    assertEquals(2, ids.getValue().size(), "null id 不得进入批量查询集合");
+    assertTrue(ids.getValue().containsAll(List.of(10L, OPERATOR_ID)));
+  }
+
+  @Test
+  @DisplayName("A-7 null id（operator）：operator 为 null 时跳过该 id，from/to 姓名正常回填")
+  void queryHandoverRecords_skipsNullOperatorId() {
+    doAnswer(
+            inv -> {
+              Page<UserHandoverEntity> page = inv.getArgument(0);
+              page.setTotal(1);
+              page.setRecords(List.of(handover(1L, 10L, 20L, null)));
+              return page;
+            })
+        .when(handoverMapper)
+        .selectPage(any(), any());
+    when(userMapper.selectBatchIds(any())).thenReturn(List.of(user(10L, "张三"), user(20L, "李四")));
+
+    Page<UserHandoverVO> voPage = service.queryHandoverRecords(new UserHandoverQueryDTO());
+
+    UserHandoverVO vo = voPage.getRecords().get(0);
+    assertEquals("张三", vo.getFromUserName());
+    assertEquals("李四", vo.getToUserName());
+    assertNull(vo.getOperatorName(), "operator 为 null 时姓名必须保持 null（collectUserId 跳过该 id）");
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Collection<Long>> ids = ArgumentCaptor.forClass(Collection.class);
+    verify(userMapper, times(1)).selectBatchIds(ids.capture());
+    assertEquals(2, ids.getValue().size(), "null id 不得进入批量查询集合");
+    assertTrue(ids.getValue().containsAll(List.of(10L, 20L)));
+  }
+
+  @Test
+  @DisplayName("A-7 null id（三类全空）：整页无可用 id 时零批量查询，三姓名均为 null")
+  void queryHandoverRecords_allIdsNullSkipsBatchQuery() {
+    doAnswer(
+            inv -> {
+              Page<UserHandoverEntity> page = inv.getArgument(0);
+              page.setTotal(1);
+              page.setRecords(List.of(handover(1L, null, null, null)));
+              return page;
+            })
+        .when(handoverMapper)
+        .selectPage(any(), any());
+
+    Page<UserHandoverVO> voPage = service.queryHandoverRecords(new UserHandoverQueryDTO());
+
+    UserHandoverVO vo = voPage.getRecords().get(0);
+    assertNull(vo.getFromUserName());
+    assertNull(vo.getToUserName());
+    assertNull(vo.getOperatorName());
+    verify(userMapper, never()).selectBatchIds(any());
+    verify(userMapper, never()).selectById(anyLong());
+  }
+
+  @Test
+  @DisplayName("A-7 null id（混合页）：全空行被跳过、正常行照常回填，批量查询只发一次")
+  void queryHandoverRecords_mixedNullAndPresentIds() {
+    doAnswer(
+            inv -> {
+              Page<UserHandoverEntity> page = inv.getArgument(0);
+              page.setTotal(2);
+              page.setRecords(List.of(handover(1L, null, null, null), handover(2L, 10L, 20L, 30L)));
+              return page;
+            })
+        .when(handoverMapper)
+        .selectPage(any(), any());
+    when(userMapper.selectBatchIds(any()))
+        .thenReturn(List.of(user(10L, "张三"), user(20L, "李四"), user(30L, "王五")));
+
+    Page<UserHandoverVO> voPage = service.queryHandoverRecords(new UserHandoverQueryDTO());
+
+    assertEquals(2, voPage.getRecords().size());
+    UserHandoverVO nullRow = voPage.getRecords().get(0);
+    assertNull(nullRow.getFromUserName());
+    assertNull(nullRow.getToUserName());
+    assertNull(nullRow.getOperatorName());
+    UserHandoverVO presentRow = voPage.getRecords().get(1);
+    assertEquals("张三", presentRow.getFromUserName());
+    assertEquals("李四", presentRow.getToUserName());
+    assertEquals("王五", presentRow.getOperatorName());
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Collection<Long>> ids = ArgumentCaptor.forClass(Collection.class);
+    verify(userMapper, times(1)).selectBatchIds(ids.capture());
+    assertEquals(3, ids.getValue().size(), "只有非 null id 进入批量查询集合");
+    assertTrue(ids.getValue().containsAll(List.of(10L, 20L, 30L)));
+  }
+
+  @Test
   @DisplayName("单条路径回归：executeHandover 仍逐条取姓名（selectById 5 次、无批量查询）")
   void executeHandover_keepsPerUserLookup() {
     when(userMapper.selectById(10L)).thenReturn(userWithStatus(10L, "张三", 1));

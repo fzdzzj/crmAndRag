@@ -37,6 +37,14 @@ class BaseExceptionConvergenceTest {
   private static final Pattern ENUM_CONSTRUCTOR_ARGS =
       Pattern.compile("ErrorCode\\.[A-Z0-9_]+(\\s*,\\s*.+)?");
 
+  /**
+   * 构造点定位：{@code new} 与类名之间、类名与左括号之间都允许出现空白。
+   *
+   * <p>本卡加固点：旧实现用字面量 {@code indexOf("new BaseException(")} 定位，遇到 {@code new BaseException (}
+   * 这类「括号前多一个空格」的格式化形态会整体漏检（既不计数也不判违规），格式化工具回滚即可静默绕过门禁。
+   */
+  private static final Pattern CONSTRUCTOR_SITE = Pattern.compile("new\\s+BaseException\\s*\\(");
+
   @Test
   @DisplayName("src/main 不得再出现 BaseException 单 String 构造（零豁免）")
   void noSingleStringConstructorInMainSources() throws IOException {
@@ -49,18 +57,8 @@ class BaseExceptionConvergenceTest {
     try (Stream<Path> files = Files.walk(root)) {
       for (Path file : files.filter(p -> p.toString().endsWith(".java")).toList()) {
         String source = Files.readString(file, StandardCharsets.UTF_8);
-        String flattened = source.replaceAll("\\s+", " ");
-        int from = 0;
-        while (true) {
-          int start = flattened.indexOf("new BaseException(", from);
-          if (start < 0) {
-            break;
-          }
+        for (String args : constructorArgs(source.replaceAll("\\s+", " "))) {
           totalSites++;
-          int argsStart = start + "new BaseException(".length();
-          int argsEnd = matchingParen(flattened, argsStart - 1);
-          String args = flattened.substring(argsStart, argsEnd).trim();
-          from = argsEnd;
           if (isConvergedArgs(args)) {
             continue;
           }
@@ -137,6 +135,45 @@ class BaseExceptionConvergenceTest {
   /** 实参判定：唯一放行形态是裸枚举常量（可带自定义文案）；空参、字符串、.getMessage() 链式调用全部违规。 */
   private static boolean isConvergedArgs(String args) {
     return ENUM_CONSTRUCTOR_ARGS.matcher(args).matches();
+  }
+
+  /**
+   * 抽取「已扁平化」源码中的全部 {@code BaseException} 构造点实参（多行写法扁平化后即单行）。
+   *
+   * <p>定位依赖 {@link #CONSTRUCTOR_SITE}，故 {@code new BaseException(} 与 {@code new BaseException (}
+   * 两种形态都会计入扫描点；旧实现用字面量 indexOf 定位时后者整点消失。
+   */
+  private static List<String> constructorArgs(String flattened) {
+    List<String> args = new ArrayList<>();
+    Matcher matcher = CONSTRUCTOR_SITE.matcher(flattened);
+    while (matcher.find()) {
+      args.add(
+          flattened.substring(matcher.end(), matchingParen(flattened, matcher.end() - 1)).trim());
+    }
+    return args;
+  }
+
+  @Test
+  @DisplayName("自证：`new BaseException (` 空格形态同样被计入扫描点并判违规（格式化回滚防线）")
+  void spacedConstructorFormIsScannedAndRejected() {
+    String flattened =
+        "throw new BaseException ( ErrorCode.PARAM_EMPTY.getMessage() );".replaceAll("\\s+", " ");
+    assertThat(flattened)
+        .as("旧实现按字面量 new BaseException( 定位，空格形态整点漏检")
+        .doesNotContain("new BaseException(");
+    assertThat(constructorArgs(flattened))
+        .as("加固后空格形态必须被抽成一个构造点")
+        .containsExactly("ErrorCode.PARAM_EMPTY.getMessage()");
+    assertThat(isConvergedArgs(constructorArgs(flattened).get(0))).as("空格形态不得因漏检而静默放行").isFalse();
+
+    // 合法形态带空格也必须被计数：避免「合法即不可见」的对称盲区
+    List<String> legalSpaced = constructorArgs("new BaseException (ErrorCode.PARAM_EMPTY)");
+    assertThat(legalSpaced).containsExactly("ErrorCode.PARAM_EMPTY");
+    assertThat(isConvergedArgs(legalSpaced.get(0))).isTrue();
+
+    // 同一行混合两种形态：旧实现只数得 1 个点位，加固后必须数得 2 个
+    assertThat(constructorArgs("a(new BaseException(ErrorCode.A)); b(new BaseException (\"x\"));"))
+        .containsExactly("ErrorCode.A", "\"x\"");
   }
 
   /** 从开括号位置起做括号配平，返回配对闭括号下标（参数里含 {@code String.format(...)} 等嵌套调用）。 */
