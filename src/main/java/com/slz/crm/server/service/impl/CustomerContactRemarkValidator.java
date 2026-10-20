@@ -7,6 +7,8 @@ import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.pojo.dto.CustomerContactRemarkDTO;
 import com.slz.crm.pojo.entity.CustomerContactRemarkEntity;
 import com.slz.crm.server.mapper.CustomerContactRemarkMapper;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.beans.BeanUtils;
 
@@ -15,7 +17,7 @@ final class CustomerContactRemarkValidator {
 
   private CustomerContactRemarkValidator() {}
 
-  /** 校验并整体替换联系人备注：先删除原有备注，再逐条校验插入新备注（remarks 为空即清空备注） */
+  /** 校验并整体替换联系人备注：先删除原有备注，再全量校验后批量插入新备注（remarks 为空即清空备注） */
   static void replaceRemarks(
       Long contactId,
       List<CustomerContactRemarkDTO> remarks,
@@ -26,39 +28,43 @@ final class CustomerContactRemarkValidator {
     queryWrapper.eq(CustomerContactRemarkEntity::getContactId, contactId);
     mapper.delete(queryWrapper);
 
-    // 新增备注
-    if (remarks != null && !remarks.isEmpty()) {
-      for (CustomerContactRemarkDTO remark : remarks) {
-        // 验证备注类型
-        validateRemarkType(remark);
-
-        CustomerContactRemarkEntity remarkEntity = new CustomerContactRemarkEntity();
-        BeanUtils.copyProperties(remark, remarkEntity);
-        remarkEntity.setContactId(contactId);
-        remarkEntity.setCreatorId(creatorId);
-        mapper.insert(remarkEntity);
-      }
-    }
+    // 新增备注（校验前置、单次批量插入，见 insertRemarks）
+    insertRemarks(contactId, remarks, creatorId, mapper);
   }
 
-  /** 校验并插入联系人备注（不删除已有备注，remarks 为空时无操作） */
+  /**
+   * 校验并插入联系人备注（不删除已有备注，remarks 为空时无操作）。
+   *
+   * <p>E-14：旧实现「逐条校验 + 逐条 insert」，第 N 条非法时前 N-1 条已入库；现改为先把全部 DTO 校验一遍（任一非法即零写入）， 再构建实体列表调一次 {@code
+   * mapper.insertBatch}（XML foreach 多值 INSERT 已存在）。实体装饰 （BeanUtils 拷贝 +
+   * contactId/creatorId）与旧实现一致；create_time 显式填充，等价旧单条 insert 的库默认值。
+   */
   static void insertRemarks(
       Long contactId,
       List<CustomerContactRemarkDTO> remarks,
       Long creatorId,
       CustomerContactRemarkMapper mapper) {
-    if (remarks != null && !remarks.isEmpty()) {
-      for (CustomerContactRemarkDTO remark : remarks) {
-        // 验证备注类型
-        validateRemarkType(remark);
-
-        CustomerContactRemarkEntity remarkEntity = new CustomerContactRemarkEntity();
-        BeanUtils.copyProperties(remark, remarkEntity);
-        remarkEntity.setContactId(contactId);
-        remarkEntity.setCreatorId(creatorId);
-        mapper.insert(remarkEntity);
-      }
+    if (remarks == null || remarks.isEmpty()) {
+      return;
     }
+
+    // 1. 先全量校验：任一非法即零写入
+    for (CustomerContactRemarkDTO remark : remarks) {
+      validateRemarkType(remark);
+    }
+
+    // 2. 构建实体（装饰与旧实现一致）后一次批量插入
+    List<CustomerContactRemarkEntity> entities = new ArrayList<>(remarks.size());
+    LocalDateTime createTime = LocalDateTime.now();
+    for (CustomerContactRemarkDTO remark : remarks) {
+      CustomerContactRemarkEntity remarkEntity = new CustomerContactRemarkEntity();
+      BeanUtils.copyProperties(remark, remarkEntity);
+      remarkEntity.setContactId(contactId);
+      remarkEntity.setCreatorId(creatorId);
+      remarkEntity.setCreateTime(createTime);
+      entities.add(remarkEntity);
+    }
+    mapper.insertBatch(entities);
   }
 
   /**

@@ -126,6 +126,51 @@ final class BusinessActivityRelationSupport {
     }
   }
 
+  /**
+   * E-16：活动创建路径的关联联系人批量写入。
+   *
+   * <p>新建活动必无既有行，故不做存在性判定（与旧 create 逐条 insert 等价）；null 列表跳过口径保留；实体装饰 （BeanUtils 拷贝 + activityId +
+   * creatorId）与旧实现一致，create_time 走库默认。
+   */
+  static void insertActivityContactRelations(
+      Long activityId,
+      List<BusinessActivityContactDTO> contactDTOList,
+      Long currentId,
+      BusinessActivityContactMapper businessActivityContactMapper) {
+    if (contactDTOList == null || contactDTOList.isEmpty()) {
+      return;
+    }
+    List<BusinessActivityContactEntity> entities = new ArrayList<>(contactDTOList.size());
+    for (BusinessActivityContactDTO contactDTO : contactDTOList) {
+      BusinessActivityContactEntity contactEntity = new BusinessActivityContactEntity();
+      BeanUtils.copyProperties(contactDTO, contactEntity);
+      contactEntity.setCreatorId(currentId);
+      contactEntity.setActivityId(activityId);
+      entities.add(contactEntity);
+    }
+    businessActivityContactMapper.batchInsert(entities);
+  }
+
+  /** E-16：活动创建路径的关联用户批量写入（同上：无存在性判定、null 跳过、装饰与旧实现一致）。 */
+  static void insertActivityUserRelations(
+      Long activityId,
+      List<BusinessActivityUserDTO> userDTOList,
+      Long currentId,
+      BusinessActivityUserMapper businessActivityUserMapper) {
+    if (userDTOList == null || userDTOList.isEmpty()) {
+      return;
+    }
+    List<BusinessActivityUserEntity> entities = new ArrayList<>(userDTOList.size());
+    for (BusinessActivityUserDTO userDTO : userDTOList) {
+      BusinessActivityUserEntity userEntity = new BusinessActivityUserEntity();
+      BeanUtils.copyProperties(userDTO, userEntity);
+      userEntity.setCreatorId(currentId);
+      userEntity.setActivityId(activityId);
+      entities.add(userEntity);
+    }
+    businessActivityUserMapper.batchInsert(entities);
+  }
+
   /** 向活动追加联系人关联：已存在关联即抛错，contactId 为空的请求项跳过 */
   static void addContactRelations(
       Long activityId,

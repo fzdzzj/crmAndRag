@@ -2,4 +2,18 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.slz.crm.server.mapper.ProjectFileMapper">
 
+    <!-- A-5+A-16：多值 INSERT 批量落库（列与 ProjectFileEntity 全字段一一对应；
+         upload_time 由服务层显式赋值，行为与旧逐条 insert 等价） -->
+    <insert id="insertBatch">
+        insert into project_file (file_name, file_path, file_type, file_size, category,
+                                  upload_time, uploader_id, theme, description,
+                                  activity_id, opportunity_id, contract_id, order_id) values
+        <foreach collection="entities" item="entity" separator=",">
+            (#{entity.fileName}, #{entity.filePath}, #{entity.fileType}, #{entity.fileSize},
+             #{entity.category}, #{entity.uploadTime}, #{entity.uploaderId}, #{entity.theme},
+             #{entity.description}, #{entity.activityId}, #{entity.opportunityId},
+             #{entity.contractId}, #{entity.orderId})
+        </foreach>
+    </insert>
+
 </mapper>

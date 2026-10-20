@@ -5,6 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -49,10 +52,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionStatus;
 
 /**
  * 附件上传写权限越权拦截专项测试（harden-security-attachment-reset-and-invoice 任务 1.4，纯 JVM Mockito）。
@@ -101,6 +107,12 @@ class ProjectFileUploadSecurityTest {
 
   @Mock private PermissionService permissionService;
 
+  @Mock private PlatformTransactionManager transactionManager;
+
+  @Mock private TransactionStatus transactionStatus;
+
+  @Captor private ArgumentCaptor<List<ProjectFileEntity>> entitiesCaptor;
+
   @TempDir private Path tempDir;
 
   private ProjectFileServiceImpl service;
@@ -116,6 +128,8 @@ class ProjectFileUploadSecurityTest {
     ReflectionTestUtils.setField(service, "downloadTokenUtil", downloadTokenUtil);
     ReflectionTestUtils.setField(service, "request", request);
     ReflectionTestUtils.setField(service, "basePath", tempDir.toString());
+    ReflectionTestUtils.setField(service, "transactionManager", transactionManager);
+    lenient().when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
     RoleAO role = new RoleAO();
     role.setId(CURRENT_USER_ID);
     BaseUnit.setCurrentRole(role);
@@ -170,14 +184,14 @@ class ProjectFileUploadSecurityTest {
     when(attachmentAccessService.canWriteAttachments(
             ModelName.BUSINESS_ACTIVITY, ACTIVITY_ID, CURRENT_USER_ID))
         .thenReturn(true);
-    when(projectFileMapper.insert(any(ProjectFileEntity.class))).thenReturn(1);
+    when(projectFileMapper.insertBatch(anyList())).thenReturn(1);
 
     service.uploadByActivity(ACTIVITY_ID, List.of(dtoOf()));
 
-    ArgumentCaptor<ProjectFileEntity> captor = ArgumentCaptor.forClass(ProjectFileEntity.class);
-    verify(projectFileMapper, times(1)).insert(captor.capture());
-    assertEquals(CURRENT_USER_ID, captor.getValue().getUploaderId(), "上传人必须是当前登录用户");
-    assertEquals(ACTIVITY_ID, captor.getValue().getActivityId());
+    verify(projectFileMapper, times(1)).insertBatch(entitiesCaptor.capture());
+    verify(projectFileMapper, never()).insert(any(ProjectFileEntity.class));
+    assertEquals(CURRENT_USER_ID, entitiesCaptor.getValue().get(0).getUploaderId(), "上传人必须是当前登录用户");
+    assertEquals(ACTIVITY_ID, entitiesCaptor.getValue().get(0).getActivityId());
     File storedDir =
         tempDir.resolve(ModelName.PROJECT_FILE).resolve(String.valueOf(ACTIVITY_ID)).toFile();
     assertTrue(storedDir.isDirectory() && storedDir.listFiles().length == 1, "文件应真实落盘一次");
@@ -191,15 +205,15 @@ class ProjectFileUploadSecurityTest {
     when(attachmentAccessService.canWriteAttachments(
             ModelName.CONTRACT_ORDER_ITEM, ORDER_ID, CURRENT_USER_ID))
         .thenReturn(true);
-    when(projectFileMapper.insert(any(ProjectFileEntity.class))).thenReturn(1);
+    when(projectFileMapper.insertBatch(anyList())).thenReturn(1);
 
     service.uploadByOrder(ORDER_ID, List.of(dtoOf()));
 
-    ArgumentCaptor<ProjectFileEntity> captor = ArgumentCaptor.forClass(ProjectFileEntity.class);
-    verify(projectFileMapper, times(1)).insert(captor.capture());
-    assertEquals(CURRENT_USER_ID, captor.getValue().getUploaderId());
-    assertEquals(ORDER_ID, captor.getValue().getOrderId());
-    assertEquals(CONTRACT_ID, captor.getValue().getContractId());
+    verify(projectFileMapper, times(1)).insertBatch(entitiesCaptor.capture());
+    verify(projectFileMapper, never()).insert(any(ProjectFileEntity.class));
+    assertEquals(CURRENT_USER_ID, entitiesCaptor.getValue().get(0).getUploaderId());
+    assertEquals(ORDER_ID, entitiesCaptor.getValue().get(0).getOrderId());
+    assertEquals(CONTRACT_ID, entitiesCaptor.getValue().get(0).getContractId());
   }
 
   @Test
