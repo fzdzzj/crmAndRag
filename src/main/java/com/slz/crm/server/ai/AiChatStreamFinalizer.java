@@ -29,6 +29,10 @@ class AiChatStreamFinalizer {
   private final Supplier<AiMemoryOrchestrator> memoryOrchestratorSupplier;
   private final Supplier<TokenUsageRecorder> tokenUsageRecorderSupplier;
   private final Supplier<SelfRagReflector> reflectorSupplier;
+
+  /** 引用对齐阈值（fix-citation-threshold-config 任务 1.2）：每次收尾实时解析，运营改配置即热生效。 */
+  private final Supplier<CitationThresholds> citationThresholdsSupplier;
+
   private final String modelName;
 
   AiChatStreamFinalizer(
@@ -40,6 +44,7 @@ class AiChatStreamFinalizer {
       Supplier<AiMemoryOrchestrator> memoryOrchestratorSupplier,
       Supplier<TokenUsageRecorder> tokenUsageRecorderSupplier,
       Supplier<SelfRagReflector> reflectorSupplier,
+      Supplier<CitationThresholds> citationThresholdsSupplier,
       String modelName) {
     this.eventWriter = eventWriter;
     this.assistantMessageStore = assistantMessageStore;
@@ -49,6 +54,10 @@ class AiChatStreamFinalizer {
     this.memoryOrchestratorSupplier = memoryOrchestratorSupplier;
     this.tokenUsageRecorderSupplier = tokenUsageRecorderSupplier;
     this.reflectorSupplier = reflectorSupplier;
+    this.citationThresholdsSupplier =
+        citationThresholdsSupplier == null
+            ? CitationThresholds::defaults
+            : citationThresholdsSupplier;
     this.modelName = modelName;
   }
 
@@ -70,6 +79,7 @@ class AiChatStreamFinalizer {
         memoryOrchestratorSupplier,
         tokenUsageRecorderSupplier,
         () -> null,
+        CitationThresholds::defaults,
         modelName);
   }
 
@@ -222,6 +232,12 @@ class AiChatStreamFinalizer {
     return CitationSupport.extractCitations(content, sources);
   }
 
+  /** 解析当前生效的对齐阈值：供给器返回 null（旁路/未装配）时回落默认常量。 */
+  private CitationThresholds resolveCitationThresholds() {
+    CitationThresholds resolved = citationThresholdsSupplier.get();
+    return resolved == null ? CitationThresholds.defaults() : resolved;
+  }
+
   private String lastUserMessage(List<Message> messages) {
     String result = "";
     for (int index = messages.size() - 1; index >= 0; index--) {
@@ -276,7 +292,9 @@ class AiChatStreamFinalizer {
       String content = activeStream.getPartialAnswer().toString();
       List<SourceReference> sources = activeStream.getSources();
       // fix-citation-alignment 任务 2.1：落库/citations 前对齐编号（不回放已流出 SSE token）
-      CitationAligner.Alignment aligned = CitationAligner.align(content, sources);
+      // fix-citation-threshold-config 任务 1.2：阈值从动态配置实时解析（缺失/越界回落默认常量）
+      CitationAligner.Alignment aligned =
+          CitationAligner.align(content, sources, resolveCitationThresholds());
       content = aligned.text();
       List<Integer> citations = extractCitations(content, sources);
       // add-self-rag-reflection 任务 1.1：生成侧反思校验与过滤（触发前提 hasSources）

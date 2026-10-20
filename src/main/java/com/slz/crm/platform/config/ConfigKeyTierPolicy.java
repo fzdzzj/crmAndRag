@@ -8,9 +8,10 @@ import java.util.Set;
 /**
  * 动态配置键三档定级封闭表（add-dynamic-config-key-tier-acl 任务 1.3）。
  *
- * <p>与 {@link DynamicConfigKeyRegistry} 的 60 键全集一一对应（2026-10-17 实测普查，wire-built-unfinished-infra 摘除
- * ai.model.* 五+1 死键后）：OPERATIONAL 32（608 持有者可写，含 P-ac per-KB 12 键白名单全集）/ COST 23（超管专写——LLM
- * 重排/压缩/Self-RAG自评、查询增强、VLM 转写、重放、限流配额等费用红线族）/ STRUCTURAL 5（超管专写——切分策略/分块尺寸、 数据范围安全语义等变更管理键）。
+ * <p>与 {@link DynamicConfigKeyRegistry} 的 63 键全集一一对应（2026-10-17 实测普查，wire-built-unfinished-infra 摘除
+ * ai.model.* 五+1 死键后；fix-citation-threshold-config 补 3 个引用对齐阈值键）：OPERATIONAL 35（608 持有者可写，含 P-ac
+ * per-KB 12 键白名单全集 + rag.retrieval.citation.* 三键）/ COST 23（超管专写——LLM 重排/压缩/Self-RAG自评、查询增强、VLM
+ * 转写、重放、限流配额等费用红线族）/ STRUCTURAL 5（超管专写——切分策略/分块尺寸、数据范围安全语义等变更管理键）。
  *
  * <p>ai.model.* 六键（provider/chatModel/visionModel/embeddingModel/temperature/maxTokens）已于
  * 2026-10-17 从注册表与定级表同步摘除（零消费死键，消除「登记即生效」幻觉）；模型选择仍走静态绑定 platform.ai.model.*。
@@ -25,12 +26,17 @@ public final class ConfigKeyTierPolicy {
 
   private ConfigKeyTierPolicy() {}
 
-  /** OPERATIONAL 档封闭集（32 键：运营调参，608 可写） */
+  /** OPERATIONAL 档封闭集（35 键：运营调参，608 可写） */
   private static final Set<String> OPERATIONAL_KEYS =
       Set.of(
           "ai.prompt.system",
           "rag.retrieval.topK",
           "rag.retrieval.minScore",
+          // fix-citation-threshold-config 任务 1.3：引用对齐三阈值 = 检索质量调参，无模型边际成本、
+          // 不改库结构/入库语义 → 与 minScore 同档（OPERATIONAL）。
+          "rag.retrieval.citation.keepMin",
+          "rag.retrieval.citation.remapMin",
+          "rag.retrieval.citation.tieMargin",
           "rag.retrieval.strictKb",
           "rag.retrieval.query-rewrite.enabled",
           "rag.retrieval.fusion.mode",

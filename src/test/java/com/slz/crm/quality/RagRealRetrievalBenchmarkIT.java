@@ -27,6 +27,7 @@ import com.slz.crm.platform.model.ModelProviderProperties;
 import com.slz.crm.quality.RagQualityReport.CaseOutcome;
 import com.slz.crm.quality.RagQualityReport.Report;
 import com.slz.crm.server.ai.CitationAligner;
+import com.slz.crm.server.ai.CitationThresholds;
 import com.slz.crm.server.ai.port.KnowledgeRetrievalPort;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -800,7 +801,10 @@ class RagRealRetrievalBenchmarkIT {
     // trace-i05-citation-forensics 1.2：对齐前先 extract，再 align，再 extract
     List<Integer> citationsBefore = extractCitations(answer.text(), retrieved.size());
     // fix-citation-alignment 任务 2.2：评测抽取与生产共用 CitationAligner
-    CitationAligner.Alignment aligned = CitationAligner.align(answer.text(), result.sources());
+    // fix-citation-threshold-config 任务 2.1：同源回灌——上报 CaseOutcome.citations 前必经生产同款对齐路径；
+    // 评测侧显式钉住生产默认阈值（defaults()），保证跨次运行可比，且对齐器误杀黄金引用时 citP 如实下降（C-2 闭环）。
+    CitationAligner.Alignment aligned =
+        CitationAligner.align(answer.text(), result.sources(), CitationThresholds.defaults());
     String alignedText = aligned.text();
     List<Integer> citations = extractCitations(alignedText, retrieved.size());
     recordForensics(

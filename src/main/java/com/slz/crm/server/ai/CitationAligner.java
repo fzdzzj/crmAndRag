@@ -13,6 +13,10 @@ import java.util.regex.Pattern;
  * <p>fix-citation-alignment 任务 1.1：在落库/对外 citations/评测抽取之前， 用 CJK 二字子句覆盖率 + ASCII/数字 token 加成校验每个
  * {@code [n]} 与 {@link SourceReference} 列表的支撑关系，按 KEEP / REMAP / DROP 改写编号。
  *
+ * <p>fix-citation-threshold-config 任务 1.1：三阈值升级为 {@link CitationThresholds} 注入形态——两参 {@link
+ * #align(String, List)} 委托 {@link CitationThresholds#defaults()}（=
+ * 原三个常量，行为逐字节等价），生产调用侧从动态配置解析后走三参重载。
+ *
  * <p>不调用模型、无 Spring 依赖、不补漏引、不编造来源。
  */
 public final class CitationAligner {
@@ -31,13 +35,27 @@ public final class CitationAligner {
   private CitationAligner() {}
 
   /**
-   * 对齐答案中的引用编号。
+   * 对齐答案中的引用编号（默认阈值形态：等价于升级前的编译期常量行为）。
    *
    * @param answer 模型生成原文（可含 {@code [n]}）
    * @param sources 检索命中列表（1-based 编号对应下标 0）
    * @return 对齐后文本与去重后的 citations（按出现顺序）
    */
   public static Alignment align(String answer, List<SourceReference> sources) {
+    return align(answer, sources, CitationThresholds.defaults());
+  }
+
+  /**
+   * 对齐答案中的引用编号（阈值注入形态）。
+   *
+   * @param answer 模型生成原文（可含 {@code [n]}）
+   * @param sources 检索命中列表（1-based 编号对应下标 0）
+   * @param thresholds 决策阈值；{@code null} 等同于 {@link CitationThresholds#defaults()}（调用侧解析失败时的兜底）
+   * @return 对齐后文本与去重后的 citations（按出现顺序）
+   */
+  public static Alignment align(
+      String answer, List<SourceReference> sources, CitationThresholds thresholds) {
+    CitationThresholds effective = thresholds == null ? CitationThresholds.defaults() : thresholds;
     Alignment result;
     if (answer == null || answer.isBlank()) {
       result = new Alignment(answer == null ? "" : answer, List.of());
@@ -56,7 +74,7 @@ public final class CitationAligner {
           out.append(answer, last, matcher.start());
           int original = Integer.parseInt(matcher.group(1));
           String clause = clauseAround(answer, matcher.start(), matcher.end());
-          int decided = decide(original, clause, sources);
+          int decided = decide(original, clause, sources, effective);
           if (decided > 0) {
             out.append('[').append(decided).append(']');
             citations.add(decided);
@@ -73,9 +91,11 @@ public final class CitationAligner {
   /**
    * 对单个 {@code [n]} 做 KEEP / REMAP / DROP 决策。
    *
+   * @param thresholds 生效阈值（调用前已解析为默认值，非空）
    * @return 保留或重映射后的 1-based 编号；0 表示 DROP
    */
-  private static int decide(int original, String clause, List<SourceReference> sources) {
+  private static int decide(
+      int original, String clause, List<SourceReference> sources, CitationThresholds thresholds) {
     int n = sources.size();
     double[] scores = new double[n];
     int bestIdx = -1;
@@ -94,11 +114,15 @@ public final class CitationAligner {
 
     // KEEP：原编号在范围内、自身够强、且不显著弱于最佳
     int result;
-    if (inRange && scoreOriginal >= KEEP_MIN && scoreOriginal + TIE_MARGIN >= bestScore) {
+    if (inRange
+        && scoreOriginal >= thresholds.keepMin()
+        && scoreOriginal + thresholds.tieMargin() >= bestScore) {
       result = original;
     } else if (bestIdx >= 0
-        && bestScore >= REMAP_MIN
-        && (!inRange || scoreOriginal < KEEP_MIN || bestScore - scoreOriginal >= TIE_MARGIN)) {
+        && bestScore >= thresholds.remapMin()
+        && (!inRange
+            || scoreOriginal < thresholds.keepMin()
+            || bestScore - scoreOriginal >= thresholds.tieMargin())) {
       // REMAP：存在足够强的最佳片段，且原编号越界/过弱/显著落后
       result = bestIdx + 1;
     } else {
