@@ -39,7 +39,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
  * 客户联系人服务语义 hook 单元测试（add-customer-contact-retrieval 任务 1.4）。
  *
  * <p>覆盖联系人 CRUD 增删改（含软删）事务提交后触发所属 company 重摄取：复用 {@link
- * CustomerSemanticHookSupport#runAfterCommit}（无事务测试上下文「无同步→立即同步」分支）→ 回查所属公司完整实体 → {@link
+ * CustomerSemanticHookSupport#runAfterCommitAsync}（无事务测试上下文「无同步→立即同步」分支）→ 回查所属公司完整实体 → {@link
  * CustomerIngestionService#ingest}；以及无 embedding 配置（customerIngestionService 未装配）时静默降级不致 既有 IT
  * 失败。全部零外呼（mock 桩）。
  */

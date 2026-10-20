@@ -4,59 +4,36 @@ import com.slz.crm.knowledge.ingestion.BusinessActivityIngestionService;
 import com.slz.crm.pojo.entity.BusinessActivityEntity;
 import java.util.concurrent.Executor;
 import java.util.function.Function;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
- * 商业活动语义向量同步 hook 协作类（add-business-activity-semantic-retrieval 任务 2.2，对齐 {@link
- * CustomerSemanticHookSupport} 先例；add-unified-business-semantic-retrieval 任务 2.1 升级为**事务后异步派发**）。
+ * 商业活动语义向量同步 hook 门面（add-business-activity-semantic-retrieval 任务
+ * 2.2；fix-semantic-hook-support-unify 任务 2.1 收缩为薄门面）：类名与静态签名保持不变、全部调用点零改动，实现统一委托 {@link
+ * SemanticHookSupport}。
  *
- * <p>职责：事务语义闸 + 异步非阻塞隔离——事务激活时注册 afterCommit（提交后才派发），无事务环境同样提交给线程池；向量同步动作一律经 executor.execute
- * 派发，HTTP 业务主线程在事务提交后立即返回响应（微秒级），不等待任何外部向量嵌入耗时。单测可注入直接执行器 （{@code Runnable::run}）保证行为 100%
- * 确定性与无竞态。无可变共享状态，可安全并发调用。
+ * <p>本域语义：business_activity 无软删列、删除即**物理删除**——reingest 仅在实体缺失时转删向量，无软删谓词；删除后按主键直删向量 （{@link
+ * #deleteById}）。
  */
-@Slf4j
 final class BusinessActivitySemanticHookSupport {
+
+  /** 日志定位域标签（承接改造前逐字实现里的日志前缀，文案形态不变）。 */
+  private static final String DOMAIN_LABEL = "商业活动";
 
   private BusinessActivitySemanticHookSupport() {}
 
   /**
-   * 语义向量同步闸（任务 2.2；任务 2.1 异步化）：事务激活时注册 afterCommit，提交后**异步派发**给 executor；无事务环境同样异步派发。 向量侧任何异常在异步任务内
-   * WARN 不阻断业务主流程（全量回埋端点兜底），HTTP 主线程零等待。
+   * 语义向量同步闸：事务激活时注册 afterCommit，提交后异步派发；无事务环境同样异步派发；异常 WARN 不阻断（详见基类）。
    *
    * @param scene 场景描述（日志定位用）
-   * @param executor 异步任务执行器（生产为 {@code embeddingTaskExecutor} 线程池；单测可传直接执行器）
+   * @param executor 异步任务执行器（单测可传直接执行器）
    * @param action 向量同步动作
    */
-  @SuppressWarnings("PMD.AvoidCatchingGenericException")
-  // 豁免理由（对齐 add-customer-semantic-retrieval 任务 4.3）：hook 契约=向量侧任何异常 WARN 不阻断业务主流程，
-  // 失败类型不可枚举（嵌入外呼/向量库/确定性 id 派生均可能抛非受检异常），由全量回埋端点兜底。
   static void runAfterCommitAsync(String scene, Executor executor, Runnable action) {
-    Runnable guarded =
-        () -> {
-          try {
-            action.run();
-          } catch (Exception e) {
-            log.warn("商业活动语义向量同步失败（{}），可由全量回埋端点兜底", scene, e);
-          }
-        };
-    if (TransactionSynchronizationManager.isSynchronizationActive()) {
-      TransactionSynchronizationManager.registerSynchronization(
-          new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-              executor.execute(guarded);
-            }
-          });
-    } else {
-      executor.execute(guarded);
-    }
+    SemanticHookSupport.runAfterCommitAsync(DOMAIN_LABEL, scene, executor, action);
   }
 
   /**
-   * 回查完整实体后 upsert 语义向量（DTO 部分字段更新场景防丢字段）；实体缺失（已删）转删向量。仅可在 runAfterCommitAsync 的 action
-   * 内调用（异常由异步任务闸捕获）。
+   * 回查完整实体后 upsert 语义向量；实体缺失（已删）转删向量（business_activity 物理删域，无软删谓词，分叉由此处谓词显式表达）。 仅可在
+   * runAfterCommitAsync 的 action 内调用（异常由异步任务闸捕获）。
    *
    * @param id 商业活动主键
    * @param ingestion 摄取服务（调用方已判空）
@@ -66,12 +43,8 @@ final class BusinessActivitySemanticHookSupport {
       Long id,
       BusinessActivityIngestionService ingestion,
       Function<Long, BusinessActivityEntity> entityLoader) {
-    BusinessActivityEntity full = entityLoader.apply(id);
-    if (full == null) {
-      ingestion.deleteByActivityId(id);
-      return;
-    }
-    ingestion.ingest(full);
+    SemanticHookSupport.reingestById(
+        id, entityLoader, full -> full == null, ingestion::ingest, ingestion::deleteByActivityId);
   }
 
   /**
