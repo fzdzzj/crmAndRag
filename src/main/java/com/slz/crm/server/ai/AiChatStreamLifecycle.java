@@ -1,5 +1,6 @@
 package com.slz.crm.server.ai;
 
+import com.slz.crm.platform.contract.DynamicConfigService;
 import com.slz.crm.platform.contract.ModelCallOptions;
 import com.slz.crm.platform.contract.ModelProvider;
 import com.slz.crm.server.properties.AiProperties;
@@ -59,6 +60,10 @@ public class AiChatStreamLifecycle {
   @Autowired(required = false)
   private ObjectProvider<SelfRagReflector> selfRagReflectorProvider;
 
+  /** 动态配置（fix-citation-threshold-config 任务 1.2）：引用对齐阈值 rag.retrieval.citation.* 的读取入口。 */
+  @Autowired(required = false)
+  private ObjectProvider<DynamicConfigService> dynamicConfigProvider;
+
   /**
    * 构造器参数签名保持不变（tighten-pmd-residual-325 任务 6.4 批D）：{@code aiMessageService} 在 批D拆分后仅由 Spring
    * 按位注入与两处测试构造消费，本体已无读取点（拆分前该字段即为死存赋值）； 按「签名契约只豁免、不删参」登记，避免为压数改动 Spring 装配面与测试构造。
@@ -93,6 +98,9 @@ public class AiChatStreamLifecycle {
                     : tokenUsageRecorderProvider.getIfAvailable(),
             () ->
                 selfRagReflectorProvider == null ? null : selfRagReflectorProvider.getIfAvailable(),
+            () ->
+                CitationThresholdsResolver.resolve(
+                    dynamicConfigProvider == null ? null : dynamicConfigProvider.getIfAvailable()),
             modelName);
     this.chunkProcessor = new AiChatStreamChunkProcessor(finalizer, metrics, modelName);
     this.errorRecovery =

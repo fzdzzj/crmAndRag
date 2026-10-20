@@ -298,6 +298,46 @@ public class DynamicConfigKeyRegistry {
             false,
             100),
 
+        // fix-citation-threshold-config 任务 1.3：引用对齐三阈值动态化（默认值 = CitationAligner 现三个常量，
+        // 消费侧 CitationThresholdsResolver 实时读取；未配置/非法/越界逐键回落默认，行为与升级前逐字节等价）。
+        def(
+            objectMapper,
+            "rag.retrieval.citation.keepMin",
+            "rag.retrieval",
+            ConfigValueType.DOUBLE,
+            "0.12",
+            "引用编号可保留（KEEP）的最低支撑分，范围 0.0~1.0（默认 0.12）。低于此值原编号不再保留，"
+                + "改由重映射或删除处置。影响面：答案落库/对外 citations 的编号存活率。",
+            "0.0",
+            "1.0",
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "rag.retrieval.citation.remapMin",
+            "rag.retrieval",
+            ConfigValueType.DOUBLE,
+            "0.22",
+            "重映射到最佳片段所需的最低支撑分，范围 0.0~1.0（默认 0.22）。低于此值时该引用直接删除（DROP）。",
+            "0.0",
+            "1.0",
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "rag.retrieval.citation.tieMargin",
+            "rag.retrieval",
+            ConfigValueType.DOUBLE,
+            "0.08",
+            "平局带宽：原编号与最佳片段得分差小于该值时保留原编号（避免误伤），范围 0.0~1.0（默认 0.08）。",
+            "0.0",
+            "1.0",
+            Set.of(),
+            false,
+            100),
+
         // register-rag-retrieval-dynamic-keys（2026-09-25）：文档已有、此前未登记的检索管线键补登记。
         // 默认值 = 各消费点代码内联缺省；登记只补 schema 护栏，不改任何读取路径。
         // 查询改写（RetrievalQueryRewriteService）
