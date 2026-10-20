@@ -94,22 +94,24 @@ class RagBenchmarkDataPreparerTest {
   @Test
   void suiteSizeAndVersionAfterRecalibration() {
     // 扩容后基准集规模与分类配比（expand-rag-benchmark 任务 3.1 54；expand-rag-benchmark-mismatch
-    // 任务 2.3 升 v3.0 63）：六类 17/13/6/14/4/9
+    // 任务 2.3 升 v3.0 63；expand-rag-eval-blind-spots 升 v6.0 72）：七类 21/13/6/15/4/9/4
     List<RagBenchmarkCase> suite = RagBenchmarkSuite.standard();
-    assertEquals(63, suite.size(), "v3.0 基准集总条数必须为 63");
+    assertEquals(72, suite.size(), "v6.0 基准集总条数必须为 72");
     assertEquals(
-        "5.0",
+        "6.0",
         RagBenchmarkSuite.SUITE_VERSION,
-        "clear-onboard-2-left-fragment：SUITE_VERSION 必须为 5.0");
+        "expand-rag-eval-blind-spots：SUITE_VERSION 必须为 6.0");
     Map<Category, Long> categoryCounts =
         suite.stream()
             .collect(Collectors.groupingBy(RagBenchmarkCase::category, Collectors.counting()));
-    assertEquals(17L, categoryCounts.get(Category.TEXT), "TEXT 分类条数");
+    // v6.0 多轮组 MT-01~05 沿用内容类别（TEXT ×4 / LEXICAL ×1），TEMPORAL 组 TP-01~04 独立类目
+    assertEquals(21L, categoryCounts.get(Category.TEXT), "TEXT 分类条数");
     assertEquals(13L, categoryCounts.get(Category.TABLE), "TABLE 分类条数");
     assertEquals(6L, categoryCounts.get(Category.IMAGE), "IMAGE 分类条数");
-    assertEquals(14L, categoryCounts.get(Category.LEXICAL), "LEXICAL 分类条数");
+    assertEquals(15L, categoryCounts.get(Category.LEXICAL), "LEXICAL 分类条数");
     assertEquals(4L, categoryCounts.get(Category.EDGE), "EDGE 分类条数");
     assertEquals(9L, categoryCounts.get(Category.MISMATCH), "MISMATCH 分类条数");
+    assertEquals(4L, categoryCounts.get(Category.TEMPORAL), "TEMPORAL 分类条数");
   }
 
   @Test

@@ -354,6 +354,9 @@ class RagQualityRegressionTest {
   /**
    * 引用编号与答案要点覆盖属于生成阶段（只有真模型才可得），本门禁不评：coverage 记 1、citations 记空。 门禁只消费 recall@5 / mrr / failureRate
    * 三项，其余指标不参与断言。
+   *
+   * <p>expand-rag-eval-blind-spots 任务 3.2：expected 空用例的 ansC 改由 {@code refused} 给分，本门禁不评生成层故不填报 （默认
+   * false）；该指标同样不在本门禁的断言面内。
    */
   private static CaseOutcome toOutcome(CaseRetrieval retrieval) {
     return new CaseOutcome(retrieval.chunkIds(), List.of(), 1d, 0L, 0L, 0, retrieval.success());

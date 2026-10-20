@@ -28,6 +28,9 @@ public final class RagQualityReport {
    * @param totalLatencyMs 总延迟（毫秒）
    * @param tokens 本次消耗 token
    * @param success 是否成功（失败计入 failureRate）
+   * @param refused 生成层是否诚实拒答（expected 为空的用例专用信号，expand-rag-eval-blind-spots 任务 3.1）：true =
+   *     明确告知知识库无相关内容、未编造；false = 给出了知识性断言（可能借近邻内容编造）。expected 非空的用例该信号不参与判分 （答案一致性仍取 {@code
+   *     answerPointCoverage}）。
    */
   public record CaseOutcome(
       List<String> retrievedChunkIds,
@@ -36,7 +39,32 @@ public final class RagQualityReport {
       long ttftMs,
       long totalLatencyMs,
       int tokens,
-      boolean success) {}
+      boolean success,
+      boolean refused) {
+
+    /**
+     * 兼容旧构造：未填报拒答信号时按 {@code refused=false} 处理（适配层未接信号 = 未证明诚实拒答，expected 空用例按 0 分计，见 {@code
+     * RagQualityEvaluator} 的 D16 收紧口径）。
+     */
+    public CaseOutcome(
+        List<String> retrievedChunkIds,
+        List<Integer> citations,
+        double answerPointCoverage,
+        long ttftMs,
+        long totalLatencyMs,
+        int tokens,
+        boolean success) {
+      this(
+          retrievedChunkIds,
+          citations,
+          answerPointCoverage,
+          ttftMs,
+          totalLatencyMs,
+          tokens,
+          success,
+          false);
+    }
+  }
 
   /** 单条用例评分。 */
   public record CaseScore(

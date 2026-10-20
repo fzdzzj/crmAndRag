@@ -47,7 +47,8 @@ class RagBenchmarkCarrierScoringTest {
     Map<String, CaseOutcome> canned = new LinkedHashMap<>();
     for (RagBenchmarkCase c : rewritten) {
       if (c.expectedChunkIds().isEmpty()) {
-        canned.put(c.id(), new CaseOutcome(List.of(), List.of(), 1.0d, 0L, 0L, 0, true));
+        // expected 空 = 诚实拒答形态：refused=true（v6.0 起 ansC 的信号源，覆盖度不再参与判分）
+        canned.put(c.id(), new CaseOutcome(List.of(), List.of(), 1.0d, 0L, 0L, 0, true, true));
         continue;
       }
       List<String> retrieved = new ArrayList<>(c.expectedChunkIds());
@@ -78,7 +79,8 @@ class RagBenchmarkCarrierScoringTest {
         RagBenchmarkDataPreparer.citationExpectedByCase(RagBenchmarkSuite.standard(), preparation);
     List<RagBenchmarkCase> rewritten =
         RagBenchmarkDataPreparer.rewriteSuite(RagBenchmarkSuite.standard(), preparation);
-    assertEquals(63, citationExpected.size(), "每条用例都必须有 citP 期望集登记");
+    assertEquals(
+        RagBenchmarkSuite.standard().size(), citationExpected.size(), "每条用例都必须有 citP 期望集登记");
     Map<String, CaseOutcome> canned = cannedOutcomes(rewritten, citationExpected, preparation);
 
     Report v1 = RagQualityEvaluator.evaluate(rewritten, c -> canned.get(c.id()), TOP_K);

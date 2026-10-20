@@ -749,7 +749,9 @@ class RagRealRetrievalBenchmarkIT {
       KnowledgeRetrievalPort port, ModelProvider provider, RagBenchmarkCase c) {
     long startedAt = System.currentTimeMillis();
 
-    // 闲聊（KB OFF）：真系统不检索，直接对话生成；无检索无引用 = 诚实满分口径
+    // 闲聊（KB OFF）：真系统不检索，直接对话生成；无检索无引用 = 诚实满分口径。
+    // expand-rag-eval-blind-spots 任务 3.1：闲聊无知识性断言，refused=true（与原 coverage=1.0 同义，
+    // v6.0 起 expect 空用例的 ansC 由该信号给分）
     if (!c.useKnowledgeBase()) {
       Generated reply = generate(provider, CHAT_SYSTEM_PROMPT, c.question(), 256);
       recordForensics(c, List.of(), List.of(), reply.text(), reply.text(), List.of(), List.of());
@@ -760,7 +762,8 @@ class RagRealRetrievalBenchmarkIT {
           reply.ttftMs(),
           System.currentTimeMillis() - startedAt,
           reply.tokens(),
-          !reply.text().isBlank());
+          !reply.text().isBlank(),
+          true);
     }
 
     KnowledgeRetrievalPort.RetrievalResult result =
@@ -775,7 +778,7 @@ class RagRealRetrievalBenchmarkIT {
     List<String> retrieved = result.sources().stream().map(SourceReference::chunkId).toList();
 
     if (retrieved.isEmpty()) {
-      // 零命中：验证答案阶段的诚实语义（D16）；EDGE（期望空）答"未找到"=覆盖满分
+      // 零命中：验证答案阶段的诚实语义（D16）；EDGE（期望空）答"未找到"=拒绝编造
       Generated reply = generate(provider, NO_HIT_SYSTEM_PROMPT, c.question(), 256);
       boolean declined = isDecline(reply.text());
       double coverage = c.expectedAnswerPoints().isEmpty() ? (declined ? 1.0 : 0.0) : 0.0;
@@ -787,7 +790,8 @@ class RagRealRetrievalBenchmarkIT {
           reply.ttftMs(),
           System.currentTimeMillis() - startedAt,
           reply.tokens(),
-          true);
+          true,
+          declined);
     }
 
     // 有命中：资料编号注入 → 流式生成带 [n] 引用的答案 → 抽取真实引用编号
@@ -803,9 +807,12 @@ class RagRealRetrievalBenchmarkIT {
         c, retrieved, result.sources(), answer.text(), alignedText, citationsBefore, citations);
 
     // 答案要点覆盖：期望要点非空时由模型判卷；EDGE（期望空）看是否诚实拒答（对齐只改编号）
+    // expand-rag-eval-blind-spots 任务 3.1/3.2：expected 空的用例同时填 refused——v6.0 起 ansC 只看该信号
     double coverage;
+    boolean refused = false;
     if (c.expectedAnswerPoints().isEmpty()) {
-      coverage = isDecline(alignedText) ? 1.0 : 0.0;
+      refused = isDecline(alignedText);
+      coverage = refused ? 1.0 : 0.0;
     } else {
       coverage = judgeCoverage(provider, c.expectedAnswerPoints(), alignedText);
     }
@@ -816,7 +823,8 @@ class RagRealRetrievalBenchmarkIT {
         answer.ttftMs(),
         System.currentTimeMillis() - startedAt,
         answer.tokens(),
-        true);
+        true,
+        refused);
   }
 
   /** 采集对齐前后答案、引用、召回与 excerpt（截断），稍后与评分回填合并写旁路文件。 */

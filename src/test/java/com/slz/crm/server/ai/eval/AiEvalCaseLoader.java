@@ -3,6 +3,7 @@ package com.slz.crm.server.ai.eval;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.slz.crm.server.ai.eval.AiEvalCase.AiEvalTurn;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -65,9 +66,34 @@ public final class AiEvalCaseLoader {
               utterance,
               expectedTool,
               params == null ? Map.of() : params,
-              tags == null ? List.of() : tags));
+              tags == null ? List.of() : tags,
+              parseHistory(node, id)));
     }
     return List.copyOf(cases);
+  }
+
+  /**
+   * 解析多轮上下文（expand-rag-eval-blind-spots 任务 1.3）：{@code history} 为可选数组，缺省即单轮用例；
+   * 轮次任一字段为空视为用例集残缺，加载即失败。
+   */
+  private static List<AiEvalTurn> parseHistory(JsonNode node, String caseId) {
+    JsonNode historyNode = node.path("history");
+    if (historyNode.isMissingNode() || historyNode.isNull()) {
+      return List.of();
+    }
+    if (!historyNode.isArray()) {
+      throw new IllegalStateException("AI 评测用例 history 必须是数组: " + caseId);
+    }
+    List<AiEvalTurn> turns = new ArrayList<>();
+    for (JsonNode turn : historyNode) {
+      String user = text(turn, "user");
+      String assistant = text(turn, "assistant");
+      if (user.isBlank() || assistant.isBlank()) {
+        throw new IllegalStateException("AI 评测用例 history 轮次缺 user/assistant: " + caseId);
+      }
+      turns.add(new AiEvalTurn(user, assistant));
+    }
+    return List.copyOf(turns);
   }
 
   private static String text(JsonNode node, String field) {

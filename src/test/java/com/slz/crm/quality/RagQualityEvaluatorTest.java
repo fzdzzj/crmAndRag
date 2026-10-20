@@ -30,7 +30,9 @@ class RagQualityEvaluatorTest {
   private static final Map<String, CaseOutcome> CANNED =
       Map.of(
           "C1", new CaseOutcome(List.of("c1", "c3", "c2"), List.of(1, 3), 1.0, 120, 800, 300, true),
-          "C2", new CaseOutcome(List.of(), List.of(), 1.0, 50, 200, 40, true),
+          // expand-rag-eval-blind-spots 任务 3.2：expected 空用例的 ansC 改由 refused 给分，
+          // 本 canned 代表的正是"零召回 + 诚实拒答"形态，故显式填报 refused=true（原覆盖度值不再参与判分）
+          "C2", new CaseOutcome(List.of(), List.of(), 1.0, 50, 200, 40, true, true),
           "C3", new CaseOutcome(List.of("c5"), List.of(), 0.0, 100, 600, 200, true));
 
   private static Report evaluateCanned() {
@@ -51,6 +53,7 @@ class RagQualityEvaluatorTest {
     var c2 = report.cases().get(1);
     assertEquals(1.0, c2.recallAtK(), EPS); // 边界诚实空召回=满分
     assertEquals(1.0, c2.citationPrecision(), EPS); // 无引用 + expected 空 = 诚实
+    assertEquals(1.0, c2.answerConsistency(), EPS); // 诚实拒答（refused=true）= 答案一致性满分
     assertFalse(c2.hit()); // 边界不计命中
 
     var c3 = report.cases().get(2);
@@ -128,7 +131,8 @@ class RagQualityEvaluatorTest {
                   case "LX-1" ->
                       new CaseOutcome(
                           List.of("xr-gold", "xr-noise"), List.of(1), 1.0, 80, 500, 200, true);
-                  default -> new CaseOutcome(List.of(), List.of(), 1.0, 60, 300, 120, true);
+                  // expected 空 = 诚实拒答形态，refused=true（新口径的信号源）
+                  default -> new CaseOutcome(List.of(), List.of(), 1.0, 60, 300, 120, true, true);
                 },
             3);
 
@@ -141,6 +145,7 @@ class RagQualityEvaluatorTest {
 
     var lexicalEdge = report.cases().get(1);
     assertEquals(1.0, lexicalEdge.recallAtK(), EPS); // 空期望 + 空召回 = 诚实满分
+    assertEquals(1.0, lexicalEdge.answerConsistency(), EPS); // 诚实拒答 = 答案一致性满分
     assertEquals(1.0, lexicalEdge.citationPrecision(), EPS);
     assertFalse(lexicalEdge.hit());
   }
@@ -155,6 +160,8 @@ class RagQualityEvaluatorTest {
             List.of(
                 Category.TEXT, Category.TABLE, Category.IMAGE, Category.LEXICAL, Category.EDGE)),
         "基准集必须覆盖文本/表格/图片/词法/边界五类");
+    // expand-rag-eval-blind-spots 任务 2.1：时间限定类进封闭集后，标准集必须覆盖该类
+    assertTrue(categories.contains(Category.TEMPORAL), "基准集必须覆盖 TEMPORAL 时间限定类");
 
     // 任务 1.2 的数量口径：总数 ≥16；LEXICAL ≥4（含向量漏召对照）；其余各类有底线
     assertTrue(suite.size() >= 16, "基准集至少 16 条，实际=" + suite.size());
@@ -166,6 +173,8 @@ class RagQualityEvaluatorTest {
     assertTrue(counts.getOrDefault(Category.TABLE, 0L) >= 2, "TABLE 至少 2 条");
     assertTrue(counts.getOrDefault(Category.IMAGE, 0L) >= 1, "IMAGE 至少 1 条");
     assertTrue(counts.getOrDefault(Category.EDGE, 0L) >= 2, "EDGE 至少 2 条");
+    // expand-rag-eval-blind-spots 任务 2.1：TEMPORAL 组 3-4 条（下限 3，实测 4）
+    assertTrue(counts.getOrDefault(Category.TEMPORAL, 0L) >= 3, "TEMPORAL 至少 3 条");
 
     // 非边界用例必须填实黄金片段与答案要点；边界用例两者都必须为空
     for (RagBenchmarkCase c : suite) {

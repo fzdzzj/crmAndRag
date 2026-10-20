@@ -1,6 +1,7 @@
 package com.slz.crm.quality;
 
 import com.slz.crm.quality.RagBenchmarkCase.Category;
+import com.slz.crm.quality.RagBenchmarkCase.HistoryTurn;
 import java.util.List;
 import java.util.Set;
 
@@ -32,15 +33,19 @@ public final class RagBenchmarkSuite {
    * 八例 黄金补标（T-01/TB-01/TB-08/TB-09/TB-10/TB-11/M-01/M-04 按 citation-forensics-v4 §3 补入真实支撑块）+ T-15
    * 锚修正 （customer-onboard-3 标记移至报备句主体段，撕裂消除），新锚点 {@code docs/rag-quality/baseline-v5.json}； v5.0 =
    * clear-onboard-2-left-fragment：T-11 黄金（customer-onboard-2）标记移至客户分级标准语义主体段（撕裂消除，
-   * 锚块字面承载分级标准文本），新锚点 {@code docs/rag-quality/baseline-v6.json}。任一版本跨版本
-   * <b>不可直接比较</b>，只与同版报告对比（比较前先核对报告 suiteVersion）。
+   * 锚块字面承载分级标准文本），新锚点 {@code docs/rag-quality/baseline-v6.json}；v6.0 =
+   * expand-rag-eval-blind-spots：新增多轮组 5 条（MT-01~05，history 组件承载上下文）+ TEMPORAL 时间限定组 4 条（TP-01~04，
+   * 63 → 72：TEXT 21 / TABLE 13 / IMAGE 6 / LEXICAL 15 / EDGE 4 / MISMATCH 9 / TEMPORAL 4），并升 {@code
+   * CaseOutcome.refused} 的 D16 判分收紧——v6.0 真跑落锚 {@code baseline-v7.json} 属另卡授权（沿 v3.0「暂未授权真跑
+   * 落锚」先例，本次不产出新锚点）。任一版本跨版本 <b>不可直接比较</b>，只与同版报告对比（比较前先核对报告 suiteVersion）。
    */
-  public static final String SUITE_VERSION = "5.0";
+  public static final String SUITE_VERSION = "6.0";
 
   private RagBenchmarkSuite() {}
 
   /**
-   * @return 标准基准集（63 条：TEXT 17 / TABLE 13 / IMAGE 6 / LEXICAL 14 / EDGE 4 / MISMATCH 9）
+   * @return 标准基准集（72 条：TEXT 21 / TABLE 13 / IMAGE 6 / LEXICAL 15 / EDGE 4 / MISMATCH 9 / TEMPORAL
+   *     4）
    */
   public static List<RagBenchmarkCase> standard() {
     return List.of(
@@ -454,6 +459,78 @@ public final class RagBenchmarkSuite {
             "报销单递上去之后，要过几层手续钱才会打到账上",
             Set.of("expense-claim"),
             List.of("逐级审核", "财务初审", "终审放款"),
+            true),
+        // ---- MULTI-TURN：多轮上下文（expand-rag-eval-blind-spots 任务 1.2） ----
+        // 一律复用既有黄金锚（零语料改动）；history 由兼容重载之外的 7 参构造承载，指代/追问/澄清三类各覆盖。
+        new RagBenchmarkCase(
+            "MT-01",
+            Category.TEXT,
+            "那它的审批流程具体怎么走",
+            List.of(new HistoryTurn("合同生效后金额能改吗", "可以，需重新走合同变更审批，审批链与新建合同一致。")),
+            Set.of("sales-flow-4"),
+            List.of("变更审批", "初审", "法务复核", "终审"),
+            true),
+        new RagBenchmarkCase(
+            "MT-02",
+            Category.TEXT,
+            "那第二档呢，会有什么影响",
+            List.of(new HistoryTurn("回款逾期了会怎么处理", "逾期分三档升级，第一档由销售经理直接跟进催收。")),
+            Set.of("payment-plan-2"),
+            List.of("逾期30天", "部门总监", "暂停新合同审批"),
+            true),
+        new RagBenchmarkCase(
+            "MT-03",
+            Category.LEXICAL,
+            "那它的备件放在哪个库位",
+            List.of(new HistoryTurn("XR-500 的保修到什么时候", "XR-500 的保修截止 2027-05-31。")),
+            Set.of("model-xr500"),
+            List.of("备件库位 B-12", "王建国", "保修条款"),
+            true),
+        new RagBenchmarkCase(
+            "MT-04",
+            Category.TEXT,
+            "归档那边有什么要求",
+            List.of(new HistoryTurn("帮我看看合同的事", "合同的哪一类？审批流程、归档要求还是变更审批？")),
+            Set.of("sales-flow-3"),
+            List.of("纸质件", "电子件", "开票"),
+            true),
+        new RagBenchmarkCase(
+            "MT-05",
+            Category.TEXT,
+            "那第二步是谁来核验",
+            List.of(new HistoryTurn("客户建档要走哪些步骤", "客户建档分四步，先在系统录入客户基础信息。")),
+            Set.of("customer-onboard-1"),
+            List.of("销售主管", "核验资质", "信息完整性"),
+            true),
+        // ---- TEMPORAL：时间限定词改写（expand-rag-eval-blind-spots 任务 2.1） ----
+        // 黄金锚均为静态语料中已写明时间口径的段落——纯静态、fake 可验证，不依赖真库时效数据。
+        new RagBenchmarkCase(
+            "TP-01",
+            Category.TEMPORAL,
+            "本季度价格梯度表复核之后，1000 台上档位的折扣率还适用吗",
+            Set.of("price-tiers"),
+            List.of("每季度复核", "折扣率15%", "30天保护期"),
+            true),
+        new RagBenchmarkCase(
+            "TP-02",
+            Category.TEMPORAL,
+            "上季度的华东区冲刺奖励什么时候发",
+            Set.of("policy-001"),
+            List.of("超额部分3%", "次季度首月", "随工资发放"),
+            true),
+        new RagBenchmarkCase(
+            "TP-03",
+            Category.TEMPORAL,
+            "最近这个月 P1 级故障响应超时了一次，要赔多少",
+            Set.of("sla-credit-1"),
+            List.of("赔偿当月服务费10%", "次月对账单抵扣", "单月封顶30%"),
+            true),
+        new RagBenchmarkCase(
+            "TP-04",
+            Category.TEMPORAL,
+            "最近一次客户分级复评的输入是哪几个季度",
+            Set.of("customer-onboard-2"),
+            List.of("每季度复评", "近四个季度合同额", "回款率"),
             true),
         // ---- EDGE：诚实生成语义（D16） ----
         // 边界1：闲聊，KB OFF——绝不该触发检索或注入未命中提示
