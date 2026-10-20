@@ -2,6 +2,8 @@ package com.slz.crm.pojo.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import java.time.LocalDateTime;
 import java.util.List;
 import lombok.Data;
@@ -13,7 +15,8 @@ import lombok.Data;
  */
 @Data
 public class BusinessActivityDTO {
-  /** 活动ID */
+  /** 活动ID（仅更新路径必填；创建路径由数据库生成，请求体本就不带，故用 Update 分组避免误拦创建） */
+  @NotNull(message = "活动ID不能为空", groups = ValidationGroups.Update.class)
   private Long id;
 
   /** 活动标题 */
@@ -45,11 +48,11 @@ public class BusinessActivityDTO {
   /** 创建人ID */
   private Long creatorId;
 
-  /** 参与人员ID列表 */
-  private List<BusinessActivityUserDTO> userIdList;
+  /** 参与人员ID列表（级联校验：元素 userId 必填） */
+  @Valid private List<BusinessActivityUserDTO> userIdList;
 
-  /** 参与联系人ID列表 */
-  private List<BusinessActivityContactDTO> contactIdList;
+  /** 参与联系人ID列表（级联校验：元素 contactId 必填） */
+  @Valid private List<BusinessActivityContactDTO> contactIdList;
 
   /** 是否添加用户 */
   @JsonProperty("isAddUser")

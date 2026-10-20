@@ -6625,6 +6625,8 @@ components:
         createTime:
           type: string
           format: date-time
+      required:
+      - contactId
     BusinessActivityDTO:
       type: object
       properties:
@@ -6698,6 +6700,8 @@ components:
         createTime:
           type: string
           format: date-time
+      required:
+      - userId
     AssistHandleDTO:
       type: object
       properties:
@@ -8392,6 +8396,8 @@ components:
           format: int64
         userRole:
           type: string
+      required:
+      - userId
     AddActivityContactRequestDTO:
       type: object
       properties:
@@ -8400,6 +8406,8 @@ components:
           format: int64
         contactRole:
           type: string
+      required:
+      - contactId
     BusinessActivityQueryDTO:
       type: object
       properties:

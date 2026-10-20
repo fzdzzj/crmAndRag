@@ -1,6 +1,7 @@
 package com.slz.crm.pojo.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import jakarta.validation.constraints.NotNull;
 import java.time.LocalDateTime;
 import lombok.Data;
 
@@ -16,7 +17,8 @@ public class BusinessActivityUserDTO {
   /** 商业活动ID */
   private Long activityId;
 
-  /** 用户ID */
+  /** 用户ID（关联维护的身份字段：为空时旧实现会一路下探到 list-vs-set 比对或库约束才报错） */
+  @NotNull(message = "用户ID不能为空")
   private Long userId;
 
   /** 用户角色 */
