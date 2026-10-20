@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.slz.crm.common.annotation.RequirePermission;
 import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.result.Result;
+import com.slz.crm.common.untils.BatchIdsGuard;
 import com.slz.crm.pojo.dto.OrderDTO;
 import com.slz.crm.pojo.vo.OrderVO;
 import com.slz.crm.server.service.ContractOrderItemService;
@@ -43,6 +44,7 @@ public class ContractOrderItemController {
   @DeleteMapping
   @RequirePermission(PermissionOperates.SALES_UPDATE_ORDER)
   public Result<Integer> delete(@Valid @RequestBody List<Long> ids) {
+    BatchIdsGuard.check(ids);
     return Result.success(contractOrderItemService.batchDelete(ids));
   }
 

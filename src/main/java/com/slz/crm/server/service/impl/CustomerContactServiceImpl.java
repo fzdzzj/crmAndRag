@@ -63,6 +63,9 @@ public class CustomerContactServiceImpl
 
   @Autowired private ForeignKeyDeleteUtil foreignKeyDeleteUtil;
 
+  /** 物理级联删前的子宿主附件清理（fix-backlog-batch3 任务 4.2）。 */
+  @Autowired private ChildHostAttachmentCleaner childHostAttachmentCleaner;
+
   @Autowired private AOTOExcelUntil aotoExcelUntil;
 
   @Autowired private SalesOpportunityService salesOpportunityService;
@@ -255,6 +258,10 @@ public class CustomerContactServiceImpl
     LambdaQueryWrapper<CustomerContactRemarkEntity> queryWrapper = new LambdaQueryWrapper<>();
     queryWrapper.in(CustomerContactRemarkEntity::getContactId, idList);
     customerContactRemarkMapper.delete(queryWrapper);
+
+    // fix-backlog-batch3 任务 4.2：物理级联删之前先清子宿主（联络任务/商业活动）的多态附件，
+    // 否则级联删完宿主后附件行与磁盘文件都成孤儿（approval_attachment 无 is_deleted，级联机器带不了 model_name 判别）
+    childHostAttachmentCleaner.cleanBeforeContactPhysicalDelete(idList);
 
     // 2. 删除所有关联的外键数据（使用配置的关联关系）
     // 资源类型：2-联系人（对应DataShareEntity的resourceType）

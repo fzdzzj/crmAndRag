@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.slz.crm.common.annotation.RequirePermission;
 import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.result.Result;
+import com.slz.crm.common.untils.BatchIdsGuard;
 import com.slz.crm.knowledge.ingestion.ContractIngestionService;
 import com.slz.crm.pojo.dto.ContractANDOrderDTO;
 import com.slz.crm.pojo.dto.ContractDTO;
@@ -93,6 +94,7 @@ public class ContractController {
   @RequirePermission(PermissionOperates.SALES_UPDATE_CONTRACT)
   @SuppressWarnings("PMD.AvoidCatchingGenericException") // 批量删除service外呼，失败转错误结果
   public Result<Integer> delete(@Valid @RequestBody List<Long> ids) {
+    BatchIdsGuard.check(ids);
     Result<Integer> result;
     try {
       int count = contractService.batchDelete(ids);

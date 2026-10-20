@@ -22,6 +22,7 @@ import com.slz.crm.pojo.entity.SalesStageApprovalEntity;
 import com.slz.crm.server.mapper.SalesOpportunityMapper;
 import com.slz.crm.server.mapper.SalesStageApprovalMapper;
 import com.slz.crm.server.service.ApprovalAttachmentService;
+import com.slz.crm.server.service.impl.ChildHostAttachmentCleaner;
 import com.slz.crm.server.service.impl.SalesOpportunityServiceImpl;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -49,6 +50,10 @@ class SalesOpportunityServiceTest {
   @Mock private SalesStageApprovalMapper salesStageApprovalMapper;
   @Mock private ApprovalAttachmentService approvalAttachmentService;
   @Mock private ForeignKeyDeleteUtil foreignKeyDeleteUtil;
+
+  /** fix-backlog-batch3 任务 4.2：商机删除新增的子宿主附件清理协作者（本类只验证调用时序）。 */
+  @Mock private ChildHostAttachmentCleaner childHostAttachmentCleaner;
+
   @InjectMocks private SalesOpportunityServiceImpl salesOpportunityService;
 
   @BeforeEach
@@ -159,13 +164,18 @@ class SalesOpportunityServiceTest {
     assertTrue(salesOpportunityService.delete(opportunityId));
 
     // 补删必须走 canonical removeByIds（model 判别 + 磁盘清理），且必须发生在级联物理删审批之前
-    InOrder order = inOrder(approvalAttachmentService, foreignKeyDeleteUtil);
+    InOrder order =
+        inOrder(approvalAttachmentService, childHostAttachmentCleaner, foreignKeyDeleteUtil);
     order
         .verify(approvalAttachmentService)
         .listEntitiesByAndIds(List.of(41L, 42L), ModelName.APPROVAL_ATTACHMENT);
     order
         .verify(approvalAttachmentService)
         .removeByIds(List.of(71L), ModelName.APPROVAL_ATTACHMENT);
+    // fix-backlog-batch3 任务 4.2：子宿主（活动/任务）附件清理同样必须在级联之前
+    order
+        .verify(childHostAttachmentCleaner)
+        .cleanBeforeOpportunityPhysicalDelete(List.of(opportunityId));
     order
         .verify(foreignKeyDeleteUtil)
         .deleteCascade(SalesOpportunityEntity.class, List.of(opportunityId), 0);

@@ -8,6 +8,7 @@ import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.result.Result;
 import com.slz.crm.common.untils.BaseUnit;
+import com.slz.crm.common.untils.BatchIdsGuard;
 import com.slz.crm.knowledge.ingestion.ContactTaskIngestionService;
 import com.slz.crm.pojo.dto.ApprovalAttachmentDTO;
 import com.slz.crm.pojo.dto.ContactTaskDTO;
@@ -104,6 +105,7 @@ public class ContactTaskController {
   @DeleteMapping("/batch")
   @RequirePermission(PermissionOperates.TASK_DELETE_TASK)
   public Result<Integer> deleteByIds(@Valid @RequestBody List<Long> idList) {
+    BatchIdsGuard.check(idList);
     Integer count = contactTaskService.deleteByIds(idList);
     return Result.success(count);
   }

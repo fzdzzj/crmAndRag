@@ -8,6 +8,7 @@ import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.result.Result;
 import com.slz.crm.common.untils.BaseUnit;
+import com.slz.crm.common.untils.BatchIdsGuard;
 import com.slz.crm.knowledge.ingestion.BusinessActivityIngestionService;
 import com.slz.crm.pojo.dto.AddActivityContactRequestDTO;
 import com.slz.crm.pojo.dto.AddActivityUserRequestDTO;
@@ -63,6 +64,7 @@ public class BusinessActivityController {
   @DeleteMapping
   @RequirePermission(PermissionOperates.SALES_DELETE_BUSINESS_ACTIVITY)
   public Result<Integer> delete(@Valid @RequestBody List<Long> idList) {
+    BatchIdsGuard.check(idList);
     return Result.success(businessActivityService.deleteByIds(idList));
   }
 

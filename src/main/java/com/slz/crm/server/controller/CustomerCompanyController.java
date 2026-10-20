@@ -6,6 +6,7 @@ import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.result.Result;
+import com.slz.crm.common.untils.BatchIdsGuard;
 import com.slz.crm.pojo.dto.CustomerCompanyDTO;
 import com.slz.crm.pojo.dto.CustomerContactDTO;
 import com.slz.crm.pojo.dto.CustomerMergeDTO;
@@ -82,6 +83,7 @@ public class CustomerCompanyController {
   @DeleteMapping
   @RequirePermission(PermissionOperates.CUSTOMER_DELETE_CUSTOMER_COMPANY)
   public Result<Integer> delete(@Valid @RequestBody List<Long> idList) {
+    BatchIdsGuard.check(idList);
     return Result.success(customerCompanyService.deleteByIds(idList));
   }
 
@@ -106,6 +108,7 @@ public class CustomerCompanyController {
   @PutMapping("/recover")
   @RequirePermission(PermissionOperates.CUSTOMER_RECOVER_CUSTOMER_COMPANY)
   public Result<Integer> recover(@Valid @RequestBody List<Long> idList) {
+    BatchIdsGuard.check(idList);
     return Result.success(customerCompanyService.deleteOrRecoverByIds(idList, false));
   }
 
@@ -282,6 +285,7 @@ public class CustomerCompanyController {
   @DeleteMapping("/logical/batch")
   @RequirePermission(PermissionOperates.CUSTOMER_DELETE_CUSTOMER_COMPANY)
   public Result<Integer> batchLogicalDelete(@Valid @RequestBody List<Long> idList) {
+    BatchIdsGuard.check(idList);
     return Result.success(customerCompanyService.batchLogicalDeleteByIds(idList));
   }
 

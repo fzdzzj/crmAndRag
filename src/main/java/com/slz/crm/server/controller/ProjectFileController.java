@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.slz.crm.common.annotation.RequirePermission;
 import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.result.Result;
+import com.slz.crm.common.untils.BatchIdsGuard;
 import com.slz.crm.pojo.dto.ProjectFileDTO;
 import com.slz.crm.pojo.dto.ProjectFileQueryDTO;
 import com.slz.crm.pojo.vo.ProjectFileVO;
@@ -147,6 +148,7 @@ public class ProjectFileController {
   @DeleteMapping
   @RequirePermission(PermissionOperates.SALES_DELETE_PROJECT_FILE)
   public Result<Boolean> deleteByIds(@RequestParam List<Long> ids) {
+    BatchIdsGuard.check(ids);
     projectFileService.deleteByIds(ids);
     return Result.success(true);
   }

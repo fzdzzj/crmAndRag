@@ -145,7 +145,9 @@ public class ApprovalAttachmentServiceImpl
     IOUtils.deleteFile(entities);
 
     // 文件删除成功后，再删除数据库记录
-    baseMapper.deleteBatchIds(ids);
+    // fix-backlog-batch3 任务 4.1：只删「按 model_name 过滤后」的行——原先直接删原始 ids，ids 里混入他域附件
+    // 时会把被过滤掉的跨模型行一并物理删掉（跨模型误删）。口径与 removeSourceAttachmentsByDistinctIds 一致。
+    baseMapper.deleteBatchIds(entities.stream().map(ApprovalAttachmentEntity::getId).toList());
   }
 
   @Override
