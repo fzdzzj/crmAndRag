@@ -1,6 +1,8 @@
 package com.slz.crm.unit.server.handler;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -22,12 +24,14 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.yaml.snakeyaml.Yaml;
 
 /**
- * SQL 异常映射单测（fix-engineering-debt-nplus1-loop-clone 任务 3.3）。
+ * SQL 异常映射单测（fix-engineering-debt-nplus1-loop-clone 任务 3.3；fix-backlog-batch2 ⑦ 扩充）。
  *
- * <p>锁定 A-1 双轨收敛：唯一索引名 → 业务字段名的映射只剩 application.yml 的 {@code slz.database-field-map} 一个维护点（原手写
- * switch 已删）。测试直接从 yml 读回映射注入 handler，因此 yml 少键/写错值会直接红， 而不是「测试里复制一份 switch 值」的自证。
+ * <p>锁定两件事：①唯一索引名 → 业务字段名的映射只剩 application.yml 的 {@code slz.unique-index-field-map} 一个维护点，列名 映射
+ * {@code slz.database-field-map} 与它键空间隔离（原手写 switch 已删）；②duplicate-key 三态（组合 / 单列 / 未知）与
+ * 「缺少必填字段」裸列名路径的文案逐路径固定，任何索引名输入（含裸名、空名）都不越界。测试直接从 yml 读回映射注入 handler， 因此 yml
+ * 少键/写错值/键串段会直接红，而不是「测试里复制一份映射值」的自证。
  */
-@DisplayName("SQL 异常字段映射（配置单源）")
+@DisplayName("SQL 异常字段映射（配置单源 + 键空间隔离）")
 class SQLExceptionHandlerTest {
 
   private static final Path APPLICATION_YML = Paths.get("src/main/resources/application.yml");
@@ -38,6 +42,8 @@ class SQLExceptionHandlerTest {
 
   private static Map<String, String> fieldMap;
 
+  private static Map<String, String> indexFieldMap;
+
   @BeforeAll
   static void loadYamlMapping() throws Exception {
     String yaml = Files.readString(APPLICATION_YML, StandardCharsets.UTF_8);
@@ -46,6 +52,10 @@ class SQLExceptionHandlerTest {
     fieldMap =
         OBJECT_MAPPER.readValue(
             (String) slz.get("database-field-map"), new TypeReference<Map<String, String>>() {});
+    indexFieldMap =
+        OBJECT_MAPPER.readValue(
+            (String) slz.get("unique-index-field-map"),
+            new TypeReference<Map<String, String>>() {});
     Map<String, String> compositeMap =
         OBJECT_MAPPER.readValue(
             (String) slz.get("composite-unique-index-map"),
@@ -53,6 +63,7 @@ class SQLExceptionHandlerTest {
 
     handler = new SQLExceptionHandler();
     ReflectionTestUtils.setField(handler, "databaseFieldMap", fieldMap);
+    ReflectionTestUtils.setField(handler, "uniqueIndexFieldMap", indexFieldMap);
     ReflectionTestUtils.setField(handler, "compositeUniqueIndexMap", compositeMap);
   }
 
@@ -74,15 +85,27 @@ class SQLExceptionHandlerTest {
   }
 
   @Test
-  @DisplayName("yml 单源完备：7 个唯一索引名键逐项在配置里且值与原 switch 一致")
+  @DisplayName("yml 单源完备：7 个唯一索引名键逐项在 unique-index-field-map 里且值不变")
   void yml_carriesAllSevenIndexKeys() {
-    assertEquals("手机号", fieldMap.get("uk_phone"));
-    assertEquals("邮箱", fieldMap.get("uk_email"));
-    assertEquals("企业名字", fieldMap.get("uk_company_name"));
-    assertEquals("联系电话", fieldMap.get("idx_mobile"));
-    assertEquals("合同编号", fieldMap.get("uk_contract_no"));
-    assertEquals("支付编号", fieldMap.get("uk_payment_no"));
-    assertEquals("发票编号", fieldMap.get("uk_invoice_no"));
+    assertEquals("手机号", indexFieldMap.get("uk_phone"));
+    assertEquals("邮箱", indexFieldMap.get("uk_email"));
+    assertEquals("企业名字", indexFieldMap.get("uk_company_name"));
+    assertEquals("联系电话", indexFieldMap.get("idx_mobile"));
+    assertEquals("合同编号", indexFieldMap.get("uk_contract_no"));
+    assertEquals("支付编号", indexFieldMap.get("uk_payment_no"));
+    assertEquals("发票编号", indexFieldMap.get("uk_invoice_no"));
+  }
+
+  @Test
+  @DisplayName("键空间隔离：索引名键不再出现在列名映射里，列名键也不出现在索引名映射里")
+  void keySpacesAreIsolated() {
+    assertFalse(fieldMap.containsKey("uk_phone"), "索引名键必须迁出 database-field-map");
+    assertFalse(fieldMap.containsKey("uk_email"), "索引名键必须迁出 database-field-map");
+    assertFalse(fieldMap.containsKey("idx_mobile"), "索引名键必须迁出 database-field-map");
+    assertEquals("用户ID", fieldMap.get("user_id"), "列名映射仍须保留列名键");
+    assertEquals("客户ID", fieldMap.get("company_id"), "列名映射仍须保留列名键");
+    assertNull(indexFieldMap.get("user_id"), "索引名映射不得混入列名键");
+    assertNull(indexFieldMap.get("company_id"), "索引名映射不得混入列名键");
   }
 
   @Test
@@ -144,6 +167,27 @@ class SQLExceptionHandlerTest {
   }
 
   @Test
+  @DisplayName("越界守卫 ①：裸索引名（无表名前缀）不再数组越界，按同一映射命中")
+  void duplicateKey_bareIndexName_doesNotThrow() {
+    Result<String> result =
+        handler.handleDuplicateKeyException(duplicate("138066666666", "uk_phone"));
+    assertEquals("手机号 138066666666 已存在", result.getMsg());
+  }
+
+  @Test
+  @DisplayName("越界守卫 ①：裸组合索引名同样走组合文案；未知裸名与空名回落「数据」")
+  void duplicateKey_bareIndexName_statesCovered() {
+    assertEquals(
+        "共享 客户A 已存在",
+        handler.handleDuplicateKeyException(duplicate("客户A-角色B", "uk_share_unique")).getMsg());
+    assertEquals(
+        "数据 X-2 已存在",
+        handler.handleDuplicateKeyException(duplicate("X-2", "uk_not_registered")).getMsg());
+    assertEquals("数据 X-3 已存在", handler.handleDuplicateKeyException(duplicate("X-3", "")).getMsg());
+    assertEquals("数据 X-4 已存在", handler.handleDuplicateKeyException(duplicate("X-4", ".")).getMsg());
+  }
+
+  @Test
   @DisplayName("duplicate-key 报文不可解析：保留兜底文案")
   void duplicateKey_unparsableMessage_keepsFallback() {
     Result<String> result =
@@ -154,7 +198,7 @@ class SQLExceptionHandlerTest {
   }
 
   @Test
-  @DisplayName("FK 路径回归：外键列名经同一配置映射为业务字段名")
+  @DisplayName("FK 路径回归：外键列名经列名映射为业务字段名（不受索引名键迁出影响）")
   void foreignKey_usesColumnKeyOfSameConfig() {
     Result<String> result =
         invoke(
@@ -180,12 +224,26 @@ class SQLExceptionHandlerTest {
   }
 
   @Test
-  @DisplayName("doesn't-have-default-value 路径回归：裸列名仍回落「数据」，文案不变")
-  void missingDefaultValue_keepsBareColumnFallback() {
+  @DisplayName("缺少必填字段 ④：裸列名走列名映射，文案由「数据」改为真实字段名")
+  void missingDefaultValue_usesColumnName() {
     Result<String> result =
         invoke(
             "handleSQLException",
             new SQLException("Field `company_id` doesn't have a default value"));
-    assertEquals("缺少必填字段：数据", result.getMsg());
+    assertEquals("缺少必填字段：客户ID", result.getMsg());
+  }
+
+  @Test
+  @DisplayName("缺少必填字段：未登记的裸列名回落「未知字段」；报文无反引号同样安全不越界")
+  void missingDefaultValue_unknownColumnAndNoBacktick_staySafe() {
+    assertEquals(
+        "缺少必填字段：未知字段",
+        invoke(
+                "handleSQLException",
+                new SQLException("Field `ghost_column` doesn't have a default value"))
+            .getMsg());
+    assertEquals(
+        "缺少必填字段：未知字段",
+        invoke("handleSQLException", new SQLException("doesn't have a default value")).getMsg());
   }
 }
