@@ -20,6 +20,9 @@ import java.util.Set;
  *
  * <p>边界语义（D16 诚实生成）：expected 为空的边界用例，<b>不召回、不伪造引用</b>记满分（recall/precision/ 引用精度=1），过度检索或伪造引用记
  * 0——把"零命中时诚实"也纳入质量度量。
+ *
+ * <p>拒答断言（expand-rag-eval-blind-spots 任务 3.2）：expected 为空的用例，答案一致性不再取生成层覆盖度，而只看 {@code
+ * CaseOutcome.refused}（诚实拒答 = 1，借近邻编造 = 0）；expected 非空的正常用例口径零改动。
  */
 public final class RagQualityEvaluator {
 
@@ -160,11 +163,24 @@ public final class RagQualityEvaluator {
         reciprocalRank,
         hit,
         citationPrecision,
-        outcome.answerPointCoverage(),
+        answerConsistency(expected, outcome),
         outcome.ttftMs(),
         outcome.totalLatencyMs(),
         outcome.tokens(),
         outcome.success());
+  }
+
+  /**
+   * 答案一致性口径（expand-rag-eval-blind-spots 任务 3.2，D16 收紧）。
+   *
+   * <p>expected 非空：公式零改动，仍取生成层给出的要点覆盖率——正常用例不受拒答信号影响（refused 在正常用例上不参与判分）。
+   *
+   * <p>expected 空：只看生成层是否诚实拒答（{@code refused ? 1 : 0}）。旧口径直接取 {@code answerPointCoverage}，而"借近邻内容
+   * 编造一段看似相关的答案"同样可被判卷给出高覆盖——C-5 的幻觉面就此漏判。新口径下编造（refused=false）恒 0 分，与检索层的
+   * recall/precision/MRR/citP 公式互不干扰（那四项仍按原口径判卷）。
+   */
+  private static double answerConsistency(Set<String> expected, CaseOutcome outcome) {
+    return expected.isEmpty() ? (outcome.refused() ? 1d : 0d) : outcome.answerPointCoverage();
   }
 
   private static int countRelevant(List<String> retrieved, Set<String> expected) {

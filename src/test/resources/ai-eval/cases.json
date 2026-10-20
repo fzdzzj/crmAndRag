@@ -325,5 +325,38 @@
     "expectedTool": "queryUser",
     "expectedParams": { "realName": "张伟" },
     "tags": ["query-tool", "system-user", "discrimination"]
+  },
+  {
+    "id": "multi-turn-stage-approval-reference",
+    "utterance": "它的审批到哪一步了？",
+    "expectedTool": "queryStageApproval",
+    "expectedParams": {},
+    "tags": ["query-tool", "multi-turn", "reference"],
+    "history": [
+      {
+        "user": "帮我查一下智能制造平台一期合同",
+        "assistant": "已查到合同：智能制造平台一期，签约主体为云创科技有限公司。"
+      }
+    ]
+  },
+  {
+    "id": "multi-turn-order-followup",
+    "utterance": "那第二笔呢？",
+    "expectedTool": "getOrderDetail",
+    "expectedParams": {},
+    "tags": ["query-tool", "multi-turn", "followup"],
+    "history": [
+      { "user": "查一下订单 1001 的详情", "assistant": "订单 1001：金额 12 万元，状态为已发货。" }
+    ]
+  },
+  {
+    "id": "multi-turn-clarification-customer-detail",
+    "utterance": "客户公司档案吧，55 号那个",
+    "expectedTool": "getCustomerCompanyDetail",
+    "expectedParams": { "companyId": 55 },
+    "tags": ["query-tool", "multi-turn", "clarification"],
+    "history": [
+      { "user": "看下客户数据", "assistant": "要看哪一类？客户公司档案、商机还是合同？" }
+    ]
   }
 ]

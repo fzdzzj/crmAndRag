@@ -38,6 +38,14 @@ class RagBenchmarkV6AnchorValidationTest {
   /** 与被测实现同源的 v6 锚点文件名（避免测试里出现第二个字符串真相源）。 */
   private static final String V6_NAME = RagRealRetrievalBenchmarkIT.V6_ANCHOR_FILE_NAME;
 
+  /**
+   * v6 锚点自身登记的套件版本（历史产物，不随 live 常量前移）。
+   *
+   * <p>expand-rag-eval-blind-spots 升版 6.0 后，本类对账的"本轮报告"仍按 5.0 建模——照 V5 锚点测硬编码 4.0 的先例，锚点与
+   * 其产物版本是一对历史常量，改用 live 常量会让历史锚点在每次升版时凭空失配。
+   */
+  private static final String V6_ANCHOR_SUITE_VERSION = "5.0";
+
   private static String anchorJson(
       String scoringVersion,
       String suiteVersion,
@@ -68,8 +76,9 @@ class RagBenchmarkV6AnchorValidationTest {
           new CaseScore(
               "C-" + i, "TEXT", 1.0d, 0.4d, 1.0d, true, citP, ansC, 300L, 3000L, 900, true));
     }
-    // SUITE_VERSION=5.0 是 v6 锚点的版本认定；代码里引用套件常量而非硬编码，避免双真相源
-    return new Report(RagBenchmarkSuite.SUITE_VERSION, "2026-10-12T00:00:00Z", metrics, cases);
+    // v6 锚点是 SUITE_VERSION=5.0 的历史产物：本类对账的"本轮报告"固定按 5.0 建模（照 V5 锚测对 4.0 的写法），
+    // 与套件当前版本常量解耦——升版 6.0 后历史锚点仍按自身版本口径校验，不因 live 常量前移而失效
+    return new Report(V6_ANCHOR_SUITE_VERSION, "2026-10-12T00:00:00Z", metrics, cases);
   }
 
   private static Path writeAnchor(Path dir, String fileName, String json) throws Exception {
@@ -79,13 +88,14 @@ class RagBenchmarkV6AnchorValidationTest {
     return file;
   }
 
-  /** clear-onboard-2-left-fragment 任务 2.2：升版后 SUITE_VERSION 必须为 5.0（v6 锚点版本认定）。 */
+  /** expand-rag-eval-blind-spots 任务 1.2：升版后 SUITE_VERSION 必须为 6.0（v6 锚点自身仍锁 5.0）。 */
   @Test
-  void suiteVersionIsFiveZeroAfterClearOnb2() {
+  void suiteVersionIsSixZeroAfterEvalBlindSpots() {
     assertEquals(
-        "5.0",
+        "6.0",
         RagBenchmarkSuite.SUITE_VERSION,
-        "clear-onboard-2-left-fragment：SUITE_VERSION 必须为 5.0");
+        "expand-rag-eval-blind-spots：SUITE_VERSION 必须为 6.0");
+    assertEquals("5.0", V6_ANCHOR_SUITE_VERSION, "v6 锚点是 SUITE_VERSION=5.0 的历史产物，锚点版本不得随升版改写");
   }
 
   @Test
