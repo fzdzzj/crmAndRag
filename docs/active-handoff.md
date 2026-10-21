@@ -1,6 +1,6 @@
 # 主 Agent 轮换交接活看板 (Active Main Agent Handoff)
 
-> **更新时间**：2026-10-21（d8-image-asset-rollback 图片摄取失败孤儿对象即时回滚，C 档全链闭环）
+> **更新时间**：2026-10-21（multimodal-shared-space 多模态真共享空间升级，A 档大卡全链闭环）
 > **维护契约**：**本文件必须采用整体覆盖更新 (Rolling Overwrite)，严禁无限追加历史流水账**！
 > **适用对象**：**新打开主 Agent 对话窗口时第一必读入口**。读完即可立即进入指导工作状态。
 
@@ -8,12 +8,12 @@
 
 ## 1. 现状快照 (Current State Snapshot)
 
-- **当前主干版本**：`master@91c9f47`（= origin/master；本卡闭环：基点 `fdf5db2` → 分支 2 笔 `a9be513` fix / `e7002f7` 基线 → M1 `git merge --no-ff` **`d10815c`**（零冲突，分支 `feature/d8-image-asset-rollback` **永久保留**）→ M1 基线收口 `91c9f47`（重锚 source-revision 到 merge tip）；M2 看板/归档笔随本笔持久化）
-- **测试基线四元组**：`merge=d10815c` + Surefire **报告 309 / 用例 1924 / F0 / E0 / S0** + Failsafe **报告 35 / 用例 126 / F0 / E0 / S7** + `CI=#148`（M1 轮，Run 39599694836，= #147+1 预测，实测号以 `docs/main-agent-logbook.md` §143 为准）。只增不减：本卡前 308/1919/0 + 35/126/7 → +1 报告 +5 用例（failsafe 持平）。`scripts/test-baseline.txt` = `source-revision=91c9f47`、`measured-at=2026-10-21T12:25:14Z`（树净单次 `--update` + 校验模式 `EXIT=0`，随本笔持久化）
-- **验证路径 = M1 树等价快车道（连续第八卡启用）**：`git rev-parse "d10815c^{tree}"` 与 `git rev-parse "e7002f7^{tree}"` 同为 **`7addcc82e7c71ec0ce136eead7c151fea130d6db`**，逐字节相等 → 判定树等价；执行端已在该等价树完成 `mvn -B -ntp clean verify` **BUILD SUCCESS**（surefire 1924 / failsafe 126 / 7 skip，四静态全绿）+ `merge-gate.sh` **10/10 PASS** + 基线 `EXIT=0` → **本地免 clean verify / 免 merge-gate 复跑**，仅补基线台账（source-revision 与时间戳两行，计数零漂移）；本地复跑职责由远端 CI `build-and-gate` 同源门禁兜底（**#148 已绿 = M1 验证闭环**）
-- **复核**：**C 档 GO**（清收逻辑补偿 + 纯单测，主 Agent 亲审 diff，不派独立复核）—— 四判据逐条通过（① 零迁移：diff 无 `db/migration`；② 零权限/契约/真跑/依赖：零新权限常量、零契约字段、`RAG_VISION_PDF_REAL` 零新增、VLM/向量全 mock；③ 失败语义：回滚删除 WARN 不抛、原始异常 `isSameAs` 原样上抛；④ 成功路径零变化：`never().delete()` 断言 + `chunkCount==2` 锁死）。**Owner 已拍板接受 `DocumentIngestionService` NcssCount 类级豁免**（理由：拆分会切「存储→切片→嵌入→向量→状态回写」同一事务边界，收益远小于风险；全仓类级 suppression 由此 1→2 处）。归档物料 = `openspec/changes/archive/d8-image-asset-rollback/`（proposal + tasks）+ `work/archive/closed-cards/`（handoff + 任务卡 `add -f`）
-- **前端披露**：本卡 `frontend/` 零 diff（零依赖变更；`typed-router.d.ts` 生成物零提交）
-- **环境实测**：本卡走快车道，本地零 Maven 复跑（不依赖 Docker）；执行端 verify 时 Docker **29.6.2** 在线，failsafe 7 skipped 与基线口径一致；CI 盯跑本机 REST 直连 403 限流，改用 harness `web_fetch` 独立出口（`/commits/<sha>/check-runs` 取 6 job conclusion）
+- **当前主干版本**：`master@71bfe27`（= origin/master；本卡闭环：基点 `8c3ac8f` → 分支 3 笔 `92f0424` feat / `b0bf75e` test+基线 / `bea5c5c` docs（主 Agent 补 commit，执行端漏提交）→ M1 `git merge --no-ff` **`69190fd`**（零冲突，分支 `feature/multimodal-shared-space` **永久保留**）→ M1 基线收口 `581d906`/`71bfe27`（修正 skipped 口径 7→8 + 重锚 source-revision）；M2 看板/归档笔随本笔持久化）
+- **测试基线四元组**：`merge=69190fd` + Surefire **报告 313 / 用例 1938 / F0 / E0 / S0** + Failsafe **报告 37 / 用例 130 / F0 / E0 / S8** + `CI=#150`（M1 轮，Run 39620231453，= #149+1 预测，实测号以 `docs/main-agent-logbook.md` §144 为准）。只增不减：本卡前 309/1924/0 + 35/126/7 → +4 报告 +14 用例、failsafe +2 报告 +4 用例 +1 skipped（新增 opt-in 真跑 IT 默认无 key 会 skip）。`scripts/test-baseline.txt` = `source-revision=71bfe27`、`measured-at=2026-10-21T14:48:38Z`（树净单次 `--update` + 校验模式 `EXIT=0`，随本笔持久化）
+- **验证路径 = M1 树等价快车道（连续第九卡启用）**：`git rev-parse "69190fd^{tree}"` 与 `git rev-parse "feature/multimodal-shared-space^{tree}"` 同为 **`e00201127383f588a82672ca204d81e226092819`**，逐字节相等 → 判定树等价；执行端已在该等价树完成 `mvn -B -ntp clean verify` **BUILD SUCCESS**（surefire 1938 / failsafe 130 / 8 skip，四静态全绿）+ `merge-gate.sh --with-verify` 全 PASS + 真跑 `RAG_VISION_EMBED_REAL=1` 同图余弦>0.9 vs <0.9 → **本地免 clean verify / 免 merge-gate 复跑**，仅补基线台账；本地复跑职责由远端 CI `build-and-gate` 同源门禁兜底（**#150 已绿 = M1 验证闭环**）
+- **复核**：**A 档 GO**（embedding 选型 + 向量库 schema + 契约受控解冻 + 真跑）—— 独立复核四判据逐条通过（① 零迁移：diff 无 `db/migration`；② 零新权限/端点：`embedImage` 仅内部链路；③ 真跑独立复跑 `Tests run:1 Skipped:0 Failures:0 3.869s` 非假绿；④ 冻结契约：`embedImage` default 方法非破坏 + contracts-frozen.md §修正轮4 解冻登记）。**Owner 四项拍板**：真视觉 CLIP 式 / 独立 image collection / 授权真跑 / DashScope 文本-图像联合 embedding 零新依赖。复核报告 `work/archive/closed-cards/review-multimodal-shared-space-A-review-report.md`。归档物料 = `openspec/changes/archive/multimodal-shared-space/`（proposal + tasks）+ `work/archive/closed-cards/`（handoff + 任务卡 + review `add -f`）
+- **前端披露**：本卡 `frontend/` 零 diff（`typed-router.d.ts` 执行端触发 unplugin-vue-router 噪声，已按 Owner 拍板 `git checkout --` 还原零提交）
+- **环境实测**：本卡走快车道，本地零 Maven 复跑；执行端 verify + 复核方独立复跑真跑 IT 时 Docker 在线；CI 盯跑本机 REST 直连 403 限流，改用 harness `web_fetch` 独立出口（`/commits/<sha>/check-runs` 取 6 job conclusion）
 - **工作树拓扑**：
   - 观察树：`D:\code\crmAndRag`（承载执行日志 `docs/`、任务卡与交接 `work/`，未跟踪）
   - 权威树（主干）：`D:\code\crmAndRag-merge-add-knowledge-admin-api`（分支检出、门禁运行、代码合并唯一法定树）
@@ -22,47 +22,34 @@
 
 ## 2. 核心架构与现行能力面
 
-1. **图片摄取失败孤儿对象即时回滚（d8-image-asset-rollback，C 档，刚刚合入）**：收口上一卡 Add-kb-image-slice-retrieval 留痕的 D8 偏差——图片对象在切片行落库**之前**已写进 `FileStorageService`，当 `chunkEmbedAndWrite` 失败导致 DB 事务回滚时 storageKey 随事务「消失」，对象成无行引用、端点不可达的永久孤儿。**方案**：`PdfImageSliceIngestService` 加 `STAGED_ASSET_KEYS`（`ThreadLocal<Set>`）+ `beginAssetCollection/endAssetCollection/rollbackStagedAssets`，`store()` 成功且非空才登记；`DocumentIngestionService#ingest` 开作用域 → 两 catch 先回滚再 `markFailed` 原样上抛 → finally `endAssetCollection`。**关键语义**：成功路径零额外删除、回滚删除失败 WARN 不抛（不替换原始异常）、`never().delete(DOC_KEY)` 防误删文档原件。零迁移 / 零新权限 / 零契约 / 零真外呼 / 零依赖。`ImageSliceAssetRollbackTest` 304 行 / 5 用例。
-2. **知识库图片切片摄取 + IMAGE 回显（add-kb-image-slice-retrieval，A 档）**：`src/main` 19 文件（7 新增 / 12 存量）+ 5 测试类 + `frontend/` 2 处，**零迁移 / 零新依赖 / 零新权限常量**。**Owner 2026-10-21 拍板方案 B（文本降维闭环）**——不建图文共享向量空间，走「图片对象提取 → PNG 资产落 `FileStorageService` → 每图 VLM 描述 → 描述文本切片入既有 chunk/embed 链路」，切片 `extra_metadata_json` 携资产引用（资产 id = 切片行主键，天然防悬空）：摄取侧 `PDResources#getXObjectNames` 取 `PDImageXObject`（非整页渲染、按 XObject 名排序可复现、stencil/非位图/最短边<64px 跳过、`scaleToMaxEdge(1600)` 转 PNG）；每图 `vision` → 质量闸门 → 落盘 → 生成描述切片；**单图失败只跳过该图**。开关 `rag.retrieval.image-slice-ingest.enabled` **默认 false**（关 = 零提取/零 VLM/零落盘，默认行为逐字节一致）、`kb-allowlist`（KB 灰度）、`max-images-per-document`（默认 5，1~20）；成本类键**不进** 12 键 `KbRetrievalStrategyWhitelist`（与 `vision-pdf.*` 同处置）。回显侧 `SourceReference.sourceType` 扩 `IMAGE`（受控解冻）；`SourceReferenceFactory` 抽唯一实现；**SSE `sources` 结构零改动**；新端点 `GET /knowledge/images/{assetId}`（挂 803，权限不宽于所属 KB，单图 1 MiB 有界读取）。删除/重建联动 `ImageAssetCleanup` 接 deleteFile C-11 双清链与 reingest。
-3. **收尾小卡 ⑬⑭（fix-backlog-batch4，B 档）**：`src/main` 1 文件（`ChildHostAttachmentCleaner`）+ 2 测试类 + `frontend/src/constants/error-code-map.test.ts` 一处：⑬ 审批域附件清理补齐——公司/联系人两入口按 `opportunity_id` 查 `sales_stage_approval` 行再 `removeByAndIds`；商机入口不重复接线。⑭ Vitest 总数断言生成化——Node fs 读错误码枚举正则计数、删硬编码总数。
-4. **待办池四点收口（fix-backlog-batch3，B 档）**：`src/main` 9 文件 + 12 controller 接入 + `frontend/` 3 处错误码镜像 + 6 测试类：⑤ duplicate-key 三出口精确码 92029；⑨ `BatchIdsGuard` 统一闸（16 批量端点）；⑩ `batchLogicalDeleteByIds` 单趟化；⑪ `removeByIds` 跨模型误删修复 + `ChildHostAttachmentCleaner`。
-5. **待办池三点收口（fix-backlog-batch2，B 档）**：⑦ `SQLExceptionHandler` 四子项；⑧ 关联维护 5 DTO null-id 校验；⑫ `RuleSelfRagReflector` 阈值注入统一。
-6. **测试加固五点（harden-test-backlog-batch1，C 档）**：空格形态纯前瞻扫描 / 客户公海回环 IT / `TokenBudget` volatile 三件套 / 9 处错误码双锁断言 / A-7 null id 五例。
-7. **引用对齐三阈值动态化（fix-citation-threshold-config，B 档）**：`keepMin`/`remapMin`/`tieMargin` 入 `DynamicConfigKeyRegistry`。
-8. **RAG 评测三盲区补齐（expand-rag-eval-blind-spots，B 档）**：多轮/时序/拒答；`SUITE_VERSION` 5.0→6.0、标准套件 63→72；v6.0 真跑锚 `baseline-v7.json` 缺席属另卡授权。
-9. **五路语义同步 hook 收敛（fix-semantic-hook-support-unify，B 档）**：五 `*SemanticHookSupport` 收敛为「一个基类 + 五个薄门面」，`reingestById` 泛型化。
-10. **ProjectFile 域收口四点合一（fix-projectfile-txn-and-batch-insert，B 档）**：三上传合一 + 磁盘 IO 出事务。
-11. **审批附件级联死边移除（fix-approval-attachment-cascade-dead-edge，A 档）**：删 `SALES_STAGE_APPROVAL_RELATIONS → ApprovalAttachmentEntity` 死边。
-12. **循环写收口批 A-6/A-8/A-10（fix-engineering-debt-loop-write-batch）**：级联删 N 轮→1；关联维护 2N→2；用户批删单条化 + PII 清理修复。
-13. **工程债三合卡 A-7/A-9/A-1（fix-engineering-debt-nplus1-loop-clone）**：分页 N+1 3N+1→2；双软删循环 2N→1；`SQLExceptionHandler` 列名映射迁 yml。
-14. **待办池 MINOR 家族合卡**：`BaseException(String)` 四形态收敛至 `ErrorCode` + 防回归门禁；assign 闸前置行锁；`TokenBudgetProperties` 三字段 volatile。
-15. **附件写权限、重置密码防提权与发票纳管安全合卡（H-2/B-10/H-4/I-5）**：附件上传前置 canWriteAttachments 属主鉴权 12002；非超管禁改超管密码；invoice_info 纳管 DataScope。
-16. **知识库物理双清、详情属主数据权限收敛与聚合门禁同源（C-11/B-4/B-5/G-6）**：`deleteFile` 软删联动向量与 chunk 物理删；`merge-gate.sh` 8 门→10 门。
-17. **自服务改密旧密核验与隐私脱敏加固（B-2/B-6/B-7）** / 18. **用户自服务防提权越权加固（B-1）**：`updateMyInfo` 对 `roleId`/`deptId`/`status` Fail-Closed（12002），SET 白名单。
-19. **单副本单体部署契约与架构守卫硬化（I-4）** / 20. **数据权限切面 Fail-Closed 治理（I-1）**：`QueryWrapperAspect` 异常重抛 12002 不静默放行。
-21. **登录链路安全加固包（H-8/H-9/H-10）**：`JWTInterceptor` 白名单收敛；`POST /user/logout` + Caffeine 黑名单；`LoginAttemptService` 双维度防爆破。
-22. **商机阶段流转审批阻断（D4）** / 23. **确认链路写权限再审计（D6）**：无审批记录抛 30003。
-24. **已建未接线基建接线合卡（暗线①闭环）**：TokenBudget 预算闸接入聊天流入口；ContentSecurity 双重拦截；动态配置键 66→60。
-25. **公海认领/分派竞态 CAS 修复**：读-判-写压缩为单条条件 UPDATE；锁序「先用户后客户」零死锁面。
-26. **写端点校验收口**：86 处写端点 `@RequestBody` 100% 挂 `@Valid`（27 controller）。
-27. **向量运维端点统一收口**：`POST /knowledge/admin/sync/{entity}` 五实体枚举校验 + `/sync/all` 委托计数映射（复用 900）。
-28. **客户流失预警与自动化再激活**：确定性规则扫描 → 幂等建高优待办 → 每日 4 点错峰调度。
-29. **CustomerInsightPanel 双宿主接线** / 30. **AI 诊断建议一键转 Action**：`InsightToActionService` 纯结构化映射（零外呼）。
-31. **销售线索管理与一键转化商机漏斗**：Flyway V42 `sales_lead`；`/sales/lead` 6 端点；单事务转化 + 异步向量同步。
-32. **合同履约到期预警与逾期应收催款待办联动**：到期/超期与逾期未结回款统计；幂等高优 `ContactTask`；每天 3 点调度。
-33. **CRM 客户公海池与全生命周期流转闭环**：Flyway V41 组合索引 + `customer_pool_log`；认领配额 50 上限拦截 20003。
-34. **AI 商业诊断与 RAG 检索完全体**：知识库混合检索 + RRF 融合、父子块切分；5 大业务实体向量语义检索汇入 Qdrant；严格四档数据权限闸。
+1. **多模态真共享空间升级（multimodal-shared-space，A 档，刚刚合入）**：本系统「图文」原为「图文双文本降维」半成品（检索侧 `imageVector` 路由 + `fuseRoutes` 图文融合接口已存在，但摄取侧零视觉向量、查询侧 imageVector 是文本拼接 embed、`ModelProvider` 无视觉 embed 接口）。本卡补齐真视觉：`ModelProvider` 增 `default embedImage(byte[],String)`（默认抛 UnsupportedOperationException 非破坏）+ `ImageEmbeddingSupport` 直连 DashScope `multimodal-embedding-v1`（RestClient 零新依赖）；`QdrantProperties` 增 `imageCollection`/`imageDimensions` + `ImageVectorStore` 包装 + `ImageVectorStoreConfiguration`（对齐 CrmEntityVectorStore 范式），视觉向量落独立 image collection（维度可 ≠ 文本）；`ImageVisualVectorSupport`/`ImageVectorFlushSupport`/`ImageVectorCleanupRegistry` 三件套（摄取生产视觉向量 + 静态钩子三处双清）；开关 `rag.retrieval.image-vector-ingest.enabled` 默认 false（COST 档，零外呼零向量落盘）；查询侧 `AiChatImageUnderstandingService` 图字节直入 + `recallImage` 查 image 集合失败降级 + `fuseRoutes` 异构不误合并（同 slice 才累加）。33 文件（21 改 + 13 新，+384/−97），零迁移 / 零新权限 / 零新依赖。
+2. **图片摄取失败孤儿对象即时回滚（d8-image-asset-rollback，C 档）**：收口 add-kb-image-slice-retrieval 的 D8 偏差——图片对象在切片行落库前已写进 `FileStorageService`，`chunkEmbedAndWrite` 失败时 storageKey 随事务消失成孤儿。`PdfImageSliceIngestService` 加 `STAGED_ASSET_KEYS`（ThreadLocal）+ `beginAssetCollection/endAssetCollection/rollbackStagedAssets`；`DocumentIngestionService#ingest` 失败 catch 先回滚再 `markFailed`。成功路径零额外删除、回滚 WARN 不抛、防误删文档原件。
+3. **知识库图片切片摄取 + IMAGE 回显（add-kb-image-slice-retrieval，A 档）**：方案 B 文本降维——图片对象提取 → PNG 资产落 `FileStorageService` → 每图 VLM 描述 → 描述文本切片入既有 chunk/embed 链路；`SourceReference.sourceType` 扩 `IMAGE` + `SourceReferenceFactory` 唯一实现 + `GET /knowledge/images/{assetId}`（挂 803）；开关默认 false。本卡（multimodal-shared-space）在此之上加真视觉路，两路并行。
+4. **收尾小卡 ⑬⑭（fix-backlog-batch4，B 档）**：`ChildHostAttachmentCleaner` 审批域附件清理补齐 + Vitest 总数断言生成化。
+5. **待办池四点收口（fix-backlog-batch3，B 档）**：⑤ duplicate-key 精确码 92029；⑨ `BatchIdsGuard` 统一闸；⑩ `batchLogicalDeleteByIds` 单趟化；⑪ `removeByIds` 跨模型误删修复。
+6. **待办池三点收口（fix-backlog-batch2，B 档）**：⑦ `SQLExceptionHandler` 四子项；⑧ 关联 DTO null-id 校验；⑫ `RuleSelfRagReflector` 阈值注入统一。
+7. **测试加固五点（harden-test-backlog-batch1，C 档）**：空格形态扫描 / 公海回环 IT / `TokenBudget` volatile / 错误码双锁 / A-7 null id。
+8. **引用对齐三阈值动态化（fix-citation-threshold-config，B 档）** / 9. **RAG 评测三盲区补齐（expand-rag-eval-blind-spots，B 档）**：多轮/时序/拒答，`SUITE_VERSION` 6.0。
+10. **五路语义同步 hook 收敛（fix-semantic-hook-support-unify，B 档）** / 11. **ProjectFile 域收口（fix-projectfile-txn-and-batch-insert，B 档）**。
+12. **审批附件级联死边移除（fix-approval-attachment-cascade-dead-edge，A 档）** / 13. **循环写收口批 A-6/A-8/A-10**。
+14. **工程债三合卡 A-7/A-9/A-1（fix-engineering-debt-nplus1-loop-clone）** / 15. **待办池 MINOR 家族合卡**。
+16. **附件写权限、重置密码防提权与发票纳管安全合卡（H-2/B-10/H-4/I-5）** / 17. **知识库物理双清 + 门禁同源（C-11/B-4/B-5/G-6）**。
+18. **登录链路安全加固包（H-8/H-9/H-10）** / 19. **商机阶段流转审批阻断（D4）** / 20. **确认链路写权限再审计（D6）**。
+21. **已建未接线基建接线合卡（暗线①）** / 22. **公海认领/分派竞态 CAS 修复** / 23. **写端点校验收口**。
+24. **向量运维端点统一收口** / 25. **客户流失预警与自动化再激活** / 26. **CustomerInsightPanel 双宿主 + AI 诊断转 Action**。
+27. **销售线索管理与转化商机漏斗**（Flyway V42）/ 28. **合同履约到期预警与逾期催款联动** / 29. **CRM 公海池流转闭环**（Flyway V41）。
+30. **AI 商业诊断与 RAG 检索完全体**：知识库混合检索 + RRF 融合；5 大业务实体向量语义检索；严格四档数据权限闸。
 
 ---
 
-## 3. 当前在途与候选队列（d8-image-asset-rollback 闭环刷新）
+## 3. 当前在途与候选队列（multimodal-shared-space 闭环刷新）
 
-- **在途待合入卡**：**0 张！**（本卡已全链合入 master `91c9f47`；物料归档至 `openspec/changes/archive/d8-image-asset-rollback/`（proposal + tasks）与 `work/archive/closed-cards/`（handoff + 任务卡）；`work/` 根本卡散落件已 SHA256 核对后删除）
+- **在途待合入卡**：**0 张！**（本卡已全链合入 master `71bfe27`；物料归档至 `openspec/changes/archive/multimodal-shared-space/`（proposal + tasks）与 `work/archive/closed-cards/`（handoff + 任务卡 + review）；`work/` 根本卡散落件已 SHA256 核对后删除）
 - **待办池**：**0 条**（本卡未消化待办池项，也未新进；⑮ `frontend/typed-router.d.ts` 生成物归属仍属 frontend 工程决策，**他人所有权，本线不擅动**）
 - **长期储备（本卡更新）**：
-  - **多模态真共享空间升级卡（登记待立项，A 档大卡）**：图文共享向量空间 + collection 路由 + 资产独立生命周期/审计——本卡方案 B 是「文本降维」过渡形态，不预埋；触发条件 = 灰度真跑显示描述质量不足或图文跨模态召回有明确缺口（立项骨架 `work/_multimodal-shared-space-backlog.md`）
-  - **D8 后遗症治理（候选，低优先）**：本卡接受 `DocumentIngestionService` NcssCount 类级豁免（全仓 suppression 1→2 处）；如需收敛，「编排类拆分」小卡可另立（与本卡解耦，但拆分会切事务边界，收益存疑）
-  - **图片摄取生产灰度真跑（授权留 Owner）**：真 VLM 描述质量与成本基线（`RAG_VISION_PDF_REAL` opt-in），本卡全程 mock、零外呼
+  - **真共享空间生产灰度真跑（授权留 Owner）**：本卡视觉 embedding 已真跑验证（`VisionEmbeddingRealIT`），但**生产灰度真跑**（真实 KB 图文跨模态召回质量/成本基线，`RAG_VISION_EMBED_REAL` 生产 opt-in）需 Owner 另行授权
+  - **图文跨模态召回质量评测卡（候选）**：真视觉向量路已落地，但「query-by-image 检索质量 vs 纯文本检索」的量化评测（baseline 锚定）尚未立项
+  - **D8 后遗症治理（候选，低优先）**：`DocumentIngestionService` NcssCount 类级豁免（全仓 suppression 1→2 处），如需收敛「编排类拆分」小卡可另立
   - 在线考试子域（`work/_online-exam-backlog.md` 留档）、**v6.0 真跑落锚 `baseline-v7.json`（需另卡授权）**
 - **下批推荐**：无强制项，按 Owner 指令插队
 - **下批候选池总账**：`work/_paa-candidates-pool-v2.md`（观察树未跟踪留档，长期储备保留）
@@ -82,11 +69,11 @@
 
 ## 5. 权威索引指路 (Where to Look)
 
-- 接口与冻结契约：`spec/changes/add-crm-rag-fusion-platform/contracts-frozen.md`（上一卡 `IMAGE` 取值解冻登记于变更日志 2026-10-21 条）
+- 接口与冻结契约：`spec/changes/add-crm-rag-fusion-platform/contracts-frozen.md`（本卡 `embedImage` 契约解冻登记于 §修正轮4 + 变更日志 2026-10-21 条）
 - 数据库迁移号段：`ls src/main/resources/db/migration`（实测下一可用号：V43；本卡零迁移）
 - 历史阶段裁决归档：`docs/archive/logbook-historical-202609-202610.md`（§8~§85）
 - 历史任务卡归档：`work/archive/closed-cards/`
-- 现行活动日志：`docs/main-agent-logbook.md`（§86 起，**最新 §143**）
+- 现行活动日志：`docs/main-agent-logbook.md`（§86 起，**最新 §144**）
 - 回归基线门禁：`bash scripts/check-test-baseline.sh`（台账 `scripts/test-baseline.txt`，只允许 `--update` 从一次真实运行写入）
 
 ---
