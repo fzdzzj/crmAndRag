@@ -26,11 +26,11 @@
 
 | 用例 | 查询图 | 异图 | 真视觉 同/异 | 文本路 同/异 |
 | --- | --- | --- | --- | --- |
-| IM-01 | flow-blue | bars-blue | 1.000 / 0.547 | 1.000 / 0.81（误召） |
-| IM-02 | bars-blue | flow-blue | 1.000 / 0.547 | 1.000 / 0.81（误召） |
-| IM-03 | flow-orange | bars-blue | 1.000 / 0.527 | 1.000 / 0.80（误召） |
-| IM-04 | table-scan | cards-green | 1.000 / 0.671 | 1.000 / ~0.80（误召） |
-| IM-05 | cards-green | blank-white | 1.000 / 0.184 | 1.000 / 低（易负例） |
+| IM-01 | flow-blue | bars-blue | 1.000 / 0.547 | 1.000 / 0.991（误召） |
+| IM-02 | bars-blue | flow-blue | 1.000 / 0.547 | 1.000 / 0.991（误召） |
+| IM-03 | flow-orange | bars-blue | 1.000 / 0.527 | 1.000 / 0.945（误召） |
+| IM-04 | table-scan | cards-green | 1.000 / 0.671 | 1.000 / 0.615（正确拒答） |
+| IM-05 | cards-green | blank-white | 1.000 / 0.184 | 1.000 / 0.488（正确拒答） |
 
 ## 2. 判据与口径（Owner 2026-10-21 三项拍板）
 
