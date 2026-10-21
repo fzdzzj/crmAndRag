@@ -7,6 +7,7 @@ import com.slz.crm.server.mapper.BusinessActivityMapper;
 import com.slz.crm.server.mapper.ContactTaskMapper;
 import com.slz.crm.server.mapper.CustomerContactMapper;
 import com.slz.crm.server.mapper.SalesOpportunityMapper;
+import com.slz.crm.server.mapper.SalesStageApprovalMapper;
 import com.slz.crm.server.service.ApprovalAttachmentService;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -17,21 +18,23 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
- * 物理级联删前的子宿主多态附件清理（fix-backlog-batch3 任务 4.2）。
+ * 物理级联删前的子宿主多态附件清理（fix-backlog-batch3 任务 4.2 / fix-backlog-batch4 任务 1）。
  *
  * <p><b>为什么必须由调用方显式补删</b>：{@code approval_attachment} 是多态附件表（{@code and_id} + {@code model_name}
- * 判别）、无 {@code is_deleted} 列，删除语义是「DB 物理删 + 磁盘文件清理」；而 {@code ForeignKeyConfig} 的级联机器只能按单列外键递归，既无法携带
- * {@code model_name} 判别条件（裸 {@code and_id} 级联会误删其他模型同 id 的附件）， 也无法承载磁盘 IO。因此三处物理级联删调用方在 {@code
- * deleteCascade} <b>之前</b>先用本类把「将被级联删掉的子宿主 id 集」算出来，再走 canonical {@link
+ * 判别）、无 {@code is_deleted} 列，删除语义是「DB 物理删 + 磁盘文件清理」；而 {@code ForeignKeyConfig} 的级联机器只能按单列外键递归， 既带不了
+ * {@code model_name} 判别（裸 {@code and_id} 级联会误删其他模型同 id 的附件），也承载不了磁盘 IO。因此物理级联删的调用方在 {@code
+ * deleteCascade} 前先用本类算出「将被级联删掉的子宿主 id 集」，再走 canonical {@link
  * ApprovalAttachmentService#removeByAndIds} 精确清理。
  *
- * <p><b>id 集口径</b>：与 {@code deleteCascade} 的递归图一致——不只查直接子（{@code company_id}），也把「经联系人/
- * 商机间接挂上」的活动与任务算进来（如公司删 → 联系人删 → 联系人名下商机删 → 商机名下活动删）。深度以级联图的实际深度为准：
- * 活动与任务的宿主路径最多两层（公司→联系人/商机→活动/任务），因此两级展开即等价于递归闭包。
+ * <p><b>id 集口径</b>：与 {@code deleteCascade} 的递归图一致——直接子（{@code company_id}）+ 经联系人/商机间接挂上的活动与任务；
+ * 宿主路径最多两层（公司→联系人/商机→活动/任务），两级展开即等价于递归闭包。
  *
- * <p><b>不做什么</b>：不动 {@code ForeignKeyConfig} 关联图（红线）；不清理 {@code sales_stage_approval} 域附件（该域由
- * {@code SalesOpportunityServiceImpl#deleteStageApprovalAttachments} 先例负责）；
- * 不做逐附件鉴权（调用方已完成业务对象级删除权校验，级联过程逐附件鉴权会导致同事务内因上传人不同而部分失败）。
+ * <p><b>{@code sales_stage_approval} 域</b>（batch4）：审批行挂在商机下一层，附件以 {@code
+ * model_name=approval_attachment} 落库（与 {@code
+ * SalesOpportunityServiceImpl#deleteStageApprovalAttachments} 先例同口径），故公司/联系人两入口用已算出的 {@code
+ * opportunities} 反查审批行补删；<b>商机入口不重复接线</b>（该先例在商机删除路径已覆盖，再删是冗余第二轮 IO）。
+ *
+ * <p><b>不做什么</b>：不动 {@code ForeignKeyConfig} 关联图（红线）；不做逐附件鉴权（调用方已完成业务对象级删除权校验）。
  */
 @Slf4j
 @Component
@@ -54,6 +57,8 @@ public class ChildHostAttachmentCleaner {
 
   private final SalesOpportunityMapper salesOpportunityMapper;
 
+  private final SalesStageApprovalMapper salesStageApprovalMapper;
+
   private final ApprovalAttachmentService approvalAttachmentService;
 
   /** 构造注入（三处调用方各持一份，生产单例）。 */
@@ -62,11 +67,13 @@ public class ChildHostAttachmentCleaner {
       ContactTaskMapper contactTaskMapper,
       CustomerContactMapper customerContactMapper,
       SalesOpportunityMapper salesOpportunityMapper,
+      SalesStageApprovalMapper salesStageApprovalMapper,
       ApprovalAttachmentService approvalAttachmentService) {
     this.businessActivityMapper = businessActivityMapper;
     this.contactTaskMapper = contactTaskMapper;
     this.customerContactMapper = customerContactMapper;
     this.salesOpportunityMapper = salesOpportunityMapper;
+    this.salesStageApprovalMapper = salesStageApprovalMapper;
     this.approvalAttachmentService = approvalAttachmentService;
   }
 
@@ -83,6 +90,8 @@ public class ChildHostAttachmentCleaner {
         merge(
             selectIds(salesOpportunityMapper, COL_COMPANY_ID, companies),
             selectIds(salesOpportunityMapper, COL_CONTACT_ID, contacts));
+    // 商机 → 审批行（二级），审批行的附件随审批行级联删后成孤儿
+    removeStageApprovalAttachments(opportunities);
     // 活动/任务的三个来源：直接挂公司、挂联系人名下任务、挂商机（含联系人名下商机）
     removeHostAttachments(
         merge(
@@ -103,6 +112,8 @@ public class ChildHostAttachmentCleaner {
     List<Long> contacts = safe(contactIds);
     // 联系人 → 商机；商机 → 活动/任务；联系人 → 任务（contact_id 直挂）
     List<Long> opportunities = selectIds(salesOpportunityMapper, COL_CONTACT_ID, contacts);
+    // 商机 → 审批行（二级），审批行的附件随审批行级联删后成孤儿
+    removeStageApprovalAttachments(opportunities);
     removeHostAttachments(
         selectIds(businessActivityMapper, COL_OPPORTUNITY_ID, opportunities),
         merge(
@@ -120,6 +131,22 @@ public class ChildHostAttachmentCleaner {
     removeHostAttachments(
         selectIds(businessActivityMapper, COL_OPPORTUNITY_ID, opportunities),
         selectIds(contactTaskMapper, COL_OPPORTUNITY_ID, opportunities));
+  }
+
+  /**
+   * 清理销售阶段审批域附件（{@code and_id} = 审批行 id，{@code model_name = approval_attachment}）。
+   *
+   * <p>只被公司/联系人两入口调用；商机入口由 {@code SalesOpportunityServiceImpl#deleteStageApprovalAttachments}
+   * 先例覆盖，见类注释「{@code sales_stage_approval} 域附件的归属」。
+   *
+   * @param opportunities 已算出的商机 id 一级集（为空则不产生任何 SQL）
+   */
+  private void removeStageApprovalAttachments(List<Long> opportunities) {
+    List<Long> approvalIds = selectIds(salesStageApprovalMapper, COL_OPPORTUNITY_ID, opportunities);
+    if (!approvalIds.isEmpty()) {
+      log.info("物理级联删前清理销售阶段审批附件，审批记录数：{}", approvalIds.size());
+      approvalAttachmentService.removeByAndIds(approvalIds, ModelName.APPROVAL_ATTACHMENT);
+    }
   }
 
   /** 按模型判别清理两类子宿主的多态附件（含磁盘文件，空集不动）。 */
