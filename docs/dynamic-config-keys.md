@@ -107,6 +107,21 @@
 > 失败回退：图片解码失败 / vision 抛错 / 描述 blank 或 &lt;40 字 / 落盘失败 → 跳过该图，文本切片照常入库，绝不使整篇 ingest 抛错。
 > 真 VLM 外呼真跑不在本卡（单测/IT 全 mock），生产灰度真跑由 Owner 另行授权。
 
+## rag.retrieval.image-vector-ingest.* —— 真视觉向量摄取（multimodal-shared-space）
+
+> 方案 A 真视觉闭环：同一张 PDF 内嵌图片在描述切片之外，直接由文本-图像联合 embedding（`platform.ai.model.image-embedding-model`,
+> 默认 `multimodal-embedding-v1`）编码成视觉向量，写入独立集合 `knowledge.qdrant.image-collection`（维度 `image-dimensions`，
+> 与文本维度解耦）。与方案 B 的 `image-slice-ingest.*` **并行**：文本降维描述切片保留为文本召回路，本键只控真视觉向量路。
+> **默认关 = 默认行为逐字节一致**（零视觉 embedding 外呼、零 image 集合向量落盘；装配期仍 ensure 一次空集合建制，但零向量写入、零外呼）。
+> 属 COST 档（拨动开关即产生真实视觉 embedding 外呼费用），不进 per-KB 12 键覆盖白名单。
+
+| 键 | 类型 | 默认值 | 权限档位 | 语义与回退 |
+|---|---|---|---|---|
+| `rag.retrieval.image-vector-ingest.enabled` | Boolean | **false** | COST | 真视觉向量摄取总开关；关/未配 = 完全不生成视觉向量（视觉路退化关闭），描述切片不受影响 |
+
+> 失败回退：视觉 embedding 抛错 / 返回空向量 / 写 image 集合失败 → 只丢该图（或该批）视觉向量并 WARN，描述切片与文本检索照常。
+> 查询侧：`AiChatImageUnderstandingService` 的图片向量同样走真视觉 embedding，检索路由改查 image 集合；image 库未装配时退回文本集合旧行为。
+
 ## rag.retrieval.citation.* —— 引用对齐阈值（fix-citation-threshold-config）
 
 > 三阈值原为 `CitationAligner` 编译期常量（KEEP_MIN=0.12 / REMAP_MIN=0.22 / TIE_MARGIN=0.08），本卡升级为动态配置：
@@ -240,7 +255,7 @@
 - **STRUCTURAL（变更管理档，5 键，超管专写）**：切分策略与分块尺寸、数据范围安全语义等——热改会造成新旧数据切片/嵌入标准不一致，属变更管理而非运行时开关。
 - **摘除记录（wire-built-unfinished-infra，2026-10-17）**：`ai.model.provider/chatModel/visionModel/embeddingModel/temperature/maxTokens` 六键全仓零消费，从注册表与三档封闭集同步摘除；模型选择只走静态绑定 `platform.ai.model.*`（`ModelProviderProperties`），「ai.model」命名空间保留白名单。
 
-**COST 26 键全清单**：`business.rateLimit.perMinute`、`business.quota.maxTokensPerSession`、`rag.retrieval.admin-vector.enabled`、`rag.retrieval.vision-pdf.enabled`、`rag.retrieval.vision-pdf.min-text-chars`、`rag.retrieval.vision-pdf.max-pages`、`rag.retrieval.image-slice-ingest.enabled`、`rag.retrieval.image-slice-ingest.kb-allowlist`、`rag.retrieval.image-slice-ingest.max-images-per-document`、`rag.retrieval.rerank.mode`、`rag.retrieval.rerank.llm.timeout-ms`、`rag.retrieval.rerank.llm.max-candidates`、`rag.context.token-budget`、`rag.context.compressor.mode`、`rag.context.compressor.llm.timeout-ms`、`rag.query.multi-query.enabled`、`rag.query.multi-query.variants`、`rag.query.hyde.enabled`、`rag.query.hyde.timeout-ms`、`rag.query.derived-questions.enabled`、`rag.query.derived-questions.max-per-chunk`、`rag.ingest.replay-enabled`、`rag.ingest.replay-batch-size`、`rag.generation.selfrag.mode`、`rag.generation.selfrag.llm.timeout-ms`、`rag.generation.selfrag.llm.max-claims`。
+**COST 27 键全清单**：`business.rateLimit.perMinute`、`business.quota.maxTokensPerSession`、`rag.retrieval.admin-vector.enabled`、`rag.retrieval.vision-pdf.enabled`、`rag.retrieval.vision-pdf.min-text-chars`、`rag.retrieval.vision-pdf.max-pages`、`rag.retrieval.image-slice-ingest.enabled`、`rag.retrieval.image-slice-ingest.kb-allowlist`、`rag.retrieval.image-slice-ingest.max-images-per-document`、`rag.retrieval.image-vector-ingest.enabled`、`rag.retrieval.rerank.mode`、`rag.retrieval.rerank.llm.timeout-ms`、`rag.retrieval.rerank.llm.max-candidates`、`rag.context.token-budget`、`rag.context.compressor.mode`、`rag.context.compressor.llm.timeout-ms`、`rag.query.multi-query.enabled`、`rag.query.multi-query.variants`、`rag.query.hyde.enabled`、`rag.query.hyde.timeout-ms`、`rag.query.derived-questions.enabled`、`rag.query.derived-questions.max-per-chunk`、`rag.ingest.replay-enabled`、`rag.ingest.replay-batch-size`、`rag.generation.selfrag.mode`、`rag.generation.selfrag.llm.timeout-ms`、`rag.generation.selfrag.llm.max-claims`。
 
 **STRUCTURAL 5 键全清单**：`rag.retrieval.chunkSize`、`rag.retrieval.chunkOverlap`、`rag.chunking.strategy`、`rag.chunking.max-chunk-size`、`business.dataScope.enabled`。
 
