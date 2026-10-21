@@ -43,6 +43,12 @@
                   color="green"
                   @click="openSource(source)"
                 >
+                  <img
+                    v-if="isImageSource(source) && imageThumbUrl(source)"
+                    class="source-thumb"
+                    :src="imageThumbUrl(source)"
+                    alt="图片切片"
+                  />
                   {{ sourceLabel(source) }}
                   <span v-if="sourcePageNo(source) != null" class="badge">p{{ sourcePageNo(source) }}</span>
                   <span v-if="sourceChunkIndex(source) != null" class="badge">#{{ sourceChunkIndex(source) }}</span>
@@ -142,18 +148,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed } from 'vue';
+import { ref, watch, nextTick, computed, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Drawer, Button, Input, Tag, message as antdMessage } from 'ant-design-vue';
 import { useAiChat, type ChatMessage } from '@/hooks/useAiChat';
 import { useAiSessions, useCreateAiSession, useDeleteAiSession, useAiSessionMessages } from '@/hooks/useAiSession';
 import { useAiAction } from '@/hooks/useAiAction';
 import { showErrorToast } from '@/utils/error-toast';
+import { axiosInstance } from '@/api/apiClient';
 import ErrorFeedbackButton from '@/components/ai/ErrorFeedbackButton.vue';
 import KnowledgeDocumentDrawer from '@/components/ai/KnowledgeDocumentDrawer.vue';
 import CustomerInsightPanel from '@/components/ai/CustomerInsightPanel.vue';
 
 const BUSINESS_SOURCE_TYPES = ['CUSTOMER', 'BUSINESS_ACTIVITY', 'SALES_OPPORTUNITY', 'CONTRACT', 'CONTACT_TASK'];
+
+/** 图片切片来源类型（add-kb-image-slice-retrieval 任务 3.1 受控解冻取值，大写，与业务实体来源同形） */
+const IMAGE_SOURCE_TYPE = 'IMAGE';
 
 /** 快捷指令药丸（add-ai-customer-360-insight 任务 4.1）：高频业务场景一键填充并发送 */
 const INSIGHT_PILL = '📊 诊断客户健康度';
@@ -425,6 +435,67 @@ function businessSources(msg: ChatMessage): unknown[] {
   return (Array.isArray(msg.sources) ? msg.sources : []).filter(isBusinessSource);
 }
 
+/** 判断是否为图片切片来源：sourceType=IMAGE 且带资产 id（documentId=图片资产 id） */
+function isImageSource(source: unknown): boolean {
+  const s = (source ?? {}) as Record<string, unknown>;
+  const type = (s.sourceType ?? s.type) as string | undefined;
+  return type === IMAGE_SOURCE_TYPE && typeof s.documentId === 'string' && s.documentId.length > 0;
+}
+
+/** 图片缩略图的本地 blob URL（按资产 id 缓存）：后端从 token 头取身份，不能用裸 <img src> */
+const imageThumbs = ref<Record<string, string>>({});
+const imageThumbLoading = new Set<string>();
+
+function imageThumbUrl(source: unknown): string {
+  const s = (source ?? {}) as Record<string, unknown>;
+  const assetId = typeof s.documentId === 'string' ? s.documentId : '';
+  return assetId ? (imageThumbs.value[assetId] ?? '') : '';
+}
+
+/** 拉取图片资产（带 token 的 XHR → blob URL）；失败静默，标签行退化为纯文字 */
+async function loadImageThumb(assetId: string): Promise<void> {
+  if (!assetId || imageThumbs.value[assetId] || imageThumbLoading.has(assetId)) {
+    return;
+  }
+  imageThumbLoading.add(assetId);
+  try {
+    const res = await axiosInstance.get(`/knowledge/images/${encodeURIComponent(assetId)}`, {
+      responseType: 'blob',
+    });
+    const blob = res.data as Blob;
+    imageThumbs.value = { ...imageThumbs.value, [assetId]: URL.createObjectURL(blob) };
+  } catch {
+    // 缩略图失败不影响答案正文：保持无图标签
+  } finally {
+    imageThumbLoading.delete(assetId);
+  }
+}
+
+/** 新消息到达时为其中 IMAGE 来源预取缩略图 */
+watch(
+  chatMessages,
+  (msgs) => {
+    for (const msg of msgs) {
+      for (const source of kbSources(msg)) {
+        if (isImageSource(source)) {
+          const assetId = (source as Record<string, unknown>).documentId;
+          if (typeof assetId === 'string') {
+            void loadImageThumb(assetId);
+          }
+        }
+      }
+    }
+  },
+  { immediate: true },
+);
+
+onUnmounted(() => {
+  for (const url of Object.values(imageThumbs.value)) {
+    URL.revokeObjectURL(url);
+  }
+  imageThumbs.value = {};
+});
+
 function sourceLabel(source: unknown): string {
   const s = (source ?? {}) as Record<string, unknown>;
   const filename = typeof s.filename === 'string' ? s.filename : '';
@@ -456,8 +527,17 @@ function businessSourceLabel(source: unknown): string {
   return name || filename || '业务来源';
 }
 
-/** 打开 KB 来源：进入文档查看抽屉并滚动到指定 chunk */
+/** 打开 KB 来源：图片切片打开原图；文档来源进入文档查看抽屉并滚动到指定 chunk */
 function openSource(source: unknown) {
+  if (isImageSource(source)) {
+    const thumb = imageThumbUrl(source);
+    if (thumb) {
+      window.open(thumb, '_blank');
+    } else {
+      antdMessage.info('图片加载中，请稍后再试');
+    }
+    return;
+  }
   const s = (source ?? {}) as Record<string, unknown>;
   const documentId = s.documentId as string | undefined;
   if (typeof documentId !== 'string' || !documentId) {
@@ -603,6 +683,17 @@ defineExpose({ open: () => { visible.value = true; } });
 .sources-title { font-size: 11px; color: #888; margin-bottom: 3px; }
 .sources-tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .source-tag { cursor: pointer; }
+.source-tag .source-thumb {
+  display: inline-block;
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  vertical-align: middle;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid rgba(0,0,0,0.08);
+  background: #fff;
+}
 .source-tag .badge {
   display: inline-block;
   margin-left: 4px;

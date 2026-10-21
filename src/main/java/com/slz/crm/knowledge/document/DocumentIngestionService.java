@@ -88,6 +88,14 @@ public class DocumentIngestionService {
   @Autowired(required = false)
   private ContentSecurityService contentSecurityService;
 
+  /**
+   * 图片切片摄取旁路（add-kb-image-slice-retrieval 任务 1.1~1.4）：默认关 + 兼容构造缺席即整条旁路关闭。
+   *
+   * <p>与 {@link #contentSecurityService} 同口径用字段注入，避免为可选旁路再改三构造器与全部既有测试装配点。
+   */
+  @Autowired(required = false)
+  private PdfImageSliceIngestService imageSliceIngestService;
+
   @Autowired
   public DocumentIngestionService(
       KnowledgeBaseMapper knowledgeBaseMapper,
@@ -200,7 +208,14 @@ public class DocumentIngestionService {
     List<DocumentVectorChunkEntity> savedChunks = new ArrayList<>();
     try (InputStream storedContent = fileStorageService.open(storageKey)) {
       List<DocumentChunk> chunks =
-          documentService.process(storedContent, command.filename(), command.category());
+          ImageSliceIngestSupport.parseWithImageSlices(
+              documentService,
+              imageSliceIngestService,
+              storedContent,
+              contentBytes,
+              command.filename(),
+              command.category(),
+              String.valueOf(command.knowledgeBaseId()));
       savedChunks.addAll(
           DocumentIngestionSupport.chunkEmbedAndWrite(
               file, chunks, embeddingService, vectorStore, chunkMapper, documentService));
@@ -300,8 +315,17 @@ public class DocumentIngestionService {
     uploadedFileMapper.updateById(file);
     try (InputStream storedContent = fileStorageService.open(file.getStorageKey())) {
       List<DocumentChunk> chunks =
-          documentService.process(storedContent, file.getOriginalFilename(), category);
-      // 幂等重建前置：物理删旧切片行（软删行仍占 uk(document_id, chunk_index)），向量统一在写库前清
+          ImageSliceIngestSupport.parseReingestWithImageSlices(
+              documentService,
+              imageSliceIngestService,
+              storedContent,
+              file.getOriginalFilename(),
+              category,
+              file.getKnowledgeBase(),
+              documentId,
+              chunkMapper,
+              fileStorageService);
+      // 物理删旧切片行（软删行仍占 uk(document_id, chunk_index)），向量统一在写库前清
       chunkMapper.deletePhysicallyByDocumentId(documentId);
       List<DocumentVectorChunkEntity> children =
           DocumentIngestionSupport.chunkEmbedAndWrite(
