@@ -337,6 +337,21 @@ public class DynamicConfigKeyRegistry {
             false,
             100),
 
+        // multimodal-shared-space 任务 3.1：真视觉向量摄取（方案 A，与上面方案 B 的文本降维描述切片并行；默认关 = 零真外呼零落盘）
+        def(
+            objectMapper,
+            "rag.retrieval.image-vector-ingest.enabled",
+            "rag.retrieval",
+            ConfigValueType.BOOLEAN,
+            "false",
+            "图片真视觉向量摄取开关（multimodal-shared-space）：false=完全零变化（默认，零视觉 embedding 外呼、零 image 集合落盘）；"
+                + "true=内嵌图片经文本-图像联合 embedding 编码进独立 image 集合，供 query-by-image 检索。影响面：入库外呼成本与图片召回。",
+            null,
+            null,
+            Set.of(),
+            false,
+            100),
+
         // fix-citation-threshold-config 任务 1.3：引用对齐三阈值动态化（默认值 = CitationAligner 现三个常量，
         // 消费侧 CitationThresholdsResolver 实时读取；未配置/非法/越界逐键回落默认，行为与升级前逐字节等价）。
         def(

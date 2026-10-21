@@ -206,7 +206,19 @@ final class RetrievalConfigResolver {
     return fuseRoutes(textCandidates, imageCandidates, null);
   }
 
-  /** 图文路由融合（per-KB 覆盖优先于全局/默认路由权重）。 */
+  /**
+   * 图文路由融合（per-KB 覆盖优先于全局/默认路由权重）。
+   *
+   * <p>异构双空间（multimodal-shared-space 任务 4.2）：文本路命中查自 {@code knowledge_chunk}，图片路命中查自独立 {@code
+   * knowledge_image}——两路的向量维度与来源都不同源。融合键固定 {@link RetrievalCandidate#fusionKey()} = {@code
+   * documentId:chunkId}，而 image 集合里的视觉向量点携带的是其描述切片行主键（{@code chunkId}）与所属文档 {@code documentId}，因此：
+   *
+   * <ul>
+   *   <li>同一切片两路都命中 → 同键累加（视觉证据与文本证据都指向同一物理切片，加权合并是正确语义）；
+   *   <li>不同切片（哪怕文档相同）→ 键必不同（chunkId 唯一），永不误合并；
+   *   <li>只在 image 空间命中的视觉切片 → 以自身键独立成候选，不会被"并进"任何文本候选。
+   * </ul>
+   */
   java.util.List<RetrievalCandidate> fuseRoutes(
       java.util.List<RetrievalCandidate> textCandidates,
       java.util.List<RetrievalCandidate> imageCandidates,

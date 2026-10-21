@@ -81,6 +81,8 @@ public class IngestionRecoveryPolicy
   @SuppressWarnings("PMD.AvoidCatchingGenericException") // 清理多源容错，分别吞异常避免阻断状态落库
   private void cleanup(String documentId) {
     if (documentId != null && !documentId.isBlank()) {
+      // multimodal-shared-space 任务 3.2：失败清理同样覆盖 image 集合（未装配 = 零调用）
+      ImageVectorCleanupRegistry.deleteByDocumentId(documentId);
       if (vectorStore != null) {
         try {
           vectorStore.deleteByDocumentId(documentId);

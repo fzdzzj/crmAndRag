@@ -19,8 +19,6 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.content.Media;
-import org.springframework.ai.embedding.EmbeddingOptionsBuilder;
-import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
@@ -30,6 +28,9 @@ import org.springframework.util.MimeType;
  * 聊天图片理解编排。
  *
  * <p>L1 结果按 hash 持久化；L2 的 focusedSummary 按问题缓存。 图片理解不依赖 KB 开关，只有图片向量才由检索链路按 KB 开启懒生成。
+ *
+ * <p>multimodal-shared-space（任务 4.1）：图片向量改为真视觉 {@link ModelProvider#embedImage}（图→向量，落独立 image 集合），
+ * 不再把理解文本拼串后走文本 embedding——查询侧因此是真 query-by-image 而不是"用描述文字找描述文字"。
  */
 @Slf4j
 @Service
@@ -109,7 +110,7 @@ public class AiChatImageUnderstandingService {
     if (!generateImageVector || context.imageVector() != null) {
       result = Optional.of(context);
     } else {
-      float[] vector = generateImageVector(image, question, context, provider);
+      float[] vector = generateImageVector(image, provider);
       if (vector != null) {
         contextCache.put(
             image.getSessionId(), image.getImageHash(), question, context.focusedSummary(), vector);
@@ -140,17 +141,7 @@ public class AiChatImageUnderstandingService {
         image.getId(), parsed.ocrText(), parsed.imageSummary(), parsed.keyEntities());
     float[] imageVector = null;
     if (generateImageVector) {
-      imageVector =
-          generateImageVector(
-              image,
-              question,
-              new UnderstandingContext(
-                  parsed.ocrText(),
-                  parsed.imageSummary(),
-                  parsed.keyEntities(),
-                  parsed.focusedSummary(),
-                  null),
-              provider);
+      imageVector = generateImageVector(image, provider);
     }
     contextCache.put(
         image.getSessionId(), image.getImageHash(), question, parsed.focusedSummary(), imageVector);
@@ -187,42 +178,30 @@ public class AiChatImageUnderstandingService {
     return result;
   }
 
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 嵌入外呼多源，失败降级为纯文本检索
-  private float[] generateImageVector(
-      AiChatImageEntity image,
-      String question,
-      UnderstandingContext context,
-      ModelProvider provider) {
-    float[] floats;
+  /**
+   * 图片视觉向量（multimodal-shared-space 任务 4.1）：真视觉 image embedding——图片字节直接编码进视觉向量空间。
+   *
+   * <p>与升级前的区别：旧实现把 OCR/摘要/实体/问题拼成一段文本再走文本 {@code embed}（图→文→向量，语义已损失且与文本空间同维同袋）； 现在直接 {@link
+   * ModelProvider#embedImage}，向量落独立 image 集合，查询侧才是真正的 query-by-image。
+   *
+   * <p>失败语义不变：视觉 embedding 不可用/端点失败 → 返回 null，下游降级为纯文本检索（不伪造向量）。
+   */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 视觉 embedding 外呼多源，失败降级为纯文本检索
+  private float[] generateImageVector(AiChatImageEntity image, ModelProvider provider) {
+    float[] vector = null;
     try {
-      StringBuilder text = new StringBuilder(128);
-      text.append("图片理解：");
-      if (context.imageSummary() != null && !context.imageSummary().isBlank()) {
-        text.append(context.imageSummary().trim());
-      }
-      if (context.ocrText() != null && !context.ocrText().isBlank()) {
-        text.append("\nOCR：").append(context.ocrText().trim());
-      }
-      if (!context.keyEntities().isEmpty()) {
-        text.append("\n实体：").append(String.join("、", context.keyEntities()));
-      }
-      if (context.focusedSummary() != null && !context.focusedSummary().isBlank()) {
-        text.append("\n聚焦：").append(context.focusedSummary().trim());
-      }
-      if (question != null && !question.isBlank()) {
-        text.append("\n问题：").append(question.trim());
-      }
+      byte[] content = imageService.readBytes(image);
       ModelCallResult<float[]> result =
-          provider.embed(
-              new EmbeddingRequest(
-                  List.of(text.toString()), EmbeddingOptionsBuilder.builder().build()));
+          provider.embedImage(content, resolveMimeType(image).toString());
       recordUsage(image, result, TokenUsageType.EMBEDDING);
-      floats = result.vector();
+      if (result != null && result.vector() != null && result.vector().length > 0) {
+        vector = result.vector();
+      }
     } catch (Exception exception) {
-      log.warn("聊天图片向量懒生成失败，降级为纯文本检索: imageId={}", image.getId(), exception);
-      floats = null;
+      log.warn("聊天图片视觉向量生成失败，降级为纯文本检索: imageId={}", image.getId(), exception);
+      vector = null;
     }
-    return floats;
+    return vector;
   }
 
   private Understanding parse(String content) {

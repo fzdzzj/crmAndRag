@@ -35,6 +35,11 @@ public final class ImageAssetCleanup {
   public static int deleteAssets(
       String documentId, DocumentVectorChunkMapper chunkMapper, FileStorageService storage) {
     int deleted = 0;
+    if (documentId != null && !documentId.isBlank()) {
+      // multimodal-shared-space 任务 3.2：图片视觉向量与图片资产同链清理（未装配 image 库 = 零调用）。
+      // 与文本侧 vectorStore.deleteByDocumentId 并列，构成「文本集合 + image 集合」双空间双清。
+      ImageVectorCleanupRegistry.deleteByDocumentId(documentId);
+    }
     if (documentId != null && !documentId.isBlank() && chunkMapper != null && storage != null) {
       List<DocumentVectorChunkEntity> rows = chunkMapper.selectMetadataRowsByDocumentId(documentId);
       for (DocumentVectorChunkEntity row : rows) {

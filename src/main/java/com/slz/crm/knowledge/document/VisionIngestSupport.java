@@ -106,6 +106,42 @@ final class VisionIngestSupport {
     return user == null ? "user:system" : user.userIdRef();
   }
 
+  /**
+   * EMBEDDING token 计量（multimodal-shared-space 任务 3.1：真视觉 embedding 与文本 embedding 同一计量类型）。
+   *
+   * <p>与 {@link #recordUsage} 同形态：失败/空结果也记录（success=false），计量侧异常只记 debug，不挡摄取。
+   *
+   * @param result 视觉 embedding 结果（可空）
+   * @param success 是否取得可用向量
+   * @param recorderProvider 计量记录器（可空，兼容构造下不计量）
+   */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 计量上报边界：失败忽略不挡摄取
+  static void recordEmbeddingUsage(
+      ModelCallResult<float[]> result,
+      boolean success,
+      ObjectProvider<TokenUsageRecorder> recorderProvider) {
+    TokenUsageRecorder recorder =
+        recorderProvider == null ? null : recorderProvider.getIfAvailable();
+    if (recorder != null) {
+      try {
+        String model = result == null || result.model() == null ? "unknown" : result.model();
+        recorder.record(
+            new TokenUsageRecord(
+                model,
+                currentUserRef(),
+                null,
+                null,
+                TokenUsageType.EMBEDDING,
+                result == null ? null : result.promptTokens(),
+                null,
+                result == null ? null : result.totalTokens(),
+                success));
+      } catch (Exception ignore) {
+        LOG.debug("EMBEDDING token 计量上报失败（忽略）", ignore);
+      }
+    }
+  }
+
   private static int countOccurrences(String text, String needle) {
     int count = 0;
     if (text != null && needle != null && !needle.isEmpty()) {
