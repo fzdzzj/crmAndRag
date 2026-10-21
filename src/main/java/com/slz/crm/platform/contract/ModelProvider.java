@@ -78,6 +78,24 @@ public interface ModelProvider {
   ModelCallResult<float[]> embed(EmbeddingRequest request);
 
   /**
+   * 图片视觉向量（multimodal-shared-space：真视觉 image embedding，图→向量，独立于文本向量空间）。
+   *
+   * <p>与 {@link #embed(EmbeddingRequest)} 的区别：文本 embed 把图片降维成描述文字后编码，本方法直接把图片像素编码进视觉向量空间， 因此输出维度与文本
+   * embedding 模型无关（可 ≠ 文本维度，落独立 image collection）。
+   *
+   * <p>默认实现抛 {@link UnsupportedOperationException}：视觉 embedding 是可选能力，只有支持文本-图像联合 embedding 端点的
+   * Provider 才实现它；调用方（摄取旁路/查询侧）必须按"失败即降级"处理，不得假定恒可用。
+   *
+   * @param imageBytes 图片原始字节（PNG/JPEG/WebP 等，实现按 mime 声明转 data URI）
+   * @param mimeType 图片 MIME（如 {@code image/png}）；空则实现按 {@code image/png} 兜底
+   * @return 视觉向量 + usage；调用失败抛业务异常（不返回 null）
+   */
+  default ModelCallResult<float[]> embedImage(byte[] imageBytes, String mimeType) {
+    throw new UnsupportedOperationException(
+        "Provider " + provider() + " 未实现视觉 embedding（embedImage）");
+  }
+
+  /**
    * 视觉/OCR 多模态调用（图文解耦 D13：理解恒注入，向量仅 KB ON 时懒生成）。
    *
    * @param prompt 多模态 Prompt（含 image media）

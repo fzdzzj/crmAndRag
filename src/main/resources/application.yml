@@ -120,6 +120,10 @@ platform:
       chat-model: ${SLZ_AI_CHAT_MODEL:qwen-plus}
       vision-model: ${SLZ_AI_VISION_MODEL:qwen-vl-plus}
       embedding-model: ${SLZ_AI_EMBEDDING_MODEL:text-embedding-v3}
+      # 视觉 embedding（multimodal-shared-space）：文本-图像联合 embedding，图→向量，输出维度与文本 embedding 独立
+      image-embedding-model: ${SLZ_AI_IMAGE_EMBEDDING_MODEL:multimodal-embedding-v1}
+      # 原生联合 embedding 端点（DashScope 多模态 embeddings 服务；不在 OpenAI 兼容 /chat/completions 语义内，故独立配置）
+      image-embedding-endpoint: ${SLZ_AI_IMAGE_EMBEDDING_ENDPOINT:https://dashscope.aliyuncs.com/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding}
       # 单次调用超时（秒）；0 表示不限（不建议）；只管同步路（RestClient），流式另有反应式超时
       timeout-seconds: 60         # 默认：60 秒；建议范围：30~120；同步 AI 模型调用读取超时；0 表示不限
       # 建立连接超时（秒）；0 表示不限
@@ -161,6 +165,9 @@ knowledge:
     # 向量集合名与维度（须与 embedding-model 输出一致；改维度需重建集合，属破坏性变更）
     collection: ${QDRANT_COLLECTION:knowledge_chunk}
     dimensions: ${QDRANT_DIMS:1024}
+    # 图片视觉向量独立集合（multimodal-shared-space：视觉/文本是两个向量空间，维度可 ≠ 文本维度；改维度需重建 image 集合）
+    image-collection: ${QDRANT_IMAGE_COLLECTION:knowledge_image}
+    image-dimensions: ${QDRANT_IMAGE_DIMS:1024}
     # 启动时检查/自动创建集合；不可达时应用仍继续启动，检索期才报错（与 RAG 原行为一致）
     initialize-on-startup: true
   minio:

@@ -40,6 +40,8 @@ final class DocumentIngestionSupport {
       DocumentVectorChunkMapper chunkMapper,
       DocumentService documentService) {
     vectorStore.deleteByDocumentId(file.getDocumentId());
+    // multimodal-shared-space 任务 3.2：图片视觉向量与文本切片同口径双清（未装配 image 库 = 零调用）
+    ImageVectorCleanupRegistry.deleteByDocumentId(file.getDocumentId());
     List<DocumentVectorChunkEntity> children =
         persistChunks(file, chunks, chunkMapper, documentService);
     List<VectorRecord> vectorRecords = new ArrayList<>(children.size());
@@ -58,6 +60,8 @@ final class DocumentIngestionSupport {
       vectorRecords.add(createVectorRecord(file, entity, embedding, chunks.get(index)));
     }
     vectorStore.upsertAll(vectorRecords);
+    // multimodal-shared-space 任务 3.1：描述切片同源的真视觉向量写独立 image 集合（开关关/未暂存 = 零调用）
+    ImageVectorFlushSupport.flush(file, children, chunks, ImageVectorCleanupRegistry.store());
     return children;
   }
 
@@ -194,8 +198,8 @@ final class DocumentIngestionSupport {
     return entity;
   }
 
-  /** point id 使用 UUID；chunkId 使用 DB 主键，保证前端引用与 DB 可回查。 */
-  private static VectorRecord createVectorRecord(
+  /** point id 使用 UUID；chunkId 使用 DB 主键，保证前端引用与 DB 可回查。视觉向量复用同一构建口径（payload 逐字段一致）。 */
+  static VectorRecord createVectorRecord(
       UploadedFileEntity file,
       DocumentVectorChunkEntity entity,
       float[] embedding,

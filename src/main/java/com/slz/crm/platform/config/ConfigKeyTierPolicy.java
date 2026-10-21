@@ -8,11 +8,11 @@ import java.util.Set;
 /**
  * 动态配置键三档定级封闭表（add-dynamic-config-key-tier-acl 任务 1.3）。
  *
- * <p>与 {@link DynamicConfigKeyRegistry} 的 66 键全集一一对应（2026-10-17 实测普查，wire-built-unfinished-infra 摘除
+ * <p>与 {@link DynamicConfigKeyRegistry} 的 67 键全集一一对应（2026-10-17 实测普查，wire-built-unfinished-infra 摘除
  * ai.model.* 五+1 死键后；fix-citation-threshold-config 补 3 个引用对齐阈值键；add-kb-image-slice-retrieval 补 3
- * 个图片切片 摄取键）：OPERATIONAL 35（608 持有者可写，含 P-ac per-KB 12 键白名单全集 + rag.retrieval.citation.* 三键）/ COST
- * 26（超管专写——LLM 重排/压缩/Self-RAG自评、查询增强、VLM 转写与图片描述、重放、限流配额等费用红线族）/ STRUCTURAL 5（超管专写——切分策略/分块尺寸、
- * 数据范围安全语义等变更管理键）。
+ * 个图片切片 摄取键；multimodal-shared-space 补 1 个真视觉向量摄取键）：OPERATIONAL 35（608 持有者可写，含 P-ac per-KB 12 键白名单全集
+ * + rag.retrieval.citation.* 三键）/ COST 27（超管专写——LLM 重排/压缩/Self-RAG自评、查询增强、VLM 转写与图片描述/视觉
+ * embedding、重放、限流配额等费用红线族）/ STRUCTURAL 5（超管专写——切分策略/分块尺寸、 数据范围安全语义等变更管理键）。
  *
  * <p>ai.model.* 六键（provider/chatModel/visionModel/embeddingModel/temperature/maxTokens）已于
  * 2026-10-17 从注册表与定级表同步摘除（零消费死键，消除「登记即生效」幻觉）；模型选择仍走静态绑定 platform.ai.model.*。
@@ -68,7 +68,7 @@ public final class ConfigKeyTierPolicy {
           "platform.resilience.failure-threshold.storage-minio",
           "platform.resilience.open-duration-ms.storage-minio");
 
-  /** COST 档封闭集（26 键：成本开关，超管专写） */
+  /** COST 档封闭集（27 键：成本开关，超管专写） */
   private static final Set<String> COST_KEYS =
       Set.of(
           "business.rateLimit.perMinute",
@@ -80,6 +80,7 @@ public final class ConfigKeyTierPolicy {
           "rag.retrieval.image-slice-ingest.enabled",
           "rag.retrieval.image-slice-ingest.kb-allowlist",
           "rag.retrieval.image-slice-ingest.max-images-per-document",
+          "rag.retrieval.image-vector-ingest.enabled",
           "rag.retrieval.rerank.mode",
           "rag.retrieval.rerank.llm.timeout-ms",
           "rag.retrieval.rerank.llm.max-candidates",

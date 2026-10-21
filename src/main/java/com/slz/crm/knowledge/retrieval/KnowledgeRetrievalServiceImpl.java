@@ -2,6 +2,7 @@ package com.slz.crm.knowledge.retrieval;
 
 import com.slz.crm.knowledge.auth.KnowledgeBaseAuthorizationService;
 import com.slz.crm.knowledge.embedding.EmbeddingService;
+import com.slz.crm.knowledge.vector.ImageVectorStore;
 import com.slz.crm.platform.contract.CrmVectorStore;
 import com.slz.crm.platform.contract.DynamicConfigService;
 import com.slz.crm.platform.contract.RetrievalDefaults;
@@ -35,6 +36,9 @@ import org.springframework.stereotype.Service;
  *
  * <p>方案04/10（add-context-compression-and-enrichment）：topK 截取后接上下文组装器 {@link ContextBuilder}——邻居增强 +
  * 超预算压缩；未装配（兼容构造）时保持升级前纯拼接。
+ *
+ * <p>multimodal-shared-space（任务 4.2）：图片路改查独立 image 集合（{@link ImageVectorStore}，视觉向量维度可 ≠ 文本维度），
+ * 文本路仍在 {@code knowledge_chunk}；两路按 {@code documentId:chunkId} 融合，异构空间不误合并。
  */
 @Service
 public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
@@ -90,6 +94,14 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
   /** per-KB 覆盖读取服务（add-per-kb-retrieval-strategy-override 任务 3.3；字段注入以免改兼容构造签名）。 */
   @Autowired(required = false)
   private KbRetrievalStrategyService kbStrategyService;
+
+  /**
+   * 图片视觉向量库（multimodal-shared-space 任务 4.2；字段注入以免改兼容构造签名）。
+   *
+   * <p>null = 未装配（裁剪装配/单测）：图片路退回文本集合，行为与升级前一致。
+   */
+  @Autowired(required = false)
+  private ImageVectorStore imageVectorStore;
 
   @Autowired
   public KnowledgeRetrievalServiceImpl(
@@ -252,7 +264,8 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
         hasImageVector
             ? reranker.rerank(
                 retrievalQuery,
-                recall(query.imageVector(), knowledgeBaseIds, category, candidateLimit, minScore))
+                recallImage(
+                    query.imageVector(), knowledgeBaseIds, category, candidateLimit, minScore))
             : List.of();
     List<RetrievalCandidate> candidates =
         configResolver.fuseRoutes(textCandidates, imageCandidates, singleKbId).stream()
@@ -374,15 +387,52 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
       String category,
       int candidateLimit,
       double minScore) {
+    return recallIn(vectorStore, queryVector, knowledgeBaseIds, category, candidateLimit, minScore);
+  }
+
+  /**
+   * 图片视觉路召回（multimodal-shared-space 任务 4.2）：真 query-by-image 查独立 image 集合。
+   *
+   * <p>空间选择：已装配 {@link ImageVectorStore} → 查 image 集合（视觉向量维度可 ≠ 文本维度）；未装配（裁剪装配/兼容构造） → 退回文本
+   * 集合的旧单空间行为，升级前调用点零变化。
+   *
+   * <p>失败语义：图像路是增强路，任何失败（集合不可达、查询向量维度与 image 集合不符——例如命中缓存里升级前的文本降维向量）一律降级为
+   * 空图片候选，文本检索与最终答案不受影响；绝不因图片路失败而拒绝整次检索。
+   */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 图片增强路降级边界：外呼/维度异常都不应打断文本检索
+  private List<RetrievalCandidate> recallImage(
+      float[] queryVector,
+      List<Long> knowledgeBaseIds,
+      String category,
+      int candidateLimit,
+      double minScore) {
+    CrmVectorStore imageSpace = imageVectorStore == null ? vectorStore : imageVectorStore;
+    List<RetrievalCandidate> result;
+    try {
+      result =
+          recallIn(imageSpace, queryVector, knowledgeBaseIds, category, candidateLimit, minScore);
+    } catch (Exception exception) {
+      LOG.warn("图片视觉路召回失败，降级为无图片候选（文本检索继续）", exception);
+      result = List.of();
+    }
+    return result;
+  }
+
+  /** 在指定向量空间按 KB 授权逐库过滤召回（文本空间与 image 空间共用同一过滤/去重口径）。 */
+  private List<RetrievalCandidate> recallIn(
+      CrmVectorStore space,
+      float[] queryVector,
+      List<Long> knowledgeBaseIds,
+      String category,
+      int candidateLimit,
+      double minScore) {
     Map<String, RetrievalCandidate> uniqueByChunk = new LinkedHashMap<>();
     for (Long knowledgeBaseId : knowledgeBaseIds) {
       Map<String, Object> filter =
           category == null
               ? Map.of("knowledgeBaseId", String.valueOf(knowledgeBaseId))
               : Map.of("knowledgeBaseId", String.valueOf(knowledgeBaseId), "category", category);
-      vectorStore
-          .search(new VectorSearchRequest(queryVector, candidateLimit, minScore, filter))
-          .stream()
+      space.search(new VectorSearchRequest(queryVector, candidateLimit, minScore, filter)).stream()
           .filter(hit -> hit.text() != null && !hit.text().isBlank())
           .map(hit -> new RetrievalCandidate(hit, hit.score()))
           .forEach(

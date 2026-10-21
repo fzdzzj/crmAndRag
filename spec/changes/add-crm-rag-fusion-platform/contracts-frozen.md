@@ -126,9 +126,21 @@
 12. `ModelProviderImpl` `applyOptions` 设 toolCallbacks/toolContext → Spring AI tool loop；stream+tools 跳过 thinking 手工 JSON（工具优先）✓
 13. C 收回“工具请求走 Spring AI 通用路径”的权宜，全部经 ModelProvider；usage 不漏计。
 
+### 修正轮 4（✅ 已落地，multimodal-shared-space 受控解冻）
+14. `ModelProvider` 增视觉 embedding 入口 `default ModelCallResult<float[]> embedImage(byte[] imageBytes, String mimeType)`
+    ——真视觉（图→向量），与文本 `embed(EmbeddingRequest)` 并列；默认实现抛 `UnsupportedOperationException`（可选能力，调用方按
+    "失败即降级"处理），因此**既有实现方/测试替身零改动**（不构成破坏性变更）。
+15. `ModelProviderImpl` 实现 `embedImage`：DashScope 文本-图像联合 embedding 原生端点（`multimodal-embedding-v1`，
+    `platform.ai.model.image-embedding-endpoint`），协议细节拆至 `ImageEmbeddingSupport`；复用既有 `ModelCallGuard`（依赖名
+    `model-embed`，与文本 embedding 同一 DashScope 依赖）与 `callWithTimeout` 超时护栏；usage 走 `ModelCallResult.ofVector`，
+    计量类型 `TokenUsageType.EMBEDDING`。
+16. 契约面**零结构改动**其余字段：`VectorRecord`/`VectorSearchRequest`/`SourceReference` 十字段/`TokenUsageType` 取值集全部不变；
+   视觉向量只是落在**独立 collection**（`knowledge.qdrant.image-collection` / `image-dimensions`），不复用文本集合、不改文本 embedding 语义。
+
 ---
 
 ## 变更日志
+
 - **2026-09-09 · base e3f8230**：初始 17 契约冻结（Agent-0）。
 - **2026-09-09 · 修正轮（架构批准）**：+`TITLE` 事件；SSE payload 字段级冻结；+断线续传（事件 id/有界缓冲/Last-Event-ID/重放≠重执行/sticky 兜底/RESUME_UNAVAILABLE）；+`CrmVectorStoreHealth`(B实现/D消费)；+`BypassTaskExecutor`(D实现/C消费)；+`KnowledgeRetrievalPort`(C定义/B实现,lane-local)；`ModelProviderImpl` 归 base（C2）；`imageRef` 语义澄清（=C聊天图域）；`TokenUsageType` 含 SUMMARY/INTENT；Qdrant metadata 类型约定（B4）；DataScope 超集不变量（A3）；确认 C1(sessionId String)/C6(user_id BIGINT，userIdRef 跨域)/D15(锚点已在契约)。
 - **2026-09-09 · 修正轮落地（Agent-0 重开）**：20 契约全部已实现；`ModelProviderImpl` chat 走 DashScope 原生 / streamChat 恒走 compatible-mode SSE + streamUsage(true) / embed 走 DashScope 原生 / vision 强制 qwen-vl 走 compatible-mode；真机 IT chat/stream/embed 均验证 usage 正常；`PlatformErrorCode` 10 项全集（§11）；`AssistantChatRequest.imageRef` Javadoc 更新。
@@ -141,3 +153,4 @@
 - **2026-10-15 · add-sales-opportunity-semantic-retrieval 受控解冻（对齐 D3 先例）**：`SourceReference.sourceType` 取值集再扩展支持 `SALES_OPPORTUNITY`——`documentId`=商机主键、`filename`=商机名称（opportunity_name）、`chunkId`=`SALES_OPPORTUNITY:{商机主键}`，复用现有十字段零结构改动，SSE `sources` payload 结构零改动；spec 增量登记 `openspec/changes/add-sales-opportunity-semantic-retrieval/specs/knowledge-rag/spec-delta.md`。
 - **2026-10-16 · add-unified-business-semantic-retrieval 受控解冻（对齐 D3 先例）**：`SourceReference.sourceType` 取值集再扩展支持 `CONTRACT` 与 `CONTACT_TASK`——合同：`documentId`=合同主键、`filename`=contract_name（合同名称）、`chunkId`=`CONTRACT:{合同主键}`；联络任务：`documentId`=任务主键、`filename`=task_title（任务标题）、`chunkId`=`CONTACT_TASK:{任务主键}`；复用现有十字段零结构改动，SSE `sources` payload 结构零改动；spec 增量登记 `openspec/changes/add-unified-business-semantic-retrieval/specs/knowledge-rag/spec-delta.md`。
 - **2026-10-21 · add-kb-image-slice-retrieval 受控解冻（对齐 D3 先例，owner 方案 B 拍板）**：`SourceReference.sourceType` 取值集再扩展支持 `IMAGE`（PDF 内嵌图片对象的 VLM 描述切片）——`documentId`=图片资产 id（=图片切片行 `document_vector_chunk.id`）、`filename`=图片描述摘要（60 字截断）、`chunkId`=`IMAGE:{图片资产id}`、`pageNo`=图片所在页码、`rowIndex`=null；复用现有十字段零结构改动，SSE `sources` payload 结构零改动；spec 增量登记 `openspec/changes/add-kb-image-slice-retrieval/specs/knowledge-rag/spec-delta.md`。
+- **2026-10-21 · multimodal-shared-space 受控解冻（owner 四项拍板，A 档大卡）**：`ModelProvider` 增 `default embedImage(byte[], String)`（真视觉 image embedding，默认抛 `UnsupportedOperationException` 故对既有实现方/测试替身不构成破坏），`ModelProviderImpl` 接 DashScope 文本-图像联合 embedding 原生端点（协议细节拆 `ImageEmbeddingSupport`，零新依赖，复用 `ModelCallGuard` + `callWithTimeout`）；向量落**独立 image collection**（`QdrantProperties.imageCollection/imageDimensions`，维度解耦文本），查询侧改真 query-by-image；`SourceReference` 十字段/`VectorRecord`/`TokenUsageType` 取值集均不变（视觉命中的引用仍按 `IMAGE:` 口径回填）；`rag.retrieval.image-vector-ingest.enabled` 默认 false = 零真外呼零落盘。任务清单见 `openspec/changes/multimodal-shared-space/tasks.md`。

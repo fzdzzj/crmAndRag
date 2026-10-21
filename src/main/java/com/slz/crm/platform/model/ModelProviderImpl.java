@@ -43,11 +43,11 @@ import reactor.core.publisher.Flux;
  *   <li><b>非流式 {@link #chat(Prompt)}</b>：优先 DashScope 原生（usage 稳定）；缺失回退 compatible-mode；
  *   <li><b>流式 {@link #streamChat(Prompt)}</b>：恒走 compatible-mode SSE + streamUsage(true)；
  *   <li><b>向量 {@link #embed(EmbeddingRequest)}</b>：DashScope EmbeddingModel；
+ *   <li><b>视觉向量 {@link #embedImage(byte[], String)}</b>：DashScope 文本-图像联合 embedding 原生端点；
  *   <li><b>视觉 {@link #vision(Prompt)}</b>：compatible-mode + 强制 vision 模型。
  * </ul>
  *
- * <p>修正轮2：新增 {@link ModelCallOptions} 重载，thinking=true 时 sync 走 RestClient 拦截器注入 enable_thinking，
- * stream 走独立 JSON + WebClient（确保 body 带 enable_thinking 双写）。
+ * <p>修正轮2：新增 {@link ModelCallOptions} 重载，thinking=true 时 sync 走 RestClient 拦截器注入 enable_thinking。
  *
  * <p>tighten-pmd-residual-325 任务 6.4 批A：compatible-mode 协议细节（模型装配 / thinking JSON / SSE chunk 解析）拆至
  * {@link CompatibleModeSupport}，本类只保留路由与结果转换，行为等价。
@@ -65,6 +65,13 @@ public class ModelProviderImpl implements ModelProvider {
   private final ModelProviderProperties properties;
   private final OpenAiChatModel compatibleChatModel;
   private final CompatibleModeSupport compatibleMode;
+
+  /**
+   * multimodal-shared-space 任务 1.1：DashScope 文本-图像联合 embedding 协议细节（真视觉，图→向量）。
+   *
+   * <p>不并入 {@code dashScopeEmbeddingModel}：后者是 Spring AI 文本 embedding 通道，只承载文本语料。
+   */
+  private final ImageEmbeddingSupport imageEmbeddingSupport;
 
   /** wire-dependency-circuit-breaker 任务 3：模型外呼的熔断护栏（依赖名按 chat / embed / vision 分路）。 */
   private final ModelCallGuard guard;
@@ -119,6 +126,7 @@ public class ModelProviderImpl implements ModelProvider {
     this.guard = guard;
     this.compatibleMode = new CompatibleModeSupport(properties, environment);
     this.compatibleChatModel = compatibleMode.buildCompatibleChatModel();
+    this.imageEmbeddingSupport = new ImageEmbeddingSupport(properties, environment);
   }
 
   /** 关停时中断在途非流式模型调用，避免拖慢上下文关闭。 */
@@ -136,18 +144,15 @@ public class ModelProviderImpl implements ModelProvider {
   public ModelCallResult<String> chat(Prompt prompt) {
     ChatModel nativeModel = dashScopeChatModel.getIfAvailable();
     ChatModel model = nativeModel != null ? nativeModel : compatibleChatModel;
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("chat() 使用 {} 协议", nativeModel != null ? "dashscope" : "compatible-mode");
-    }
-    ChatResponse response =
-        guard.call("model-chat", () -> callWithTimeout(() -> model.call(prompt), "chat"));
-    return toTextResult(response, properties.getChatModel());
+    LOG.debug("chat() 使用 {} 协议", nativeModel != null ? "dashscope" : "compatible-mode");
+    return toTextResult(
+        guard.call("model-chat", () -> callWithTimeout(() -> model.call(prompt), "chat")),
+        properties.getChatModel());
   }
 
   @Override
   public Flux<ChatResponse> streamChat(Prompt prompt) {
-    Prompt forced = withStreamUsage(prompt);
-    return compatibleChatModel.stream(forced);
+    return compatibleChatModel.stream(withStreamUsage(prompt));
   }
 
   @Override
@@ -173,12 +178,31 @@ public class ModelProviderImpl implements ModelProvider {
 
   @Override
   public ModelCallResult<String> vision(Prompt prompt) {
-    Prompt forced = withModel(prompt, properties.getVisionModel());
-    ChatResponse response =
+    return toTextResult(
         guard.call(
             "model-vision",
-            () -> callWithTimeout(() -> compatibleChatModel.call(forced), "vision"));
-    return toTextResult(response, properties.getVisionModel());
+            () ->
+                callWithTimeout(
+                    () -> compatibleChatModel.call(withModel(prompt, properties.getVisionModel())),
+                    "vision")),
+        properties.getVisionModel());
+  }
+
+  /**
+   * 图片视觉向量（multimodal-shared-space 任务 1.1）：走 DashScope 文本-图像联合 embedding 原生端点，图→向量，不做文本降维。
+   *
+   * <p>熔断依赖名沿用 {@code model-embed}：视觉 embedding 与文本 embedding 是同一个 DashScope 依赖，隔离点在向量集合不在依赖名； 超时沿用
+   * {@code platform.ai.model.timeout-seconds} 的同一调用方护栏（与文本 embed 逐项一致）。
+   */
+  @Override
+  public ModelCallResult<float[]> embedImage(byte[] imageBytes, String mimeType) {
+    return ImageEmbeddingSupport.toResult(
+        guard.call(
+            "model-embed",
+            () ->
+                callWithTimeout(
+                    () -> imageEmbeddingSupport.call(imageBytes, mimeType), "embed-image")),
+        properties.getImageEmbeddingModel());
   }
 
   // ==================== 修正轮2 ====================

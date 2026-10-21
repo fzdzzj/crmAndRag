@@ -34,6 +34,10 @@ import org.springframework.util.MimeType;
  * <p>开关与帽（动态配置，默认关 = 默认行为零变化）：{@value #ENABLED_KEY}（默认 false）、{@value #KB_ALLOWLIST_KEY} （KB 维度灰度，空
  * = 全部库）、{@value #MAX_IMAGES_KEY}（每文档图片数帽，默认 5，范围 1~20）。
  *
+ * <p>multimodal-shared-space（任务 3.1）在此并行加一条真视觉路（方案 A）：同一张图片在描述切片之外，还由 {@link
+ * ModelProvider#embedImage} 直接编码成视觉向量，暂存后由 {@link ImageVectorFlushSupport} 写进独立 image 集合。两条路互不替代——
+ * 文本降维描述切片（方案 B）保留为并行文本召回路（{@link #ENABLED_KEY} 管它），真视觉向量由 {@value #IMAGE_VECTOR_ENABLED_KEY} 管。
+ *
  * <p>失败语义：单图解码/外呼/闸门/落盘任一失败只跳过该图，绝不打断整篇文档解析；未装配存储或关闭开关时返回空表且零外呼。
  */
 @Service
@@ -50,6 +54,14 @@ public class PdfImageSliceIngestService {
   /** 每文档最多处理的内嵌图片数。 */
   public static final String MAX_IMAGES_KEY =
       "rag.retrieval.image-slice-ingest.max-images-per-document";
+
+  /**
+   * 视觉向量摄取开关（multimodal-shared-space 任务 3.1，默认 false）。
+   *
+   * <p>语义与既有图片切片总开关正交：{@link #ENABLED_KEY} 管"要不要 VLM 描述切片"（文本降维路，方案 B），本键管"要不要把同一张图片 直接编码成视觉向量写进独立
+   * image 集合"（真视觉路，方案 A）。默认 false = 零视觉外呼、零 image 集合落盘，默认行为逐字节一致。
+   */
+  public static final String IMAGE_VECTOR_ENABLED_KEY = "rag.retrieval.image-vector-ingest.enabled";
 
   public static final int DEFAULT_MAX_IMAGES = 5;
 
@@ -120,7 +132,9 @@ public class PdfImageSliceIngestService {
         try {
           List<PdfImageExtractor.ExtractedImage> images =
               PdfImageExtractor.extract(content, resolveMaxImages());
-          slices.addAll(describeAndStore(images, storage, category));
+          Map<String, float[]> stagedVectors =
+              imageVectorEnabled() ? ImageVisualVectorSupport.begin() : null;
+          slices.addAll(describeAndStore(images, storage, category, stagedVectors));
         } catch (Exception exception) {
           // 图片切片旁路绝不打断整篇解析：文本切片照常入库
           LOG.warn("PDF 内嵌图片提取失败，跳过图片切片: filename={}", filename, exception);
@@ -128,6 +142,20 @@ public class PdfImageSliceIngestService {
       }
     }
     return slices;
+  }
+
+  /**
+   * 视觉向量摄取开关（multimodal-shared-space 任务 3.1）：默认 false。
+   *
+   * @return 是否为本轮摄取生成真视觉向量（false = 零视觉外呼、零 image 集合落盘）
+   */
+  public boolean imageVectorEnabled() {
+    DynamicConfigService config = resolveConfig();
+    Boolean on =
+        config == null
+            ? Boolean.FALSE
+            : config.get(IMAGE_VECTOR_ENABLED_KEY, Boolean.class, Boolean.FALSE);
+    return Boolean.TRUE.equals(on);
   }
 
   /**
@@ -210,7 +238,10 @@ public class PdfImageSliceIngestService {
 
   /** 逐图「描述 → 闸门 → 落盘」，任一环节失败跳过该图。 */
   private List<DocumentChunk> describeAndStore(
-      List<PdfImageExtractor.ExtractedImage> images, FileStorageService storage, String category) {
+      List<PdfImageExtractor.ExtractedImage> images,
+      FileStorageService storage,
+      String category,
+      Map<String, float[]> stagedVectors) {
     List<DocumentChunk> slices = new ArrayList<>(images.size());
     for (PdfImageExtractor.ExtractedImage image : images) {
       String description = describe(image);
@@ -218,10 +249,21 @@ public class PdfImageSliceIngestService {
         String storageKey = store(storage, image);
         if (!storageKey.isBlank()) {
           slices.add(toChunk(image, description, storageKey, category));
+          // 真视觉路（方案 A）：图片像素直接进视觉向量空间，与上面的描述切片（方案 B 文本降维路）并行存在，互不替代
+          stageImageVector(stagedVectors, storageKey, image);
         }
       }
     }
     return slices;
+  }
+
+  /** 视觉向量：暂存到 image 集合的待写队列（开关/作用域未开时由 {@link ImageVisualVectorSupport} 零外呼返回）。 */
+  private void stageImageVector(
+      Map<String, float[]> stagedVectors,
+      String storageKey,
+      PdfImageExtractor.ExtractedImage image) {
+    ImageVisualVectorSupport.embedAndStage(
+        stagedVectors, storageKey, image, modelProvider, tokenUsageRecorderProvider);
   }
 
   /** 单图 VLM 描述：外呼 + 闸门 + 计量（失败返回 null，交给调用方跳过该图）。 */
