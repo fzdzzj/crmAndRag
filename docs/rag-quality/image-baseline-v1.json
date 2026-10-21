@@ -1,0 +1,297 @@
+{
+  "suiteVersion" : "IMAGE-SUITE-1.0",
+  "generatedAt" : "2026-10-21T15:29:27.849918200Z",
+  "optIn" : "RAG_VISION_EMBED_REAL=1 + DASHSCOPE_API_KEY 显式真跑；语料 = 6 张确定性程序化图像（4 内容图 + 1 看板 + 1 纯白易负例），查询图经真视觉 embedding（multimodal-embedding-v1）query-by-image 查独立 image 集合；文本对照路 = 同一批图的描述文本（VLM 描述的确定性替身）经真文本 embedding 查文本集合",
+  "topK" : 5,
+  "sameImageCosineThreshold" : 0.9,
+  "crossImageCosineThreshold" : 0.9,
+  "judgement" : {
+    "sameImageHit" : "sameImageCosine >= sameImageCosineThreshold",
+    "crossImageRejected" : "crossImageCosine < crossImageCosineThreshold",
+    "casePass" : "sameImageHit && crossImageRejected && (sameImageCosine - crossImageCosine) >= 0"
+  },
+  "corpus" : [ {
+    "key" : "flow-blue",
+    "caption" : "蓝色主题的流程示意图：若干矩形区块与箭头连线，标注 SLA 台账与工单分层",
+    "chunkId" : "imgchunk-flow-blue"
+  }, {
+    "key" : "bars-blue",
+    "caption" : "蓝色主题的流程示意图：若干矩形区块与箭头连线，标注 SLA 台账与工单分层统计",
+    "chunkId" : "imgchunk-bars-blue"
+  }, {
+    "key" : "flow-orange",
+    "caption" : "橙色主题的流程示意图：若干矩形区块与箭头连线，标注 SLA 台账与工单分层",
+    "chunkId" : "imgchunk-flow-orange"
+  }, {
+    "key" : "table-scan",
+    "caption" : "灰度扫描的表格示意图：网格线与行列表头，收口工单台账",
+    "chunkId" : "imgchunk-table-scan"
+  }, {
+    "key" : "cards-green",
+    "caption" : "绿色主题的看板示意图：圆角卡片与图标，展示工单分层",
+    "chunkId" : "imgchunk-cards-green"
+  }, {
+    "key" : "blank-white",
+    "caption" : "纯白底图：无任何图形与文字",
+    "chunkId" : "imgchunk-blank-white"
+  } ],
+  "vision" : {
+    "path" : "vision-query-by-image",
+    "metrics" : {
+      "caseCount" : 5,
+      "sameImageHitRate" : 1.0,
+      "crossImageRejectionRate" : 1.0,
+      "crossImageFalsePositiveRate" : 0.0,
+      "meanSameImageCosine" : 1.0,
+      "meanCrossImageCosine" : 0.4950915063649604,
+      "meanDiscriminationMargin" : 0.5049084936350396,
+      "retrievalRecallAtK" : 1.0,
+      "retrievalCrossImageRate" : 0.8,
+      "passRate" : 1.0
+    },
+    "cases" : [ {
+      "id" : "IM-01",
+      "queryImageKey" : "flow-blue",
+      "sameImageChunkId" : "IMAGE:imgchunk-flow-blue",
+      "crossImageChunkId" : "IMAGE:imgchunk-bars-blue",
+      "sameImageCosine" : 1.0,
+      "crossImageCosine" : 0.546538497129656,
+      "discriminationMargin" : 0.45346150287034404,
+      "sameImageHit" : true,
+      "crossImageRejected" : true,
+      "sameImageRetrieved" : true,
+      "crossImageRetrieved" : true,
+      "pass" : true
+    }, {
+      "id" : "IM-02",
+      "queryImageKey" : "bars-blue",
+      "sameImageChunkId" : "IMAGE:imgchunk-bars-blue",
+      "crossImageChunkId" : "IMAGE:imgchunk-flow-blue",
+      "sameImageCosine" : 1.0,
+      "crossImageCosine" : 0.546538497129656,
+      "discriminationMargin" : 0.45346150287034404,
+      "sameImageHit" : true,
+      "crossImageRejected" : true,
+      "sameImageRetrieved" : true,
+      "crossImageRetrieved" : true,
+      "pass" : true
+    }, {
+      "id" : "IM-03",
+      "queryImageKey" : "flow-orange",
+      "sameImageChunkId" : "IMAGE:imgchunk-flow-orange",
+      "crossImageChunkId" : "IMAGE:imgchunk-bars-blue",
+      "sameImageCosine" : 1.0,
+      "crossImageCosine" : 0.5272805035170128,
+      "discriminationMargin" : 0.47271949648298717,
+      "sameImageHit" : true,
+      "crossImageRejected" : true,
+      "sameImageRetrieved" : true,
+      "crossImageRetrieved" : true,
+      "pass" : true
+    }, {
+      "id" : "IM-04",
+      "queryImageKey" : "table-scan",
+      "sameImageChunkId" : "IMAGE:imgchunk-table-scan",
+      "crossImageChunkId" : "IMAGE:imgchunk-cards-green",
+      "sameImageCosine" : 1.0,
+      "crossImageCosine" : 0.6714701464197669,
+      "discriminationMargin" : 0.3285298535802331,
+      "sameImageHit" : true,
+      "crossImageRejected" : true,
+      "sameImageRetrieved" : true,
+      "crossImageRetrieved" : true,
+      "pass" : true
+    }, {
+      "id" : "IM-05",
+      "queryImageKey" : "cards-green",
+      "sameImageChunkId" : "IMAGE:imgchunk-cards-green",
+      "crossImageChunkId" : "IMAGE:imgchunk-blank-white",
+      "sameImageCosine" : 1.0000000000000002,
+      "crossImageCosine" : 0.18362988762871044,
+      "discriminationMargin" : 0.8163701123712898,
+      "sameImageHit" : true,
+      "crossImageRejected" : true,
+      "sameImageRetrieved" : true,
+      "crossImageRetrieved" : false,
+      "pass" : true
+    } ]
+  },
+  "textBaseline" : {
+    "path" : "text-caption-baseline",
+    "metrics" : {
+      "caseCount" : 5,
+      "sameImageHitRate" : 1.0,
+      "crossImageRejectionRate" : 0.4,
+      "crossImageFalsePositiveRate" : 0.6,
+      "meanSameImageCosine" : 1.0,
+      "meanCrossImageCosine" : 0.806096134029136,
+      "meanDiscriminationMargin" : 0.19390386597086395,
+      "retrievalRecallAtK" : 1.0,
+      "retrievalCrossImageRate" : 0.8,
+      "passRate" : 0.4
+    },
+    "cases" : [ {
+      "id" : "IM-01",
+      "queryImageKey" : "flow-blue",
+      "sameImageChunkId" : "IMAGE:imgchunk-flow-blue",
+      "crossImageChunkId" : "IMAGE:imgchunk-bars-blue",
+      "sameImageCosine" : 1.0,
+      "crossImageCosine" : 0.9909391777259811,
+      "discriminationMargin" : 0.009060822274018943,
+      "sameImageHit" : true,
+      "crossImageRejected" : false,
+      "sameImageRetrieved" : true,
+      "crossImageRetrieved" : true,
+      "pass" : false
+    }, {
+      "id" : "IM-02",
+      "queryImageKey" : "bars-blue",
+      "sameImageChunkId" : "IMAGE:imgchunk-bars-blue",
+      "crossImageChunkId" : "IMAGE:imgchunk-flow-blue",
+      "sameImageCosine" : 0.9999999999999999,
+      "crossImageCosine" : 0.9909391777259811,
+      "discriminationMargin" : 0.009060822274018832,
+      "sameImageHit" : true,
+      "crossImageRejected" : false,
+      "sameImageRetrieved" : true,
+      "crossImageRetrieved" : true,
+      "pass" : false
+    }, {
+      "id" : "IM-03",
+      "queryImageKey" : "flow-orange",
+      "sameImageChunkId" : "IMAGE:imgchunk-flow-orange",
+      "crossImageChunkId" : "IMAGE:imgchunk-bars-blue",
+      "sameImageCosine" : 1.0,
+      "crossImageCosine" : 0.944923350087655,
+      "discriminationMargin" : 0.055076649912344955,
+      "sameImageHit" : true,
+      "crossImageRejected" : false,
+      "sameImageRetrieved" : true,
+      "crossImageRetrieved" : true,
+      "pass" : false
+    }, {
+      "id" : "IM-04",
+      "queryImageKey" : "table-scan",
+      "sameImageChunkId" : "IMAGE:imgchunk-table-scan",
+      "crossImageChunkId" : "IMAGE:imgchunk-cards-green",
+      "sameImageCosine" : 1.0,
+      "crossImageCosine" : 0.6154905177997565,
+      "discriminationMargin" : 0.3845094822002435,
+      "sameImageHit" : true,
+      "crossImageRejected" : true,
+      "sameImageRetrieved" : true,
+      "crossImageRetrieved" : true,
+      "pass" : true
+    }, {
+      "id" : "IM-05",
+      "queryImageKey" : "cards-green",
+      "sameImageChunkId" : "IMAGE:imgchunk-cards-green",
+      "crossImageChunkId" : "IMAGE:imgchunk-blank-white",
+      "sameImageCosine" : 1.0,
+      "crossImageCosine" : 0.4881884468063065,
+      "discriminationMargin" : 0.5118115531936935,
+      "sameImageHit" : true,
+      "crossImageRejected" : true,
+      "sameImageRetrieved" : true,
+      "crossImageRetrieved" : false,
+      "pass" : true
+    } ]
+  },
+  "comparison" : {
+    "discriminationMarginDelta" : 0.3110046276641757,
+    "crossImageFalsePositiveRateDelta" : -0.6,
+    "sameImageHitRateDelta" : 0.0,
+    "retrievalRecallAtKDelta" : 0.0,
+    "note" : "差值为正表示真视觉路优于文本降维路；文本降维路把图编码为描述文本，描述文本骨架相同的异图在其空间中近乎同一向量（误召），这正是本套件要量化的增量位点"
+  },
+  "report" : {
+    "suiteVersion" : "IMAGE-SUITE-1.0",
+    "generatedAt" : "2026-10-21T15:29:27.849918200Z",
+    "metrics" : {
+      "caseCount" : 5,
+      "meanRecallAtK" : 1.0,
+      "meanPrecisionAtK" : 0.2,
+      "mrr" : 1.0,
+      "hitRate" : 1.0,
+      "meanCitationPrecision" : 0.0,
+      "meanAnswerConsistency" : 1.0,
+      "meanTtftMs" : 216.2,
+      "meanTotalLatencyMs" : 216.2,
+      "totalTokens" : 0,
+      "failureRate" : 0.0
+    },
+    "cases" : [ {
+      "id" : "IM-01",
+      "category" : "IMAGE",
+      "recallAtK" : 1.0,
+      "precisionAtK" : 0.2,
+      "reciprocalRank" : 1.0,
+      "hit" : true,
+      "citationPrecision" : 0.0,
+      "answerConsistency" : 1.0,
+      "ttftMs" : 346,
+      "totalLatencyMs" : 346,
+      "tokens" : 0,
+      "success" : true
+    }, {
+      "id" : "IM-02",
+      "category" : "IMAGE",
+      "recallAtK" : 1.0,
+      "precisionAtK" : 0.2,
+      "reciprocalRank" : 1.0,
+      "hit" : true,
+      "citationPrecision" : 0.0,
+      "answerConsistency" : 1.0,
+      "ttftMs" : 201,
+      "totalLatencyMs" : 201,
+      "tokens" : 0,
+      "success" : true
+    }, {
+      "id" : "IM-03",
+      "category" : "IMAGE",
+      "recallAtK" : 1.0,
+      "precisionAtK" : 0.2,
+      "reciprocalRank" : 1.0,
+      "hit" : true,
+      "citationPrecision" : 0.0,
+      "answerConsistency" : 1.0,
+      "ttftMs" : 142,
+      "totalLatencyMs" : 142,
+      "tokens" : 0,
+      "success" : true
+    }, {
+      "id" : "IM-04",
+      "category" : "IMAGE",
+      "recallAtK" : 1.0,
+      "precisionAtK" : 0.2,
+      "reciprocalRank" : 1.0,
+      "hit" : true,
+      "citationPrecision" : 0.0,
+      "answerConsistency" : 1.0,
+      "ttftMs" : 198,
+      "totalLatencyMs" : 198,
+      "tokens" : 0,
+      "success" : true
+    }, {
+      "id" : "IM-05",
+      "category" : "IMAGE",
+      "recallAtK" : 1.0,
+      "precisionAtK" : 0.2,
+      "reciprocalRank" : 1.0,
+      "hit" : true,
+      "citationPrecision" : 0.0,
+      "answerConsistency" : 1.0,
+      "ttftMs" : 194,
+      "totalLatencyMs" : 194,
+      "tokens" : 0,
+      "success" : true
+    } ]
+  },
+  "corpusSize" : 6,
+  "visionEmbeddingTotalTokens" : 0,
+  "textEmbeddingTotalTokens" : 0,
+  "visionEmbeddingCalls" : 11,
+  "textEmbeddingCalls" : 16,
+  "usageNote" : "视觉/文本 embedding 端点均不回流 token usage，故 totalTokens 恒 0（同 VisionEmbeddingRealIT 实测）；成本以调用次数留痕",
+  "measuredAt" : "2026-10-21T15:29:27.936677100Z"
+}
