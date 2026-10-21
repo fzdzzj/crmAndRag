@@ -92,6 +92,21 @@
 
 > 失败回退：渲染失败 / vision 抛错 / 转写 blank 或 &lt;40 字 / 「（截图不清）」÷汉字 &gt;0.4 → 保留该页文本层，不使整篇 ingest 抛视觉异常。真 VLM 外呼须另授权。
 
+## rag.retrieval.image-slice-ingest.* —— PDF 内嵌图片切片摄取（add-kb-image-slice-retrieval）
+
+> 方案 B 文本降维闭环：PDF 内嵌图片对象（PDResources/XObject，非整页渲染）→ 每图 VLM 描述 → 描述文本作为单切片入现有
+> chunk/embed 链路，命中后 `SourceReference.sourceType=IMAGE` 回显。**默认关 = 默认行为零变化**（零提取、零外呼、零落盘）。
+> 三键均属 COST 档（拨动开关即产生真实 VLM 外呼费用），不进 per-KB 12 键覆盖白名单（与 `vision-pdf.*` 同处置）。
+
+| 键 | 类型 | 默认值 | 权限档位 | 语义与回退 |
+|---|---|---|---|---|
+| `rag.retrieval.image-slice-ingest.enabled` | Boolean | **false** | COST | 总开关；关/未配/未装配存储 = 完全不摄取（与升级前一致） |
+| `rag.retrieval.image-slice-ingest.kb-allowlist` | String | 空 | COST | KB 灰度白名单（逗号分隔 KB id）；空 = 总开关开启时全部知识库生效；命中才摄取 |
+| `rag.retrieval.image-slice-ingest.max-images-per-document` | Integer | 5 | COST | 单文档最多处理的内嵌图片张数；范围 1~20；超出不送 VLM、不落盘 |
+
+> 失败回退：图片解码失败 / vision 抛错 / 描述 blank 或 &lt;40 字 / 落盘失败 → 跳过该图，文本切片照常入库，绝不使整篇 ingest 抛错。
+> 真 VLM 外呼真跑不在本卡（单测/IT 全 mock），生产灰度真跑由 Owner 另行授权。
+
 ## rag.retrieval.citation.* —— 引用对齐阈值（fix-citation-threshold-config）
 
 > 三阈值原为 `CitationAligner` 编译期常量（KEEP_MIN=0.12 / REMAP_MIN=0.22 / TIE_MARGIN=0.08），本卡升级为动态配置：
@@ -209,7 +224,7 @@
 | rag.context.parent-expand | String | on | OPERATIONAL | 单库父块展开开关（on/off） |
 | rag.retrieval.query-rewrite.enabled | Boolean | true | OPERATIONAL | 单库查询改写开关 |
 
-> 成本类（rerank.mode=llm、compressor.mode=llm、multi-query.*、hyde.*、derived-questions.*、vision-pdf.*、replay-*、selfrag.*）与结构类（chunking.*、chunkSize/chunkOverlap）永远不得进入 per-KB 覆盖——封闭集白名单外键写入被拒。
+> 成本类（rerank.mode=llm、compressor.mode=llm、multi-query.*、hyde.*、derived-questions.*、vision-pdf.*、image-slice-ingest.*、replay-*、selfrag.*）与结构类（chunking.*、chunkSize/chunkOverlap）永远不得进入 per-KB 覆盖——封闭集白名单外键写入被拒。
 
 ## 键级权限分层（tier ACL）（add-dynamic-config-key-tier-acl）
 
@@ -217,15 +232,15 @@
 > `@RequirePermission(PLATFORM_DYNAMIC_CONFIG_MANAGE)`（608「平台动态配置管理」，V30 `__dynamic_config_permission_seed`
 > 注册并授权全部业务角色，超管经拦截器直通）。服务层写路径 `DynamicConfigAccessGuards.requireKeyWriteAccess`
 > 按键档位闸门：OPERATIONAL 档键对 608 持有者放开，COST / STRUCTURAL 档键仍超管专写（FORBIDDEN 96005）；
-> 读端点与 cache/refresh 由 608 方法级注解承接鉴权。定级封闭表 = `ConfigKeyTierPolicy`（63 键与注册表一一对应，
+> 读端点与 cache/refresh 由 608 方法级注解承接鉴权。定级封闭表 = `ConfigKeyTierPolicy`（66 键与注册表一一对应，
 > census 防呆测试 `ConfigKeyTierPolicyTest` 锁死全集），改档需 owner 拍板并同步本节与各表「权限档位」列。
 
 - **OPERATIONAL（运营调参档，35 键，608 持有者可写）**：检索参数与融合/重排权重、引用对齐阈值、图文路由、邻居与父块、意图类目、提示词与采样参数、业务功能开关、熔断治理参数等——热调无边际成本、可随时回落。
-- **COST（成本开关档，23 键，超管专写）**：LLM 重排/压缩/Self-RAG自评、查询增强（多查询/HyDE/衍生问题）、VLM 视觉转写、摄取恢复重放、管理端真向量、限流配额、token 预算等费用红线族——开关拨动直接产生真实模型调用费用。
+- **COST（成本开关档，26 键，超管专写）**：LLM 重排/压缩/Self-RAG自评、查询增强（多查询/HyDE/衍生问题）、VLM 视觉转写与 PDF 内嵌图片描述、摄取恢复重放、管理端真向量、限流配额、token 预算等费用红线族——开关拨动直接产生真实模型调用费用。
 - **STRUCTURAL（变更管理档，5 键，超管专写）**：切分策略与分块尺寸、数据范围安全语义等——热改会造成新旧数据切片/嵌入标准不一致，属变更管理而非运行时开关。
 - **摘除记录（wire-built-unfinished-infra，2026-10-17）**：`ai.model.provider/chatModel/visionModel/embeddingModel/temperature/maxTokens` 六键全仓零消费，从注册表与三档封闭集同步摘除；模型选择只走静态绑定 `platform.ai.model.*`（`ModelProviderProperties`），「ai.model」命名空间保留白名单。
 
-**COST 23 键全清单**：`business.rateLimit.perMinute`、`business.quota.maxTokensPerSession`、`rag.retrieval.admin-vector.enabled`、`rag.retrieval.vision-pdf.enabled`、`rag.retrieval.vision-pdf.min-text-chars`、`rag.retrieval.vision-pdf.max-pages`、`rag.retrieval.rerank.mode`、`rag.retrieval.rerank.llm.timeout-ms`、`rag.retrieval.rerank.llm.max-candidates`、`rag.context.token-budget`、`rag.context.compressor.mode`、`rag.context.compressor.llm.timeout-ms`、`rag.query.multi-query.enabled`、`rag.query.multi-query.variants`、`rag.query.hyde.enabled`、`rag.query.hyde.timeout-ms`、`rag.query.derived-questions.enabled`、`rag.query.derived-questions.max-per-chunk`、`rag.ingest.replay-enabled`、`rag.ingest.replay-batch-size`、`rag.generation.selfrag.mode`、`rag.generation.selfrag.llm.timeout-ms`、`rag.generation.selfrag.llm.max-claims`。
+**COST 26 键全清单**：`business.rateLimit.perMinute`、`business.quota.maxTokensPerSession`、`rag.retrieval.admin-vector.enabled`、`rag.retrieval.vision-pdf.enabled`、`rag.retrieval.vision-pdf.min-text-chars`、`rag.retrieval.vision-pdf.max-pages`、`rag.retrieval.image-slice-ingest.enabled`、`rag.retrieval.image-slice-ingest.kb-allowlist`、`rag.retrieval.image-slice-ingest.max-images-per-document`、`rag.retrieval.rerank.mode`、`rag.retrieval.rerank.llm.timeout-ms`、`rag.retrieval.rerank.llm.max-candidates`、`rag.context.token-budget`、`rag.context.compressor.mode`、`rag.context.compressor.llm.timeout-ms`、`rag.query.multi-query.enabled`、`rag.query.multi-query.variants`、`rag.query.hyde.enabled`、`rag.query.hyde.timeout-ms`、`rag.query.derived-questions.enabled`、`rag.query.derived-questions.max-per-chunk`、`rag.ingest.replay-enabled`、`rag.ingest.replay-batch-size`、`rag.generation.selfrag.mode`、`rag.generation.selfrag.llm.timeout-ms`、`rag.generation.selfrag.llm.max-claims`。
 
 **STRUCTURAL 5 键全清单**：`rag.retrieval.chunkSize`、`rag.retrieval.chunkOverlap`、`rag.chunking.strategy`、`rag.chunking.max-chunk-size`、`business.dataScope.enabled`。
 

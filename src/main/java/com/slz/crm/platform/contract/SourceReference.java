@@ -6,12 +6,11 @@ package com.slz.crm.platform.contract;
  * <p>页/段锚点（chunkIndex/pageNo/chunkId）与高亮协议背景见 D15；前端用 payload.citations 编号集匹配 答案内联 {@code [n]}，按
  * pageNo（PDF）/ rowIndex（Excel）定位。
  *
- * @param sourceType 来源类型：{@code pdf|docx|txt|md|excel|image|manual} 等，小写；业务实体来源为 {@code
- *     CUSTOMER}（2026-10-13 受控解冻：documentId=客户主键、filename=company_name）、{@code
- *     BUSINESS_ACTIVITY}（2026-10-14 受控解冻：documentId=活动主键、filename=活动标题）、 {@code
- *     SALES_OPPORTUNITY}（2026-10-15 受控解冻：documentId=商机主键、filename=商机名称）、 {@code CONTRACT} 与 {@code
- *     CONTACT_TASK}（2026-10-16 受控解冻：documentId=合同/任务主键、filename=合同名称/任务标题）， 复用现有十字段零结构改动；spec 增量见各卡
- *     specs/knowledge-rag/spec-delta.md）
+ * @param sourceType 来源类型：{@code pdf|docx|txt|md|excel|image|manual} 等，小写；受控解冻取值 {@code CUSTOMER} /
+ *     {@code BUSINESS_ACTIVITY} / {@code SALES_OPPORTUNITY} / {@code CONTRACT} / {@code
+ *     CONTACT_TASK} / {@code IMAGE} 的字段口径见 {@code
+ *     spec/changes/add-crm-rag-fusion-platform/contracts-frozen.md} 变更日志与各卡
+ *     specs/knowledge-rag/spec-delta.md
  * @param route 检索路由：{@code vector|keyword|hybrid|ocr}（便于评测归因）
  * @param filename 展示用文件名（含扩展名，不含路径）
  * @param documentId 文档主键

@@ -15,7 +15,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -418,24 +417,12 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
     return result;
   }
 
+  /**
+   * 来源引用映射（add-kb-image-slice-retrieval 任务 2.1）：委托 {@link SourceReferenceFactory} 的单一实现，
+   * 本类只保留调用点（图片切片 IMAGE 取值与文档来源共用同一映射入口，行为对既有来源零变化）。
+   */
   private SourceReference toSourceReference(VectorSearchHit hit, double relevanceScore) {
-    Map<String, Object> metadata = hit.metadata();
-    String filename = string(metadata.get("filename"));
-    String fileType = string(metadata.get("fileType"));
-    if (fileType.isBlank() && filename.contains(".")) {
-      fileType = filename.substring(filename.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
-    }
-    return new SourceReference(
-        fileType.isBlank() ? "txt" : fileType,
-        "hybrid",
-        filename,
-        hit.documentId(),
-        hit.chunkId(),
-        nonNegativeInteger(metadata.get("chunkIndex")),
-        positiveInteger(metadata.get("pageNo")),
-        positiveInteger(metadata.get("rowIndex")),
-        hit.text(),
-        relevanceScore);
+    return SourceReferenceFactory.from(hit, relevanceScore);
   }
 
   /**
@@ -446,23 +433,5 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
     return contextBuilder == null
         ? ContextBuilder.plainNumbered(candidates)
         : contextBuilder.build(candidates);
-  }
-
-  private String string(Object value) {
-    return value == null ? "" : String.valueOf(value);
-  }
-
-  private Integer positiveInteger(Object value) {
-    Integer parsed = integer(value);
-    return parsed != null && parsed > 0 ? parsed : null;
-  }
-
-  private Integer nonNegativeInteger(Object value) {
-    Integer parsed = integer(value);
-    return parsed != null && parsed >= 0 ? parsed : null;
-  }
-
-  private Integer integer(Object value) {
-    return value instanceof Number number ? number.intValue() : null;
   }
 }

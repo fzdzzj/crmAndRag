@@ -35,12 +35,12 @@ public interface DocumentVectorChunkMapper extends BaseMapper<DocumentVectorChun
             <script>
             INSERT INTO document_vector_chunk
               (document_id, chunk_index, chunk_text, chunk_hash, filename, category, keywords,
-               page_no, row_index, parent_chunk_id, chunk_role)
+               page_no, row_index, parent_chunk_id, chunk_role, extra_metadata_json)
             VALUES
               <foreach collection="list" item="row" separator=",">
                 (#{row.documentId}, #{row.chunkIndex}, #{row.chunkText}, #{row.chunkHash},
                  #{row.filename}, #{row.category}, #{row.keywords}, #{row.pageNo}, #{row.rowIndex},
-                 #{row.parentChunkId}, #{row.chunkRole})
+                 #{row.parentChunkId}, #{row.chunkRole}, #{row.extraMetadataJson})
               </foreach>
             </script>
             """)
@@ -55,6 +55,24 @@ public interface DocumentVectorChunkMapper extends BaseMapper<DocumentVectorChun
    */
   @Delete("DELETE FROM document_vector_chunk WHERE document_id = #{documentId}")
   int deletePhysicallyByDocumentId(@Param("documentId") String documentId);
+
+  /**
+   * 取某文档下带扩展元数据的切片行（add-kb-image-slice-retrieval 图片资产删除联动清理专用）。
+   *
+   * <p>显式列选择而非 {@code selectList} 快照：只取清理需要的 id/documentId/extra_metadata_json，避免把整表大字段拉回内存；
+   * 用注解语句（而非 {@code BaseMapper} 注入方法）保证在只装配本 Mapper 的独立 SqlSession（可行性闸/IT）里同样可执行。
+   *
+   * @param documentId 文档业务键
+   * @return 带扩展元数据的切片行（无则空表）
+   */
+  @Select(
+      """
+            SELECT id, document_id, extra_metadata_json
+            FROM document_vector_chunk
+            WHERE document_id = #{documentId} AND extra_metadata_json IS NOT NULL
+            """)
+  List<DocumentVectorChunkEntity> selectMetadataRowsByDocumentId(
+      @Param("documentId") String documentId);
 
   /**
    * 语料级全文检索（方案16补全，complete-hybrid-retrieval-and-rerank 任务 1.3）： 用 V22 的 ngram FULLTEXT 索引对切片原文做

@@ -43,7 +43,8 @@ final class DocumentIngestionSupport {
     List<DocumentVectorChunkEntity> children =
         persistChunks(file, chunks, chunkMapper, documentService);
     List<VectorRecord> vectorRecords = new ArrayList<>(children.size());
-    for (DocumentVectorChunkEntity entity : children) {
+    for (int index = 0; index < children.size(); index++) {
+      DocumentVectorChunkEntity entity = children.get(index);
       // 块头只进嵌入输入（方案05）：文件名/类目/页级锚点给碎片块全局视野；
       // DB chunk_text 与 VectorRecord.text 保持原文，引用展示不受前缀污染（任务 2.1）
       String embedText =
@@ -54,7 +55,7 @@ final class DocumentIngestionSupport {
               entity.getRowIndex(),
               entity.getChunkText());
       float[] embedding = embeddingService.embed(embedText);
-      vectorRecords.add(createVectorRecord(file, entity, embedding));
+      vectorRecords.add(createVectorRecord(file, entity, embedding, chunks.get(index)));
     }
     vectorStore.upsertAll(vectorRecords);
     return children;
@@ -188,12 +189,17 @@ final class DocumentIngestionSupport {
     entity.setPageNo(chunk.pageNo());
     entity.setRowIndex(chunk.rowIndex());
     entity.setChunkRole(CHUNK_ROLE_CHILD);
+    // add-kb-image-slice-retrieval 任务 1.3：图片描述切片把资产引用写进既有扩展元数据列（零迁移）
+    entity.setExtraMetadataJson(ImageSliceMetadata.toJson(chunk.extraMetadata()));
     return entity;
   }
 
   /** point id 使用 UUID；chunkId 使用 DB 主键，保证前端引用与 DB 可回查。 */
   private static VectorRecord createVectorRecord(
-      UploadedFileEntity file, DocumentVectorChunkEntity entity, float[] embedding) {
+      UploadedFileEntity file,
+      DocumentVectorChunkEntity entity,
+      float[] embedding,
+      DocumentChunk chunk) {
     Map<String, Object> metadata = new LinkedHashMap<>();
     metadata.put("knowledgeBaseId", file.getKnowledgeBase());
     metadata.put("category", entity.getCategory() == null ? "" : entity.getCategory());
@@ -202,6 +208,14 @@ final class DocumentIngestionSupport {
     metadata.put("pageNo", entity.getPageNo() == null ? 0L : entity.getPageNo().longValue());
     metadata.put("rowIndex", entity.getRowIndex() == null ? 0L : entity.getRowIndex().longValue());
     metadata.put("chunkId", String.valueOf(entity.getId()));
+    // 图片切片：payload 带来源类型与资产 id（检索期直接回填 SourceReference，无需回查库）
+    if (ImageSliceMetadata.isImageSlice(chunk.extraMetadata())) {
+      metadata.put(ImageSliceMetadata.KEY_SOURCE_TYPE, ImageSliceMetadata.SOURCE_TYPE_IMAGE);
+      metadata.put(ImageSliceMetadata.KEY_IMAGE_ASSET_ID, String.valueOf(entity.getId()));
+      metadata.put(
+          ImageSliceMetadata.KEY_IMAGE_STORAGE_KEY,
+          ImageSliceMetadata.storageKeyOf(chunk.extraMetadata()));
+    }
     return new VectorRecord(
         UUID.randomUUID().toString(),
         entity.getDocumentId(),

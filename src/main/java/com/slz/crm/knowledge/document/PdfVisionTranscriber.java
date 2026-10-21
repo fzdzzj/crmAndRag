@@ -4,11 +4,7 @@ import com.slz.crm.platform.contract.DynamicConfigService;
 import com.slz.crm.platform.contract.ModelCallOptions;
 import com.slz.crm.platform.contract.ModelCallResult;
 import com.slz.crm.platform.contract.ModelProvider;
-import com.slz.crm.platform.contract.TokenUsageRecord;
 import com.slz.crm.platform.contract.TokenUsageRecorder;
-import com.slz.crm.platform.contract.TokenUsageType;
-import com.slz.crm.platform.contract.UserContext;
-import com.slz.crm.platform.contract.UserContextHolder;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
@@ -16,8 +12,6 @@ import java.io.ByteArrayOutputStream;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import javax.imageio.ImageIO;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
@@ -58,14 +52,11 @@ public class PdfVisionTranscriber {
   static final int RENDER_DPI = 144;
   static final int MAX_EDGE_PX = 1600;
 
-  /** 转写去空白后最短合格长度。 */
-  static final int MIN_TRANSCRIPT_CHARS = 40;
+  /** 转写去空白后最短合格长度（唯一实现见 {@link VisionIngestSupport#MIN_COMPACT_CHARS}）。 */
+  static final int MIN_TRANSCRIPT_CHARS = VisionIngestSupport.MIN_COMPACT_CHARS;
 
   /** 「（截图不清）」次数 / 汉字数 上限；超过则闸门失败。 */
-  static final double UNCLEAR_HAN_RATIO_LIMIT = 0.4;
-
-  private static final String UNCLEAR_MARK = "（截图不清）";
-  private static final Pattern HAN_PATTERN = Pattern.compile("\\p{IsHan}");
+  static final double UNCLEAR_HAN_RATIO_LIMIT = VisionIngestSupport.UNCLEAR_HAN_RATIO_LIMIT;
 
   /**
    * 转写提示词（add-vision-pdf-ingest-pilot 任务 1.2）：对齐 {@code _vlm_transcribe.py} 纪律——
@@ -146,7 +137,7 @@ public class PdfVisionTranscriber {
         } catch (Exception visionEx) {
           LOG.warn("视觉转写调用失败，回退文本层: pageIndex={}", pageIndex0Based, visionEx);
         } finally {
-          recordUsage(result, success);
+          VisionIngestSupport.recordUsage(result, success, tokenUsageRecorderProvider);
         }
       }
     }
@@ -190,55 +181,11 @@ public class PdfVisionTranscriber {
     return result;
   }
 
-  /** 质量闸门：blank / 去空白后 &lt;40 字 / 「（截图不清）」次数÷汉字数 &gt;0.4 → 失败。 */
+  /**
+   * 质量闸门：blank / 去空白后 &lt;40 字 / 「（截图不清）」次数÷汉字数 &gt;0.4 → 失败（判定实现在 {@link VisionIngestSupport}）。
+   */
   static boolean passesQualityGate(String raw) {
-    boolean ok = raw != null && !raw.isBlank();
-    int unclear = 0;
-    int han = 0;
-    if (ok) {
-      String compact = raw.replaceAll("\\s+", "");
-      ok = compact.length() >= MIN_TRANSCRIPT_CHARS;
-      unclear = countOccurrences(raw, UNCLEAR_MARK);
-      han = countHan(raw);
-      if (ok && unclear > 0 && han == 0) {
-        ok = false;
-      }
-      if (ok && han > 0 && ((double) unclear / (double) han) > UNCLEAR_HAN_RATIO_LIMIT) {
-        ok = false;
-      }
-    }
-    return ok;
-  }
-
-  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 计量上报边界：失败忽略不挡摄取
-  private void recordUsage(ModelCallResult<String> result, boolean success) {
-    TokenUsageRecorder recorder =
-        tokenUsageRecorderProvider == null ? null : tokenUsageRecorderProvider.getIfAvailable();
-    if (recorder == null) {
-      return;
-    }
-    try {
-      String model = result == null || result.model() == null ? "unknown" : result.model();
-      recorder.record(
-          new TokenUsageRecord(
-              model,
-              currentUserRef(),
-              null,
-              null,
-              TokenUsageType.VISION,
-              result == null ? null : result.promptTokens(),
-              result == null ? null : result.completionTokens(),
-              result == null ? null : result.totalTokens(),
-              success));
-    } catch (Exception ignore) {
-      // 计量失败不挡摄取
-      LOG.debug("VISION token 计量上报失败（忽略）", ignore);
-    }
-  }
-
-  private String currentUserRef() {
-    UserContext user = UserContextHolder.current();
-    return user == null ? "user:system" : user.userIdRef();
+    return VisionIngestSupport.passesQualityGate(raw);
   }
 
   private int resolveMinTextChars() {
@@ -269,32 +216,5 @@ public class PdfVisionTranscriber {
 
   private static String normalize(String text) {
     return text == null ? "" : text.replace("\r\n", "\n").replaceAll("[ \\t]+", " ").strip();
-  }
-
-  private static int countOccurrences(String text, String needle) {
-    int count = 0;
-    if (text != null && needle != null && !needle.isEmpty()) {
-      int from = 0;
-      while (true) {
-        int at = text.indexOf(needle, from);
-        if (at < 0) {
-          break;
-        }
-        count++;
-        from = at + needle.length();
-      }
-    }
-    return count;
-  }
-
-  private static int countHan(String text) {
-    int count = 0;
-    if (text != null && !text.isEmpty()) {
-      Matcher matcher = HAN_PATTERN.matcher(text);
-      while (matcher.find()) {
-        count++;
-      }
-    }
-    return count;
   }
 }

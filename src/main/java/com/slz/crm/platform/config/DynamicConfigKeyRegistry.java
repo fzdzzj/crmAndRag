@@ -298,6 +298,45 @@ public class DynamicConfigKeyRegistry {
             false,
             100),
 
+        // add-kb-image-slice-retrieval 任务 1.4：PDF 内嵌图片切片摄取（方案 B 文本降维，默认关）
+        def(
+            objectMapper,
+            "rag.retrieval.image-slice-ingest.enabled",
+            "rag.retrieval",
+            ConfigValueType.BOOLEAN,
+            "false",
+            "PDF 内嵌图片切片摄取总开关（add-kb-image-slice-retrieval）：false=完全零变化（默认）；"
+                + "true=提取内嵌图片对象→VLM 描述→描述文本入现有 chunk/embed 链路。影响面：入库成本与图片召回。",
+            null,
+            null,
+            Set.of(),
+            false,
+            100),
+        def(
+            objectMapper,
+            "rag.retrieval.image-slice-ingest.kb-allowlist",
+            "rag.retrieval",
+            ConfigValueType.STRING,
+            "",
+            "图片切片摄取的 KB 灰度白名单：逗号分隔的知识库 ID；空 = 总开关开启时全部知识库生效（默认空）。" + "非空时只对命中的知识库摄取图片切片。",
+            null,
+            null,
+            Set.of(),
+            false,
+            500),
+        def(
+            objectMapper,
+            "rag.retrieval.image-slice-ingest.max-images-per-document",
+            "rag.retrieval",
+            ConfigValueType.INTEGER,
+            "5",
+            "单文档最多处理的 PDF 内嵌图片张数，范围 1~20（默认 5）；超出部分不送 VLM、不落盘。",
+            "1",
+            "20",
+            Set.of(),
+            false,
+            100),
+
         // fix-citation-threshold-config 任务 1.3：引用对齐三阈值动态化（默认值 = CitationAligner 现三个常量，
         // 消费侧 CitationThresholdsResolver 实时读取；未配置/非法/越界逐键回落默认，行为与升级前逐字节等价）。
         def(

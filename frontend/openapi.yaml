@@ -4220,6 +4220,24 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListKbRetrievalStrategyItem"
+  /knowledge/images/{assetId}:
+    get:
+      tags:
+      - knowledge-chunk-controller
+      parameters:
+      - name: assetId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: byte
   /knowledge/files/{id}:
     get:
       tags:

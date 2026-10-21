@@ -11,10 +11,12 @@ import com.slz.crm.knowledge.auth.KnowledgeBaseAuthorizationService;
 import com.slz.crm.knowledge.document.DocumentIngestionCommand;
 import com.slz.crm.knowledge.document.DocumentIngestionResult;
 import com.slz.crm.knowledge.document.DocumentIngestionService;
+import com.slz.crm.knowledge.document.ImageAssetCleanup;
 import com.slz.crm.knowledge.entity.KnowledgeBaseEntity;
 import com.slz.crm.knowledge.entity.UploadedFileEntity;
 import com.slz.crm.knowledge.retrieval.KnowledgeRetrievalServiceImpl;
 import com.slz.crm.knowledge.retrieval.SparseRecallService;
+import com.slz.crm.knowledge.storage.FileStorageService;
 import com.slz.crm.platform.contract.CrmVectorStore;
 import com.slz.crm.platform.contract.DynamicConfigService;
 import com.slz.crm.platform.contract.RetrievalDefaults;
@@ -51,6 +53,15 @@ public class KnowledgeAdminService {
   private final RequestQuotaService requestQuotaService;
   private final CrmVectorStore vectorStore;
   private final DocumentVectorChunkMapper chunkMapper;
+
+  /**
+   * 文件存储（add-kb-image-slice-retrieval 任务 1.1）：删除文档时联动清图片资产对象。
+   *
+   * <p>字段注入（非构造器）沿用 {@code DocumentIngestionService#contentSecurityService} 先例：为可选清理旁路不改三构造器与既有 8/5
+   * 参兼容装配点。
+   */
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  private FileStorageService fileStorageService;
 
   @org.springframework.beans.factory.annotation.Autowired
   public KnowledgeAdminService(
@@ -220,6 +231,9 @@ public class KnowledgeAdminService {
    * 过滤）两路检索结果一致，不留敏感残留。
    *
    * <p>双清依赖未装配（兼容构造路径）时 fail-closed 拒绝删除，严禁留下"软删但向量/切片仍在"的半清状态。
+   *
+   * <p>add-kb-image-slice-retrieval 任务 1.1：图片资产对象也随删除联动清理——必须在物理删行之前按行内 storageKey 删除， 行删后已无从得知对象
+   * key；对象删除失败只 WARN（读取端点需切片行过授权，行没了对象即不可达）。
    */
   public boolean deleteFile(String documentId) {
     UploadedFileEntity file =
@@ -233,6 +247,7 @@ public class KnowledgeAdminService {
       file.setIsDeleted(true);
       uploadedFileMapper.updateById(file);
       vectorStore.deleteByDocumentId(documentId);
+      ImageAssetCleanup.deleteAssets(documentId, chunkMapper, fileStorageService);
       chunkMapper.deletePhysicallyByDocumentId(documentId);
       result = true;
     }

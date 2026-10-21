@@ -93,6 +93,26 @@ public class DocumentService {
    */
   public List<DocumentChunk> process(InputStream content, String filename, String category)
       throws Exception {
+    List<DocumentChunk> chunks = processOrEmpty(content, filename, category);
+    if (chunks.isEmpty()) {
+      throw new IllegalStateException("文档解析结果为空: " + filename);
+    }
+    return chunks;
+  }
+
+  /**
+   * 解析并分块（允许空结果，add-kb-image-slice-retrieval 任务 1.3）。
+   *
+   * <p>图片切片旁路需要与文本切片合并后再判空：只有图片、没有文本层的 PDF 在开关开启时应由图片描述切片承接， 而不是在文本解析段就抛「文档解析结果为空」；判空责任上移到 {@code
+   * DocumentIngestionService}（合并后统一判）。
+   *
+   * @param content 文件输入流
+   * @param filename 原始文件名
+   * @param category 业务类目
+   * @return 全文档有序文本切片（可能为空表）
+   */
+  public List<DocumentChunk> processOrEmpty(InputStream content, String filename, String category)
+      throws Exception {
     String fileType = fileType(filename);
     ParsedDocument parsed = parse(content, fileType);
     ChunkingStrategy strategy = resolveStrategy();
@@ -113,9 +133,6 @@ public class DocumentService {
                 extractKeywords(piece.text()),
                 piece.parentText()));
       }
-    }
-    if (chunks.isEmpty()) {
-      throw new IllegalStateException("文档解析结果为空: " + filename);
     }
     return chunks;
   }
