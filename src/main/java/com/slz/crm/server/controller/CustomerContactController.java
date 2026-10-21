@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.slz.crm.common.annotation.RequirePermission;
 import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.result.Result;
+import com.slz.crm.common.untils.BatchIdsGuard;
 import com.slz.crm.pojo.dto.CustomerCompanyDTO;
 import com.slz.crm.pojo.dto.CustomerContactDTO;
 import com.slz.crm.pojo.vo.ContactBirthdayVO;
@@ -73,6 +74,7 @@ public class CustomerContactController {
   @DeleteMapping
   @RequirePermission(PermissionOperates.CUSTOMER_DELETE_CONTACT)
   private Result<Integer> delete(@Valid @RequestBody List<Long> idList) {
+    BatchIdsGuard.check(idList);
     return Result.success(customerContactService.deleteByIds(idList));
   }
 
@@ -85,6 +87,7 @@ public class CustomerContactController {
   @PutMapping("/recover")
   @RequirePermission(PermissionOperates.CUSTOMER_RECOVER_CONTACT)
   private Result<Integer> recover(@Valid @RequestBody List<Long> idList) {
+    BatchIdsGuard.check(idList);
     int count = customerContactService.deleteOrRecoverByIds(idList, false);
     return Result.success(count);
   }
@@ -199,6 +202,7 @@ public class CustomerContactController {
   @DeleteMapping("/logical/batch")
   @RequirePermission(PermissionOperates.CUSTOMER_DELETE_CONTACT)
   public Result<Integer> batchLogicalDelete(@Valid @RequestBody List<Long> idList) {
+    BatchIdsGuard.check(idList);
     return Result.success(customerContactService.batchLogicalDeleteByIds(idList));
   }
 

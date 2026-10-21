@@ -1,11 +1,13 @@
 package com.slz.crm.unit.server.handler;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.result.Result;
 import com.slz.crm.server.constant.MessageConstant;
 import com.slz.crm.server.handler.SQLExceptionHandler;
@@ -114,7 +116,8 @@ class SQLExceptionHandlerTest {
     Result<String> result =
         handler.handleDuplicateKeyException(duplicate("138066666666", "sys_user.uk_phone"));
     assertEquals("手机号 138066666666 已存在", result.getMsg());
-    assertEquals(0, result.getCode());
+    // fix-backlog-batch3 任务 1.2：原断言锁 code==0，改为锁精确码 92029（文案不变）
+    assertEquals(ErrorCode.DATA_ALREADY_EXISTS.getCode(), result.getCode());
   }
 
   @Test
@@ -245,5 +248,46 @@ class SQLExceptionHandlerTest {
     assertEquals(
         "缺少必填字段：未知字段",
         invoke("handleSQLException", new SQLException("doesn't have a default value")).getMsg());
+  }
+
+  @Test
+  @DisplayName("⑤ 精确码：duplicate-key 三出口一律 92029，文案逐字节不变")
+  void duplicateKey_allThreeExits_carryPreciseCode() {
+    Result<String> composite =
+        handler.handleDuplicateKeyException(duplicate("客户A-角色B", "data_share.uk_share_unique"));
+    Result<String> single =
+        handler.handleDuplicateKeyException(duplicate("138066666666", "sys_user.uk_phone"));
+    Result<String> fallback =
+        handler.handleDuplicateKeyException(
+            new DuplicateKeyException(
+                "boom", new SQLIntegrityConstraintViolationException("nope")));
+
+    assertAll(
+        () -> assertEquals(92029, composite.getCode()),
+        () -> assertEquals("共享 客户A 已存在", composite.getMsg()),
+        () -> assertEquals(92029, single.getCode()),
+        () -> assertEquals("手机号 138066666666 已存在", single.getMsg()),
+        () -> assertEquals(92029, fallback.getCode()),
+        () -> assertEquals("数据已存在，无法重复添加", fallback.getMsg()));
+  }
+
+  @Test
+  @DisplayName("⑤ 边界：FK 路径与「缺少必填字段」路径的错误码未动（仍走原先的无码 0）")
+  void nonDuplicateKeyPaths_keepLegacyCode() {
+    Result<String> foreignKey =
+        invoke(
+            "handleDataIntegrityViolationException",
+            new SQLIntegrityConstraintViolationException(
+                "Cannot add or update a child row: a foreign key constraint fails "
+                    + "(`crm`.`contract`, CONSTRAINT `fk_contract_user` FOREIGN KEY (`user_id`) "
+                    + "REFERENCES `sys_user` (`id`))"));
+    Result<String> missingDefault =
+        invoke(
+            "handleSQLException",
+            new SQLException("Field `company_id` doesn't have a default value"));
+
+    assertAll(
+        () -> assertEquals(0, foreignKey.getCode()),
+        () -> assertEquals(0, missingDefault.getCode()));
   }
 }

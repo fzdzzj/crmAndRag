@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.slz.crm.common.annotation.RequirePermission;
 import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.result.Result;
+import com.slz.crm.common.untils.BatchIdsGuard;
 import com.slz.crm.pojo.dto.InvoiceInfoDTO;
 import com.slz.crm.pojo.vo.InvoiceInfoVO;
 import com.slz.crm.server.service.InvoiceInfoService;
@@ -52,6 +53,7 @@ public class InvoiceInfoController {
   @DeleteMapping
   @RequirePermission(PermissionOperates.FINANCE_DELETE_INVOICE)
   public Result<Integer> delete(@Valid @RequestBody List<Long> idList) {
+    BatchIdsGuard.check(idList);
     return Result.success(invoiceInfoService.deleteByIds(idList));
   }
 

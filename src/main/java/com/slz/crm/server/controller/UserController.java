@@ -5,6 +5,7 @@ import com.slz.crm.common.annotation.RequirePermission;
 import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.result.Result;
 import com.slz.crm.common.untils.BaseUnit;
+import com.slz.crm.common.untils.BatchIdsGuard;
 import com.slz.crm.pojo.ao.RoleAO;
 import com.slz.crm.pojo.dto.GetUserDTO;
 import com.slz.crm.pojo.dto.UserDTO;
@@ -170,6 +171,7 @@ public class UserController {
   // apply-permission-matrix 任务 3.1：删除用户挂修改用户权限
   @RequirePermission(PermissionOperates.SYSTEM_UPDATE_USER)
   public Result<Boolean> delete(@RequestParam List<Long> ids) {
+    BatchIdsGuard.check(ids);
     boolean b = userService.deleteById(ids);
     return Result.success(b);
   }

@@ -10,6 +10,7 @@ import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.result.Result;
 import com.slz.crm.common.untils.BaseUnit;
+import com.slz.crm.common.untils.BatchIdsGuard;
 import com.slz.crm.pojo.dto.ApprovalAttachmentDTO;
 import com.slz.crm.pojo.dto.SalesStageApprovalANDAttachmentDTO;
 import com.slz.crm.pojo.dto.SalesStageApprovalDTO;
@@ -138,6 +139,7 @@ public class SalesStageApprovalController {
   @Transactional(rollbackFor = Exception.class)
   @RequirePermission(PermissionOperates.SALES_DELETE_STAGE_ADVANCE)
   public Result<Boolean> deleteStage(@RequestParam List<Long> ids) {
+    BatchIdsGuard.check(ids);
     // 先查询审批记录的所有附件
     List<ApprovalAttachmentEntity> attachments =
         approvalAttachmentService.listEntitiesByAndIds(ids, ModelName.APPROVAL_ATTACHMENT);

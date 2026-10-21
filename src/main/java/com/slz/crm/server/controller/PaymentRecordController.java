@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.slz.crm.common.annotation.RequirePermission;
 import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.result.Result;
+import com.slz.crm.common.untils.BatchIdsGuard;
 import com.slz.crm.pojo.dto.PaymentRecordDTO;
 import com.slz.crm.pojo.vo.PaymentRecordVO;
 import com.slz.crm.server.service.PaymentRecordService;
@@ -52,6 +53,7 @@ public class PaymentRecordController {
   @DeleteMapping
   @RequirePermission(PermissionOperates.FINANCE_DELETE_PAYMENT)
   public Result<Integer> delete(@Valid @RequestBody List<Long> idList) {
+    BatchIdsGuard.check(idList);
     return Result.success(paymentRecordService.deleteByIds(idList));
   }
 

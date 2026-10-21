@@ -46,6 +46,10 @@ public class SalesOpportunityServiceImpl
   @Autowired private CustomerCompanyMapper customerCompanyMapper;
   @Autowired private UserMapper userMapper;
   @Autowired private ForeignKeyDeleteUtil foreignKeyDeleteUtil;
+
+  /** 物理级联删前的子宿主附件清理（fix-backlog-batch3 任务 4.2）。 */
+  @Autowired private ChildHostAttachmentCleaner childHostAttachmentCleaner;
+
   @Autowired private com.slz.crm.server.mapper.ContractMapper contractMapper;
   @Autowired private com.slz.crm.server.mapper.BusinessActivityMapper businessActivityMapper;
   @Autowired private com.slz.crm.server.mapper.SalesStageApprovalMapper salesStageApprovalMapper;
@@ -160,6 +164,10 @@ public class SalesOpportunityServiceImpl
     // fix-approval-attachment-cascade-dead-edge：阶段审批附件属于审批行，必须在级联物理删审批之前显式清理
     // （附件表是多态表 and_id+model_name，级联机器不能裸列级联；canonical 删除含磁盘清理）。
     deleteStageApprovalAttachments(id);
+
+    // fix-backlog-batch3 任务 4.2：级联物理删商机还会带走其名下商业活动与联络任务，
+    // 这两类宿主的多态附件必须在级联前按 (and_id, model_name) 精确清理（同上：级联机器带不了 model_name 判别）
+    childHostAttachmentCleaner.cleanBeforeOpportunityPhysicalDelete(List.of(id));
 
     foreignKeyDeleteUtil.deleteCascade(SalesOpportunityEntity.class, List.of(id), 0);
     boolean deleted = salesOpportunityMapper.logicalDeleteById(id);

@@ -7,6 +7,7 @@ import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.exiception.BaseException;
 import com.slz.crm.common.untils.AOTOExcelUntil;
 import com.slz.crm.common.untils.BaseUnit;
+import com.slz.crm.common.untils.BatchIdsGuard;
 import com.slz.crm.common.untils.ForeignKeyDeleteUtil;
 import com.slz.crm.common.untils.ValidationUtils;
 import com.slz.crm.knowledge.ingestion.CustomerIngestionService;
@@ -53,6 +54,9 @@ public class CustomerCompanyServiceImpl
   @Autowired private CustomerMergeLogMapper customerMergeLogMapper;
 
   @Autowired private ForeignKeyDeleteUtil foreignKeyDeleteUtil;
+
+  /** 物理级联删前的子宿主附件清理（fix-backlog-batch3 任务 4.2）。 */
+  @Autowired private ChildHostAttachmentCleaner childHostAttachmentCleaner;
 
   @Autowired private AOTOExcelUntil aotoExcelUntil;
 
@@ -251,9 +255,11 @@ public class CustomerCompanyServiceImpl
   @Override
   @CacheEvict(value = "companyName", allEntries = true)
   public Integer deleteByIds(List<Long> idList) {
-    if (idList == null || idList.isEmpty()) {
-      throw new BaseException(ErrorCode.PARAM_EMPTY);
-    }
+    BatchIdsGuard.check(idList);
+    // fix-backlog-batch3 任务 4.2：物理级联删之前先清子宿主（商业活动/联络任务）的多态附件，
+    // 否则级联删完这些宿主后附件行与磁盘文件都成孤儿（approval_attachment 无 is_deleted，级联机器带不了 model_name 判别）
+    childHostAttachmentCleaner.cleanBeforeCompanyPhysicalDelete(idList);
+
     // 1. 删除公司关联的所有外键数据（使用配置的关联关系）
     // 资源类型：1-公司（对应DataShareEntity的resourceType）
     foreignKeyDeleteUtil.deleteCascade(CustomerCompanyEntity.class, idList, 1);
@@ -298,14 +304,24 @@ public class CustomerCompanyServiceImpl
     return deleted;
   }
 
+  /**
+   * 批量逻辑删除客户公司（fix-backlog-batch3 任务 3.1：单趟级联，行为变化仅为调用次数）。
+   *
+   * <p>改前是 {@code for (id) logicalDeleteById(id)}：N 个 id 产生 N 轮级联遍历 + N 条主表 {@code update} + N 次
+   * afterCommit 注册。改后复用批量基建 {@link ForeignKeyDeleteUtil#logicalDeleteByCascadeBatch}，级联一趟覆盖全量
+   * ids、主表一条 {@code update ... where id in (...)}；级联层级、顺序与返回计数含义（数据库实际命中行数，重复 id 以实际行数计）与单条入口一致。
+   *
+   * <p>afterCommit 向量清理保持逐公司语义：{@code customerIngestionService} 没有批量接口，故在一次 afterCommit 回调内对 idList
+   * 逐个派发（改前是每个公司各注册一次，派发内容与顺序不变）。
+   */
   @Override
   @Transactional(rollbackFor = Exception.class)
   public Integer batchLogicalDeleteByIds(List<Long> idList) {
-    Integer totalDeleted = 0;
-    for (Long id : idList) {
-      totalDeleted += logicalDeleteById(id);
-    }
-    return totalDeleted;
+    BatchIdsGuard.check(idList);
+    // add-customer-semantic-retrieval 任务 2.3：级联逻辑删除连带删向量（逐公司派发，删除即失效）
+    runAfterCommit(
+        "批量级联逻辑删除客户公司", () -> idList.forEach(customerIngestionService::deleteByCompanyId));
+    return foreignKeyDeleteUtil.logicalDeleteByCascadeBatch(CustomerCompanyEntity.class, idList);
   }
 
   /**

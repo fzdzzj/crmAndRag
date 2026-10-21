@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.slz.crm.common.annotation.RequirePermission;
 import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.common.result.Result;
+import com.slz.crm.common.untils.BatchIdsGuard;
 import com.slz.crm.pojo.dto.TaskCommentDTO;
 import com.slz.crm.pojo.vo.TaskCommentVO;
 import com.slz.crm.server.service.TaskCommentService;
@@ -33,6 +34,7 @@ public class TaskCommentController {
   @DeleteMapping("/batch")
   @RequirePermission(PermissionOperates.TASK_DELETE_TASK)
   public Result<Integer> deleteByIds(@Valid @RequestBody List<Long> idList) {
+    BatchIdsGuard.check(idList);
     Integer count = taskCommentService.deleteByIds(idList);
     return Result.success(count);
   }

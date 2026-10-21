@@ -1,5 +1,6 @@
 package com.slz.crm.server.handler;
 
+import com.slz.crm.common.enumeration.ErrorCode;
 import com.slz.crm.common.result.Result;
 import com.slz.crm.server.constant.MessageConstant;
 import java.sql.SQLException;
@@ -23,6 +24,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
  *   <li>duplicate-key 路径：组合索引命中 → 组合文案；否则单列索引文案（索引名映射）；索引名不可解析 → 兜底「数据」；
  *   <li>FK 路径与「缺少默认值」路径：一律按列名映射直查（未知列名回落「未知字段」）。
  * </ul>
+ *
+ * <p>错误码口径（fix-backlog-batch3 任务 1.1）：duplicate-key 三出口一律返回 {@link
+ * ErrorCode#DATA_ALREADY_EXISTS}（92029），文案逐字节保持原样；FK 路径与「缺少默认值」路径的错误码未动。
  */
 @Slf4j
 @RestControllerAdvice
@@ -68,13 +72,13 @@ public class SQLExceptionHandler {
         result = duplicateKeyResult(indexName, duplicateValue);
       } else {
         log.error("未知数据库字段冲突！！！{}", e.getMessage());
-        // 若解析失败，返回默认提示
-        result = Result.error("数据已存在，无法重复添加");
+        // 若解析失败，返回默认提示（文案逐字节不变，仅错误码 0 → 92029）
+        result = Result.error(ErrorCode.DATA_ALREADY_EXISTS, "数据已存在，无法重复添加");
       }
     } else {
       log.error("未知数据库字段冲突！！！{}", e.getMessage());
-      // 若解析失败，返回默认提示
-      result = Result.error("数据已存在，无法重复添加");
+      // 若解析失败，返回默认提示（文案逐字节不变，仅错误码 0 → 92029）
+      result = Result.error(ErrorCode.DATA_ALREADY_EXISTS, "数据已存在，无法重复添加");
     }
     return result;
   }
@@ -83,16 +87,25 @@ public class SQLExceptionHandler {
    * 唯一约束冲突文案三态（fix-backlog-batch2 ⑦-②）：组合索引命中 → 组合文案；未命中 → 单列索引文案；索引名不可解析 → 兜底文案。
    *
    * <p>索引名先经 {@link #bareIndexName(String)} 归一（去表名前缀、容忍裸名/空名/尾部点号），任何输入都不会触发数组越界。
+   *
+   * <p>错误码口径（fix-backlog-batch3 任务 1.1）：两态文案均以 {@link
+   * ErrorCode#DATA_ALREADY_EXISTS}（92029）返回，文案逐字节不变。
    */
   private Result<String> duplicateKeyResult(String indexName, String duplicateValue) {
     String bareIndex = bareIndexName(indexName);
     String compositeName = bareIndex == null ? null : compositeUniqueIndexMap.get(bareIndex);
     final Result<String> result;
     if (compositeName != null) {
-      result = Result.error(compositeName + " " + firstValueSegment(duplicateValue) + " 已存在");
+      result =
+          Result.error(
+              ErrorCode.DATA_ALREADY_EXISTS,
+              compositeName + " " + firstValueSegment(duplicateValue) + " 已存在");
     } else {
       // 将索引名转换为业务字段名（如 'uk_phone' → '手机号'），未登记索引名回落「数据」
-      result = Result.error(getFieldNameByIndex(indexName) + " " + duplicateValue + " 已存在");
+      result =
+          Result.error(
+              ErrorCode.DATA_ALREADY_EXISTS,
+              getFieldNameByIndex(indexName) + " " + duplicateValue + " 已存在");
     }
     return result;
   }

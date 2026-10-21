@@ -296,6 +296,12 @@ public enum ErrorCode {
   /** 密码错误（harden-user-password-and-privacy 任务 1.2：自服务改密旧密校验失败） */
   PASSWORD_ERROR(92028, "密码错误", "error.password.error"),
 
+  /**
+   * 数据已存在（fix-backlog-batch3 任务 1.1：唯一约束冲突的精确码，取代原先 {@code Result.error(String)} 的无语义 0 码；文案由
+   * SQLExceptionHandler 按索引名映射后逐字节传入，本枚举的 message 只作兜底默认值）
+   */
+  DATA_ALREADY_EXISTS(92029, "数据已存在", "error.data.already.exists"),
+
   // ========== AI 助手错误 (93001-93999) ==========
   /** 确认已超时 */
   AI_ACTION_TIMEOUT(93001, "确认已超时，请重新发起", "error.ai.action.timeout"),
