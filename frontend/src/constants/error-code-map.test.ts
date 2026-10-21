@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   API_SUCCESS_CODE,
@@ -13,11 +16,37 @@ import {
   resolveErrorMessage,
 } from './error-code-map.ts';
 
-// 后端 src/main/java/com/slz/crm/common/enumeration/ErrorCode.java 与
-// platform/contract/PlatformErrorCode.java 的枚举全集；两处清单由
-// src/test/java/com/slz/crm/contract/ErrorCodeMapParityTest.java 与 Java 反射对齐，
-// 本文件只锁住前端映射层的行为契约。
-const BACKEND_ERROR_CODE_NAMES = 100;
+// 后端枚举真相源：CRM 业务域 ErrorCode.java + 平台域 PlatformErrorCode.java。
+// 两个枚举的全集口径与 src/test/java/com/slz/crm/contract/ErrorCodeMapParityTest.java
+// 一致（那边用 ErrorCode.values() + PlatformErrorCode.values() 反射求并集），
+// 但 frontend-quality CI job 独立跑 pnpm、不跑 Maven，所以本文件必须自己数一遍，
+// 作为前端段的独立哨兵——而不是手写常数（每次后端加码都要手改，漏改即假红）。
+//
+// 路径用 import.meta.url 相对推导：本地 Windows 与 CI Linux 同源，不依赖 process.cwd()。
+const TEST_FILE_DIR = dirname(fileURLToPath(import.meta.url));
+/** frontend/src/constants → 上三级即仓库根。 */
+const REPO_ROOT = resolve(TEST_FILE_DIR, '../../..');
+const BACKEND_ENUM_DIR = resolve(REPO_ROOT, 'src/main/java/com/slz/crm');
+const BACKEND_ENUM_FILES = [
+  resolve(BACKEND_ENUM_DIR, 'common/enumeration/ErrorCode.java'),
+  resolve(BACKEND_ENUM_DIR, 'platform/contract/PlatformErrorCode.java'),
+];
+/**
+ * 枚举常量行口径（两枚举同构）：两个空格缩进 + 常量名 + "(" + 码值数字。
+ * 允许 "(" 与码值之间换行——ErrorCode.BUSINESS_ACTIVITY_CONTACT_NOT_EXISTS 就是
+ * 这种换行形态，漏掉会少数一条。
+ */
+const ENUM_CONSTANT = /^ {2}([A-Z][A-Z0-9_]*)\(\s*(\d+)/gm;
+
+function countBackendErrorCodes(): number {
+  return BACKEND_ENUM_FILES.reduce((total, file) => {
+    const source = readFileSync(file, 'utf8');
+    return total + [...source.matchAll(ENUM_CONSTANT)].length;
+  }, 0);
+}
+
+/** 两枚举常量条数之和（当前应得 100）；后端加码时自动跟随，无需手改。 */
+const BACKEND_ERROR_CODE_NAMES = countBackendErrorCodes();
 
 describe('ApiErrorCode 常量表', () => {
   it('枚举名到码值的映射覆盖后端两个枚举的全部条目', () => {
