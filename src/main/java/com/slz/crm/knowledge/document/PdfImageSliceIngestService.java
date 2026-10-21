@@ -9,9 +9,11 @@ import com.slz.crm.platform.contract.TokenUsageRecorder;
 import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -75,6 +77,14 @@ public class PdfImageSliceIngestService {
             6. 只转写图中确实存在的内容，不要添加解释、背景知识或图里没有的信息，不要编造数字/模型名/文献。
             7. 直接输出转写结果，不要寒暄。""";
 
+  /**
+   * 本次摄取尝试新落盘图片对象的 storageKey 收集器（线程绑定）：null = 不收集。
+   *
+   * <p>为什么用线程局部而不是改方法签名：{@link #buildSlices} 由共享的合并支持类同时服务于首次入库与重建入库， 只为失败回滚扩大其签名会牵动两个调用点；线程作用域把「收集
+   * → 失败回滚 / 成功丢弃」限定在一次 {@code ingest} 之内，作用域外行为零变化。
+   */
+  private static final ThreadLocal<Set<String>> STAGED_ASSET_KEYS = new ThreadLocal<>();
+
   private final ModelProvider modelProvider;
   private final ObjectProvider<DynamicConfigService> dynamicConfigProvider;
   private final ObjectProvider<TokenUsageRecorder> tokenUsageRecorderProvider;
@@ -118,6 +128,48 @@ public class PdfImageSliceIngestService {
       }
     }
     return slices;
+  }
+
+  /**
+   * 开一次「本次新落盘图片资产」收集作用域（d8-image-asset-rollback）。
+   *
+   * <p>作用域内 {@link #buildSlices} 每成功落盘一个图片对象就把 storageKey 记进返回集合（有序去重）；作用域外不收集，
+   * 故重建入库与直接调用者行为零变化。调用方必须在 finally 里 {@link #endAssetCollection()} 关闭作用域，避免线程复用时串味。
+   *
+   * @return 本次收集到的 storageKey 集合（同一实例在作用域内持续累积；成功路径无需消费即丢弃）
+   */
+  public static Set<String> beginAssetCollection() {
+    Set<String> keys = new LinkedHashSet<>();
+    STAGED_ASSET_KEYS.set(keys);
+    return keys;
+  }
+
+  /** 关闭当前收集作用域（未开启时为空操作）；只清线程绑定，不触碰任何已落盘对象。 */
+  public static void endAssetCollection() {
+    STAGED_ASSET_KEYS.remove();
+  }
+
+  /**
+   * 摄取失败回滚：逐一删除本次新落盘的图片对象。
+   *
+   * <p>单个对象删除失败只 WARN 不抛，与 {@link ImageAssetCleanup#deleteAssets} 同语义——回滚是尽力而为，
+   * 绝不能盖掉调用方正要上抛的原始摄取异常。
+   *
+   * @param storageKeys 本次新落盘的 storageKey（空/null = 零调用）
+   * @param storage 文件存储（null = 未装配，零调用）
+   */
+  @SuppressWarnings("PMD.AvoidCatchingGenericException") // 存储删除多源：单对象失败不挡整轮回滚，更不替换原始异常
+  public static void rollbackStagedAssets(Set<String> storageKeys, FileStorageService storage) {
+    if (storageKeys == null || storageKeys.isEmpty() || storage == null) {
+      return;
+    }
+    for (String storageKey : storageKeys) {
+      try {
+        storage.delete(storageKey);
+      } catch (Exception deleteException) {
+        LOG.warn("图片资产回滚删除失败（不阻断回滚，原摄取异常照常上抛）: key={}", storageKey, deleteException);
+      }
+    }
   }
 
   /** 开关判定：总开关 + KB 灰度（任一不满足即整条旁路关闭，零外呼零落盘）。 */
@@ -214,6 +266,13 @@ public class PdfImageSliceIngestService {
     } catch (Exception storeException) {
       LOG.warn(
           "图片对象落盘失败，跳过该图: page={} sequence={}", image.pageNo(), image.sequence(), storeException);
+    }
+    if (!storageKey.isBlank()) {
+      // 仅 store() 成功且返回非空 key 才登记（空 key 意味着没有对象可回滚）
+      Set<String> staged = STAGED_ASSET_KEYS.get();
+      if (staged != null) {
+        staged.add(storageKey);
+      }
     }
     return storageKey;
   }

@@ -33,6 +33,7 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,6 +50,10 @@ import org.springframework.stereotype.Service;
  * 清理语义并落平台审计）。
  */
 @Service
+@SuppressWarnings("PMD.NcssCount")
+// 豁免理由（d8-image-asset-rollback）：图片孤儿回滚在本类只增 4 条语句（收集作用域声明 + 两处失败分支回滚 + finally 收尾），
+// 本类此前已正贴 PMD 类级 150 线；把摄取编排再拆一类会切开同一事务边界（存储→切片→嵌入→向量→状态回写），
+// 收益远小于风险。规则与阈值本身未改（见 src/main/resources/pmd-rules.xml 与 pom 的 maxAllowedViolations）。
 public class DocumentIngestionService {
   private static final Logger LOG = LoggerFactory.getLogger(DocumentIngestionService.class);
 
@@ -176,7 +181,13 @@ public class DocumentIngestionService {
         null);
   }
 
-  /** 入库前先做知识库写授权；未授权直接拒绝，不做任何文件写入。 */
+  /**
+   * 入库前先做知识库写授权；未授权直接拒绝，不做任何文件写入。
+   *
+   * <p>d8-image-asset-rollback：图片切片旁路在解析阶段新落盘的对象（{@link
+   * PdfImageSliceIngestService#beginAssetCollection()} 收集）在失败分支逐一并删——孤儿对象不再滞留对象存储；成功路径零额外删除，
+   * 回滚自身的删除异常只 WARN，不替换原始摄取异常。
+   */
   @SuppressWarnings("PMD.AvoidCatchingGenericException") // 文件I/O+DB+嵌入/向量外呼多源，宽捕获包装并标记失败后上抛
   public DocumentIngestionResult ingest(DocumentIngestionCommand command) {
     Objects.requireNonNull(command.knowledgeBaseId(), "knowledgeBaseId 不能为空");
@@ -206,6 +217,8 @@ public class DocumentIngestionService {
     uploadedFileMapper.insert(file);
 
     List<DocumentVectorChunkEntity> savedChunks = new ArrayList<>();
+    // d8-image-asset-rollback：本次解析新落盘的图片对象收集作用域（finally 关闭，成功路径直接丢弃）
+    Set<String> stagedImageKeys = PdfImageSliceIngestService.beginAssetCollection();
     try (InputStream storedContent = fileStorageService.open(storageKey)) {
       List<DocumentChunk> chunks =
           ImageSliceIngestSupport.parseWithImageSlices(
@@ -230,12 +243,16 @@ public class DocumentIngestionService {
       return new DocumentIngestionResult(
           file.getId(), documentId, savedChunks.size(), savedChunks.size());
     } catch (RuntimeException exception) {
+      PdfImageSliceIngestService.rollbackStagedAssets(stagedImageKeys, fileStorageService);
       markFailed(file, exception);
       throw exception;
     } catch (Exception exception) {
       RuntimeException wrapped = new IllegalStateException("文档入库失败", exception);
+      PdfImageSliceIngestService.rollbackStagedAssets(stagedImageKeys, fileStorageService);
       markFailed(file, wrapped);
       throw wrapped;
+    } finally {
+      PdfImageSliceIngestService.endAssetCollection();
     }
   }
 
