@@ -89,19 +89,18 @@ class AiChatImageUnderstandingServiceTest {
                 10L,
                 5L,
                 15L));
-    when(modelProvider.embed(any(EmbeddingRequest.class)))
-        .thenReturn(ModelCallResult.ofVector(new float[] {0.1F, 0.2F}, "text-embedding", 5L, 5L));
+    when(modelProvider.embedImage(any(byte[].class), any()))
+        .thenReturn(
+            ModelCallResult.ofVector(new float[] {0.1F, 0.2F}, "multimodal-embedding-v1", 5L, 5L));
 
     var context = service.understand(image, "发票金额是多少", true).orElseThrow();
 
     assertThat(context.imageVector()).containsExactly(0.1F, 0.2F);
-    ArgumentCaptor<EmbeddingRequest> embeddingCaptor =
-        ArgumentCaptor.forClass(EmbeddingRequest.class);
-    verify(modelProvider).embed(embeddingCaptor.capture());
-    assertThat(embeddingCaptor.getValue().getInstructions().get(0))
-        .contains("一张发票")
-        .contains("发票A金额")
-        .contains("发票金额是多少");
+    // multimodal-shared-space 任务 4.1：真视觉——图片字节直接入视觉 embedding，不再文本拼接 + 文本 embed
+    ArgumentCaptor<byte[]> imageBytesCaptor = ArgumentCaptor.forClass(byte[].class);
+    verify(modelProvider).embedImage(imageBytesCaptor.capture(), any());
+    assertThat(imageBytesCaptor.getValue()).isEqualTo("image".getBytes());
+    verify(modelProvider, org.mockito.Mockito.never()).embed(any(EmbeddingRequest.class));
 
     ArgumentCaptor<TokenUsageRecord> usageCaptor = ArgumentCaptor.forClass(TokenUsageRecord.class);
     verify(tokenUsageRecorder, org.mockito.Mockito.times(2)).record(usageCaptor.capture());
