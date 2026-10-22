@@ -5,6 +5,10 @@ import type { PermissionNameArray } from '@/types/permission';
 import { extractPermissionNames } from '@/types/permission';
 
 interface Props {
+  /**
+   * 允许的权限名：`模块:枚举名`（如 `customer:CUSTOMER_QUERY_CONTACT`）或裸枚举名。
+   * 枚举段由生成物 `PermissionName` 收窄（types/permission.gen.ts），拼错权限名在编译期报错。
+   */
   allow: PermissionNameArray;
 }
 
