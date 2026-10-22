@@ -1,6 +1,6 @@
 # 主 Agent 轮换交接活看板 (Active Main Agent Handoff)
 
-> **更新时间**：2026-10-22（anchor-v6-baseline-v7 v6.0 主套件真跑落锚 + NcssCount 豁免结论固化，A 档全链闭环）
+> **更新时间**：2026-10-22（production-gray-real-run 真共享空间生产灰度真跑，多模态系列收官，A 档全链闭环）
 > **维护契约**：**本文件必须采用整体覆盖更新 (Rolling Overwrite)，严禁无限追加历史流水账**！
 > **适用对象**：**新打开主 Agent 对话窗口时第一必读入口**。读完即可立即进入指导工作状态。
 
@@ -8,12 +8,12 @@
 
 ## 1. 现状快照 (Current State Snapshot)
 
-- **当前主干版本**：`master@a5e7fce`（= origin/master；本卡闭环：基点 `e248e6e` → 分支 1 笔 `48311c4` test → M1 `git merge --no-ff` **`f74c5c9`**（零冲突，分支 `feature/anchor-v6-baseline-v7` **永久保留**）→ M1 基线收口 `a5e7fce`；M2 看板/归档笔随本笔持久化）
-- **测试基线四元组**：`merge=f74c5c9` + Surefire **报告 316 / 用例 1964 / F0 / E0 / S0** + Failsafe **报告 39 / 用例 132 / F0 / E0 / S10** + `CI=#156`（M1 轮，Run 39714616733，实测号以 `docs/main-agent-logbook.md` §147 为准）。只增不减：本卡前 315/1953/0 + 39/132/10 → +1 报告 +11 用例（新增 v7 锚点对账单测）、failsafe 持平。`scripts/test-baseline.txt` = `source-revision=f74c5c9`、`measured-at=2026-10-22T03:00:46Z`（树净单次 `--update` + 校验模式 `EXIT=0`，随本笔持久化）
-- **验证路径 = M1 树等价快车道（连续第十二卡启用）**：`git rev-parse "f74c5c9^{tree}"` 与 `git rev-parse "feature/anchor-v6-baseline-v7^{tree}"` 同为 **`9e15e35ddcd3bb2ba9dba2c4162afa260c59630a`**，逐字节相等 → 判定树等价；执行端已在该等价树完成 `mvn -B -ntp clean verify` **BUILD SUCCESS**（surefire 1964）+ 真跑 `RAG_BENCHMARK_REAL=1` 72 例（341.2s，totalTokens=72347）→ **本地免 clean verify / 免 merge-gate 复跑**，仅补基线台账；本地复跑职责由远端 CI `build-and-gate` 同源门禁兜底（**#156 已绿 = M1 验证闭环**）
-- **复核**：**A 档 GO**（72 例全量真跑 opt-in 落锚；零生产代码/零迁移/零权限/零新依赖）—— 独立复核四判据全过无 ACK（① 零 src/main ② 零新权限 ③ 真跑 72/72 tokens>0 非假绿、复核方独立复算 hitRate 67/68=.9853/totalTokens 72347 严等 ④ 冻结 Suite/SUITE_VERSION/黄金片段/v1~v6 全未动）。归档物料 = `openspec/changes/archive/anchor-v6-baseline-v7/`（proposal + tasks）+ `work/archive/closed-cards/`（handoff + 任务卡 `add -f`）
+- **当前主干版本**：`master@98a4a91`（= origin/master；本卡闭环：基点 `1ae1de1` → 分支 1 笔 `14c18b5` test → M1 `git merge --no-ff` **`51416d7`**（零冲突，分支 `feature/production-gray-real-run` **永久保留**）→ M1 基线收口 `98a4a91`；M2 看板/归档笔随本笔持久化）
+- **测试基线四元组**：`merge=51416d7` + Surefire **报告 317 / 用例 1969 / F0 / E0 / S0** + Failsafe **报告 40 / 用例 133 / F0 / E0 / S11** + `CI=#158`（M1 轮，Run 39724547528，实测号以 `docs/main-agent-logbook.md` §148 为准）。只增不减：本卡前 316/1964/0 + 39/132/10 → +1 报告 +5 用例、failsafe +1 报告 +1 用例 +1 skipped（新增 opt-in IT 默认无 key 会 skip）。`scripts/test-baseline.txt` = `source-revision=51416d7`、`measured-at=2026-10-22T04:48:41Z`（树净单次 `--update` + 校验模式 `EXIT=0`，随本笔持久化）
+- **验证路径 = M1 树等价快车道（连续第十三卡启用）**：`git rev-parse "51416d7^{tree}"` 与 `git rev-parse "feature/production-gray-real-run^{tree}"` 同为 **`de8b68f3c4b0ca6d1825f4c6ca74ad34785e09e1`**，逐字节相等 → 判定树等价；执行端已在该等价树完成 `mvn -B -ntp clean verify` **BUILD SUCCESS**（surefire 1969）+ 真跑 `RAG_VISION_EMBED_REAL=1`（真实 PDF，qwen3-vl-plus）→ **本地免 clean verify / 免 merge-gate 复跑**，仅补基线台账；本地复跑职责由远端 CI `build-and-gate` 同源门禁兜底（**#158 已绿 = M1 验证闭环**）
+- **复核**：**A 档 GO**（真实 PDF 全链路真跑 opt-in 落锚；零生产代码/零迁移/零权限/零新依赖）—— 独立复核四判据全过无 ACK（① 零 src/main ② 零新权限 ③ 真跑痕迹可验：vision 9600 token 真回流、imageEmbedding 14 次 0 回流不对称 mock 造不出、textEmbed 32≠28 证非公式推导 ④ 冻结契约零改动、开关默认 false 原样）。**Owner 拍板 DOE 逐图版权「保留 + 如实标注」**。归档物料 = `openspec/changes/archive/production-gray-real-run/`（proposal + tasks）+ `work/archive/closed-cards/`（handoff + 任务卡 `add -f`）
 - **前端披露**：本卡 `frontend/` 零 diff；零新依赖；`typed-router.d.ts` 生成物零提交
-- **环境实测**：真跑 72 例（341.2s）走 DASHSCOPE_API_KEY opt-in；CI 盯跑本机 REST 直连 403 限流，改用 harness `web_fetch` 独立出口
+- **环境实测**：真跑 qwen3-vl-plus（生产默认 qwen-vl-plus 返回 404 model_not_found，用 -Drag.pdf.image.vision-model 覆盖）；真实 PDF 6.86MB/157 页入库 test resources；CI 盯跑本机 REST 直连 403 限流，改用 harness `web_fetch` 独立出口
 - **工作树拓扑**：
   - 观察树：`D:\code\crmAndRag`（承载执行日志 `docs/`、任务卡与交接 `work/`，未跟踪）
   - 权威树（主干）：`D:\code\crmAndRag-merge-add-knowledge-admin-api`（分支检出、门禁运行、代码合并唯一法定树）
@@ -22,33 +22,33 @@
 
 ## 2. 核心架构与现行能力面
 
-1. **v6.0 主套件真跑落锚（anchor-v6-baseline-v7，A 档真跑，刚刚合入）**：`RagBenchmarkSuite.SUITE_VERSION="6.0"`（72 例）首次真跑落锚 `docs/rag-quality/baseline-v7.json`（suiteVersion=6.0、caseCount=72、scoringVersion=v2、totalTokens=72347、hitRate 67/68=.9853、341.2s）。`RagRealRetrievalBenchmarkIT` 增 `V7_ANCHOR_FILE_NAME` + `RagBenchmarkV7AnchorValidationTest`（纯 JVM 零外发对账）。零生产代码 / 零迁移 / 零权限 / 零新依赖。
-2. **PDF 摄取链纳入图文评测（pdf-ingest-image-eval，A 档）**：真 PDF → 真 embedImage → image collection → query-by-image 全链真跑，PDF-IMAGE-SUITE-1.0 落锚。
-3. **图文跨模态召回质量评测（image-cross-modal-eval，A 档）**：真视觉 vs 文本降维对照（Delta 2.6×），IMAGE-SUITE-1.0 落锚。
-4. **多模态真共享空间升级（multimodal-shared-space，A 档）**：真视觉 embedding + 独立 image collection + query-by-image。
-5. **图片摄取失败孤儿对象即时回滚（d8-image-asset-rollback，C 档）** / 6. **知识库图片切片摄取 + IMAGE 回显（add-kb-image-slice-retrieval，A 档）**。
-7. **收尾小卡 ⑬⑭（fix-backlog-batch4，B 档）** / 8. **待办池四点收口（fix-backlog-batch3，B 档）** / 9. **待办池三点收口（fix-backlog-batch2，B 档）**。
-10. **测试加固五点（harden-test-backlog-batch1，C 档）** / 11. **引用对齐三阈值动态化（B 档）** / 12. **RAG 评测三盲区补齐（B 档）**。
-13. **五路语义同步 hook 收敛（B 档）** / 14. **ProjectFile 域收口（B 档）** / 15. **审批附件级联死边移除（A 档）**。
-16. **循环写收口批 A-6/A-8/A-10** / 17. **工程债三合卡 A-7/A-9/A-1** / 18. **待办池 MINOR 家族合卡**。
-19. **附件写权限+重置密码+发票纳管合卡** / 20. **知识库物理双清 + 门禁同源** / 21. **登录链路安全加固包**。
-22. **商机阶段流转审批阻断 + 确认链路写权限审计** / 23. **已建未接线基建接线合卡** / 24. **公海竞态 CAS** / 25. **写端点校验收口**。
-26. **向量运维端点统一收口** / 27. **客户流失预警 + 再激活** / 28. **CustomerInsightPanel + AI 转 Action**。
-29. **销售线索漏斗**（V42）/ 30. **合同预警联动** / 31. **公海池流转**（V41）。
-32. **AI 商业诊断与 RAG 检索完全体**：知识库混合检索 + RRF；5 大业务实体语义检索；四档数据权限闸。
+1. **真共享空间生产灰度真跑（production-gray-real-run，A 档，刚刚合入，多模态系列收官）**：第一次用**真实公有领域政府出版物 PDF**（NIST SP 800-101r1/800-183 + DOE，6.86MB/157 页，`src/test/resources/rag-quality/real-pdf/` + `sources.json` URL/SHA-256/17 U.S.C. §105 授权）跑完「摄取 → 视觉/文本双集合 → query-by-image」完整链路，落盘成本基线 `production-gray-cost-v1.json`。实测：提取 9 图→入库 7、vision 9 次 9 600 token（**实测回流纠正「恒 0」口径**）、视觉 embed 14/文本 embed 32、65.8s、**≈1 371 token + 9.8s/图**。零生产代码 / 零迁移 / 零权限 / 零新依赖。**多模态系列全线闭环**（multimodal → image-cross-modal → pdf-ingest-image → baseline-v7 → 生产灰度）。
+2. **v6.0 主套件真跑落锚（anchor-v6-baseline-v7，A 档）**：72 例首次真跑落锚 baseline-v7.json（totalTokens 72347）。
+3. **PDF 摄取链纳入图文评测（pdf-ingest-image-eval，A 档）** / 4. **图文跨模态召回质量评测（image-cross-modal-eval，A 档）**。
+5. **多模态真共享空间升级（multimodal-shared-space，A 档）** / 6. **图片摄取失败孤儿即时回滚（d8，C 档）**。
+7. **知识库图片切片摄取 + IMAGE 回显（add-kb-image-slice-retrieval，A 档）** / 8. **收尾小卡 ⑬⑭（B 档）** / 9. **待办池四点收口（B 档）** / 10. **待办池三点收口（B 档）**。
+11. **测试加固五点（C 档）** / 12. **引用对齐三阈值动态化（B 档）** / 13. **RAG 评测三盲区补齐（B 档）**。
+14. **五路语义 hook 收敛（B 档）** / 15. **ProjectFile 域收口（B 档）** / 16. **审批附件级联死边移除（A 档）**。
+17. **循环写收口批 / 工程债三合卡 / 待办池 MINOR** / 18. **附件写权限+重置密码+发票纳管** / 19. **知识库物理双清 + 门禁同源**。
+20. **登录链路安全加固包** / 21. **商机审批阻断 + 确认链路审计** / 22. **已建未接线基建接线** / 23. **公海竞态 CAS** / 24. **写端点校验收口**。
+25. **向量运维端点收口** / 26. **客户流失预警 + 再激活** / 27. **CustomerInsightPanel + AI 转 Action**。
+28. **销售线索漏斗**（V42）/ 29. **合同预警联动** / 30. **公海池流转**（V41）。
+31. **AI 商业诊断与 RAG 检索完全体**：知识库混合检索 + RRF；5 大业务实体语义检索；四档数据权限闸。
 
 > **NcssCount 豁免定论（Owner 2026-10-22 拍板，结论固化）**：全仓 2 处 `@SuppressWarnings("PMD.NcssCount")` 类级豁免——
 > `DocumentIngestionService`（拆分会切同一事务边界）与 `CustomerContactServiceImpl`（聚合 20+ 联系人方法，拆牺牲高内聚）——
-> 均为 **documented tradeoff，维持不拆、不移除豁免**，全仓 suppression 维持 2 处。不再列长期储备候选。
+> 均为 **documented tradeoff，维持不拆、不移除豁免**，全仓 suppression 维持 2 处。
 
 ---
 
-## 3. 当前在途与候选队列（anchor-v6-baseline-v7 闭环刷新）
+## 3. 当前在途与候选队列（production-gray-real-run 闭环刷新）
 
-- **在途待合入卡**：**0 张！**（本卡已全链合入 master `a5e7fce`；物料归档至 `openspec/changes/archive/anchor-v6-baseline-v7/`（proposal + tasks）与 `work/archive/closed-cards/`（handoff + 任务卡）；`work/` 根本卡散落件已 SHA256 核对后删除）
+- **在途待合入卡**：**0 张！**（本卡已全链合入 master `98a4a91`；物料归档至 `openspec/changes/archive/production-gray-real-run/`（proposal + tasks）与 `work/archive/closed-cards/`（handoff + 任务卡）；`work/` 根本卡散落件已 SHA256 核对后删除）
 - **待办池**：**0 条**（本卡未消化待办池项，也未新进；⑮ `frontend/typed-router.d.ts` 生成物归属仍属 frontend 工程决策，**他人所有权，本线不擅动**）
-- **长期储备（本卡更新）**：
-  - **真共享空间生产灰度真跑（授权留 Owner）**：真视觉 embedding 已真跑验证（VisionEmbeddingRealIT + image-cross-modal-eval + pdf-ingest-image-eval 三卡评测），但**生产灰度真跑**（真实 KB 真实 PDF 资产、成本基线，`RAG_VISION_EMBED_REAL` 生产 opt-in）需 Owner 另行授权
+- **长期储备（本卡更新，多模态系列已全线闭环）**：
+  - **生产开关打开授权（Owner 决）**：本卡已产出「打开 `image-vector-ingest.enabled` 后的每图成本」（≈1 371 token / 9.8s），是否真正打开生产开关由 Owner 按成本基线拍板（属生产灰度授权，非代码卡）
+  - **异图硬阈值定标（后续卡候选）**：真实语料异图间隔可低至 +0.011，硬阈值需多图同类/跨类语料定标（本卡已诚实标注不套 0.90）
+  - **embedding 端点 token 计量补全（后续卡候选）**：image/text embedding 端点 token 恒 0（有样本无计量），token 级账单需 Provider 侧补计量（src/main 改动，另开卡）
   - 在线考试子域（`work/_online-exam-backlog.md` 留档）
 - **下批推荐**：无强制项，按 Owner 指令插队
 - **下批候选池总账**：`work/_paa-candidates-pool-v2.md`（观察树未跟踪留档，长期储备保留）
@@ -72,9 +72,9 @@
 - 数据库迁移号段：`ls src/main/resources/db/migration`（实测下一可用号：V43；本卡零迁移）
 - 历史阶段裁决归档：`docs/archive/logbook-historical-202609-202610.md`（§8~§85）
 - 历史任务卡归档：`work/archive/closed-cards/`
-- 现行活动日志：`docs/main-agent-logbook.md`（§86 起，**最新 §147**）
+- 现行活动日志：`docs/main-agent-logbook.md`（§86 起，**最新 §148**）
 - 回归基线门禁：`bash scripts/check-test-baseline.sh`（台账 `scripts/test-baseline.txt`）
-- RAG 评测锚点：`docs/rag-quality/baseline-v1~v7.json`（v7 = 主套件 6.0 真跑）+ `image-baseline-v1.json` + `pdf-ingest-image-baseline-v1.json`
+- 真跑成本基线：`docs/rag-quality/production-gray-cost-v1.json`（真实 PDF 灰度）+ `baseline-v7.json`（主套件）+ image/pdf 锚
 
 ---
 
