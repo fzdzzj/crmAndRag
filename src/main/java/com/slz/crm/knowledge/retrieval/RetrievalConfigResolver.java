@@ -108,6 +108,37 @@ final class RetrievalConfigResolver {
         : merged;
   }
 
+  double resolveImageSimilarityThreshold() {
+    return resolveImageSimilarityThreshold(null);
+  }
+
+  /**
+   * 图像路同图判别阈值（image-retrieval-threshold-gate 任务 1.1）：{@code
+   * rag.retrieval.image-similarity-threshold}，缺省 {@link
+   * ImageSimilarityGate#DEFAULT_THRESHOLD}（0.9944 = 定标锚判别阈值）。
+   *
+   * <p>与文本 {@code rag.retrieval.minScore}（0.20）彻底解耦：图像路不再复用文本阈值。越界（&lt;0 或 &gt;1）回落默认。
+   *
+   * <p>{@code singleKbId} 只是对齐本类重载族：该键不在 per-KB 12 键封闭集（{@code
+   * KbRetrievalStrategyWhitelist}）内，per-KB 覆盖天然不生效，写入端会被白名单拒绝，读取端恒回落全局 —— 本卡不放行 per-KB
+   * 覆盖（零迁移、零新权限）。
+   */
+  double resolveImageSimilarityThreshold(Long singleKbId) {
+    DynamicConfigService config = dynamicConfigProvider.getIfAvailable();
+    Double configured =
+        config == null
+            ? null
+            : config.get(
+                ImageSimilarityGate.THRESHOLD_KEY,
+                Double.class,
+                ImageSimilarityGate.DEFAULT_THRESHOLD);
+    Double merged =
+        kbResolve(singleKbId, ImageSimilarityGate.THRESHOLD_KEY, Double.class, configured);
+    return merged == null || merged < 0 || merged > 1
+        ? ImageSimilarityGate.DEFAULT_THRESHOLD
+        : merged;
+  }
+
   int resolveCandidateMultiplier() {
     return resolveCandidateMultiplier(null);
   }
