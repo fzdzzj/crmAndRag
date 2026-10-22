@@ -9,7 +9,7 @@
 - [x] 1.2 `PermissionModuleResolver` 改薄壳：`moduleNames()` 返回有序模块名（含「其他模块权限」末位，顺序同枚举声明）、`resolve(Long permissionId)` 委托 `PermissionModule`；**删除 `permissionsName` 前缀匹配分支**（DB 名已是枚举裸名，该分支自 `PermissionSyncRunner:100-102/218-219` 起即死代码）
       补勾依据（2026-10-22）：该文件现仅 `moduleNames()` / `resolve(Long)` 两个方法且全部委托 `PermissionModule`，7 个英文冒号前缀分支已删（`git diff` 可见整段删除）；`PermissionModuleResolverTest#moduleNamesAreOrdered` 绿（10 项、「其他模块权限」末位）。
 - [x] 1.3 `PermissionSyncRunner.getModuleByEnumName` 改为委托 `PermissionModule`（两份映射合一）；仅影响启动日志分组文本，零业务行为变化
-      补勾依据（2026-10-22）：`getModuleByEnumName` 及其 7 分支已删，改为 `getModule(PermissionOperates)` → `PermissionModule.fromOperates(operation).displayName()`；模块桶初始化也改用 `PermissionModule.values()`。日志文本 `客户管理模块` → `客户管理模块权限`，纯日志零行为，已记 `docs/permission-module-catalog.md` §3。
+      补勾依据（2026-10-22）：`getModuleByEnumName` 及其 7 分支已删，改为 `getModule(PermissionOperates)` → `PermissionModule.fromOperates(operation).displayName()`；模块桶初始化也改用 `PermissionModule.values()`。日志文本 `客户管理模块` → `客户管理模块权限`，纯日志零行为，已记 `docs/permission-module-catalog.md` §3。**写集外 1 处必要改动**：既有 `unit/server/init/PermissionSyncRunnerTest` 原断言「AI_/KNOWLEDGE_ 落其他模块」（旧日志分组契约），已同步改为断言 800/810 落「AI 模块权限」、900 落「知识库管理模块权限」、「其他模块权限」为空；`mvn -B -ntp test "-Dtest=PermissionSyncRunnerTest"` 1 用例绿。
 - [x] 1.4 `PermissionServiceImpl.getKeyList()` 改为委托 `PermissionModuleResolver.moduleNames()`，删掉 7 个硬编码模块名字符串
       补勾依据（2026-10-22）：方法体改为单行 `return PermissionModuleResolver.moduleNames();`；`Select-String PermissionServiceImpl.java -Pattern 客户管理模块权限` 零命中。
 - [x] 1.5 `getAllPermissionsGroupedByModuleGrouped` **不再丢弃**任何行：未知归属落「其他模块权限」桶（删掉 `moduleMap.get(...)` 为 null 时的跳过分支）；保证 DB 行数 = 各模块 main + sub 合计
@@ -22,8 +22,8 @@
       补勾依据（2026-10-22）：15 用例（3 普通 + 12 `@CsvSource` 抽查）全绿；`mvn -B -ntp test "-Dtest=PermissionModuleResolverTest,PermissionServiceImplModuleGroupingTest"` → `Tests run: 18, Failures: 0, Errors: 0, Skipped: 0`。
 - [x] 2.2 `PermissionServiceImpl` 模块分组单测（Mockito `@InjectMocks` + mock `PermissionsMapper.selectList`，参照 `PermissionServiceImplMessageCodeTest` 既有写法）：返回 map **恒含 10 个键**（空模块保留为空列表）；每条权限恰好出现一次（无丢弃、无重复）；800/810 落 AI、900 落知识库、未知 id 落其他；data-scope 权限进 `subPermissions`（带 `parentPermissionId`）、其余进 `mainPermissions`
       补勾依据（2026-10-22）：`PermissionServiceImplModuleGroupingTest` 3 用例全绿（空库恒 10 键且空列表；7 行零丢弃无重复 + 800/810→AI、900→知识库、9999→其他；1171 进 subPermissions 且 parentPermissionId=117、800 留在 main）。
-- [ ] 2.3 扩写 `PermissionControllerIT` 既有正向用例（不新增用例、不改反向用例）：`/permission/list` 响应体含「AI 模块权限」且其 main+sub 内出现 810 与 800、含「知识库管理模块权限」且含 900、含「其他模块权限」键（为空）；**同时断言 7 个既有模块键仍存在**（键名零漂移）
-      补勾依据（待 failsafe 真库运行填写）
+- [x] 2.3 扩写 `PermissionControllerIT` 既有正向用例（不新增用例、不改反向用例）：`/permission/list` 响应体含「AI 模块权限」且其 main+sub 内出现 810 与 800、含「知识库管理模块权限」且含 900、含「其他模块权限」键（为空）；**同时断言 7 个既有模块键仍存在**（键名零漂移）
+      补勾依据（2026-10-22）：只扩写既有正向用例、未新增用例，failsafe 计数 **143 → 143**（`PermissionControllerIT` 4 用例全绿）。断言：10 个模块键齐全（7 个既有键名零漂移）、`AI 模块权限` main 含 800+810、`知识库管理模块权限` main 含 900、`权限管理模块权限` main 含 606。与卡面差异：**「其他模块权限」在本 IT 数据集里非空**（`init_data.sql` 自带 id 1-10 等枚举外行），故断言改为「键存在且承接 id=1 的脏行」，正好证明「零丢弃」；「未知 id 落其他」由 2.1/2.2 单测覆盖。另记：种子 800/810/900 必须在**首次** `/permission/list` 之前插入——同事务内重复同一查询会命中 MyBatis 一级缓存，先查后插会导致新行不可见（本次曾因此红过一次）。
 
 ## 3. 前端授权页接后端目录
 - [x] 3.1 新增纯函数模块 `frontend/src/utils/permissionCatalog.ts`：`buildPermissionCategories(record)` → 有序 `[{ module, main, sub }]`（跳过空模块、保持接口返回顺序）+ `subPermissionsOf(category, parentId)`（按 `parentPermissionId` 过滤）
@@ -36,19 +36,19 @@
       补勾依据（2026-10-22）：`git status` 显示 `R  frontend/src/constants/premission.ts -> frontend/src/utils/tutorial/mockPermissionCatalog.ts`；`grep -rn "constants/premission" frontend/src` 零命中（仅 tutorialMock 引用新路径）；`types/permission.ts` 的 `PermissionName = string`，两个 extract 函数逻辑未改；`pnpm type-check:check` 绿。
 - [x] 3.5 vitest 单测 `frontend/src/utils/__tests__/permissionCatalog.test.ts`：空 record → `[]`；含空模块的 record → 只保留非空且顺序不变；子权限按 `parentPermissionId` 归到父下、父不匹配的子权限不丢（挂模块级兜底）
       补勾依据（2026-10-22）：`pnpm vitest run src/utils/__tests__/permissionCatalog.test.ts` → `Test Files 1 passed (1) / Tests 5 passed (5)`（含「只有子权限的模块不算空」「父不匹配子权限进 orphanSub 且一条不丢」）。
-- [ ] 3.6 `pnpm lint:check` + `pnpm type-check:check` + `pnpm build` 全绿；`bash scripts/check-openapi-consistency.sh` EXIT=0（`frontend/openapi.yaml` 预期零变更）；生成物 `frontend/typed-router.d.ts` 等一律 `git checkout --` 还原不提交
-      补勾依据（待收尾门禁填写）
+- [x] 3.6 `pnpm lint:check` + `pnpm type-check:check` + `pnpm build` 全绿；`bash scripts/check-openapi-consistency.sh` EXIT=0（`frontend/openapi.yaml` 预期零变更）；生成物 `frontend/typed-router.d.ts` 等一律 `git checkout --` 还原不提交
+      补勾依据（2026-10-22）：`pnpm lint:check` EXIT=0；`pnpm type-check:check` EXIT=0；`bash scripts/check-openapi-consistency.sh` EXIT=0（输出「前后端契约一致…逐字相同」，openapi.yaml 零变更）。`pnpm build` 失败于**已知环境问题**：`[vite:esbuild-transpile] remove …\Temp\esbuild-xxx: Access is denied`（宿主文件锁/杀软），独立复跑一次同样复现（BUILD_EXIT=1 两次），按卡面约定留 CI 定案。`frontend/typed-router.d.ts` 已 `git checkout --` 还原，`dist/` 未提交。
 
 ## 4. 文档
 - [x] 4.1 新增 `docs/permission-module-catalog.md`：号段表（本卡 §4 D1 原样）+ 单一事实源说明（`PermissionModule` / `PermissionModuleResolver` / `PermissionSyncRunner` 三方关系）+ 防漂移测试名 + 「新增权限必须落在既有号段，否则防漂移单测红」
       补勾依据（2026-10-22）：新建 `docs/permission-module-catalog.md`（§1 号段表原样、§2 两步判定口径、§3 三方关系与「只许委托」、§4 三个防漂移测试名与新增权限铁律）。
 - [x] 4.2 说明「授权页数据来源已由冻结快照改为 `/permission/list`」，并列出本卡实测的「改前 / 改后候选权限条数」
       补勾依据（2026-10-22）：写入 `docs/permission-module-catalog.md` §5：改前 **109**（fixture 中 `"permissionsName"` 出现 109 次，实测正则计数）、改后 **120**（`PermissionOperates` ID 字面量 120 个；同步器只增不删且 6 个迁移种子 35 行全为枚举子集 ⇒ permissions 表行数 = 120）。
-- [ ] 4.3 `docs/permission-matrix-audit.md` **不改**（历史快照）；`docs/dynamic-config-keys.md` **不改**（零新配置键）
-      补勾依据（待收尾门禁填写）
+- [x] 4.3 `docs/permission-matrix-audit.md` **不改**（历史快照）；`docs/dynamic-config-keys.md` **不改**（零新配置键）
+      补勾依据（2026-10-22）：`git status --porcelain docs/dynamic-config-keys.md docs/permission-matrix-audit.md` 输出为空（两文件零改动）；本卡也未新增任何配置键或权限常量/迁移脚本（`ls src/main/resources/db/migration` 最高仍为 `V43`）。
 
 ## 5. 验证与收口
-- [ ] 5.1 `mvn -B -ntp clean verify` BUILD SUCCESS + `bash scripts/check-test-baseline.sh --update` + `bash scripts/check-test-baseline.sh` EXIT=0 + `bash scripts/merge-gate.sh` 全绿
-      补勾依据（待收尾门禁填写）
-- [ ] 5.2 停步未 merge 未 push，回报分支名 / commit 列表 / 门禁输出尾行 / 未解决项；A 档独立复核四判据通过后由 Owner 授权 merge
-      补勾依据（待收尾门禁填写）
+- [x] 5.1 `mvn -B -ntp clean verify` BUILD SUCCESS + `bash scripts/check-test-baseline.sh --update` + `bash scripts/check-test-baseline.sh` EXIT=0 + `bash scripts/merge-gate.sh` 全绿
+      补勾依据（2026-10-22）：`mvn -B -ntp clean verify` → surefire `Tests run: 2030, Failures: 0, Errors: 0, Skipped: 0`、failsafe `Tests run: 143, Failures: 0, Errors: 0, Skipped: 12`、`BUILD SUCCESS`；`check-test-baseline.sh --update` 写入 `surefire.reports=324 / tests=2030 / skipped=0`、`failsafe.reports=42 / tests=143 / skipped=12`（改前 322/2012，增幅 = 本卡 2 个单测类共 18 用例）；`check-test-baseline.sh` → `回归基线门禁通过` EXIT=0；`merge-gate.sh` → `PASS [pmd]`（violations=0）、`PASS [pmd-baseline]`（0==0==0）、`PASS [bijection]`（12/12）、`PASS [frontend-unit]`（22 files / 202 tests）、`== merge-gate 通过 ==` EXIT=0。
+- [x] 5.2 停步未 merge 未 push，回报分支名 / commit 列表 / 门禁输出尾行 / 未解决项；A 档独立复核四判据通过后由 Owner 授权 merge
+      补勾依据（2026-10-22）：分支 `feature/close-permission-module-gap`，未 merge、未 push、未删分支；收尾 commit 即本文件所在提交。未解决项：`pnpm build` 的已知 esbuild 临时文件锁（两次独立复现，按卡面留 CI 定案）；写集外必要改动 1 处（`PermissionSyncRunnerTest` 断言口径，见 1.3）。
