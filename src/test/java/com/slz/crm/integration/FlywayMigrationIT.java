@@ -43,7 +43,7 @@ class FlywayMigrationIT {
       new TreeSet<>(
           List.of(
               "1", "3", "4", "4.1", "5", "6", "21", "22", "23", "24", "25", "26", "27", "28", "29",
-              "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42"));
+              "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43"));
 
   /** 跨 lane 关键表抽样：确认各号段 DDL 真的建出了表（V1/V3/V4/V5/V6）。 */
   private static final List<String> SPOT_CHECK_TABLES =
@@ -616,6 +616,31 @@ class FlywayMigrationIT {
       assertTrue(
           ddl.contains("KEY `idx_sales_lead_company`"),
           "V42 应建出 idx_sales_lead_company 索引，实际 DDL：" + ddl);
+    }
+  }
+
+  /**
+   * V43 断言（token-usage-admin-view 任务 1.2）：810 AI_TOKEN_USAGE_VIEW 权限行种入且**不授任何业务角色**——超管 roleId=1
+   * 由拦截器直通，等价超管专享；后续放开授权须另起迁移。
+   */
+  @Test
+  @Order(15)
+  void aiTokenUsagePermissionSeededWithoutRoleGrant() throws Exception {
+    assumeTrue(mysql != null, "Docker 不可用时本用例随类跳过");
+    try (Connection connection =
+            DriverManager.getConnection(
+                mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
+        Statement statement = connection.createStatement()) {
+      ResultSet perm =
+          statement.executeQuery(
+              "SELECT COUNT(*) FROM permissions WHERE id = 810"
+                  + " AND permissions_name = 'AI_TOKEN_USAGE_VIEW'"
+                  + " AND permissions_desc = '查看AI用量'");
+      assertTrue(perm.next() && perm.getLong(1) == 1, "V43 应种入 810 权限行恰一行");
+      ResultSet granted =
+          statement.executeQuery(
+              "SELECT COUNT(*) FROM role_permissions WHERE permissions_id = 810");
+      assertTrue(granted.next() && granted.getLong(1) == 0, "V43 不应给任何角色授权 810（超管直通）");
     }
   }
 

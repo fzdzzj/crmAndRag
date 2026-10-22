@@ -43,8 +43,8 @@ public final class PermissionCoverageScanner {
   private static final String SCAN_BASE_PACKAGE = "com.slz.crm";
 
   /**
-   * controller 登记清单（简单类名 → 全限定类名，按类名字母序）：server/controller 31 + platform/config 2 = 33 （本卡新增
-   * CustomerChurnWarningController）。
+   * controller 登记清单（简单类名 → 全限定类名，按类名字母序）：server/controller 34 + platform/config 2 + platform/token
+   * 1 = 37（token-usage-admin-view 新增 AiTokenUsageController）。
    */
   public static final Map<String, Class<?>> CONTROLLER_REGISTRY = buildRegistry();
 
@@ -262,6 +262,9 @@ public final class PermissionCoverageScanner {
     registry.put("AiActionController", clazz("com.slz.crm.server.controller.AiActionController"));
     registry.put("AiChatController", clazz("com.slz.crm.server.controller.AiChatController"));
     registry.put("AiInsightController", clazz("com.slz.crm.server.controller.AiInsightController"));
+    registry.put(
+        "AiTokenUsageController",
+        clazz("com.slz.crm.platform.token.controller.AiTokenUsageController"));
     registry.put("AssistController", clazz("com.slz.crm.server.controller.AssistController"));
     registry.put(
         "BusinessActivityController",
