@@ -79,7 +79,7 @@ class ImageSpaceRoutingTest {
                 hit(
                     "501",
                     "doc-1",
-                    0.95D,
+                    0.9995D,
                     "服务台架构图描述",
                     Map.of(
                         "chunkIndex",

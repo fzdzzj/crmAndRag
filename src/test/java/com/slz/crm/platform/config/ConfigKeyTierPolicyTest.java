@@ -13,11 +13,11 @@ import org.junit.jupiter.api.Test;
 /**
  * 动态配置键三档定级封闭表 census 防呆测试（add-dynamic-config-key-tier-acl 任务 1.3）。
  *
- * <p>三重锁：①注册表全集与三档封闭集构成完全分区——67 键既无表外键、也无跨档重复；②每键 tierOf 判定 与所在封闭集一致、三档计数恰为 OPERATIONAL 35 / COST
+ * <p>三重锁：①注册表全集与三档封闭集构成完全分区——68 键既无表外键、也无跨档重复；②每键 tierOf 判定 与所在封闭集一致、三档计数恰为 OPERATIONAL 36 / COST
  * 27 / STRUCTURAL 5（2026-10-17 wire-built-unfinished-infra 摘除 ai.model.* 六死键、2026-10-20
  * fix-citation-threshold-config 补 3 个引用对齐阈值键、2026-10-21 add-kb-image-slice-retrieval 补 3
- * 个图片切片摄取键、multimodal-shared-space 补 1 个真视觉向量摄取键后的口径）；③P-ac per-KB 12 键白名单全集 ⊆ OPERATIONAL
- * 档（运营调参键才能进 per-KB 覆盖）。
+ * 个图片切片摄取键、multimodal-shared-space 补 1 个真视觉向量摄取键、2026-10-22 image-retrieval-threshold-gate 补 1
+ * 个图像同图判别阈值键后的口径）；③P-ac per-KB 12 键白名单全集 ⊆ OPERATIONAL 档（运营调参键才能进 per-KB 覆盖）。
  *
  * <p>注册表新增键未登记定级时默认落 OPERATIONAL——本 census 的分区/计数断言会先红，提示同步登记定级封闭 表并更新 docs/dynamic-config-keys.md
  * 的「权限档位」列（改档需 owner 拍板）。
@@ -28,19 +28,19 @@ class ConfigKeyTierPolicyTest {
       new DynamicConfigKeyRegistry(new ObjectMapper());
 
   @Test
-  @DisplayName("census：注册表 67 键与三档封闭集完全分区，计数恰 35/27/5")
+  @DisplayName("census：注册表 68 键与三档封闭集完全分区，计数恰 36/27/5")
   void registryPartitionsExactlyIntoTiers() {
     Collection<ConfigKeyDefinition> defs = REGISTRY.definitions();
-    assertThat(defs).hasSize(67);
+    assertThat(defs).hasSize(68);
 
     Set<String> all = new LinkedHashSet<>();
     all.addAll(ConfigKeyTierPolicy.operationalKeys());
     all.addAll(ConfigKeyTierPolicy.costKeys());
     all.addAll(ConfigKeyTierPolicy.structuralKeys());
-    assertThat(ConfigKeyTierPolicy.operationalKeys()).hasSize(35);
+    assertThat(ConfigKeyTierPolicy.operationalKeys()).hasSize(36);
     assertThat(ConfigKeyTierPolicy.costKeys()).hasSize(27);
     assertThat(ConfigKeyTierPolicy.structuralKeys()).hasSize(5);
-    assertThat(all).hasSize(67);
+    assertThat(all).hasSize(68);
 
     Set<String> registryKeys = new LinkedHashSet<>();
     for (ConfigKeyDefinition def : defs) {

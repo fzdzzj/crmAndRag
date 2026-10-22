@@ -116,7 +116,8 @@ class KnowledgeRetrievalServiceImplTest {
                 return List.of(hit("10", "销售合同流程", 0.9d), hit("11", "回款计划", 0.7d));
               }
               if (Arrays.equals(request.queryVector(), imageVector)) {
-                return List.of(hit("11", "回款计划", 0.9d));
+                // image-retrieval-threshold-gate：图像路走独立同图阈值（默认 0.9944），命中分须为同图档才召回
+                return List.of(hit("11", "回款计划", 0.9995d));
               }
               return List.of();
             });

@@ -532,6 +532,25 @@ public class DynamicConfigKeyRegistry {
             false,
             100),
 
+        // image-retrieval-threshold-gate 任务 1.1：图像路同图判别阈值独立成键（不再复用文本 rag.retrieval.minScore）。
+        // 默认值 = 定标锚 docs/rag-quality/image-threshold-calibration-v1.json 的 recommendedThreshold
+        // 0.9944。
+        def(
+            objectMapper,
+            "rag.retrieval.image-similarity-threshold",
+            "rag.retrieval",
+            ConfigValueType.DOUBLE,
+            "0.9944",
+            "图像路同图判别阈值（0~1，默认 0.9944 = 定标锚判别阈值）：cosine ≥ 阈值 = 高置信同图正常召回；"
+                + "[近似同图下限 0.9887, 阈值) = 近似同图召回但重排后降权标记；< 0.9887 = 异图过滤。"
+                + "消费方 KnowledgeRetrievalServiceImpl#recallImage + ImageSimilarityGate；"
+                + "与文本 rag.retrieval.minScore（0.20）互不影响，越界值回落 0.9944。",
+            "0.0",
+            "1.0",
+            Set.of(),
+            false,
+            100),
+
         // register-rag-context-query-dynamic-keys（2026-09-25）：文档已有、此前不在白名单的三个
         // 检索周边命名空间补登记。默认值 = 各消费点代码内联缺省；登记只补 schema 护栏，不改任何读取路径。
 

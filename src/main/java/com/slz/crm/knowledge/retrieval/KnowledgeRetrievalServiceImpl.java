@@ -260,12 +260,19 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
 
     Reranker reranker = activeReranker();
     List<RetrievalCandidate> textCandidates = reranker.rerank(retrievalQuery, fusedTextCandidates);
+    // image-retrieval-threshold-gate 任务 2.1：图像路改传独立同图阈值（不再复用文本 minScore 0.20）；
+    // 任务 2.2：近重复图降权放在重排之后（默认重排器用 hit.score 做 min-max，会抹平召回期打折）。
     List<RetrievalCandidate> imageCandidates =
         hasImageVector
-            ? reranker.rerank(
-                retrievalQuery,
-                recallImage(
-                    query.imageVector(), knowledgeBaseIds, category, candidateLimit, minScore))
+            ? ImageSimilarityGate.downWeightNearDuplicates(
+                reranker.rerank(
+                    retrievalQuery,
+                    recallImage(
+                        query.imageVector(),
+                        knowledgeBaseIds,
+                        category,
+                        candidateLimit,
+                        configResolver.resolveImageSimilarityThreshold(singleKbId))))
             : List.of();
     List<RetrievalCandidate> candidates =
         configResolver.fuseRoutes(textCandidates, imageCandidates, singleKbId).stream()
@@ -396,6 +403,11 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
    * <p>空间选择：已装配 {@link ImageVectorStore} → 查 image 集合（视觉向量维度可 ≠ 文本维度）；未装配（裁剪装配/兼容构造） → 退回文本
    * 集合的旧单空间行为，升级前调用点零变化。
    *
+   * <p>阈值（image-retrieval-threshold-gate 任务 2.2）：<b>不复用文本 {@code minScore}</b>，改用 {@code
+   * rag.retrieval.image-similarity-threshold}（默认 0.9944）。向量库按「近似同图下限」{@link
+   * ImageSimilarityGate#effectiveFloor(double)}（0.9887）检索，再由 {@link ImageSimilarityGate#gate}
+   * 三档分档：同图 正常召回 / 近似同图召回并打降权标记（重排后降权，见主链调用点） / 异图（&lt; 下限）过滤。
+   *
    * <p>失败语义：图像路是增强路，任何失败（集合不可达、查询向量维度与 image 集合不符——例如命中缓存里升级前的文本降维向量）一律降级为
    * 空图片候选，文本检索与最终答案不受影响；绝不因图片路失败而拒绝整次检索。
    */
@@ -405,12 +417,15 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
       List<Long> knowledgeBaseIds,
       String category,
       int candidateLimit,
-      double minScore) {
+      double similarityThreshold) {
     CrmVectorStore imageSpace = imageVectorStore == null ? vectorStore : imageVectorStore;
+    double floor = ImageSimilarityGate.effectiveFloor(similarityThreshold);
     List<RetrievalCandidate> result;
     try {
       result =
-          recallIn(imageSpace, queryVector, knowledgeBaseIds, category, candidateLimit, minScore);
+          ImageSimilarityGate.gate(
+              recallIn(imageSpace, queryVector, knowledgeBaseIds, category, candidateLimit, floor),
+              similarityThreshold);
     } catch (Exception exception) {
       LOG.warn("图片视觉路召回失败，降级为无图片候选（文本检索继续）", exception);
       result = List.of();
