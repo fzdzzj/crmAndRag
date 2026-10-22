@@ -1,18 +1,7 @@
-import type PERMISSIONS from '@/constants/premission';
-
-// 从权限常量中提取所有权限名称
-type PermissionCategory = typeof PERMISSIONS;
-type CategoryValue = PermissionCategory[keyof PermissionCategory];
-
-// 从 mainPermissions 和 subPermissions 中提取
-type MainPermissions = CategoryValue['mainPermissions'];
-type SubPermissions = CategoryValue['subPermissions'];
-type AllMainPermissions = MainPermissions[number];
-type AllSubPermissions = SubPermissions[number];
-type PermissionItem = AllMainPermissions | AllSubPermissions;
-
-// 提取所有 permissionsName 作为联合类型
-export type PermissionName = PermissionItem['permissionsName'];
+// 权限名称：来源已从「冻结快照字面量联合」放宽为 string。
+// 快照（utils/tutorial/mockPermissionCatalog.ts）只是演示数据，用它推导类型等于用过期数据换假安全；
+// 运行时真相由 `GET /permission/list`（后端 PermissionOperates 枚举）提供。
+export type PermissionName = string;
 
 // 权限名称数组类型
 export type PermissionNameArray = Array<PermissionName>;

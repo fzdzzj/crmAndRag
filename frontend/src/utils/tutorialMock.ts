@@ -5,7 +5,7 @@ import axios, {
 } from 'axios';
 import { message } from 'ant-design-vue';
 import { axiosInstance } from '@/api/apiClient';
-import permissionCatalog from '@/constants/premission';
+import permissionCatalog from '@/utils/tutorial/mockPermissionCatalog';
 
 /**
  * 教程演示数据：教程进行期间把关键业务接口拦截到内存数据集，
