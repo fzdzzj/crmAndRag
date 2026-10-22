@@ -1,7 +1,11 @@
 <template>
-  <Menu v-model:selected-keys="selectedKeys" style="border: none" data-tour="sidebar-nav">
+  <Menu
+    v-model:selected-keys="selectedKeys"
+    style="border: none"
+    data-tour="sidebar-nav"
+  >
     <Menu.Item
-      v-for="([key, item]) in visibleMenuItems"
+      v-for="[key, item] in visibleMenuItems"
       :key="key"
       :active-key="key"
       :data-tour="`menu-${key}`"
@@ -9,7 +13,7 @@
     >
       <router-link
         :to="{
-          path:`/${key}`
+          path: `/${key}`,
         }"
       >
         <span>{{ item.title }}</span>
@@ -46,6 +50,15 @@ const visibleMenuItems = computed(() => {
     // 权限管理/组织架构菜单必须拿到权限数据后才显示，避免无权限角色短暂看到
     if (key === 'privilege' || key === 'org') {
       return names.some((name) => name.startsWith('system:'));
+    }
+    // AI 用量为超管专享（810 AI_TOKEN_USAGE_VIEW）：只认新权限，不套模块前缀；
+    // 兼容历史上 permissions_name 带模块前缀的库（xxx:AI_TOKEN_USAGE_VIEW）
+    if (key === 'token-usage') {
+      return names.some(
+        (name) =>
+          name === 'AI_TOKEN_USAGE_VIEW' ||
+          name.endsWith(':AI_TOKEN_USAGE_VIEW'),
+      );
     }
     if (!hasPermissionData) {
       return true;
