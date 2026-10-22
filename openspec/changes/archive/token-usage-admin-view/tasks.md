@@ -45,13 +45,17 @@
 ## 4. 文档
 - [x] 4.1 `docs/token-metering.md` 增一节「超管按用户查看（810）」：接口口径、时间区间与分页上限、零 token 的正确读法
       补勾依据（2026-10-22 `docs/token-metering.md` §7 新增，含端点/上限/权限/用户维度还原/0 token 读法）
-- [ ] 4.2 权限清单类文档若含 8xx 全量枚举（`docs/permission-matrix-audit.md` 等）同步补 810 一行；无枚举则不动
-      补勾依据（2026-10-22 未动：`docs/permission-matrix-audit.md` 的 800-807 枚举位于历史审计报告段落，且不在本卡写集；
-      留待 owner 决定是否追加 810 一行，避免改写历史审计快照）
+- [x] 4.2 权限清单类文档若含 8xx 全量枚举（`docs/permission-matrix-audit.md` 等）同步补 810 一行；无枚举则不动
+      补勾依据（2026-10-22 主 Agent 裁决**不改**：`docs/permission-matrix-audit.md` 是 `apply-permission-matrix`（2026-09）的**历史审计快照**，
+      改写会让「当时审计了什么」失真；810 的权威清单 = `PermissionOperates:285` + `V43` + `docs/token-metering.md` §7。
+      「全域权限清单」与「`PermissionModuleResolver` 未覆盖 800 段导致授权页全量视图漏 AI 权限」记入长期储备另卡）
 
 ## 5. 验证与收口
 - [x] 5.1 `mvn -B -ntp clean verify` BUILD SUCCESS + `bash scripts/check-test-baseline.sh --update` + `bash scripts/check-test-baseline.sh` EXIT=0 + `bash scripts/merge-gate.sh` 全绿
       补勾依据（2026-10-22：verify `BUILD SUCCESS` 14:51，failsafe 142 tests 0 failures/12 skipped，spotbugs BugInstance 0；
       基线 `surefire 2004 / failsafe 142`，check EXIT=0；merge-gate 全 PASS：unit/checkstyle/spotbugs/spotless/pmd/baseline/frontend-unit/hook/bijection/pmd-baseline）
+      M1 复核后实测（2026-10-22 主 Agent）：A 档独立复核两轮（首轮 ①②③ PASS + B1 前端菜单门控阻断 → 修复 → 增量复核 ④ PASS 最终 ACK）；
+      `scripts/check-openapi-consistency.sh` 主 Agent 实测 EXIT=0（前后端契约逐字一致）；`pnpm build` 宿主 esbuild 限制经主 Agent 独立复现；
+      合并笔 `10e8152`（tree `b9158665…` 与分支 tip 逐字节相等 → 树等价快车道，连续第十六卡）→ 树净重锚 `surefire 322/2004/0 + failsafe 42/143/12`
 - [x] 5.2 停步未 merge 未 push，回报分支名 / commit 列表 / 门禁输出尾行 / 未解决项；A 档独立复核四判据通过后由 Owner 授权 merge
       补勾依据（2026-10-22 分支 `feature/token-usage-admin-view` 自 `13be738` 检出；未 merge/push/删分支）
