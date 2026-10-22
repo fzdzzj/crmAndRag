@@ -1,0 +1,207 @@
+{
+  "suiteVersion" : "PDF-IMAGE-SUITE-1.0",
+  "generatedAt" : "2026-10-22T01:10:48.871115100Z",
+  "optIn" : "RAG_VISION_EMBED_REAL=1 + DASHSCOPE_API_KEY 显式真跑；语料 = 程序化确定性 PDF（3 页各 1 图：结构图 / 异图柱状图 / 纯白易负例），走生产 PdfImageSliceIngestService#buildSlices（imageVectorEnabled 开）→ 真 embedImage 暂存 → ImageVectorFlushSupport 落 image 集合→ 生产 recallImage query-by-image；文本对照路 = 同一批图由真 VLM 产出的描述文本经真文本 embedding 查文本集合",
+  "topK" : 5,
+  "sameImageCosineThreshold" : 0.9,
+  "crossImageCosineThreshold" : 0.9,
+  "judgement" : {
+    "sameImageHit" : "sameImageCosine >= sameImageCosineThreshold",
+    "crossImageRejected" : "crossImageCosine < crossImageCosineThreshold",
+    "casePass" : "sameImageHit && crossImageRejected && (sameImageCosine - crossImageCosine) >= 0",
+    "口径来源" : "ImageCrossModalEvaluator（上一卡 frame 复用，不新造判据）"
+  },
+  "corpus" : [ {
+    "key" : "pdf-structure",
+    "pageNo" : 1,
+    "expectedContent" : "蓝色结构示意图：三层圆角节点区块与箭头连线，标注 SLA 台账与工单分层",
+    "goldenChunkId" : "IMAGE:9001",
+    "chunkIdDerivation" : "IMAGE:{生产切片行主键}"
+  }, {
+    "key" : "pdf-bars",
+    "pageNo" : 2,
+    "expectedContent" : "蓝色柱状图：五根竖向柱体与两条坐标轴，标注月度工单量",
+    "goldenChunkId" : "IMAGE:9002",
+    "chunkIdDerivation" : "IMAGE:{生产切片行主键}"
+  }, {
+    "key" : "pdf-blank",
+    "pageNo" : 3,
+    "expectedContent" : "纯白底图：无任何图形、文字、网格或水印，整页接近纯白",
+    "goldenChunkId" : "IMAGE:9003",
+    "chunkIdDerivation" : "IMAGE:{生产切片行主键}"
+  } ],
+  "vision" : {
+    "path" : "pdf-vision-query-by-image",
+    "metrics" : {
+      "caseCount" : 2,
+      "sameImageHitRate" : 1.0,
+      "crossImageRejectionRate" : 1.0,
+      "crossImageFalsePositiveRate" : 0.0,
+      "meanSameImageCosine" : 1.0,
+      "meanCrossImageCosine" : 0.5473838705259706,
+      "meanDiscriminationMargin" : 0.4526161294740295,
+      "retrievalRecallAtK" : 1.0,
+      "retrievalCrossImageRate" : 1.0,
+      "passRate" : 1.0
+    },
+    "cases" : [ {
+      "id" : "PG-01",
+      "queryImageKey" : "pdf-structure",
+      "sameImageKey" : "pdf-structure",
+      "crossImageKey" : "pdf-bars",
+      "sameImageChunkId" : "IMAGE:9001",
+      "crossImageChunkId" : "IMAGE:9002",
+      "sameImageCosine" : 1.0000000000000002,
+      "crossImageCosine" : 0.5473838705259706,
+      "discriminationMargin" : 0.4526161294740296,
+      "sameImageHit" : true,
+      "crossImageRejected" : true,
+      "sameImageRetrieved" : true,
+      "crossImageRetrieved" : true,
+      "pass" : true
+    }, {
+      "id" : "PG-02",
+      "queryImageKey" : "pdf-bars",
+      "sameImageKey" : "pdf-bars",
+      "crossImageKey" : "pdf-structure",
+      "sameImageChunkId" : "IMAGE:9002",
+      "crossImageChunkId" : "IMAGE:9001",
+      "sameImageCosine" : 1.0,
+      "crossImageCosine" : 0.5473838705259706,
+      "discriminationMargin" : 0.4526161294740294,
+      "sameImageHit" : true,
+      "crossImageRejected" : true,
+      "sameImageRetrieved" : true,
+      "crossImageRetrieved" : true,
+      "pass" : true
+    } ]
+  },
+  "textBaseline" : {
+    "path" : "pdf-text-caption-baseline",
+    "metrics" : {
+      "caseCount" : 2,
+      "sameImageHitRate" : 1.0,
+      "crossImageRejectionRate" : 1.0,
+      "crossImageFalsePositiveRate" : 0.0,
+      "meanSameImageCosine" : 0.9999999999999999,
+      "meanCrossImageCosine" : 0.681785284113897,
+      "meanDiscriminationMargin" : 0.31821471588610284,
+      "retrievalRecallAtK" : 1.0,
+      "retrievalCrossImageRate" : 1.0,
+      "passRate" : 1.0
+    },
+    "cases" : [ {
+      "id" : "PG-01",
+      "queryImageKey" : "pdf-structure",
+      "sameImageKey" : "pdf-structure",
+      "crossImageKey" : "pdf-bars",
+      "sameImageChunkId" : "IMAGE:9001",
+      "crossImageChunkId" : "IMAGE:9002",
+      "sameImageCosine" : 1.0,
+      "crossImageCosine" : 0.681785284113897,
+      "discriminationMargin" : 0.31821471588610295,
+      "sameImageHit" : true,
+      "crossImageRejected" : true,
+      "sameImageRetrieved" : true,
+      "crossImageRetrieved" : true,
+      "pass" : true
+    }, {
+      "id" : "PG-02",
+      "queryImageKey" : "pdf-bars",
+      "sameImageKey" : "pdf-bars",
+      "crossImageKey" : "pdf-structure",
+      "sameImageChunkId" : "IMAGE:9002",
+      "crossImageChunkId" : "IMAGE:9001",
+      "sameImageCosine" : 0.9999999999999998,
+      "crossImageCosine" : 0.681785284113897,
+      "discriminationMargin" : 0.31821471588610273,
+      "sameImageHit" : true,
+      "crossImageRejected" : true,
+      "sameImageRetrieved" : true,
+      "crossImageRetrieved" : true,
+      "pass" : true
+    } ]
+  },
+  "comparison" : {
+    "discriminationMarginDelta" : 0.13440141358792668,
+    "crossImageFalsePositiveRateDelta" : 0.0,
+    "sameImageHitRateDelta" : 0.0,
+    "retrievalRecallAtKDelta" : 0.0,
+    "note" : "差值为正表示真视觉路优于文本降维路；文本降维路把图编码成 VLM 描述文本，同骨架异图在其空间里会被拉近（误召），本卡在真 PDF 摄取链上量化这一位点"
+  },
+  "report" : {
+    "suiteVersion" : "PDF-IMAGE-SUITE-1.0",
+    "generatedAt" : "2026-10-22T01:10:48.871115100Z",
+    "metrics" : {
+      "caseCount" : 2,
+      "meanRecallAtK" : 1.0,
+      "meanPrecisionAtK" : 0.5,
+      "mrr" : 1.0,
+      "hitRate" : 1.0,
+      "meanCitationPrecision" : 0.0,
+      "meanAnswerConsistency" : 1.0,
+      "meanTtftMs" : 199.0,
+      "meanTotalLatencyMs" : 199.0,
+      "totalTokens" : 0,
+      "failureRate" : 0.0
+    },
+    "cases" : [ {
+      "id" : "PG-01",
+      "category" : "IMAGE",
+      "recallAtK" : 1.0,
+      "precisionAtK" : 0.5,
+      "reciprocalRank" : 1.0,
+      "hit" : true,
+      "citationPrecision" : 0.0,
+      "answerConsistency" : 1.0,
+      "ttftMs" : 212,
+      "totalLatencyMs" : 212,
+      "tokens" : 0,
+      "success" : true
+    }, {
+      "id" : "PG-02",
+      "category" : "IMAGE",
+      "recallAtK" : 1.0,
+      "precisionAtK" : 0.5,
+      "reciprocalRank" : 1.0,
+      "hit" : true,
+      "citationPrecision" : 0.0,
+      "answerConsistency" : 1.0,
+      "ttftMs" : 186,
+      "totalLatencyMs" : 186,
+      "tokens" : 0,
+      "success" : true
+    } ]
+  },
+  "pdfIngest" : {
+    "filename" : "pdf-ingest-image-baseline.pdf",
+    "pdfBytes" : 11090,
+    "pages" : 3,
+    "extractedImages" : 3,
+    "slicedImages" : 2,
+    "gateRejectedImages" : 1,
+    "stagedVisionVectors" : 2,
+    "ingestImageEmbeds" : 2,
+    "queryImageEmbeds" : 2,
+    "descriptionTextEmbeds" : 2,
+    "queryTextEmbeds" : 6,
+    "flushedImageVectors" : 2,
+    "imageObjectsStored" : 2,
+    "corpusFingerprint" : "03476620d39eb1e96f763fd5dc0245946c08551cc80d0ffd5091eff3b220710a",
+    "chain" : "PdfImageExtractor → PdfImageSliceIngestService#buildSlices(imageVectorEnabled) → ImageVisualVectorSupport#embedAndStage → ImageVectorFlushSupport#flush → image 集合 → KnowledgeRetrievalServiceImpl#recallImage",
+    "ingestedImageKeys" : "pdf-structure,pdf-bars",
+    "visionModel" : "qwen3-vl-plus"
+  },
+  "skippedCases" : [ {
+    "id" : "PG-03",
+    "queryImageKey" : "pdf-structure",
+    "crossImageKey" : "pdf-blank",
+    "reason" : "该图未进 image 集合（生产描述质量闸门剔除：描述不足 40 字或未过闸门），真链路上没有它的向量，拿它当异图探针等于自造向量，故本条不判分"
+  } ],
+  "visionEmbeddingCalls" : 4,
+  "textEmbeddingCalls" : 8,
+  "visionCallCalls" : 3,
+  "callCountSemantics" : "三计数由 CountingProvider 在真调用点累加，均非公式推导：visionCallCalls = VLM 描述外呼次数（含被质量闸门剔除的图——闸门在调用之后，纯白图也真调一次）；visionEmbeddingCalls = embedImage 次数 = 摄取侧暂存 2 + 查询侧 query-by-image 2；textEmbeddingCalls = 文本 embed 次数 = 描述编码 2 + 文本查询 6（含检索链内部再编码）",
+  "usageNote" : "视觉 embedding 与 VLM 描述端点均不回流 token usage，故 totalTokens 恒 0（同 VisionEmbeddingRealIT 实测）；成本以调用次数留痕",
+  "measuredAt" : "2026-10-22T01:10:49.030305Z"
+}
