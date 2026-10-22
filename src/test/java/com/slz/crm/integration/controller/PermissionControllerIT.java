@@ -90,7 +90,7 @@ class PermissionControllerIT extends AbstractMySqlIT {
   @Test
   @DisplayName("拥有分配权限606的非超管角色可查看全部权限列表与按角色查询权限")
   void shouldAllowPermissionListForRoleGrantedAssignPermission() throws Exception {
-    // 用例内 jdbcTemplate 种子（参照 normalUserToken() 模式）：sys_role id=2 + permissions id=606
+    // 用例内 jdbcTemplate 种子（参照 normalUserToken() 模式）：sys_role id=2 + permissions 606/800/810/900
     // + role_permissions(2,606) + sys_user roleId=2、status=1、roleId≠1 避开超管硬放行。
     // @Transactional 回滚隔离，不改共享 init_data.sql，零波及其他 IT。
     jdbcTemplate.update("DELETE FROM sys_user WHERE id = ?", TestRole.NORMAL.getUserId());
@@ -106,6 +106,22 @@ class PermissionControllerIT extends AbstractMySqlIT {
         606L,
         "SYSTEM_ASSIGN_PERMISSION",
         "分配权限");
+    // close-permission-module-gap：AI / 知识库桶要有真实权限行才可断言（init_data.sql 会整表清空 permissions）。
+    jdbcTemplate.update(
+        "INSERT INTO permissions (id, permissions_name, permissions_desc) VALUES (?, ?, ?)",
+        800L,
+        "AI_ASSIST_VIEW",
+        "查看协助");
+    jdbcTemplate.update(
+        "INSERT INTO permissions (id, permissions_name, permissions_desc) VALUES (?, ?, ?)",
+        810L,
+        "AI_TOKEN_USAGE_VIEW",
+        "查看AI用量");
+    jdbcTemplate.update(
+        "INSERT INTO permissions (id, permissions_name, permissions_desc) VALUES (?, ?, ?)",
+        900L,
+        "KNOWLEDGE_ADMIN_MANAGE",
+        "知识库管理");
     jdbcTemplate.update(
         "INSERT INTO role_permissions (role_id, permissions_id) VALUES (?, ?)", 2L, 606L);
     jdbcTemplate.update(
@@ -124,30 +140,8 @@ class PermissionControllerIT extends AbstractMySqlIT {
     mockMvc
         .perform(get("/permission/list").header("token", token))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.code").value(1));
-
-    // close-permission-module-gap：目录接口必须返回 10 个模块键（键名零漂移 + AI/知识库/其他三桶新入）。
-    // 用例内补种 800/810/900（init_data.sql 会清空 permissions 表），使 AI/知识库桶有真实权限行可断言。
-    jdbcTemplate.update(
-        "INSERT INTO permissions (id, permissions_name, permissions_desc) VALUES (?, ?, ?)",
-        800L,
-        "AI_ASSIST_VIEW",
-        "查看协助");
-    jdbcTemplate.update(
-        "INSERT INTO permissions (id, permissions_name, permissions_desc) VALUES (?, ?, ?)",
-        810L,
-        "AI_TOKEN_USAGE_VIEW",
-        "查看AI用量");
-    jdbcTemplate.update(
-        "INSERT INTO permissions (id, permissions_name, permissions_desc) VALUES (?, ?, ?)",
-        900L,
-        "KNOWLEDGE_ADMIN_MANAGE",
-        "知识库管理");
-
-    mockMvc
-        .perform(get("/permission/list").header("token", token))
-        .andExpect(status().isOk())
         .andExpect(jsonPath("$.code").value(1))
+        // 目录接口必须返回 10 个模块键：7 个既有键名零漂移 + AI / 知识库 / 其他三桶。
         .andExpect(jsonPath("$.data", hasKey("客户管理模块权限")))
         .andExpect(jsonPath("$.data", hasKey("销售管理模块权限")))
         .andExpect(jsonPath("$.data", hasKey("财务管理模块权限")))
