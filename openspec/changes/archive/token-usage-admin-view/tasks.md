@@ -33,11 +33,12 @@
       补勾依据（2026-10-22 页面 Alert 文案 + §1/§6 出处；调用次数与失败次数并列为表格列与头部卡片）
 - [x] 3.4 hooks/接口层：新增 `frontend/src/hooks/useTokenUsage.ts`（查询封装）+ 类型定义，不引新依赖
       补勾依据（2026-10-22 hook 用既有 `axiosInstance`（openapi SDK 为生成物、本卡不重生成）；零依赖变更，`pnpm lint:check` + `pnpm type-check:check` 绿）
-- [ ] 3.5 `pnpm lint:check` + `pnpm type-check:check` + `pnpm build` 全绿；`typed-router.d.ts` 等生成物不提交
-      补勾依据（2026-10-22：lint:check 与 type-check:check 绿；**`pnpm build` 未绿** ——
-      宿主环境 esbuild 删除临时文件被拒：`[vite:esbuild-transpile] remove C:\...\Temp\esbuild-<hex>: Access is denied`，
-      3 次重试（默认 TEMP / 工作区 TEMP / 输出重定向）均同错；已将输出重定向与最小 `esbuild.transform` 探针排除代码因素。
-      等价验证：`pnpm exec vite build --minify false --target esnext`（跳过同插件）`✓ built in 26.69s`，说明打包图无代码错误。
+- [x] 3.5 `pnpm lint:check` + `pnpm type-check:check` + `pnpm build` 全绿；`typed-router.d.ts` 等生成物不提交
+      补勾依据（2026-10-22：lint:check 与 type-check:check 绿；本地 `pnpm build` 被宿主 esbuild 删除临时二进制拒绝阻断——
+      主 Agent 独立复现同一错，并额外实测 `ESBUILD_BINARY_PATH` 指定内置二进制后仍同错，故确认属宿主文件锁/杀软，非代码；
+      等价验证 `vite build --minify false --target esnext` 通过。**最终以 CI 定案：Run 39786449547（#165）Frontend job success**
+      —— CI 上 `生产构建` 与 `gzip 体积预算校验` 全绿；该轮首跑曾因 app 桶 +0.24 KiB 超预算红，
+      Owner 授权按 CI 实测 192.72 KiB×1.02 回填 `frontend/bundle-budget.json` app 桶 197104→201310B（$comment 留痕）后复绿。
       生成物 `frontend/typed-router.d.ts` 已 `git checkout --` 还原，未提交）
 - [x] 3.5 附：`frontend/openapi.yaml` 由 `scripts/check-openapi-consistency.sh` 的导出机制同步（新增 175 行，纯增量），否则 `OpenApiContractExportTest` 必红
       补勾依据（2026-10-22 `Compare-Object` 仅 175 行 `=>` 新增、0 删除；未跑 `pnpm gen:api`，避免提交 SDK 生成物）
@@ -58,4 +59,7 @@
       `scripts/check-openapi-consistency.sh` 主 Agent 实测 EXIT=0（前后端契约逐字一致）；`pnpm build` 宿主 esbuild 限制经主 Agent 独立复现；
       合并笔 `10e8152`（tree `b9158665…` 与分支 tip 逐字节相等 → 树等价快车道，连续第十六卡）→ 树净重锚 `surefire 322/2004/0 + failsafe 42/143/12`
 - [x] 5.2 停步未 merge 未 push，回报分支名 / commit 列表 / 门禁输出尾行 / 未解决项；A 档独立复核四判据通过后由 Owner 授权 merge
-      补勾依据（2026-10-22 分支 `feature/token-usage-admin-view` 自 `13be738` 检出；未 merge/push/删分支）
+      补勾依据（2026-10-22 分支 `feature/token-usage-admin-view` 自 `13be738` 检出、执行端未 merge/push/删分支；
+      **M1 收口（主 Agent，Owner 授权后）**：merge --no-ff 笔 `10e8152`（零冲突、分支永久保留）→ tree `b9158665…` 与分支 tip 逐字节相等（连续第十六卡走树等价快车道）
+      → 归档笔 `163ada3` → 树净 `--update` 写 `source-revision=163ada3`（surefire 322/2004/0 + failsafe 42/143/12）→ 基线收口 `1241ee5`
+      → CI 首轮（Run 39783987308）前端体积预算红 → 修正 `3ed1b07` → **CI Run 39786449547（#165）6/6 全绿**）
