@@ -1,6 +1,7 @@
 package com.slz.crm.unit.knowledge.retrieval;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -26,6 +27,7 @@ import com.slz.crm.platform.contract.UserContextHolder;
 import com.slz.crm.platform.contract.VectorSearchHit;
 import com.slz.crm.platform.contract.VectorSearchRequest;
 import com.slz.crm.server.ai.port.KnowledgeRetrievalPort;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -39,13 +41,14 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * image-retrieval-threshold-gate 任务 3.1：图像路独立同图阈值 + 三档分档单测。
+ * image-retrieval-threshold-gate 任务 3.1 + image-near-duplicate-band-weight：图像路独立同图阈值 + 三档分档 +
+ * 近似带（NEAR_HIGH/MID/LOW）降权单测。
  *
- * <p>覆盖：①三档边界（阈值 / 近似下限 0.9887 / 异图下限以下）；②近重复图「不误杀但降权」； ③文本路 minScore 仍为 0.20
- * 且与图像路阈值完全解耦（零回归）；④运营改独立键即改档界； ⑤异图过滤。
+ * <p>覆盖：①三档边界（阈值 / 近似下限 0.9887 / 异图下限以下）；②近重复图「不误杀但按落带降权」； ③文本路 minScore 仍为 0.20
+ * 且与图像路阈值完全解耦（零回归）；④运营改独立键即改档界（含段边界随锚缩放）； ⑤异图过滤；⑥band 缺失回落 0.5、重复降权幂等。
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("图像路同图阈值三档闸门（image-retrieval-threshold-gate）")
+@DisplayName("图像路同图阈值三档闸门 + 近似带降权（image-near-duplicate-band-weight）")
 class ImageSimilarityThresholdGateTest {
 
   private static final float[] TEXT_VECTOR = {1F, 0F};
@@ -137,7 +140,7 @@ class ImageSimilarityThresholdGateTest {
   }
 
   @Test
-  @DisplayName("downWeightNearDuplicates()：仅近似档乘 0.5，同图/未标记候选原样")
+  @DisplayName("downWeightNearDuplicates()：近似档按 band 降权（缺 band 回落 0.5），同图/未标记候选原样")
   void downWeightOnlyNearDuplicates() {
     List<RetrievalCandidate> downWeighted =
         ImageSimilarityGate.downWeightNearDuplicates(
@@ -155,7 +158,7 @@ class ImageSimilarityThresholdGateTest {
   // ---------------- 2. 近重复图不误杀 + 降权 ----------------
 
   @Test
-  @DisplayName("近重复图（0.992，低于阈值）仍被召回，但降权一半（0.18→0.09）—— 单阈值不再误杀")
+  @DisplayName("近似同图中档（0.992，低于阈值）仍被召回，降权 0.6（0.18→0.108）—— 单阈值不再误杀")
   void nearDuplicateRecalledButDownWeighted() {
     when(embeddingService.embed(anyString())).thenReturn(TEXT_VECTOR);
     when(vectorStore.search(any(VectorSearchRequest.class))).thenReturn(List.of());
@@ -167,8 +170,9 @@ class ImageSimilarityThresholdGateTest {
 
     assertThat(result.sources()).extracting(SourceReference::chunkId).containsExactly("502");
     // 图像路单候选：向量分归一化 1.0 × 向量权重 0.6（单候选 BM25 归一化为 0）= 0.6
-    // → 近似档降权 0.5 = 0.3 → 图片路路由权重 0.3 = 0.09（被误杀则此处根本没有 source）
-    assertThat(result.sources().getFirst().relevanceScore()).isEqualTo(0.09D);
+    // 0.992 落在间隔带中 1/3（NEAR_MID）→ ×0.6 = 0.36 → 图片路路由权重 0.3 = 0.108
+    // （同一命中若落低档 ×0.5 则为 0.09；被误杀则此处根本没有 source）
+    assertThat(result.sources().getFirst().relevanceScore()).isEqualTo(0.108D);
   }
 
   @Test
@@ -246,6 +250,221 @@ class ImageSimilarityThresholdGateTest {
     assertThat(result.sources().getFirst().relevanceScore()).isEqualTo(0.18D);
   }
 
+  // ---------------- 5. 近似带三档（image-near-duplicate-band-weight） ----------------
+
+  @Test
+  @DisplayName("三档权重不变量：LOW == 旧 0.5、严格单调、全部落在 [0.5, 1.0)")
+  void bandWeightsAreStrictlyMonotonicAndLowestNeverRelaxes() {
+    assertThat(ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_LOW).isEqualTo(0.5D);
+    assertThat(ImageSimilarityGate.NEAR_DUPLICATE_DOWN_WEIGHT)
+        .isEqualTo(ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_LOW);
+    assertThat(ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_LOW)
+        .isLessThan(ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_MID);
+    assertThat(ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_MID)
+        .isLessThan(ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_HIGH);
+    assertThat(ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_HIGH).isLessThan(1.0D);
+    assertThat(ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_HIGH).isGreaterThanOrEqualTo(0.5D);
+  }
+
+  @Test
+  @DisplayName("落带边界：floor / floor+Δ/3 / floor+2Δ/3 / threshold 各取 ±1e-6，边界值归上一档")
+  void bandBoundariesAtDefaultThreshold() {
+    double lowUpper = ImageSimilarityGate.lowBandUpperBound(DEFAULT_THRESHOLD);
+    double highLower = ImageSimilarityGate.highBandLowerBound(DEFAULT_THRESHOLD);
+    // 锚 0.9887/0.9944 的三等分点：0.9906、0.9925——由 floor/threshold 推导，无第二处常量可同步
+    assertThat(lowUpper).isCloseTo(0.9906D, within(1.0E-12D));
+    assertThat(highLower).isCloseTo(0.9925D, within(1.0E-12D));
+    assertThat(lowUpper - ImageSimilarityGate.NEAR_DUPLICATE_FLOOR)
+        .isCloseTo(highLower - lowUpper, within(1.0E-12D));
+
+    // 下限：恰等于 floor 归低档（闭区间），再低 1e-6 就是异图（无带）
+    assertThat(
+            ImageSimilarityGate.bandOf(ImageSimilarityGate.NEAR_DUPLICATE_FLOOR, DEFAULT_THRESHOLD))
+        .isEqualTo(ImageSimilarityGate.BAND_NEAR_LOW);
+    assertThat(
+            ImageSimilarityGate.bandOf(
+                ImageSimilarityGate.NEAR_DUPLICATE_FLOOR - 1.0E-6D, DEFAULT_THRESHOLD))
+        .isNull();
+
+    // 低/中边界：±1e-6 分属低/中档，边界值本身归中档（>=）
+    assertThat(ImageSimilarityGate.bandOf(lowUpper - 1.0E-6D, DEFAULT_THRESHOLD))
+        .isEqualTo(ImageSimilarityGate.BAND_NEAR_LOW);
+    assertThat(ImageSimilarityGate.bandOf(lowUpper, DEFAULT_THRESHOLD))
+        .isEqualTo(ImageSimilarityGate.BAND_NEAR_MID);
+    assertThat(ImageSimilarityGate.bandOf(lowUpper + 1.0E-6D, DEFAULT_THRESHOLD))
+        .isEqualTo(ImageSimilarityGate.BAND_NEAR_MID);
+
+    // 中/高边界同理
+    assertThat(ImageSimilarityGate.bandOf(highLower - 1.0E-6D, DEFAULT_THRESHOLD))
+        .isEqualTo(ImageSimilarityGate.BAND_NEAR_MID);
+    assertThat(ImageSimilarityGate.bandOf(highLower, DEFAULT_THRESHOLD))
+        .isEqualTo(ImageSimilarityGate.BAND_NEAR_HIGH);
+    assertThat(ImageSimilarityGate.bandOf(highLower + 1.0E-6D, DEFAULT_THRESHOLD))
+        .isEqualTo(ImageSimilarityGate.BAND_NEAR_HIGH);
+
+    // 阈值边界：阈值 −1e-6 = 高档；恰等于阈值 = 同图（无带）
+    assertThat(ImageSimilarityGate.bandOf(DEFAULT_THRESHOLD - 1.0E-6D, DEFAULT_THRESHOLD))
+        .isEqualTo(ImageSimilarityGate.BAND_NEAR_HIGH);
+    assertThat(ImageSimilarityGate.bandOf(DEFAULT_THRESHOLD, DEFAULT_THRESHOLD)).isNull();
+  }
+
+  @Test
+  @DisplayName("缩放性：阈值改 0.9995（floor 仍 0.9887）后三等分边界随 Δ 移动，同一分数换档")
+  void bandBoundariesScaleWithConfiguredThreshold() {
+    double threshold = 0.9995D;
+    assertThat(ImageSimilarityGate.effectiveFloor(threshold))
+        .isEqualTo(ImageSimilarityGate.NEAR_DUPLICATE_FLOOR);
+    assertThat(ImageSimilarityGate.lowBandUpperBound(threshold))
+        .isCloseTo(0.9923D, within(1.0E-12D));
+    assertThat(ImageSimilarityGate.highBandLowerBound(threshold))
+        .isCloseTo(0.9959D, within(1.0E-12D));
+
+    assertThat(ImageSimilarityGate.bandOf(0.991D, threshold))
+        .isEqualTo(ImageSimilarityGate.BAND_NEAR_LOW);
+    assertThat(ImageSimilarityGate.bandOf(0.9925D, threshold))
+        .isEqualTo(ImageSimilarityGate.BAND_NEAR_MID);
+    assertThat(ImageSimilarityGate.bandOf(0.996D, threshold))
+        .isEqualTo(ImageSimilarityGate.BAND_NEAR_HIGH);
+    assertThat(ImageSimilarityGate.bandOf(threshold, threshold)).isNull();
+    // 同一分数 0.992：默认阈值下是中档，0.9995 下边界上移到 0.9923 后落低档——无第二处同步点
+    assertThat(ImageSimilarityGate.bandOf(0.992D, DEFAULT_THRESHOLD))
+        .isEqualTo(ImageSimilarityGate.BAND_NEAR_MID);
+    assertThat(ImageSimilarityGate.bandOf(0.992D, threshold))
+        .isEqualTo(ImageSimilarityGate.BAND_NEAR_LOW);
+  }
+
+  @Test
+  @DisplayName("gate()：近似档按落带打 imageSimilarityBand，同图/异图不带；tier 仍为 NEAR_DUPLICATE")
+  void gateTagsNearDuplicateBands() {
+    List<RetrievalCandidate> gated =
+        ImageSimilarityGate.gate(
+            List.of(
+                candidate("same", 0.9999D),
+                candidate("high", 0.9935D),
+                candidate("mid", 0.9918D),
+                candidate("low", 0.9892D),
+                candidate("cross", 0.9886D)),
+            DEFAULT_THRESHOLD);
+
+    assertThat(gated)
+        .extracting(item -> item.hit().chunkId())
+        .containsExactly("same", "high", "mid", "low");
+    assertThat(gated.get(0).hit().metadata())
+        .containsEntry(ImageSimilarityGate.TIER_METADATA_KEY, ImageSimilarityGate.TIER_SAME_IMAGE)
+        .doesNotContainKey(ImageSimilarityGate.BAND_METADATA_KEY);
+    assertThat(gated.get(1).hit().metadata())
+        .containsEntry(
+            ImageSimilarityGate.TIER_METADATA_KEY, ImageSimilarityGate.TIER_NEAR_DUPLICATE)
+        .containsEntry(ImageSimilarityGate.BAND_METADATA_KEY, ImageSimilarityGate.BAND_NEAR_HIGH);
+    assertThat(gated.get(2).hit().metadata())
+        .containsEntry(ImageSimilarityGate.BAND_METADATA_KEY, ImageSimilarityGate.BAND_NEAR_MID);
+    assertThat(gated.get(3).hit().metadata())
+        .containsEntry(ImageSimilarityGate.BAND_METADATA_KEY, ImageSimilarityGate.BAND_NEAR_LOW);
+    // 召回期仍不改分（降权只发生在重排之后）
+    assertThat(gated)
+        .extracting(RetrievalCandidate::rerankScore)
+        .containsExactly(0.9999D, 0.9935D, 0.9918D, 0.9892D);
+  }
+
+  @Test
+  @DisplayName("兼容：band 缺失/未知值回落 0.5，imageSimilarityTier 仍为 NEAR_DUPLICATE")
+  void missingOrUnknownBandFallsBackToLowestWeight() {
+    assertThat(ImageSimilarityGate.weightOfBand(null)).isEqualTo(0.5D);
+    assertThat(ImageSimilarityGate.weightOfBand("")).isEqualTo(0.5D);
+    assertThat(ImageSimilarityGate.weightOfBand("NOT_A_BAND")).isEqualTo(0.5D);
+    assertThat(ImageSimilarityGate.weightOfBand(ImageSimilarityGate.BAND_NEAR_LOW)).isEqualTo(0.5D);
+    assertThat(ImageSimilarityGate.weightOfBand(ImageSimilarityGate.BAND_NEAR_MID)).isEqualTo(0.6D);
+    assertThat(ImageSimilarityGate.weightOfBand(ImageSimilarityGate.BAND_NEAR_HIGH))
+        .isEqualTo(0.75D);
+
+    // 旧候选（有 tier、无 band）仍降权一半，且 tier 标记不变
+    List<RetrievalCandidate> downWeighted =
+        ImageSimilarityGate.downWeightNearDuplicates(
+            List.of(
+                new RetrievalCandidate(
+                    tagged("legacy", ImageSimilarityGate.TIER_NEAR_DUPLICATE), 0.8D)));
+    assertThat(downWeighted.getFirst().hit().metadata())
+        .containsEntry(
+            ImageSimilarityGate.TIER_METADATA_KEY, ImageSimilarityGate.TIER_NEAR_DUPLICATE)
+        .doesNotContainKey(ImageSimilarityGate.BAND_METADATA_KEY);
+    assertThat(downWeighted.getFirst().rerankScore()).isEqualTo(0.4D);
+  }
+
+  @Test
+  @DisplayName("幂等：重复降权不叠加（已施加权重标记被识别，HIGH/LOW 两档均验证）")
+  void downWeightIsIdempotent() {
+    List<RetrievalCandidate> lowOnce =
+        ImageSimilarityGate.downWeightNearDuplicates(
+            List.of(
+                new RetrievalCandidate(
+                    tagged(
+                        "low",
+                        ImageSimilarityGate.TIER_NEAR_DUPLICATE,
+                        ImageSimilarityGate.BAND_NEAR_LOW),
+                    0.8D)));
+    assertThat(lowOnce.getFirst().rerankScore()).isEqualTo(0.4D);
+    List<RetrievalCandidate> lowTwice = ImageSimilarityGate.downWeightNearDuplicates(lowOnce);
+    assertThat(lowTwice.getFirst().rerankScore()).isEqualTo(0.4D);
+    assertThat(lowTwice.getFirst().hit().metadata())
+        .containsEntry(ImageSimilarityGate.BAND_WEIGHT_METADATA_KEY, 0.5D);
+
+    List<RetrievalCandidate> highOnce =
+        ImageSimilarityGate.downWeightNearDuplicates(
+            List.of(
+                new RetrievalCandidate(
+                    tagged(
+                        "high",
+                        ImageSimilarityGate.TIER_NEAR_DUPLICATE,
+                        ImageSimilarityGate.BAND_NEAR_HIGH),
+                    0.8D)));
+    assertThat(highOnce.getFirst().rerankScore()).isCloseTo(0.6D, within(1.0E-12D));
+    assertThat(ImageSimilarityGate.downWeightNearDuplicates(highOnce).getFirst().rerankScore())
+        .isCloseTo(0.6D, within(1.0E-12D));
+  }
+
+  @Test
+  @DisplayName("降权后 sources 内容保持、顺序不被二次打乱：same > high > mid > low > low-2")
+  void downWeightByBandKeepsSourcesAndOrder() {
+    when(embeddingService.embed(anyString())).thenReturn(TEXT_VECTOR);
+    when(vectorStore.search(any(VectorSearchRequest.class))).thenReturn(List.of());
+    when(imageVectorStore.search(any(VectorSearchRequest.class)))
+        .thenReturn(
+            List.of(
+                hit("low-2", 0.9892D),
+                hit("low", 0.99D),
+                hit("mid", 0.9918D),
+                hit("same", 0.9999D),
+                hit("high", 0.9935D)));
+
+    withDefaultConfig();
+    KnowledgeRetrievalPort.RetrievalResult result = retrieve();
+
+    List<SourceReference> sources = result.sources();
+    assertThat(sources)
+        .extracting(SourceReference::chunkId)
+        .containsExactly("same", "high", "mid", "low", "low-2");
+    assertThat(sources)
+        .extracting(SourceReference::relevanceScore)
+        .isSortedAccordingTo(Comparator.reverseOrder());
+    assertThat(sources.getLast().relevanceScore()).isGreaterThanOrEqualTo(0.0D);
+  }
+
+  @Test
+  @DisplayName("缩放性（经主链）：阈值 0.9995 时 0.996 落 NEAR_HIGH，降权 0.75（0.6×0.75×0.3）")
+  void configuredThresholdScalesBandAlongMainChain() {
+    configuredThreshold(0.9995D);
+    when(embeddingService.embed(anyString())).thenReturn(TEXT_VECTOR);
+    when(vectorStore.search(any(VectorSearchRequest.class))).thenReturn(List.of());
+    when(imageVectorStore.search(any(VectorSearchRequest.class)))
+        .thenReturn(List.of(hit("502", 0.996D)));
+
+    withConfig();
+    KnowledgeRetrievalPort.RetrievalResult result = retrieve();
+
+    assertThat(result.sources()).extracting(SourceReference::chunkId).containsExactly("502");
+    assertThat(result.sources().getFirst().relevanceScore()).isCloseTo(0.135D, within(1.0E-12D));
+  }
+
   // ---------------- helpers ----------------
 
   private KnowledgeRetrievalServiceImpl retrieveService() {
@@ -302,6 +521,17 @@ class ImageSimilarityThresholdGateTest {
   private static VectorSearchHit tagged(String chunkId, String tier) {
     return new VectorSearchHit(
         chunkId, "doc-1", 0.99D, "图像切片描述", Map.of(ImageSimilarityGate.TIER_METADATA_KEY, tier));
+  }
+
+  private static VectorSearchHit tagged(String chunkId, String tier, String band) {
+    return new VectorSearchHit(
+        chunkId,
+        "doc-1",
+        0.99D,
+        "图像切片描述",
+        Map.of(
+            ImageSimilarityGate.TIER_METADATA_KEY, tier,
+            ImageSimilarityGate.BAND_METADATA_KEY, band));
   }
 
   private static VectorSearchHit hit(String chunkId, double score) {
