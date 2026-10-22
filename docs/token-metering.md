@@ -78,8 +78,9 @@
 `pageNum ≥ 1`、`pageSize ∈ [1, 200]`。越界一律 VALIDATION(96007)，不新增错误码。
 
 **权限**：`PermissionOperates.AI_TOKEN_USAGE_VIEW(810L, "查看AI用量")`，迁移
-`V43__ai_token_usage_permission_seed.sql` **只种权限行、不授业务角色**——超管（roleId=1）由
-`PermissionsInterceptor` 直通，等价超管专享；放开给运营角色需另起授权迁移。前端菜单按"持有 810 才显示"。
+`V43__ai_token_usage_permission_seed.sql` 把 810 **只授权给 roleId=1（超级管理员角色）**——这行授权供前端
+`getMyPermissionGrouped`（联查 `role_permissions`）读取，菜单 gate 才成立；鉴权本身对 roleId=1 本就走
+`PermissionsInterceptor` 直通。业务角色零授权（口径同 V26/V27/V30/V33 的 `NOT IN (0,1,2)`），放开给运营角色需另起授权迁移。
 
 **用户维度还原**：表内 `user_id_ref` 前缀规则 `user:<id>`；返回体剥离前缀并批量回查 `sys_user.real_name`，
 `user:system` → 「系统」、`user:unknown` → 「未知来源」、查不到的 id → 「已删除用户(#id)」。`userRef` 原值保留供对账。

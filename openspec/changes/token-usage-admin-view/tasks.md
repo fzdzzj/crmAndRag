@@ -5,8 +5,8 @@
 ## 1. 权限与迁移
 - [x] 1.1 `PermissionOperates` 增 `AI_TOKEN_USAGE_VIEW(810L, "查看AI用量")`（AI 段 800–899，810 已实测为下一个可用号）
       补勾依据（2026-10-22 落笔前 `grep -rn "810L|AI_TOKEN_USAGE" src` 零命中；改后 `mvn -B -ntp clean verify` 编译含该枚举）
-- [x] 1.2 `V43__ai_token_usage_permission_seed.sql`：只 `INSERT IGNORE` 权限行 810（**不授业务角色**，超管直通即超管专享）；文件头写目的/影响表/回滚注意（回退 = 快照，不提供 DROP）
-      补勾依据（2026-10-22 `FlywayMigrationIT` 全链迁移 43 个版本 SUCCESS；`aiTokenUsagePermissionSeededWithoutRoleGrant` 断言 810 恰一行且 role_permissions 零授权）
+- [x] 1.2 `V43__ai_token_usage_permission_seed.sql`：`INSERT IGNORE` 权限行 810 + **仅授 roleId=1 一行**（超管角色，供前端 `getMyPermissionGrouped` 数据面；业务角色零授权）；文件头写目的/影响表/回滚注意（回退 = 快照，不提供 DROP；回退需同时清理 810/role 1 行）
+      补勾依据（2026-10-22 B1 修正后重跑 `mvn -B -ntp clean verify`：`FlywayMigrationIT.aiTokenUsagePermissionSeededForSuperAdminOnly` 断言 810 仅 role_id=1 一行、业务角色零授权；`PermissionControllerIT.adminMyPermissionContainsTokenUsageView` 断言超管 getMyPermission 含 810）
 - [x] 1.3 `PermissionCoverageScanner.CONTROLLER_REGISTRY` 登记新 controller（漏登记 `PermissionCoverageAuditIT` 直接红）
       补勾依据（2026-10-22 verify 中 `PermissionCoverageAuditIT` 绿；登记表 34+2+1=37，扫描数=登记数）
 

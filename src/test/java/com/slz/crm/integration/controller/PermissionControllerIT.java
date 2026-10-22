@@ -1,5 +1,6 @@
 package com.slz.crm.integration.controller;
 
+import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -127,5 +128,31 @@ class PermissionControllerIT extends AbstractMySqlIT {
         .perform(get("/permission/getByRole").header("token", token).param("roleId", "1"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.code").value(1));
+  }
+
+  /**
+   * B1 自证（token-usage-admin-view）：前端「AI 用量」菜单 gate 的数据面成立——超级管理员（roleId=1）的 {@code
+   * getMyPermissionGrouped} 走 {@code role_permissions} 联查，必须返回 810 AI_TOKEN_USAGE_VIEW。
+   *
+   * <p>正面证据，不是反向排除：V43 只把 810 授给 roleId=1，若漏了这行授权，菜单对超管也不可见。用例内按 V43 同一口径补种（init_data 会整表清空
+   * permissions/role_permissions），避免依赖 Spring IT 是否跑 Flyway。
+   */
+  @Test
+  @DisplayName("超级管理员 getMyPermission 返回 810 AI_TOKEN_USAGE_VIEW（AI 用量菜单数据面）")
+  void adminMyPermissionContainsTokenUsageView() throws Exception {
+    jdbcTemplate.update(
+        "INSERT IGNORE INTO permissions (id, permissions_name, permissions_desc)"
+            + " VALUES (810, 'AI_TOKEN_USAGE_VIEW', '查看AI用量')");
+    jdbcTemplate.update(
+        "INSERT IGNORE INTO role_permissions (role_id, permissions_id) VALUES (1, 810)");
+
+    mockMvc
+        .perform(
+            get("/permission/getMyPermission")
+                .header("token", RoleTokenSupport.tokenOf(TestRole.ADMIN)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(1))
+        .andExpect(
+            jsonPath("$.data.mainPermissions[*].permissionsName", hasItem("AI_TOKEN_USAGE_VIEW")));
   }
 }

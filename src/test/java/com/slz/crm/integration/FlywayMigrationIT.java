@@ -45,6 +45,9 @@ class FlywayMigrationIT {
               "1", "3", "4", "4.1", "5", "6", "21", "22", "23", "24", "25", "26", "27", "28", "29",
               "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43"));
 
+  /** V43 之前最后一个版本：用于在 V43 前补种「超管角色已存在」的生产前置（见 Order(1) 注释）。 */
+  private static final String VERSION_BEFORE_AI_TOKEN_USAGE_SEED = "42";
+
   /** 跨 lane 关键表抽样：确认各号段 DDL 真的建出了表（V1/V3/V4/V5/V6）。 */
   private static final List<String> SPOT_CHECK_TABLES =
       List.of(
@@ -81,6 +84,22 @@ class FlywayMigrationIT {
   @Test
   @Order(1)
   void allMigrationsApplyInOrderOnRealMySql() throws Exception {
+    // 分两段迁移，中间补种「超级管理员角色已存在」这一生产前置：
+    // V43 把 810 授权给 role_id=1，而 role_permissions 带 fk_rp_role 外键；纯 Flyway 空库里
+    // sys_role 无任何行（Admin 角色由应用启动的 DataInitializer 建），若一气跑完，V43 的 INSERT IGNORE
+    // 会因外键失败被静默跳过。生产/存量库在部署 V43 前 roleId=1 已存在，故这里先迁到 V42、种 role 1、
+    // 再迁 V43，复现真实前置而不是放宽断言。
+    Flyway upToBeforeV43 =
+        Flyway.configure()
+            .dataSource(mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword())
+            .locations("classpath:db/migration")
+            .baselineVersion("0")
+            .target(VERSION_BEFORE_AI_TOKEN_USAGE_SEED)
+            .validateOnMigrate(true)
+            .load();
+    int executedBeforeSeed = upToBeforeV43.migrate().migrationsExecuted;
+    seedSuperAdminRole();
+
     Flyway flyway =
         Flyway.configure()
             .dataSource(mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword())
@@ -90,7 +109,7 @@ class FlywayMigrationIT {
             .load();
 
     // 迁移全量脚本；任一脚本语法/顺序/撞号问题都会在此抛出
-    int executed = flyway.migrate().migrationsExecuted;
+    int executed = executedBeforeSeed + flyway.migrate().migrationsExecuted;
     assertEquals(EXPECTED_VERSIONS.size(), executed, "执行的迁移数与登记全集不符——是否漏跑或多了未登记脚本");
 
     // 已应用版本集合必须与登记全集完全一致
@@ -620,12 +639,13 @@ class FlywayMigrationIT {
   }
 
   /**
-   * V43 断言（token-usage-admin-view 任务 1.2）：810 AI_TOKEN_USAGE_VIEW 权限行种入且**不授任何业务角色**——超管 roleId=1
-   * 由拦截器直通，等价超管专享；后续放开授权须另起迁移。
+   * V43 断言（token-usage-admin-view 任务 1.2，B1 修正）：810 AI_TOKEN_USAGE_VIEW 权限行种入，且**仅授权给 role_id=1
+   * 一行**——roleId=1 是超级管理员角色，显式授权只为前端 getMyPermissionGrouped（联查 role_permissions）能拿到 810、菜单可见；拦截器对
+   * roleId=1 本就直通。业务角色（NOT IN (0,1,2)）必须零授权，与 V26/V27/V30/V33 口径一致。
    */
   @Test
   @Order(15)
-  void aiTokenUsagePermissionSeededWithoutRoleGrant() throws Exception {
+  void aiTokenUsagePermissionSeededForSuperAdminOnly() throws Exception {
     assumeTrue(mysql != null, "Docker 不可用时本用例随类跳过");
     try (Connection connection =
             DriverManager.getConnection(
@@ -639,8 +659,36 @@ class FlywayMigrationIT {
       assertTrue(perm.next() && perm.getLong(1) == 1, "V43 应种入 810 权限行恰一行");
       ResultSet granted =
           statement.executeQuery(
-              "SELECT COUNT(*) FROM role_permissions WHERE permissions_id = 810");
-      assertTrue(granted.next() && granted.getLong(1) == 0, "V43 不应给任何角色授权 810（超管直通）");
+              "SELECT COUNT(*), MIN(role_id), MAX(role_id) FROM role_permissions"
+                  + " WHERE permissions_id = 810");
+      assertTrue(granted.next(), "810 授权计数行缺失");
+      assertEquals(1, granted.getLong(1), "V43 应只给 1 个角色授权 810（roleId=1 超管）");
+      assertEquals(1L, granted.getLong(2), "810 唯一授权角色必须是 roleId=1");
+      assertEquals(1L, granted.getLong(3), "810 唯一授权角色必须是 roleId=1");
+      ResultSet businessGranted =
+          statement.executeQuery(
+              "SELECT COUNT(*) FROM role_permissions WHERE permissions_id = 810"
+                  + " AND role_id NOT IN (0, 1, 2)");
+      assertTrue(
+          businessGranted.next() && businessGranted.getLong(1) == 0,
+          "V43 不应给任何业务角色（roleId NOT IN (0,1,2)）授权 810");
+    }
+  }
+
+  /**
+   * V43 前置：超级管理员角色（roleId=1）在部署 V43 前已存在。
+   *
+   * <p>生产/存量库由 {@code DataInitializer} 早在应用运行期建好 Admin 角色；纯 Flyway 空库没有该行， 而 {@code
+   * role_permissions.fk_rp_role} 会拒绝 810→1 的授权。
+   */
+  private void seedSuperAdminRole() throws Exception {
+    try (Connection connection =
+            DriverManager.getConnection(
+                mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
+        Statement statement = connection.createStatement()) {
+      statement.executeUpdate(
+          "INSERT INTO sys_role (id, role_name, role_desc)"
+              + " VALUES (1, 'Admin', '超级管理员（V43 授权前置，生产由 DataInitializer 建）')");
     }
   }
 
