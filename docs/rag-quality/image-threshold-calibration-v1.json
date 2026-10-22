@@ -1,0 +1,621 @@
+{
+  "calibrationVersion" : "IMAGE-THRESHOLD-CALIBRATION-1.0",
+  "generatedAt" : "2026-10-22T05:19:43.548088500Z",
+  "optIn" : "RAG_VISION_EMBED_REAL=1 + DASHSCOPE_API_KEY 显式真跑；语料 = 9 张程序化确定性图（3 图型族 × 3 实例，对照）+ 真实公有领域 PDF 经生产 PdfImageExtractor 各取前 3 张位图（按 SHA-256 去重，同类=同一出版物，跨类=跨出版物）；每图经真视觉 embedding（multimodal-embedding-v1）编码两次，同图档 = 两次编码的余弦",
+  "corpora" : {
+    "programmatic" : {
+      "corpus" : "programmatic",
+      "sameImage" : {
+        "name" : "same-image",
+        "count" : 9,
+        "min" : 0.9999999999999998,
+        "mean" : 1.0,
+        "max" : 1.0000000000000002
+      },
+      "sameClass" : {
+        "name" : "same-class",
+        "count" : 9,
+        "min" : 0.916088548370404,
+        "mean" : 0.9535578689634521,
+        "max" : 0.9778706021580416
+      },
+      "crossClass" : {
+        "name" : "cross-class",
+        "count" : 27,
+        "min" : 0.5177708110520649,
+        "mean" : 0.6076179736115558,
+        "max" : 0.7288357200978414
+      },
+      "sameImageFloor" : 0.9999999999999998,
+      "crossImageCeiling" : 0.9778706021580416,
+      "separable" : true,
+      "recommendedThreshold" : 0.9889353010790207
+    },
+    "real-pdf" : {
+      "corpus" : "real-pdf",
+      "sameImage" : {
+        "name" : "same-image",
+        "count" : 9,
+        "min" : 0.9999999999999998,
+        "mean" : 1.0,
+        "max" : 1.0000000000000002
+      },
+      "sameClass" : {
+        "name" : "same-class",
+        "count" : 9,
+        "min" : 0.14939356348500374,
+        "mean" : 0.3095469769572143,
+        "max" : 0.8505126093701909
+      },
+      "crossClass" : {
+        "name" : "cross-class",
+        "count" : 27,
+        "min" : 0.09092702317542539,
+        "mean" : 0.2805756303092674,
+        "max" : 0.9887359400788237
+      },
+      "sameImageFloor" : 0.9999999999999998,
+      "crossImageCeiling" : 0.9887359400788237,
+      "separable" : true,
+      "recommendedThreshold" : 0.9943679700394117
+    }
+  },
+  "threshold" : {
+    "source" : "real-pdf",
+    "sameImageFloor" : 0.9999999999999998,
+    "crossImageCeiling" : 0.9887359400788237,
+    "recommendedThreshold" : 0.9943679700394117,
+    "decision" : "真实语料可分：判别阈值 = (同图下限 + 异图上限) / 2，落在严格区间 (异图上限, 同图下限] 内"
+  },
+  "judgement" : {
+    "sameImageHit" : "cosine >= recommendedThreshold",
+    "crossImageRejected" : "cosine < recommendedThreshold",
+    "contrast" : "程序化套件 ImageCrossModalSuite 的 0.90 保持不变（其语料是程序化 6 图，改它会动 image-baseline-v1 可比性）；本锚只服务真实语料"
+  },
+  "pairs" : [ {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-0",
+    "rightKey" : "flow-0",
+    "stratum" : "same-image",
+    "cosine" : 1.0000000000000002
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-0",
+    "rightKey" : "flow-1",
+    "stratum" : "same-class",
+    "cosine" : 0.969616768576917
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-0",
+    "rightKey" : "flow-2",
+    "stratum" : "same-class",
+    "cosine" : 0.9650151593298093
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-0",
+    "rightKey" : "bars-0",
+    "stratum" : "cross-class",
+    "cosine" : 0.5616701793558029
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-0",
+    "rightKey" : "bars-1",
+    "stratum" : "cross-class",
+    "cosine" : 0.524850483561233
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-0",
+    "rightKey" : "bars-2",
+    "stratum" : "cross-class",
+    "cosine" : 0.5177708110520649
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-0",
+    "rightKey" : "table-0",
+    "stratum" : "cross-class",
+    "cosine" : 0.6079664739984806
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-0",
+    "rightKey" : "table-1",
+    "stratum" : "cross-class",
+    "cosine" : 0.5916346798420038
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-0",
+    "rightKey" : "table-2",
+    "stratum" : "cross-class",
+    "cosine" : 0.5858482698844019
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-1",
+    "rightKey" : "flow-1",
+    "stratum" : "same-image",
+    "cosine" : 1.0000000000000002
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-1",
+    "rightKey" : "flow-2",
+    "stratum" : "same-class",
+    "cosine" : 0.9635717251938262
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-1",
+    "rightKey" : "bars-0",
+    "stratum" : "cross-class",
+    "cosine" : 0.5302549043053789
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-1",
+    "rightKey" : "bars-1",
+    "stratum" : "cross-class",
+    "cosine" : 0.5418198424008746
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-1",
+    "rightKey" : "bars-2",
+    "stratum" : "cross-class",
+    "cosine" : 0.5304213768785383
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-1",
+    "rightKey" : "table-0",
+    "stratum" : "cross-class",
+    "cosine" : 0.6037461700861549
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-1",
+    "rightKey" : "table-1",
+    "stratum" : "cross-class",
+    "cosine" : 0.6144432748585144
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-1",
+    "rightKey" : "table-2",
+    "stratum" : "cross-class",
+    "cosine" : 0.5902942021051852
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-2",
+    "rightKey" : "flow-2",
+    "stratum" : "same-image",
+    "cosine" : 0.9999999999999999
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-2",
+    "rightKey" : "bars-0",
+    "stratum" : "cross-class",
+    "cosine" : 0.5324400984796219
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-2",
+    "rightKey" : "bars-1",
+    "stratum" : "cross-class",
+    "cosine" : 0.5277309373868041
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-2",
+    "rightKey" : "bars-2",
+    "stratum" : "cross-class",
+    "cosine" : 0.5486396195788151
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-2",
+    "rightKey" : "table-0",
+    "stratum" : "cross-class",
+    "cosine" : 0.6056074671832798
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-2",
+    "rightKey" : "table-1",
+    "stratum" : "cross-class",
+    "cosine" : 0.5968123978111544
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "flow-2",
+    "rightKey" : "table-2",
+    "stratum" : "cross-class",
+    "cosine" : 0.5975791808494272
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "bars-0",
+    "rightKey" : "bars-0",
+    "stratum" : "same-image",
+    "cosine" : 1.0
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "bars-0",
+    "rightKey" : "bars-1",
+    "stratum" : "same-class",
+    "cosine" : 0.9332822600278747
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "bars-0",
+    "rightKey" : "bars-2",
+    "stratum" : "same-class",
+    "cosine" : 0.9308926046337025
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "bars-0",
+    "rightKey" : "table-0",
+    "stratum" : "cross-class",
+    "cosine" : 0.7288357200978414
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "bars-0",
+    "rightKey" : "table-1",
+    "stratum" : "cross-class",
+    "cosine" : 0.6938037933959208
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "bars-0",
+    "rightKey" : "table-2",
+    "stratum" : "cross-class",
+    "cosine" : 0.682547925973364
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "bars-1",
+    "rightKey" : "bars-1",
+    "stratum" : "same-image",
+    "cosine" : 1.0000000000000002
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "bars-1",
+    "rightKey" : "bars-2",
+    "stratum" : "same-class",
+    "cosine" : 0.916088548370404
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "bars-1",
+    "rightKey" : "table-0",
+    "stratum" : "cross-class",
+    "cosine" : 0.7068900437262964
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "bars-1",
+    "rightKey" : "table-1",
+    "stratum" : "cross-class",
+    "cosine" : 0.7130631745930486
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "bars-1",
+    "rightKey" : "table-2",
+    "stratum" : "cross-class",
+    "cosine" : 0.6769090009594854
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "bars-2",
+    "rightKey" : "bars-2",
+    "stratum" : "same-image",
+    "cosine" : 0.9999999999999999
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "bars-2",
+    "rightKey" : "table-0",
+    "stratum" : "cross-class",
+    "cosine" : 0.6774746526059023
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "bars-2",
+    "rightKey" : "table-1",
+    "stratum" : "cross-class",
+    "cosine" : 0.6569108589141981
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "bars-2",
+    "rightKey" : "table-2",
+    "stratum" : "cross-class",
+    "cosine" : 0.6597197476282147
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "table-0",
+    "rightKey" : "table-0",
+    "stratum" : "same-image",
+    "cosine" : 0.9999999999999998
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "table-0",
+    "rightKey" : "table-1",
+    "stratum" : "same-class",
+    "cosine" : 0.9690687070727019
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "table-0",
+    "rightKey" : "table-2",
+    "stratum" : "same-class",
+    "cosine" : 0.9566144453077918
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "table-1",
+    "rightKey" : "table-1",
+    "stratum" : "same-image",
+    "cosine" : 1.0
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "table-1",
+    "rightKey" : "table-2",
+    "stratum" : "same-class",
+    "cosine" : 0.9778706021580416
+  }, {
+    "corpus" : "programmatic",
+    "leftKey" : "table-2",
+    "rightKey" : "table-2",
+    "stratum" : "same-image",
+    "cosine" : 0.9999999999999998
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p1-i0",
+    "rightKey" : "nist-sp800-101r1-p1-i0",
+    "stratum" : "same-image",
+    "cosine" : 1.0
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p1-i0",
+    "rightKey" : "nist-sp800-101r1-p16-i1",
+    "stratum" : "same-class",
+    "cosine" : 0.3235020039716748
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p1-i0",
+    "rightKey" : "nist-sp800-101r1-p18-i2",
+    "stratum" : "same-class",
+    "cosine" : 0.2676151146361461
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p1-i0",
+    "rightKey" : "nist-sp800-183-p1-i3",
+    "stratum" : "cross-class",
+    "cosine" : 0.9887359400788237
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p1-i0",
+    "rightKey" : "nist-sp800-183-p14-i4",
+    "stratum" : "cross-class",
+    "cosine" : 0.20909476583104755
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p1-i0",
+    "rightKey" : "nist-sp800-183-p16-i5",
+    "stratum" : "cross-class",
+    "cosine" : 0.23833540327199618
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p1-i0",
+    "rightKey" : "doe-renewable-energy-framework-p1-i6",
+    "stratum" : "cross-class",
+    "cosine" : 0.17184546558657093
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p1-i0",
+    "rightKey" : "doe-renewable-energy-framework-p1-i7",
+    "stratum" : "cross-class",
+    "cosine" : 0.48537367221239375
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p1-i0",
+    "rightKey" : "doe-renewable-energy-framework-p3-i8",
+    "stratum" : "cross-class",
+    "cosine" : 0.13931878356008248
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p16-i1",
+    "rightKey" : "nist-sp800-101r1-p16-i1",
+    "stratum" : "same-image",
+    "cosine" : 1.0
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p16-i1",
+    "rightKey" : "nist-sp800-101r1-p18-i2",
+    "stratum" : "same-class",
+    "cosine" : 0.36028477879349907
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p16-i1",
+    "rightKey" : "nist-sp800-183-p1-i3",
+    "stratum" : "cross-class",
+    "cosine" : 0.32414707151991023
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p16-i1",
+    "rightKey" : "nist-sp800-183-p14-i4",
+    "stratum" : "cross-class",
+    "cosine" : 0.4789359299037589
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p16-i1",
+    "rightKey" : "nist-sp800-183-p16-i5",
+    "stratum" : "cross-class",
+    "cosine" : 0.49869301930226995
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p16-i1",
+    "rightKey" : "doe-renewable-energy-framework-p1-i6",
+    "stratum" : "cross-class",
+    "cosine" : 0.1464392322476556
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p16-i1",
+    "rightKey" : "doe-renewable-energy-framework-p1-i7",
+    "stratum" : "cross-class",
+    "cosine" : 0.3058749211616098
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p16-i1",
+    "rightKey" : "doe-renewable-energy-framework-p3-i8",
+    "stratum" : "cross-class",
+    "cosine" : 0.11658835368545083
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p18-i2",
+    "rightKey" : "nist-sp800-101r1-p18-i2",
+    "stratum" : "same-image",
+    "cosine" : 1.0000000000000002
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p18-i2",
+    "rightKey" : "nist-sp800-183-p1-i3",
+    "stratum" : "cross-class",
+    "cosine" : 0.2604168373677687
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p18-i2",
+    "rightKey" : "nist-sp800-183-p14-i4",
+    "stratum" : "cross-class",
+    "cosine" : 0.21906820228147927
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p18-i2",
+    "rightKey" : "nist-sp800-183-p16-i5",
+    "stratum" : "cross-class",
+    "cosine" : 0.34076734540456943
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p18-i2",
+    "rightKey" : "doe-renewable-energy-framework-p1-i6",
+    "stratum" : "cross-class",
+    "cosine" : 0.15711236934481568
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p18-i2",
+    "rightKey" : "doe-renewable-energy-framework-p1-i7",
+    "stratum" : "cross-class",
+    "cosine" : 0.2025625919922885
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-101r1-p18-i2",
+    "rightKey" : "doe-renewable-energy-framework-p3-i8",
+    "stratum" : "cross-class",
+    "cosine" : 0.09092702317542539
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-183-p1-i3",
+    "rightKey" : "nist-sp800-183-p1-i3",
+    "stratum" : "same-image",
+    "cosine" : 0.9999999999999998
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-183-p1-i3",
+    "rightKey" : "nist-sp800-183-p14-i4",
+    "stratum" : "same-class",
+    "cosine" : 0.22415369738856997
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-183-p1-i3",
+    "rightKey" : "nist-sp800-183-p16-i5",
+    "stratum" : "same-class",
+    "cosine" : 0.25306573622956907
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-183-p1-i3",
+    "rightKey" : "doe-renewable-energy-framework-p1-i6",
+    "stratum" : "cross-class",
+    "cosine" : 0.17935509231242017
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-183-p1-i3",
+    "rightKey" : "doe-renewable-energy-framework-p1-i7",
+    "stratum" : "cross-class",
+    "cosine" : 0.4971777866147061
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-183-p1-i3",
+    "rightKey" : "doe-renewable-energy-framework-p3-i8",
+    "stratum" : "cross-class",
+    "cosine" : 0.14985703034879405
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-183-p14-i4",
+    "rightKey" : "nist-sp800-183-p14-i4",
+    "stratum" : "same-image",
+    "cosine" : 1.0000000000000002
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-183-p14-i4",
+    "rightKey" : "nist-sp800-183-p16-i5",
+    "stratum" : "same-class",
+    "cosine" : 0.8505126093701909
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-183-p14-i4",
+    "rightKey" : "doe-renewable-energy-framework-p1-i6",
+    "stratum" : "cross-class",
+    "cosine" : 0.27312469215118695
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-183-p14-i4",
+    "rightKey" : "doe-renewable-energy-framework-p1-i7",
+    "stratum" : "cross-class",
+    "cosine" : 0.22912411920547243
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-183-p14-i4",
+    "rightKey" : "doe-renewable-energy-framework-p3-i8",
+    "stratum" : "cross-class",
+    "cosine" : 0.157945866899729
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-183-p16-i5",
+    "rightKey" : "nist-sp800-183-p16-i5",
+    "stratum" : "same-image",
+    "cosine" : 1.0000000000000002
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-183-p16-i5",
+    "rightKey" : "doe-renewable-energy-framework-p1-i6",
+    "stratum" : "cross-class",
+    "cosine" : 0.3003106058970634
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-183-p16-i5",
+    "rightKey" : "doe-renewable-energy-framework-p1-i7",
+    "stratum" : "cross-class",
+    "cosine" : 0.20720241273191453
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "nist-sp800-183-p16-i5",
+    "rightKey" : "doe-renewable-energy-framework-p3-i8",
+    "stratum" : "cross-class",
+    "cosine" : 0.2072074842610151
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "doe-renewable-energy-framework-p1-i6",
+    "rightKey" : "doe-renewable-energy-framework-p1-i6",
+    "stratum" : "same-image",
+    "cosine" : 1.0000000000000002
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "doe-renewable-energy-framework-p1-i6",
+    "rightKey" : "doe-renewable-energy-framework-p1-i7",
+    "stratum" : "same-class",
+    "cosine" : 0.16704489754774302
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "doe-renewable-energy-framework-p1-i6",
+    "rightKey" : "doe-renewable-energy-framework-p3-i8",
+    "stratum" : "same-class",
+    "cosine" : 0.14939356348500374
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "doe-renewable-energy-framework-p1-i7",
+    "rightKey" : "doe-renewable-energy-framework-p1-i7",
+    "stratum" : "same-image",
+    "cosine" : 1.0
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "doe-renewable-energy-framework-p1-i7",
+    "rightKey" : "doe-renewable-energy-framework-p3-i8",
+    "stratum" : "same-class",
+    "cosine" : 0.1903503911925318
+  }, {
+    "corpus" : "real-pdf",
+    "leftKey" : "doe-renewable-energy-framework-p3-i8",
+    "rightKey" : "doe-renewable-energy-framework-p3-i8",
+    "stratum" : "same-image",
+    "cosine" : 1.0000000000000002
+  } ],
+  "note" : "同图下限 = same-image 档最小值（同字节再编码）；异图上限 = same-class ∪ cross-class 的最大值；阈值只由 real-pdf 语料决定，programmatic 块为对照",
+  "programmaticImageCount" : 9,
+  "realImageCount" : 9,
+  "imageEmbeddingCalls" : 36,
+  "tag" : "真实语料阈值锚：同图下限 0.9999999999999998 / 异图上限 0.9887359400788237 / 判别阈值 0.9943679700394117"
+}
