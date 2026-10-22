@@ -27,11 +27,14 @@ import { computed, ref, watch } from 'vue';
 import { useRouter, RouterLink } from 'vue-router';
 import pathTitleMap from '@/constants/pathTitleMap';
 import { useQueryMyPermissions } from '@/hooks/usePremission';
-import { extractPermissionNames } from '@/types/permission';
+import { extractPermissionNames, type PermissionName } from '@/types/permission';
 const router = useRouter();
 const selectedKeys = ref([router.currentRoute.value.path.split('/')[1]]);
 
 const { data: myPermissions } = useQueryMyPermissions();
+
+// 超管专享 AI 用量权限（810）：写成字面量常量，枚举被删/改名时在编译期即报错
+const TOKEN_USAGE_VIEW: PermissionName = 'AI_TOKEN_USAGE_VIEW';
 
 const menuPermissionPrefixes: Record<string, string[]> = {
   client: ['customer'],
@@ -56,8 +59,7 @@ const visibleMenuItems = computed(() => {
     if (key === 'token-usage') {
       return names.some(
         (name) =>
-          name === 'AI_TOKEN_USAGE_VIEW' ||
-          name.endsWith(':AI_TOKEN_USAGE_VIEW'),
+          name === TOKEN_USAGE_VIEW || name.endsWith(`:${TOKEN_USAGE_VIEW}`),
       );
     }
     if (!hasPermissionData) {

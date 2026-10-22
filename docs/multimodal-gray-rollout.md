@@ -86,3 +86,83 @@
 2. **图帽 5 的预算含义**：真实文档动辄上百张内嵌位图（DOE 那份实测 107 张），帽 5 决定单文档 vision 上限 ≈ 5 × 1 371 token
    ≈ 6 855 token（不含沉没）；若灰度期发现单文档成本超预期，优先调**图帽**再考虑关开关。
 3. **KB 白名单是唯一灰度粒度**（观察）：没有 per-document / per-filename 灰度；需要更细粒度须另立卡（本卡不改代码）。
+
+## 9. 开前核对（Pre-flight，逐项打卡后再动开关）
+
+> **边界（reserve-sweep-1 S4）**：本节只是把「打开前必须先看什么」写成可执行清单。**本卡不打开任何开关、不改任何默认值**；
+> 打开动作属 **Owner 运行期决定**（依据 §4 成本基线与 §8 待决策项），不构成打开授权。
+
+### 9.1 键当前值怎么读（全部只读，不写）
+
+1. **管理端单键**：`GET /platform/config/items/rag.retrieval.image-vector-ingest.enabled`
+   （方法级 `@RequirePermission(PLATFORM_DYNAMIC_CONFIG_MANAGE, 608)`，超管直通；返回 `ConfigItemView` 的
+   `value` / `source` / `version`）。
+2. **管理端按命名空间批量**：`GET /platform/config/items?namespace=rag.retrieval`（一次看全四键，含静态默认展示）。
+3. **DB 直查（只读）**：
+
+   ```sql
+   SELECT config_key, config_value, value_type, version, is_deleted, update_time
+   FROM dynamic_config_item
+   WHERE config_key IN (
+     'rag.retrieval.image-slice-ingest.enabled',
+     'rag.retrieval.image-slice-ingest.kb-allowlist',
+     'rag.retrieval.image-slice-ingest.max-images-per-document',
+     'rag.retrieval.image-vector-ingest.enabled');
+   ```
+
+   表结构见 `src/main/resources/db/migration/V6__dynamic_config.sql`：`is_deleted=1` 表示该键没有覆盖行，
+   **实际生效值回落静态默认**（`DynamicConfigKeyRegistry`：`image-slice-ingest.enabled=false`、
+   `image-vector-ingest.enabled=false`、`kb-allowlist=""`、`max-images-per-document=5`）。
+4. **判定**：四键都查不到覆盖行（或 `is_deleted=1`）/ `config_value` 为 `false`/空/`5` ⇒ 「现在是关的」，可以进入
+   §3 灰度步骤；任一为 `true` 先按 §11 回滚，再谈打开。
+
+### 9.2 灰度面：摄取侧 vs 检索侧
+
+| 键 | 作用面 | 打开后立刻产生的外呼/写入 | 可逆性 |
+|---|---|---|---|
+| `image-slice-ingest.enabled` | **摄取侧**（只在重建入库时动作，已入库文档不会自动重跑） | 提取内嵌图 → VLM 描述（vision token）→ 描述文本切片 | 改回 `false` 即停新增 |
+| `image-slice-ingest.kb-allowlist` | 摄取侧范围 | 只影响命中 KB；空 = 全库 | 改回即收窄/恢复 |
+| `image-slice-ingest.max-images-per-document` | 摄取侧成本帽 | 单文档 vision 上限（默认 5，硬上限 20） | 改回即恢复 |
+| `image-vector-ingest.enabled` | **摄取侧写入 + 检索侧读取**（`knowledge_image` 集合的 query-by-image 面） | 每张入库图 1 次视觉 embedding + 1 个 image 集合点 | 改回 `false` 停新增；**历史点不自删**（见 §11） |
+
+**结构性提醒（§2 已实测）**：真视觉路嵌在方案 B 门控之内，**没有独立的 `image-vector-ingest.kb-allowlist`**。
+因此「只开 `image-vector-ingest.enabled=true` 而 B 总开关仍 false」时链路**完全不动**（零外呼、零落盘），
+核对时不要把它当作「已灰度」。
+
+### 9.3 成本基线链接（打开前必读）
+
+- `docs/rag-quality/production-gray-cost-v1.md` / `.json`：每张**真正入库**的图 ≈ **1 371 vision token**、
+  **1.29** 次 vision 外呼（含 22% 沉没）、**2.00** 次视觉 embedding 调用、**4.57** 次文本 embedding 调用、**≈9.8 s** 端到端。
+- 预算口径：按「每张入库图」摊分、按**提取图数**预留（见 §4 三条口径），不按 PDF 页数。
+
+## 10. 开后可观测（打开后看什么、在哪看）
+
+| 观测面 | 具体锚点 | 判读 |
+|---|---|---|
+| vision 真实 token | 指标 `ai.token.total{type="vision"}` | 增长 ⇒ 描述链路在跑；不增但开关为 true ⇒ 方案 B 门控/白名单未命中 |
+| embedding 调用次数 | 指标 `ai.token.record.calls{type="embedding"}` | 增量 ≈ 文本 embedding + **视觉 embedding（= 入库图数 × 1）**；只有文本增量 ⇒ 真视觉路没写 |
+| embed token 不可得声明 | `ai.token.usage.unavailable{type="embedding"}` | 应与调用次数同步增长，不同步 ⇒ 端点行为变了（计量口径见 `docs/token-metering.md`） |
+| 计量落库失败 | `ai.token.record.failure` | >0 ⇒ 账单有缺口，先修计量再扩面 |
+| 摄取日志 | 「描述质量闸门」/「图片提取失败」WARN（`PdfImageSliceIngestService`） | 沉没成本与失败率；提取失败不计入入库图 |
+| 落盘证据 | Qdrant 集合 **`knowledge_image`**（`qdrant.image-collection` 默认值，`QdrantProperties:35`）点数 | 点数增长 ⇒ 视觉向量已写；vision token 涨而点数不涨 ⇒ 写入失败 |
+| 检索侧标记 | 命中元数据 `imageSimilarityTier` / `imageSimilarityBand`（`ImageSimilarityGate`） | `NEAR_DUPLICATE` + `NEAR_HIGH/MID/LOW` 出现 ⇒ 近似带在真实查询中被填充（`docs/rag-quality/image-near-duplicate-bands-v1.md`） |
+
+**观察窗口**：至少一个白名单 KB 的**重建入库** + 若干次随图提问，再决定扩 KB（§3 第 6 步）。
+扩面只改白名单，不改开关；扩面之前先复核上面第 1、2、6 三行。
+
+## 11. 回滚（可逆：写回 `false`，但已入库的图片向量要单独处置）
+
+1. **先关费用最高的真视觉路**：`rag.retrieval.image-vector-ingest.enabled = false`（改回后零新增视觉 embedding 外呼、零新增 image 集合点）。
+2. **需要全停时再关方案 B**：`rag.retrieval.image-slice-ingest.enabled = false`（= 完全回到升级前行为；文本摄取不受影响，§6）。
+3. **已入库图片向量的处置（开关不管历史数据）**：
+
+   - 开关只控制**后续写入**；已写入 `knowledge_image` 集合的点**不会**因改回 `false` 而自动消失。
+   - **判断依据**：① 集合 `knowledge_image` 的点数是否 >0；② 该点是否属于本次灰度白名单 KB（按 KB id 过滤）；
+     ③ 是否还要保留 query-by-image 能力（保留则不动，彻底回收才清理）。
+   - **处置路径**：对该 KB 重跑**重建入库**，走既有清理链（软删 → 清向量 → 删对象 → 物理删行，§6.3）；
+     **禁止**直接 drop 整个 `knowledge_image` 集合——它会连带清掉其他 KB/其他批次合法写入的图片向量。
+   - 清理前先确认 KB 范围（`image-slice-ingest.kb-allowlist` 的灰度清单）与集合名，并在变更单里写清影响面。
+
+4. **回滚验收**：再读四键确认 `false`/空/`5`（§9.1 只读查询）；观察 embedding 调用次数回落到基线；
+   `knowledge_image` 点数不再增长（清理场景下应下降）。
+5. **禁止**：改代码、改默认值、回滚迁移（本卡零迁移）；回滚是运行期写值，不是发版。

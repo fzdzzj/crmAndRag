@@ -25,6 +25,9 @@ import apiClient from '@/api/apiClient';
 import { extractPermissionIds } from '@/types/permission';
 import {
   buildPermissionCategories,
+  filterCategories,
+  idsOfCategory,
+  moduleSelectionCounts,
   subPermissionsOf,
 } from '@/utils/permissionCatalog';
 
@@ -39,6 +42,7 @@ const form = ref<RoleForm>({
 });
 const selectedPermissionIds = ref<number[]>([]);
 const permissionKeyword = ref('');
+const onlySelectedMode = ref(false);
 const activeKeys = ref<string[]>([]);
 const isSubmitting = ref(false);
 const templateRoleId = ref<number>();
@@ -84,45 +88,48 @@ interface FilteredPermissionGroup {
   orphanSub: SubPermissionVo[];
 }
 
-// 按关键字过滤权限分类/主权限/子权限，无匹配的主权限连同其子权限一起隐藏
-const filteredPermissionGroups = computed<FilteredPermissionGroup[]>(() => {
-  const kw = permissionKeyword.value.trim().toLowerCase();
-  const match = (text?: string) => (text ?? '').toLowerCase().includes(kw);
-  if (!kw) {
-    return categories.value.map((category) => ({
-      category: category.module,
-      mainPermissions: category.main.map((permission) => ({
-        permission,
-        subs: subPermissionsOf(category, permission.id),
-      })),
-      orphanSub: category.orphanSub,
-    }));
-  }
-  const groups: FilteredPermissionGroup[] = [];
-  for (const category of categories.value) {
-    const mainPermissions: FilteredMainPermission[] = [];
-    for (const permission of category.main) {
-      const subs = subPermissionsOf(category, permission.id).filter((sub) =>
-        match(sub.permissionsDesc),
-      );
-      if (!match(permission.permissionsDesc) && subs.length === 0) {
-        continue;
-      }
-      mainPermissions.push({ permission, subs });
-    }
-    const orphanSub = category.orphanSub.filter((sub) =>
-      match(sub.permissionsDesc),
-    );
-    if (mainPermissions.length > 0 || orphanSub.length > 0) {
-      groups.push({ category: category.module, mainPermissions, orphanSub });
-    }
-  }
-  return groups;
-});
+// 按关键字 / 只看已选过滤权限分类，无匹配的主权限连同其子权限一起隐藏。
+// 复用与编辑弹窗同一套纯函数（filterCategories / moduleSelectionCounts / idsOfCategory），模板结构不变。
+const filteredPermissionGroups = computed<FilteredPermissionGroup[]>(() =>
+  filterCategories(categories.value, {
+    keyword: permissionKeyword.value,
+    onlySelected: onlySelectedMode.value,
+    selectedIds: selectedPermissionIds.value,
+  }).map((category) => ({
+    category: category.module,
+    mainPermissions: category.main.map((permission) => ({
+      permission,
+      subs: subPermissionsOf(category, permission.id),
+    })),
+    orphanSub: category.orphanSub,
+  })),
+);
 
-// 搜索时自动展开匹配到的分类，清空后恢复全部展开
-watch(permissionKeyword, () => {
-  if (permissionKeyword.value.trim()) {
+const selectionCounts = computed(() =>
+  moduleSelectionCounts(categories.value, selectedPermissionIds.value),
+);
+const countsByModule = computed(
+  () => new Map(selectionCounts.value.map((count) => [count.module, count])),
+);
+const countOf = (module: string) =>
+  countsByModule.value.get(module) ?? { module, selected: 0, total: 0 };
+
+// 模块级全选 / 清空：用未过滤的整模块 id 集合
+const selectCategoryAll = (module: string) => {
+  const category = categories.value.find((item) => item.module === module);
+  const merged = new Set([...selectedPermissionIds.value, ...idsOfCategory(category)]);
+  selectedPermissionIds.value = [...merged];
+};
+
+const clearCategory = (module: string) => {
+  const category = categories.value.find((item) => item.module === module);
+  const ids = new Set(idsOfCategory(category));
+  selectedPermissionIds.value = selectedPermissionIds.value.filter((id) => !ids.has(id));
+};
+
+// 搜索/只看已选时自动展开匹配到的分类，条件清空后恢复全部展开
+watch([permissionKeyword, onlySelectedMode], () => {
+  if (permissionKeyword.value.trim() || onlySelectedMode.value) {
     activeKeys.value = filteredPermissionGroups.value.map((group) => group.category);
   } else {
     activeKeys.value = [...categoryNames.value];
@@ -141,6 +148,7 @@ const open = () => {
   templateRoleId.value = undefined;
   selectedPermissionIds.value = [];
   permissionKeyword.value = '';
+  onlySelectedMode.value = false;
   activeKeys.value = [...categoryNames.value];
   innerOpen.value = true;
 };
@@ -296,17 +304,29 @@ const submit = async () => {
           <a @click="retryCatalog">重试</a>
         </div>
         <template v-else>
-          <AInputSearch
-            v-model:value="permissionKeyword"
-            placeholder="搜索权限名称"
-            allow-clear
-            style="margin-bottom: 8px"
-          />
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px">
+            <AInputSearch
+              v-model:value="permissionKeyword"
+              placeholder="搜索权限：中文描述 / 权限名 / ID，空格分词"
+              allow-clear
+              style="flex: 1"
+            />
+            <Checkbox v-model:checked="onlySelectedMode">只看已选</Checkbox>
+            <span style="color: #8c8c8c; font-size: 12px; white-space: nowrap">
+              已选 {{ selectedPermissionIds.length }}
+            </span>
+          </div>
           <div
             v-if="filteredPermissionGroups.length === 0"
             style="text-align: center; padding: 24px 0; color: #999"
           >
-            {{ permissionKeyword.trim() ? '无匹配的权限' : '暂无权限数据' }}
+            {{
+              permissionKeyword.trim()
+                ? '无匹配的权限'
+                : onlySelectedMode
+                  ? '尚未勾选任何权限'
+                  : '暂无权限数据'
+            }}
           </div>
           <div
             v-else
@@ -324,8 +344,38 @@ const submit = async () => {
                 <CollapsePanel
                   v-for="group in filteredPermissionGroups"
                   :key="group.category"
-                  :header="group.category"
                 >
+                  <template #header>
+                    <div
+                      style="
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        width: 100%;
+                      "
+                      @click.stop
+                    >
+                      <span>{{ group.category }}</span>
+                      <span style="color: #8c8c8c; font-size: 12px">
+                        {{ countOf(group.category).selected }}/{{
+                          countOf(group.category).total
+                        }}
+                      </span>
+                      <span style="flex: 1" />
+                      <a
+                        style="font-size: 12px"
+                        @click.stop="selectCategoryAll(group.category)"
+                      >
+                        全选
+                      </a>
+                      <a
+                        style="font-size: 12px"
+                        @click.stop="clearCategory(group.category)"
+                      >
+                        清空
+                      </a>
+                    </div>
+                  </template>
                   <template
                     v-for="{ permission, subs } in group.mainPermissions"
                     :key="permission.id"
