@@ -401,7 +401,7 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
    * 图片视觉路召回（multimodal-shared-space 任务 4.2）：真 query-by-image 查独立 image 集合。
    *
    * <p>空间选择：已装配 {@link ImageVectorStore} → 查 image 集合（视觉向量维度可 ≠ 文本维度）；未装配（裁剪装配/兼容构造） → 退回文本
-   * 集合的旧单空间行为，升级前调用点零变化。
+   * 集合的旧单空间行为，但阈值不随回退放宽（见下）。
    *
    * <p>阈值（image-retrieval-threshold-gate 任务 2.2）：<b>不复用文本 {@code minScore}</b>，改用 {@code
    * rag.retrieval.image-similarity-threshold}（默认 0.9944）。向量库按「近似同图下限」{@link

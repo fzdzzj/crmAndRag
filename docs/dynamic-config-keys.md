@@ -40,7 +40,8 @@
 > `rag.generation.selfrag.llm.max-claims`（默认 20）。三键全定级为 COST 档（超管专写，适用成本键申请-审批流）。
 > 定级状态（add-dynamic-config-key-tier-acl，2026-10-09；add-self-rag-reflection 扩为 66 键；wire-built-unfinished-infra
 > 2026-10-17 摘除 ai.model.* 六死键后为 60 键；fix-citation-threshold-config 2026-10-20 补 3 个引用对齐阈值键后为 63
-> 键；image-retrieval-threshold-gate 2026-10-22 补 1 个图像同图判别阈值键后为 68 键）：注册表 68 键全集完成三档定级，
+> 键；其间历卡增补至 67 键（明细见各卡归档规格，勿据 63 直接推算）；image-retrieval-threshold-gate 2026-10-22
+> 补 1 个图像同图判别阈值键后为 68 键）：注册表 68 键全集完成三档定级，
 > 各表新增「权限档位」列——OPERATIONAL 36 键 = 608 持有者可写，COST 27 键 /
 > STRUCTURAL 5 键 = 超管专写；608 语义与三档全清单见文末「键级权限分层（tier ACL）」节。
 
@@ -88,6 +89,11 @@
 > 图像路不再复用文本 `rag.retrieval.minScore`（0.20）。阈值取定标锚
 > `docs/rag-quality/image-threshold-calibration-v1.json` 的 `recommendedThreshold` = 0.9944；消费方
 > `KnowledgeRetrievalServiceImpl#recallImage` + `ImageSimilarityGate`，文本路 minScore 行为零变化。
+>
+> **锚重标定耦合（手工同步，无编译期保护）**：重跑定标产出新锚后必须同时改三处，否则三者不一致——
+> `ImageSimilarityGate.DEFAULT_THRESHOLD`（0.9944）、`ImageSimilarityGate.NEAR_DUPLICATE_FLOOR`（0.9887）、
+> 以及 `DynamicConfigKeyRegistry` 里该键的默认串 `"0.9944"`；本表的 0.9944/0.9887 与定标 json 同步更新。
+> 另注意 `ProductionGrayRealRunIT` 的「每条必召回」断言隐含依赖下限 0.9887 低于真实同图余弦，抬锚时需一并复跑。
 
 | 键 | 类型 | 默认值 | 权限档位 | 语义与回退 |
 |---|---|---|---|---|
