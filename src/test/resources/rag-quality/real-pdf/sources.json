@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "real-pdf-sources-v1",
+  "registeredAt": "2026-10-22",
+  "ownerDecision": "Owner 拍板（2026-10-22）：真实 PDF 来源 = 公有领域政府出版物（NIST/DOE，零版权风险）；入库 src/test/resources（随 repo 分发）；严格自由授权（CC0/公有领域，可确认合法入仓）。",
+  "licenseBasisSummary": "全部三份均为美国联邦政府雇员职务作品（work of the U.S. government），依 17 U.S.C. §105 不受美国版权保护；NIST 站点声明「除标注为受版权保护的材料外，NIST 站点上的信息视为公共信息，可分发或复制」；DOE 材料属同一联邦政府作品口径。每份 PDF 内若含厂商截图/第三方照片，来源文件本身以政府出版物原文分发，仅用于本项目测试夹具，不做再发布。",
+  "licenseEvidenceUrls": [
+    "https://www.nist.gov/copyrights-disclaimers",
+    "https://www.energy.gov/web-policies",
+    "https://www.usa.gov/government-copyright"
+  ],
+  "licenseCaveat": "usa.gov 明确提示「联邦政府网站上的内容可能包含经受权使用的受保护知识产权，并非全部都是政府作品」。本批资产按「政府出版物原文」使用（测试夹具、非商业再发布）。若 owner 要求逐图版权溯源，可只保留 NIST 两份（NIST 站点声明最直接），或替换 DOE 那份。",
+  "sizeLimitBytes": 5242880,
+  "assets": [
+    {
+      "key": "nist-sp800-101r1",
+      "file": "nist-sp800-101r1-mobile-forensics.pdf",
+      "title": "NIST Special Publication 800-101 Revision 1 — Guidelines on Mobile Device Forensics",
+      "agency": "NIST",
+      "sourceUrl": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-101r1.pdf",
+      "sha256": "efd3f02258276fb294d62a73bb0a6ec80051fd625d5197584220beaface31718",
+      "bytes": 1338568,
+      "pages": 85,
+      "verifiedRasterImages": 8,
+      "license": "Public Domain — U.S. Government work (17 U.S.C. §105)",
+      "licenseEvidence": "https://www.nist.gov/copyrights-disclaimers",
+      "licenseQuote": "With the exception of material marked as copyrighted, information presented on NIST sites are considered public information and may be distributed or copied.",
+      "fetchedAt": "2026-10-22",
+      "notes": "取证指南，内嵌多张工具截图与流程示意位图（实测 9 个 PDImageXObject，其中 8 张最短边 ≥64px）。"
+    },
+    {
+      "key": "nist-sp800-183",
+      "file": "nist-sp800-183-networks-of-things.pdf",
+      "title": "NIST Special Publication 800-183 — Networks of 'Things'",
+      "agency": "NIST",
+      "sourceUrl": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-183.pdf",
+      "sha256": "d2ec695aeeb64f0f5f28b9e473ca6b7a0afc4948cc0cc84dc21c6dab4c3c3811",
+      "bytes": 2864065,
+      "pages": 30,
+      "verifiedRasterImages": 5,
+      "license": "Public Domain — U.S. Government work (17 U.S.C. §105)",
+      "licenseEvidence": "https://www.nist.gov/copyrights-disclaimers",
+      "licenseQuote": "With the exception of material marked as copyrighted, information presented on NIST sites are considered public information and may be distributed or copied.",
+      "fetchedAt": "2026-10-22",
+      "notes": "物联网体系结构报告，含层级示意图与示例板卡照片（实测 5 个 PDImageXObject，全部最短边 ≥64px）。"
+    },
+    {
+      "key": "doe-renewable-energy-framework",
+      "file": "doe-renewable-energy-framework.pdf",
+      "title": "Renewable Energy Framework (U.S. Department of Energy, Office of Indian Energy)",
+      "agency": "DOE",
+      "sourceUrl": "https://www.energy.gov/sites/default/files/2018/11/f57/robi-wind.pdf",
+      "sha256": "ebeace299bb42383349f8487ce6386829da03ff18d227a9716dc3473ccb446e2",
+      "bytes": 2988540,
+      "pages": 42,
+      "verifiedRasterImages": 107,
+      "license": "Public Domain — U.S. Government work (17 U.S.C. §105)",
+      "licenseEvidence": "https://www.energy.gov/web-policies",
+      "licenseQuote": "DOE 站点由美国能源部维护，其出版物为美国联邦政府职务作品（work of the U.S. government），依 17 U.S.C. §105 不受美国版权保护。",
+      "fetchedAt": "2026-10-22",
+      "notes": "培训课件（转 PDF），内嵌大量照片与图表位图（实测 161 个 PDImageXObject，其中 107 张最短边 ≥64px）。逐图第三方版权未单独溯源，见 licenseCaveat。"
+    }
+  ]
+}
