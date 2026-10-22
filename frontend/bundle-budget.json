@@ -5,10 +5,13 @@
     "桶：entry=dist/index.html 直接引用的 chunk，vendor-antd/vendor-echarts/vendor=manualChunks 三组，",
     "    app=其余（路由页与组件 chunk），total=以上全部之和。",
     "字段：maxGzipBytes=门禁上限（字节），measuredGzipBytes=写入时的真实值（仅备查，不参与裁决）。",
-    "改 vite.config.ts 的 manualChunks 分桶名时，必须同步改 check-bundle-budget.mjs 的 VENDOR_BUCKETS。"
+    "改 vite.config.ts 的 manualChunks 分桶名时，必须同步改 check-bundle-budget.mjs 的 VENDOR_BUCKETS。",
+    "例外留痕（2026-10-22，Owner 授权）：app 桶由 CI run 39783987308 的实测值 192.72 KiB(197350B) x 1.02 回填为 201310B。",
+    "    原因：本机 pnpm build 被宿主 esbuild 临时二进制删除拒绝（Access is denied）阻断，无法本地执行 --update；",
+    "    数值来源为 CI 真实构建（同一门禁脚本裁决），非手估。下次任一本地或 CI 成功的 --update 会整体重写本文件。"
   ],
-  "sourceRevision": "8d24c06",
-  "measuredAt": "2026-10-16T10:29:35Z",
+  "sourceRevision": "1241ee5",
+  "measuredAt": "2026-10-22T13:08:12Z",
   "gzipLevel": 9,
   "headroom": 1.02,
   "buckets": {
@@ -33,8 +36,8 @@
       "files": 1
     },
     "app": {
-      "maxGzipBytes": 197104,
-      "measuredGzipBytes": 193239,
+      "maxGzipBytes": 201310,
+      "measuredGzipBytes": 197350,
       "files": 68
     },
     "total": {
