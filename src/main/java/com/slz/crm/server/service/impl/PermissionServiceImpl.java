@@ -83,18 +83,8 @@ public class PermissionServiceImpl extends ServiceImpl<PermissionsMapper, Permis
 
   @Override
   public List<String> getKeyList() {
-
-    List<String> keyList = new ArrayList<>();
-
-    keyList.add("客户管理模块权限");
-    keyList.add("销售管理模块权限");
-    keyList.add("财务管理模块权限");
-    keyList.add("联络任务模块权限");
-    keyList.add("统计报表模块权限");
-    keyList.add("权限管理模块权限");
-    keyList.add("隐私信息查看权限");
-
-    return keyList;
+    // close-permission-module-gap：模块清单唯一事实源 = PermissionModule 声明顺序（含 AI / 知识库 / 其他）。
+    return PermissionModuleResolver.moduleNames();
   }
 
   @Override
@@ -207,32 +197,6 @@ public class PermissionServiceImpl extends ServiceImpl<PermissionsMapper, Permis
   }
 
   @Override
-  public Map<String, List<PermissionVO>> getAllPermissionsGroupedByModule() {
-    // 查询所有权限
-    List<PermissionsEntity> allPermissions = permissionsMapper.selectList(null);
-
-    // 按模块分组
-    Map<String, List<PermissionVO>> permissionMap = new LinkedHashMap<>();
-
-    // 初始化所有模块
-    permissionMap.put("客户管理模块权限", new ArrayList<>());
-    permissionMap.put("销售管理模块权限", new ArrayList<>());
-    permissionMap.put("财务管理模块权限", new ArrayList<>());
-    permissionMap.put("联络任务模块权限", new ArrayList<>());
-    permissionMap.put("统计报表模块权限", new ArrayList<>());
-    permissionMap.put("权限管理模块权限", new ArrayList<>());
-    permissionMap.put("隐私信息查看权限", new ArrayList<>());
-
-    // 遍历所有权限并按模块分组
-    for (PermissionsEntity permission : allPermissions) {
-      String moduleName = PermissionModuleResolver.resolve(permission.getPermissionsName());
-      permissionMap.get(moduleName).add(new PermissionVO(permission));
-    }
-
-    return permissionMap;
-  }
-
-  @Override
   public List<AuditorVO> getAuditorList() {
     // 直接查询拥有审批权限的用户列表
     List<UserEntity> auditors = permissionsMapper.selectAuditorList();
@@ -268,11 +232,9 @@ public class PermissionServiceImpl extends ServiceImpl<PermissionsMapper, Permis
     }
 
     for (PermissionsEntity permission : allPermissions) {
-      String moduleName = PermissionModuleResolver.resolve(permission.getPermissionsName());
-      List<PermissionsEntity> permissions = moduleMap.get(moduleName);
-      if (permissions != null) {
-        permissions.add(permission);
-      }
+      // close-permission-module-gap：任何一行都不丢弃——枚举外的历史脏行落「其他模块权限」桶。
+      String moduleName = PermissionModuleResolver.resolve(permission.getId());
+      moduleMap.computeIfAbsent(moduleName, key -> new ArrayList<>()).add(permission);
     }
 
     Map<String, PermissionGroupedVO> result = new LinkedHashMap<>();

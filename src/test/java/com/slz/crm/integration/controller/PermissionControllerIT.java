@@ -1,6 +1,8 @@
 package com.slz.crm.integration.controller;
 
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.hasItems;
+import static org.hamcrest.Matchers.hasKey;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -123,6 +125,44 @@ class PermissionControllerIT extends AbstractMySqlIT {
         .perform(get("/permission/list").header("token", token))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.code").value(1));
+
+    // close-permission-module-gap：目录接口必须返回 10 个模块键（键名零漂移 + AI/知识库/其他三桶新入）。
+    // 用例内补种 800/810/900（init_data.sql 会清空 permissions 表），使 AI/知识库桶有真实权限行可断言。
+    jdbcTemplate.update(
+        "INSERT INTO permissions (id, permissions_name, permissions_desc) VALUES (?, ?, ?)",
+        800L,
+        "AI_ASSIST_VIEW",
+        "查看协助");
+    jdbcTemplate.update(
+        "INSERT INTO permissions (id, permissions_name, permissions_desc) VALUES (?, ?, ?)",
+        810L,
+        "AI_TOKEN_USAGE_VIEW",
+        "查看AI用量");
+    jdbcTemplate.update(
+        "INSERT INTO permissions (id, permissions_name, permissions_desc) VALUES (?, ?, ?)",
+        900L,
+        "KNOWLEDGE_ADMIN_MANAGE",
+        "知识库管理");
+
+    mockMvc
+        .perform(get("/permission/list").header("token", token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(1))
+        .andExpect(jsonPath("$.data", hasKey("客户管理模块权限")))
+        .andExpect(jsonPath("$.data", hasKey("销售管理模块权限")))
+        .andExpect(jsonPath("$.data", hasKey("财务管理模块权限")))
+        .andExpect(jsonPath("$.data", hasKey("联络任务模块权限")))
+        .andExpect(jsonPath("$.data", hasKey("统计报表模块权限")))
+        .andExpect(jsonPath("$.data", hasKey("权限管理模块权限")))
+        .andExpect(jsonPath("$.data", hasKey("隐私信息查看权限")))
+        .andExpect(jsonPath("$.data", hasKey("AI 模块权限")))
+        .andExpect(jsonPath("$.data", hasKey("知识库管理模块权限")))
+        .andExpect(jsonPath("$.data", hasKey("其他模块权限")))
+        .andExpect(jsonPath("$.data['AI 模块权限'].mainPermissions[*].id", hasItems(800, 810)))
+        .andExpect(jsonPath("$.data['知识库管理模块权限'].mainPermissions[*].id", hasItem(900)))
+        // 「其他模块权限」桶承接枚举外的历史脏行（init_data.sql 的 id 1-10），证明零丢弃而非空桶
+        .andExpect(jsonPath("$.data['其他模块权限'].mainPermissions[*].id", hasItem(1)))
+        .andExpect(jsonPath("$.data['权限管理模块权限'].mainPermissions[*].id", hasItem(606)));
 
     mockMvc
         .perform(get("/permission/getByRole").header("token", token).param("roleId", "1"))

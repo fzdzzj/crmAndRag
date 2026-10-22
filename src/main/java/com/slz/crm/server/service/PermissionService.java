@@ -108,13 +108,6 @@ public interface PermissionService {
   List<PermissionVO> getByRole(Long roleId);
 
   /**
-   * 获取所有权限并按模块分组
-   *
-   * @return 按模块分组的权限Map
-   */
-  Map<String, List<PermissionVO>> getAllPermissionsGroupedByModule();
-
-  /**
    * 查询拥有审批权限的用户列表
    *
    * @return 拥有审批权限的用户列表（用户ID和用户名）
