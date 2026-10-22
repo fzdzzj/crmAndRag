@@ -155,6 +155,15 @@ public class ModelProviderImpl implements ModelProvider {
     return compatibleChatModel.stream(withStreamUsage(prompt));
   }
 
+  /**
+   * 文本向量（DashScope 文本 embedding）。
+   *
+   * <p><b>usage 口径</b>（multimodal-gray-and-eval-threshold 任务 3.1 实测留痕）：DashScope 文本 embedding
+   * 端点<b>不回流 usage</b> （{@code EmbeddingResponse#getMetadata().getUsage()} 为 null），故 {@code
+   * promptTokens}/{@code totalTokens} 为 {@code null} = <b>未知</b>，不是 0。调用次数由 {@code
+   * TokenUsageRecorderImpl} 的 {@code ai.token.record.calls} 计， token 不可得由 {@code
+   * ai.token.usage.unavailable} 声明；不在此处按字符数估算伪造 token。
+   */
   @Override
   public ModelCallResult<float[]> embed(EmbeddingRequest request) {
     EmbeddingModel model = dashScopeEmbeddingModel.getIfAvailable();

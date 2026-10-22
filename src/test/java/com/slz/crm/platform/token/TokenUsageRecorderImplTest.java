@@ -57,6 +57,71 @@ class TokenUsageRecorderImplTest {
   }
 
   @Test
+  void shouldCountEmbeddingCallAndDeclareTokenUnavailable() {
+    when(mapperProvider.getIfAvailable()).thenReturn(mapper);
+    // embedding 端点不回流 usage 的真实形态：三列 token 全 null（ImageEmbeddingSupport / ModelProviderImpl.embed
+    // 实测）
+    TokenUsageRecord record =
+        new TokenUsageRecord(
+            "multimodal-embedding-v1",
+            "user:system",
+            null,
+            null,
+            TokenUsageType.EMBEDDING,
+            null,
+            null,
+            null,
+            true);
+
+    recorder.record(record);
+
+    // 调用次数已计（与 token 是否可得无关）
+    assertThat(
+            registry
+                .get(TokenUsageRecorderImpl.CALLS_METRIC)
+                .tag("type", "embedding")
+                .counter()
+                .count())
+        .isEqualTo(1.0);
+    // token 不可得显式声明，而不是静默记 0
+    assertThat(
+            registry
+                .get(TokenUsageRecorderImpl.USAGE_UNAVAILABLE_METRIC)
+                .tag("type", "embedding")
+                .counter()
+                .count())
+        .isEqualTo(1.0);
+    // 落库仍是 schema 的 NOT NULL 归一值 0（V5 迁移），语义由上面的指标承担
+    verify(mapper)
+        .insert(
+            org.mockito.ArgumentMatchers.argThat(
+                entity ->
+                    entity.getPromptTokens() == 0L
+                        && entity.getCompletionTokens() == 0L
+                        && entity.getTotalTokens() == 0L));
+  }
+
+  @Test
+  void shouldNotDeclareUnavailableWhenUsagePresent() {
+    when(mapperProvider.getIfAvailable()).thenReturn(mapper);
+    TokenUsageRecord record =
+        new TokenUsageRecord(
+            "qwen-plus", "user:1", null, null, TokenUsageType.CHAT, 12L, 8L, null, true);
+
+    recorder.record(record);
+
+    assertThat(
+            registry.get(TokenUsageRecorderImpl.CALLS_METRIC).tag("type", "chat").counter().count())
+        .isEqualTo(1.0);
+    assertThat(
+            registry
+                .find(TokenUsageRecorderImpl.USAGE_UNAVAILABLE_METRIC)
+                .tag("type", "chat")
+                .counter())
+        .isNull();
+  }
+
+  @Test
   void shouldSwallowPersistenceFailure() {
     when(mapperProvider.getIfAvailable()).thenReturn(mapper);
     when(mapper.insert(org.mockito.ArgumentMatchers.any(PlatformTokenUsageEntity.class)))
