@@ -20,8 +20,8 @@
 
 ## 4. 测试与验证
 - [x] 4.1 `mvn -B -ntp clean verify` BUILD SUCCESS + 基线 `--update` + 校验 `EXIT=0` + `merge-gate.sh` 10/10
-      补勾依据（2026-10-22）：见 `work/verify-multimodal-gray.log`；基线 `--update` 后 `check-test-baseline.sh` 校验 EXIT=0；`merge-gate.sh` 10/10 PASS
+      补勾依据（2026-10-22）：`mvn -B -ntp clean verify` **BUILD SUCCESS**（surefire 1978/0/0/0，failsafe 134/0/0/**12 skipped**——新增 `ImageThresholdCalibrationIT` 无 opt-in 时按 Assume 跳过，如实 +1 skip；checkstyle 0 / spotless 0 / spotbugs High 0 / PMD 0）；树净单次 `bash scripts/check-test-baseline.sh --update` → `source-revision=102c6ac`、`measured-at=2026-10-22T05:39:29Z`，写 **318/1978/0 + 41/134/12**（既有 317/1969 + 40/133/11 之上 +1 report / +9 单测 / +1 IT +1 skip，零漂移）；校验模式复跑 **EXIT=0**（`reports>=318 tests>=1978` / `reports>=41 tests>=134 skipped<=12`）；`bash scripts/merge-gate.sh` **10/10 PASS**（unit / checkstyle / spotbugs / spotless / pmd / baseline / frontend-unit / hook / bijection / pmd-baseline）
 
 ## 5. 收口
 - [x] 5.1 变更规格归档 + handoff + 看板/台账更新；停步未 merge 未 push（A 档，独立复核四判据通过后由 Owner 授权 merge）
-      补勾依据（2026-10-22）：看板 `docs/active-handoff.md` §3 三条长期储备已改为本卡收口态；分支 `feature/multimodal-gray-and-eval-threshold` 未 merge、未 push（A 档待独立复核）
+      补勾依据（2026-10-22）：看板 `docs/active-handoff.md` §3 三条长期储备已改为本卡收口态（各带锚路径与实测值）；台账 `scripts/test-baseline.txt` 重锚；**卡仍留在 `openspec/changes/` 在途位**（归档归 archive/ 属合入闭环动作，本卡未 merge 故不归档）；分支 `feature/multimodal-gray-and-eval-threshold`（基点 `0e1c367`，4 笔）**未 merge、未 push**，停步等 Owner 授权的独立复核（A 档四判据）
