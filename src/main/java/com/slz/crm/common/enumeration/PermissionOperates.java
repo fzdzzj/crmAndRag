@@ -281,6 +281,8 @@ public enum PermissionOperates {
   PROMPT_TEMPLATE_VIEW(808L, "查看提示词模板"),
   /** AI 模块 - 提示词模板创建/更新/删除/启停用，add-prompt-template-admin 任务 1.2 */
   PROMPT_TEMPLATE_MANAGE(809L, "管理提示词模板"),
+  /** AI 模块 - 超管按用户查看 AI token 消耗（只读聚合），token-usage-admin-view 任务 1.1 */
+  AI_TOKEN_USAGE_VIEW(810L, "查看AI用量"),
   /** 知识库管理 - 管理知识库文档（列表、上传摄取、删除、重建、检索 dry-run），读写同权单码，add-knowledge-admin-api 任务 2.1 */
   KNOWLEDGE_ADMIN_MANAGE(900L, "知识库管理");
 

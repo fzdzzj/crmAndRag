@@ -14,6 +14,9 @@ export default {
   statistics: {
     title: '统计报表',
   },
+  'token-usage': {
+    title: 'AI 用量',
+  },
   privilege: {
     title: '权限管理',
   },

@@ -5516,6 +5516,74 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageAssistVO"
+  /ai/token-usage/summary:
+    get:
+      tags:
+      - ai-token-usage-controller
+      parameters:
+      - name: startTime
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: endTime
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: usageType
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultTokenUsageSummaryVO"
+  /ai/token-usage/by-user:
+    get:
+      tags:
+      - ai-token-usage-controller
+      parameters:
+      - name: startTime
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: endTime
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: usageType
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: pageNum
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ResultTokenUsageByUserPageVO"
   /ai/sessions/{id}/messages:
     get:
       tags:
@@ -10699,6 +10767,113 @@ components:
           type: string
         data:
           $ref: "#/components/schemas/PageAssistVO"
+    ResultTokenUsageSummaryVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/TokenUsageSummaryVO"
+    TokenUsageSummaryVO:
+      type: object
+      properties:
+        startTime:
+          type: string
+        endTime:
+          type: string
+        promptTokens:
+          type: integer
+          format: int64
+        completionTokens:
+          type: integer
+          format: int64
+        totalTokens:
+          type: integer
+          format: int64
+        calls:
+          type: integer
+          format: int64
+        failedCalls:
+          type: integer
+          format: int64
+        userCount:
+          type: integer
+          format: int64
+        usageTypes:
+          type: array
+          items:
+            $ref: "#/components/schemas/TokenUsageTypeShareVO"
+    TokenUsageTypeShareVO:
+      type: object
+      properties:
+        usageType:
+          type: string
+        totalTokens:
+          type: integer
+          format: int64
+        calls:
+          type: integer
+          format: int64
+        failedCalls:
+          type: integer
+          format: int64
+        sharePct:
+          type: number
+          format: double
+    ResultTokenUsageByUserPageVO:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+        data:
+          $ref: "#/components/schemas/TokenUsageByUserPageVO"
+    TokenUsageByUserPageVO:
+      type: object
+      properties:
+        total:
+          type: integer
+          format: int64
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/TokenUsageByUserVO"
+    TokenUsageByUserVO:
+      type: object
+      properties:
+        userRef:
+          type: string
+        userId:
+          type: integer
+          format: int64
+        userName:
+          type: string
+        promptTokens:
+          type: integer
+          format: int64
+        completionTokens:
+          type: integer
+          format: int64
+        totalTokens:
+          type: integer
+          format: int64
+        calls:
+          type: integer
+          format: int64
+        failedCalls:
+          type: integer
+          format: int64
+        lastCallTime:
+          type: string
+          format: date-time
+        sharePct:
+          type: number
+          format: double
     ResultListAiSessionVO:
       type: object
       properties:
