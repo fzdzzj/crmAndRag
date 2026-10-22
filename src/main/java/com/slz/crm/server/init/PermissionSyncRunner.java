@@ -1,5 +1,6 @@
 package com.slz.crm.server.init;
 
+import com.slz.crm.common.enumeration.PermissionModule;
 import com.slz.crm.common.enumeration.PermissionOperates;
 import com.slz.crm.pojo.entity.PermissionsEntity;
 import com.slz.crm.server.mapper.PermissionsMapper;
@@ -82,27 +83,22 @@ public class PermissionSyncRunner {
   private Map<String, List<PermissionsEntity>> buildAllRequiredPermissions() {
     Map<String, List<PermissionsEntity>> permissionsByModule = new LinkedHashMap<>();
 
-    // 初始化所有模块
-    permissionsByModule.put("客户管理模块", new ArrayList<>());
-    permissionsByModule.put("销售管理模块", new ArrayList<>());
-    permissionsByModule.put("财务管理模块", new ArrayList<>());
-    permissionsByModule.put("联络任务模块", new ArrayList<>());
-    permissionsByModule.put("统计报表模块", new ArrayList<>());
-    permissionsByModule.put("权限管理模块", new ArrayList<>());
-    permissionsByModule.put("隐私信息模块", new ArrayList<>());
+    // 初始化所有模块：模块清单与顺序唯一事实源 = PermissionModule（close-permission-module-gap）
+    for (PermissionModule module : PermissionModule.values()) {
+      permissionsByModule.put(module.displayName(), new ArrayList<>());
+    }
 
     // 遍历所有权限枚举值并按模块分组
     for (PermissionOperates operation : PermissionOperates.values()) {
       PermissionsEntity perm = new PermissionsEntity();
       perm.setId(operation.getId());
 
-      // 根据枚举常量名称确定模块分组；权限名用枚举裸名，
+      // 根据枚举所属号段确定模块分组；权限名用枚举裸名，
       // 与 V21/V26/V27 迁移种子（permissions_name varchar(50)，最长裸名 46）完全一致
-      String module = getModuleByEnumName(operation.name());
+      String module = getModule(operation);
       perm.setPermissionsName(operation.name());
       perm.setPermissionsDesc(operation.getDescription());
 
-      // 未知前缀（如后加的 AI_/KNOWLEDGE_）归入「其他模块」；computeIfAbsent 保证新增前缀不再 NPE
       permissionsByModule.computeIfAbsent(module, key -> new ArrayList<>()).add(perm);
     }
 
@@ -110,31 +106,13 @@ public class PermissionSyncRunner {
   }
 
   /**
-   * 根据枚举常量名称获取所属模块
+   * 根据权限枚举获取所属模块（仅用于启动日志分组，委托 {@link PermissionModule} 单一事实源）。
    *
-   * @param enumName 枚举常量名称
-   * @return 模块名称
+   * @param operation 权限枚举
+   * @return 模块展示名
    */
-  private String getModuleByEnumName(String enumName) {
-    final String result;
-    if (enumName.startsWith("CUSTOMER_")) {
-      result = "客户管理模块";
-    } else if (enumName.startsWith("SALES_")) {
-      result = "销售管理模块";
-    } else if (enumName.startsWith("FINANCE_")) {
-      result = "财务管理模块";
-    } else if (enumName.startsWith("TASK_")) {
-      result = "联络任务模块";
-    } else if (enumName.startsWith("REPORT_")) {
-      result = "统计报表模块";
-    } else if (enumName.startsWith("SYSTEM_")) {
-      result = "权限管理模块";
-    } else if (enumName.startsWith("PRIVACY_")) {
-      result = "隐私信息模块";
-    } else {
-      result = "其他模块";
-    }
-    return result;
+  private String getModule(PermissionOperates operation) {
+    return PermissionModule.fromOperates(operation).displayName();
   }
 
   /** 打印权限分组信息 */

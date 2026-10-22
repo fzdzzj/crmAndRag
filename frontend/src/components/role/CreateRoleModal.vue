@@ -12,16 +12,21 @@ import {
   CheckboxGroup,
   Collapse,
   CollapsePanel,
+  Spin,
   message,
 } from 'ant-design-vue';
 import type { Rule } from 'ant-design-vue/es/form';
 import { validateForm } from '@/utils/formValidate';
 import { useCreateRole, useDeleteRole, useQueryRoles } from '@/hooks/useRole';
-import { useAddPermissionsToRole } from '@/hooks/usePremission';
+import { useAddPermissionsToRole, useQueryAllPermissions } from '@/hooks/usePremission';
 import { getPermissionGetByRole, getRoleList } from '@/api/axios';
+import type { PermissionVo, SubPermissionVo } from '@/api/axios';
 import apiClient from '@/api/apiClient';
-import PERMISSIONS from '@/constants/premission';
 import { extractPermissionIds } from '@/types/permission';
+import {
+  buildPermissionCategories,
+  subPermissionsOf,
+} from '@/utils/permissionCatalog';
 
 interface RoleForm {
   roleName: string;
@@ -49,11 +54,16 @@ const rules: Record<string, Rule[]> = {
   roleDesc: [{ required: true, message: '请输入角色描述', trigger: 'blur' }],
 };
 
-// 使用本地权限数据（与编辑角色权限弹窗一致）
-const permissionsByCategory = PERMISSIONS;
-const categories = Object.keys(
-  permissionsByCategory,
-) as (keyof typeof PERMISSIONS)[];
+// 权限目录来源：GET /permission/list（与编辑角色权限弹窗同源，后端 PermissionModule 号段单一事实源）
+const {
+  data: permissionCatalog,
+  isLoading: isLoadingCatalog,
+  isError: isCatalogError,
+  refetch: refetchCatalog,
+} = useQueryAllPermissions();
+
+const categories = computed(() => buildPermissionCategories(permissionCatalog.value));
+const categoryNames = computed(() => categories.value.map((category) => category.module));
 
 // 可作为权限模板的已有角色
 const roleOptions = computed(() =>
@@ -63,55 +73,51 @@ const roleOptions = computed(() =>
   })),
 );
 
-const getSubPermissions = (
-  category: keyof typeof PERMISSIONS,
-  parentPermissionId: number,
-) => {
-  return permissionsByCategory[category].subPermissions.filter(
-    (sp) => sp.parentPermissionId === parentPermissionId,
-  );
-};
-
 interface FilteredMainPermission {
-  permission: (typeof PERMISSIONS)[keyof typeof PERMISSIONS]['mainPermissions'][number];
-  subs: (typeof PERMISSIONS)[keyof typeof PERMISSIONS]['subPermissions'][number][];
+  permission: PermissionVo;
+  subs: SubPermissionVo[];
+}
+
+interface FilteredPermissionGroup {
+  category: string;
+  mainPermissions: FilteredMainPermission[];
+  orphanSub: SubPermissionVo[];
 }
 
 // 按关键字过滤权限分类/主权限/子权限，无匹配的主权限连同其子权限一起隐藏
-const filteredPermissionGroups = computed(() => {
+const filteredPermissionGroups = computed<FilteredPermissionGroup[]>(() => {
   const kw = permissionKeyword.value.trim().toLowerCase();
+  const match = (text?: string) => (text ?? '').toLowerCase().includes(kw);
   if (!kw) {
-    return categories.map((category) => ({
-      category,
-      mainPermissions: permissionsByCategory[category].mainPermissions.map(
-        (permission) => ({
-          permission,
-          subs: getSubPermissions(category, permission.id),
-        }),
-      ),
+    return categories.value.map((category) => ({
+      category: category.module,
+      mainPermissions: category.main.map((permission) => ({
+        permission,
+        subs: subPermissionsOf(category, permission.id),
+      })),
+      orphanSub: category.orphanSub,
     }));
   }
-  const match = (text: string) => text.toLowerCase().includes(kw);
-  return categories
-    .map((category) => {
-      const mainPermissions = permissionsByCategory[category].mainPermissions
-        .map((permission) => {
-          const subs = getSubPermissions(category, permission.id).filter((sub) =>
-            match(sub.permissionsDesc),
-          );
-          const mainMatched = match(permission.permissionsDesc);
-          if (!mainMatched && subs.length === 0) {
-            return null;
-          }
-          const result: FilteredMainPermission = { permission, subs };
-          return result;
-        })
-        .filter(
-          (item): item is FilteredMainPermission => item !== null,
-        );
-      return { category, mainPermissions };
-    })
-    .filter((group) => group.mainPermissions.length > 0);
+  const groups: FilteredPermissionGroup[] = [];
+  for (const category of categories.value) {
+    const mainPermissions: FilteredMainPermission[] = [];
+    for (const permission of category.main) {
+      const subs = subPermissionsOf(category, permission.id).filter((sub) =>
+        match(sub.permissionsDesc),
+      );
+      if (!match(permission.permissionsDesc) && subs.length === 0) {
+        continue;
+      }
+      mainPermissions.push({ permission, subs });
+    }
+    const orphanSub = category.orphanSub.filter((sub) =>
+      match(sub.permissionsDesc),
+    );
+    if (mainPermissions.length > 0 || orphanSub.length > 0) {
+      groups.push({ category: category.module, mainPermissions, orphanSub });
+    }
+  }
+  return groups;
 });
 
 // 搜索时自动展开匹配到的分类，清空后恢复全部展开
@@ -119,9 +125,13 @@ watch(permissionKeyword, () => {
   if (permissionKeyword.value.trim()) {
     activeKeys.value = filteredPermissionGroups.value.map((group) => group.category);
   } else {
-    activeKeys.value = [...categories];
+    activeKeys.value = [...categoryNames.value];
   }
 });
+
+const retryCatalog = () => {
+  void refetchCatalog();
+};
 
 const open = () => {
   form.value = {
@@ -131,7 +141,7 @@ const open = () => {
   templateRoleId.value = undefined;
   selectedPermissionIds.value = [];
   permissionKeyword.value = '';
-  activeKeys.value = [...categories];
+  activeKeys.value = [...categoryNames.value];
   innerOpen.value = true;
 };
 
@@ -272,67 +282,112 @@ const submit = async () => {
         />
       </AFormItem>
       <AFormItem label="角色权限">
-        <AInputSearch
-          v-model:value="permissionKeyword"
-          placeholder="搜索权限名称"
-          allow-clear
-          style="margin-bottom: 8px"
-        />
         <div
-          v-if="filteredPermissionGroups.length === 0"
-          style="text-align: center; padding: 24px 0; color: #999"
+          v-if="isLoadingCatalog"
+          style="text-align: center; padding: 24px 0"
         >
-          {{ permissionKeyword.trim() ? '无匹配的权限' : '暂无权限数据' }}
+          <Spin tip="加载权限目录..." />
         </div>
         <div
-          v-else
-          style="
-            max-height: 360px;
-            overflow-y: auto;
-            padding-right: 8px;
-            border: 1px solid #f0f0f0;
-            border-radius: 6px;
-            padding: 8px;
-          "
+          v-else-if="isCatalogError"
+          style="text-align: center; padding: 24px 0; color: #999"
         >
-          <CheckboxGroup v-model:value="selectedPermissionIds">
-            <Collapse v-model:active-key="activeKeys" ghost>
-              <CollapsePanel
-                v-for="group in filteredPermissionGroups"
-                :key="group.category"
-                :header="group.category"
-              >
-                <template
-                  v-for="{ permission, subs } in group.mainPermissions"
-                  :key="permission.id"
+          权限目录加载失败，
+          <a @click="retryCatalog">重试</a>
+        </div>
+        <template v-else>
+          <AInputSearch
+            v-model:value="permissionKeyword"
+            placeholder="搜索权限名称"
+            allow-clear
+            style="margin-bottom: 8px"
+          />
+          <div
+            v-if="filteredPermissionGroups.length === 0"
+            style="text-align: center; padding: 24px 0; color: #999"
+          >
+            {{ permissionKeyword.trim() ? '无匹配的权限' : '暂无权限数据' }}
+          </div>
+          <div
+            v-else
+            style="
+              max-height: 360px;
+              overflow-y: auto;
+              padding-right: 8px;
+              border: 1px solid #f0f0f0;
+              border-radius: 6px;
+              padding: 8px;
+            "
+          >
+            <CheckboxGroup v-model:value="selectedPermissionIds">
+              <Collapse v-model:active-key="activeKeys" ghost>
+                <CollapsePanel
+                  v-for="group in filteredPermissionGroups"
+                  :key="group.category"
+                  :header="group.category"
                 >
-                  <div
-                    style="
-                      display: grid;
-                      grid-template-columns: repeat(2, 1fr);
-                      gap: 8px;
-                    "
+                  <template
+                    v-for="{ permission, subs } in group.mainPermissions"
+                    :key="permission.id"
                   >
-                    <Checkbox
-                      :value="permission.id"
+                    <div
                       style="
-                        padding: 10px 12px;
-                        border: 1px solid #f0f0f0;
-                        border-radius: 6px;
-                        background: #fafafa;
-                        margin-right: 0;
-                        display: flex;
-                        align-items: flex-start;
+                        display: grid;
+                        grid-template-columns: repeat(2, 1fr);
                         gap: 8px;
                       "
                     >
-                      <div style="flex: 1; font-size: 14px; color: #262626">
-                        {{ permission.permissionsDesc }}
-                      </div>
-                    </Checkbox>
-                  </div>
+                      <Checkbox
+                        :value="permission.id as number"
+                        style="
+                          padding: 10px 12px;
+                          border: 1px solid #f0f0f0;
+                          border-radius: 6px;
+                          background: #fafafa;
+                          margin-right: 0;
+                          display: flex;
+                          align-items: flex-start;
+                          gap: 8px;
+                        "
+                      >
+                        <div style="flex: 1; font-size: 14px; color: #262626">
+                          {{ permission.permissionsDesc }}
+                        </div>
+                      </Checkbox>
+                    </div>
+                    <div
+                      v-if="subs.length > 0"
+                      style="
+                        margin-left: 32px;
+                        margin-top: 4px;
+                        display: grid;
+                        grid-template-columns: repeat(2, 1fr);
+                        gap: 8px;
+                      "
+                    >
+                      <Checkbox
+                        v-for="sub in subs"
+                        :key="sub.id"
+                        :value="sub.id as number"
+                        style="
+                          padding: 8px 12px;
+                          border: 1px solid #e6f4ff;
+                          border-radius: 6px;
+                          background: #f0f7ff;
+                          margin-right: 0;
+                          display: flex;
+                          align-items: flex-start;
+                          gap: 8px;
+                        "
+                      >
+                        <div style="flex: 1; font-size: 13px; color: #595959">
+                          {{ sub.permissionsDesc }}
+                        </div>
+                      </Checkbox>
+                    </div>
+                  </template>
                   <div
-                    v-if="subs.length > 0"
+                    v-if="group.orphanSub.length > 0"
                     style="
                       margin-left: 32px;
                       margin-top: 4px;
@@ -342,9 +397,9 @@ const submit = async () => {
                     "
                   >
                     <Checkbox
-                      v-for="sub in subs"
+                      v-for="sub in group.orphanSub"
                       :key="sub.id"
-                      :value="sub.id"
+                      :value="sub.id as number"
                       style="
                         padding: 8px 12px;
                         border: 1px solid #e6f4ff;
@@ -361,11 +416,11 @@ const submit = async () => {
                       </div>
                     </Checkbox>
                   </div>
-                </template>
-              </CollapsePanel>
-            </Collapse>
-          </CheckboxGroup>
-        </div>
+                </CollapsePanel>
+              </Collapse>
+            </CheckboxGroup>
+          </div>
+        </template>
       </AFormItem>
     </AForm>
   </AModal>

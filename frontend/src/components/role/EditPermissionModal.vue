@@ -9,14 +9,17 @@ import {
   Collapse,
   CollapsePanel,
 } from 'ant-design-vue';
-import { useQueryPermissionsByRole } from '@/hooks/usePremission';
+import { useQueryAllPermissions, useQueryPermissionsByRole } from '@/hooks/usePremission';
 import {
   useAddPermissionsToRole,
   useDeletePermissionsFromRole,
 } from '@/hooks/usePremission';
 import type { GetRoleListResponse } from '@/api/axios';
 import { extractPermissionIds } from '@/types/permission';
-import PERMISSIONS from '@/constants/premission';
+import {
+  buildPermissionCategories,
+  subPermissionsOf,
+} from '@/utils/permissionCatalog';
 
 type RoleRecord = NonNullable<NonNullable<GetRoleListResponse['data']>['records']>[number];
 
@@ -25,23 +28,17 @@ const currentRole = ref<RoleRecord>();
 const selectedPermissionIds = ref<number[]>([]);
 const originalPermissionIds = ref<number[]>([]);
 
-// 使用本地权限数据
-const permissionsByCategory = PERMISSIONS;
+// 权限目录来源：GET /permission/list（后端 PermissionModule 号段单一事实源），不再用冻结快照
+const {
+  data: permissionCatalog,
+  isLoading: isLoadingCatalog,
+  isError: isCatalogError,
+  refetch: refetchCatalog,
+} = useQueryAllPermissions();
 
-// 获取所有分类名称（静态常量，不需要 computed）
-const categories = Object.keys(
-  permissionsByCategory,
-) as (keyof typeof PERMISSIONS)[];
+const categories = computed(() => buildPermissionCategories(permissionCatalog.value));
+const categoryNames = computed(() => categories.value.map((category) => category.module));
 
-// 获取某个分类下，某个主权限对应的子权限
-const getSubPermissions = (
-  category: keyof typeof PERMISSIONS,
-  parentPermissionId: number,
-) => {
-  return permissionsByCategory[category].subPermissions.filter(
-    (sp) => sp.parentPermissionId === parentPermissionId,
-  );
-};
 const currentId = ref<number>();
 // 获取当前角色权限
 const {
@@ -49,6 +46,10 @@ const {
   isLoading: isLoadingRolePermissions,
   refetch: refetchRolePermissions,
 } = useQueryPermissionsByRole(currentId);
+
+const isLoading = computed(
+  () => isLoadingRolePermissions.value || isLoadingCatalog.value,
+);
 
 // 折叠面板的激活 key
 const activeKeys = ref<string[]>([]);
@@ -58,8 +59,13 @@ watch(innerOpen, (isOpen) => {
   if (isOpen && currentRole.value) {
     selectedPermissionIds.value = [...rolePermissionIds.value];
     originalPermissionIds.value = [...rolePermissionIds.value];
-    // 默认展开所有分类
-    activeKeys.value = [...categories];
+  }
+});
+
+// 目录异步到达或弹窗打开时同步展开项（模块集合只在目录变化时变，不影响手动折叠）
+watch([innerOpen, categoryNames], ([isOpen, names]) => {
+  if (isOpen) {
+    activeKeys.value = [...names];
   }
 });
 
@@ -88,6 +94,10 @@ const close = () => {
   selectedPermissionIds.value = [];
   originalPermissionIds.value = [];
   activeKeys.value = [];
+};
+
+const retryCatalog = () => {
+  void refetchCatalog();
 };
 
 defineExpose({ open, close });
@@ -164,11 +174,15 @@ const submit = async () => {
     @ok="submit"
     @cancel="close"
   >
+    <div v-if="isLoading" style="text-align: center; padding: 40px 0">
+      <Spin tip="加载权限目录..." />
+    </div>
     <div
-      v-if="isLoadingRolePermissions"
-      style="text-align: center; padding: 40px 0"
+      v-else-if="isCatalogError"
+      style="text-align: center; padding: 40px 0; color: #999"
     >
-      <Spin tip="加载角色权限..." />
+      权限目录加载失败，
+      <a @click="retryCatalog">重试</a>
     </div>
     <div v-else>
       <div style="margin-bottom: 16px; color: #666">
@@ -190,11 +204,11 @@ const submit = async () => {
           <Collapse v-model:active-key="activeKeys" ghost>
             <CollapsePanel
               v-for="category in categories"
-              :key="category"
-              :header="category"
+              :key="category.module"
+              :header="category.module"
             >
               <template
-                v-for="permission in permissionsByCategory[category].mainPermissions"
+                v-for="permission in category.main"
                 :key="permission.id"
               >
                 <div
@@ -205,7 +219,7 @@ const submit = async () => {
                   "
                 >
                   <Checkbox
-                    :value="permission.id"
+                    :value="permission.id as number"
                     style="
                       padding: 10px 12px;
                       border: 1px solid #f0f0f0;
@@ -223,7 +237,7 @@ const submit = async () => {
                   </Checkbox>
                 </div>
                 <div
-                  v-if="getSubPermissions(category, permission.id).length > 0"
+                  v-if="subPermissionsOf(category, permission.id).length > 0"
                   style="
                     margin-left: 32px;
                     margin-top: 4px;
@@ -233,9 +247,9 @@ const submit = async () => {
                   "
                 >
                   <Checkbox
-                    v-for="sub in getSubPermissions(category, permission.id)"
+                    v-for="sub in subPermissionsOf(category, permission.id)"
                     :key="sub.id"
-                    :value="sub.id"
+                    :value="sub.id as number"
                     style="
                       padding: 8px 12px;
                       border: 1px solid #e6f4ff;
@@ -253,6 +267,36 @@ const submit = async () => {
                   </Checkbox>
                 </div>
               </template>
+              <div
+                v-if="category.orphanSub.length > 0"
+                style="
+                  margin-left: 32px;
+                  margin-top: 4px;
+                  display: grid;
+                  grid-template-columns: repeat(2, 1fr);
+                  gap: 8px;
+                "
+              >
+                <Checkbox
+                  v-for="sub in category.orphanSub"
+                  :key="sub.id"
+                  :value="sub.id as number"
+                  style="
+                    padding: 8px 12px;
+                    border: 1px solid #e6f4ff;
+                    border-radius: 6px;
+                    background: #f0f7ff;
+                    margin-right: 0;
+                    display: flex;
+                    align-items: flex-start;
+                    gap: 8px;
+                  "
+                >
+                  <div style="flex: 1; font-size: 13px; color: #595959">
+                    {{ sub.permissionsDesc }}
+                  </div>
+                </Checkbox>
+              </div>
             </CollapsePanel>
           </Collapse>
         </CheckboxGroup>

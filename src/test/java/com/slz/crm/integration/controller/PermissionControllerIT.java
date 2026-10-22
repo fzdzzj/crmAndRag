@@ -1,6 +1,8 @@
 package com.slz.crm.integration.controller;
 
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.hasItems;
+import static org.hamcrest.Matchers.hasKey;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -88,7 +90,7 @@ class PermissionControllerIT extends AbstractMySqlIT {
   @Test
   @DisplayName("拥有分配权限606的非超管角色可查看全部权限列表与按角色查询权限")
   void shouldAllowPermissionListForRoleGrantedAssignPermission() throws Exception {
-    // 用例内 jdbcTemplate 种子（参照 normalUserToken() 模式）：sys_role id=2 + permissions id=606
+    // 用例内 jdbcTemplate 种子（参照 normalUserToken() 模式）：sys_role id=2 + permissions 606/800/810/900
     // + role_permissions(2,606) + sys_user roleId=2、status=1、roleId≠1 避开超管硬放行。
     // @Transactional 回滚隔离，不改共享 init_data.sql，零波及其他 IT。
     jdbcTemplate.update("DELETE FROM sys_user WHERE id = ?", TestRole.NORMAL.getUserId());
@@ -104,6 +106,22 @@ class PermissionControllerIT extends AbstractMySqlIT {
         606L,
         "SYSTEM_ASSIGN_PERMISSION",
         "分配权限");
+    // close-permission-module-gap：AI / 知识库桶要有真实权限行才可断言（init_data.sql 会整表清空 permissions）。
+    jdbcTemplate.update(
+        "INSERT INTO permissions (id, permissions_name, permissions_desc) VALUES (?, ?, ?)",
+        800L,
+        "AI_ASSIST_VIEW",
+        "查看协助");
+    jdbcTemplate.update(
+        "INSERT INTO permissions (id, permissions_name, permissions_desc) VALUES (?, ?, ?)",
+        810L,
+        "AI_TOKEN_USAGE_VIEW",
+        "查看AI用量");
+    jdbcTemplate.update(
+        "INSERT INTO permissions (id, permissions_name, permissions_desc) VALUES (?, ?, ?)",
+        900L,
+        "KNOWLEDGE_ADMIN_MANAGE",
+        "知识库管理");
     jdbcTemplate.update(
         "INSERT INTO role_permissions (role_id, permissions_id) VALUES (?, ?)", 2L, 606L);
     jdbcTemplate.update(
@@ -122,7 +140,23 @@ class PermissionControllerIT extends AbstractMySqlIT {
     mockMvc
         .perform(get("/permission/list").header("token", token))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.code").value(1));
+        .andExpect(jsonPath("$.code").value(1))
+        // 目录接口必须返回 10 个模块键：7 个既有键名零漂移 + AI / 知识库 / 其他三桶。
+        .andExpect(jsonPath("$.data", hasKey("客户管理模块权限")))
+        .andExpect(jsonPath("$.data", hasKey("销售管理模块权限")))
+        .andExpect(jsonPath("$.data", hasKey("财务管理模块权限")))
+        .andExpect(jsonPath("$.data", hasKey("联络任务模块权限")))
+        .andExpect(jsonPath("$.data", hasKey("统计报表模块权限")))
+        .andExpect(jsonPath("$.data", hasKey("权限管理模块权限")))
+        .andExpect(jsonPath("$.data", hasKey("隐私信息查看权限")))
+        .andExpect(jsonPath("$.data", hasKey("AI 模块权限")))
+        .andExpect(jsonPath("$.data", hasKey("知识库管理模块权限")))
+        .andExpect(jsonPath("$.data", hasKey("其他模块权限")))
+        .andExpect(jsonPath("$.data['AI 模块权限'].mainPermissions[*].id", hasItems(800, 810)))
+        .andExpect(jsonPath("$.data['知识库管理模块权限'].mainPermissions[*].id", hasItem(900)))
+        // 「其他模块权限」桶承接枚举外的历史脏行（init_data.sql 的 id 1-10），证明零丢弃而非空桶
+        .andExpect(jsonPath("$.data['其他模块权限'].mainPermissions[*].id", hasItem(1)))
+        .andExpect(jsonPath("$.data['权限管理模块权限'].mainPermissions[*].id", hasItem(606)));
 
     mockMvc
         .perform(get("/permission/getByRole").header("token", token).param("roleId", "1"))

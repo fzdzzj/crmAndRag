@@ -36,15 +36,23 @@ class PermissionSyncRunnerTest {
     assertEquals(PermissionOperates.values().length, ids.size());
     assertEquals(PermissionOperates.values().length, ids.stream().distinct().count());
 
-    // 未知前缀归入「其他模块」；所有权限名均为枚举裸名，与迁移种子（V21/V26/V27）一致
-    List<PermissionsEntity> others = byModule.getOrDefault("其他模块", new ArrayList<>());
-    assertTrue(others.size() >= 9, "AI_ 8 个 + KNOWLEDGE_ 应归入其他模块");
-    Map<Long, String> otherNames =
-        others.stream()
+    // close-permission-module-gap：分组改由 PermissionModule 号段单一事实源决定（不再按枚举名前缀）——
+    // AI/知识库各归各桶，「其他模块权限」桶保留但枚举内权限不得落入。
+    List<PermissionsEntity> ai = byModule.getOrDefault("AI 模块权限", new ArrayList<>());
+    Map<Long, String> aiNames =
+        ai.stream()
             .collect(
                 Collectors.toMap(PermissionsEntity::getId, PermissionsEntity::getPermissionsName));
-    assertEquals("AI_ASSIST_VIEW", otherNames.get(800L));
-    assertTrue(otherNames.containsValue("KNOWLEDGE_ADMIN_MANAGE"));
+    assertEquals("AI_ASSIST_VIEW", aiNames.get(800L));
+    assertEquals("AI_TOKEN_USAGE_VIEW", aiNames.get(810L));
+
+    List<PermissionsEntity> knowledge = byModule.getOrDefault("知识库管理模块权限", new ArrayList<>());
+    assertEquals(1, knowledge.size());
+    assertEquals("KNOWLEDGE_ADMIN_MANAGE", knowledge.get(0).getPermissionsName());
+
+    assertTrue(
+        byModule.getOrDefault("其他模块权限", new ArrayList<>()).isEmpty(),
+        "PermissionOperates 内的权限一律有专属号段，不得落「其他模块权限」");
 
     // 全量裸名断言：名字不带任何模块前缀（历史上 sales: + 长名 52 字符超出 varchar(50)）
     Map<Long, String> idToEnumName =

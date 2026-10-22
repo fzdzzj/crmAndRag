@@ -1,36 +1,40 @@
 package com.slz.crm.server.service.impl;
 
+import com.slz.crm.common.enumeration.PermissionModule;
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * {@link PermissionServiceImpl} 的权限模块名解析单元（只读、确定性）。
  *
- * <p>tighten-pmd-violations 分片
- * B：把模块名从权限前缀（customer:/sales:/finance:/task:/report:/system:/project:）映射为 展示名。行为等价于原内联实现，仅作为类级
- * NCSS 下沉的独立单元。
+ * <p>close-permission-module-gap：模块归属的唯一事实源已收敛到 {@link PermissionModule}（按权限 ID 号段判定），
+ * 本类只做委托，不再持有任何前缀 / 名称判断。原按 {@code customer:} / {@code sales:} / … 英文冒号 前缀匹配的实现自 {@code
+ * PermissionSyncRunner} 改写为枚举裸名起即死代码，已删除。
  */
 final class PermissionModuleResolver {
 
   private PermissionModuleResolver() {}
 
-  /** 根据权限名称前缀解析展示模块名；未知前缀归入「其他模块权限」。 */
-  static String resolve(String permissionName) {
-    String result;
-    if (permissionName.startsWith("customer:")) {
-      result = "客户管理模块权限";
-    } else if (permissionName.startsWith("sales:")) {
-      result = "销售管理模块权限";
-    } else if (permissionName.startsWith("finance:")) {
-      result = "财务管理模块权限";
-    } else if (permissionName.startsWith("task:")) {
-      result = "联络任务模块权限";
-    } else if (permissionName.startsWith("report:")) {
-      result = "统计报表模块权限";
-    } else if (permissionName.startsWith("system:")) {
-      result = "权限管理模块权限";
-    } else if (permissionName.startsWith("project:")) {
-      result = "隐私信息查看权限";
-    } else {
-      result = "其他模块权限";
+  /**
+   * 有序模块展示名：顺序与 {@link PermissionModule} 声明顺序一致，「其他模块权限」恒末位。
+   *
+   * @return 模块展示名列表
+   */
+  static List<String> moduleNames() {
+    List<String> names = new ArrayList<>();
+    for (PermissionModule module : PermissionModule.values()) {
+      names.add(module.displayName());
     }
-    return result;
+    return names;
+  }
+
+  /**
+   * 根据权限 ID 解析展示模块名；枚举中不存在的 ID 归入「其他模块权限」。
+   *
+   * @param permissionId 权限 ID，允许 null
+   * @return 模块展示名
+   */
+  static String resolve(Long permissionId) {
+    return PermissionModule.fromPermissionId(permissionId).displayName();
   }
 }
