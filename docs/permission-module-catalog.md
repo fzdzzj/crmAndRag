@@ -60,7 +60,7 @@
 |---|---|---|
 | 数据来源 | `frontend/src/constants/premission.ts`（冻结的 `/permission/list` 响应快照，`permissionsName` 仍带 `customer:` 前缀） | `GET /permission/list`（`useQueryAllPermissions`） |
 | 候选权限条数 | **109** | **120** |
-| 模块桶 | 7（快照键） | 10（接口键；前端跳过空模块渲染，真实库中「其他模块权限」为空） |
+| 模块桶 | 7（快照键） | 10（接口键；前端跳过空模块渲染。「其他模块权限」只兜底枚举外的历史脏行——库表仅由迁移种子 + `PermissionSyncRunner` 从零补齐时该桶为空；本仓 IT 库因 `init_data.sql:195-205` 另种了 id 1-10 的非枚举权限行而**非空**，`PermissionControllerIT` 正是拿它证明「零丢弃」） |
 
 - 改前 109 的实测来源：`mockPermissionCatalog.ts`（原 `constants/premission.ts`）中 `"permissionsName"` 出现 **109** 次。
 - 改后 120 的实测来源：`PermissionOperates` 常量 ID 字面量 **120** 个；`permissions` 表由 `PermissionSyncRunner` 在启动时补齐
