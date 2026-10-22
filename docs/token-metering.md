@@ -62,3 +62,27 @@
 1. **token 级账单仍不可得**（端点限制）：若未来 DashScope 回流 embedding usage，`ModelProviderImpl#embed` 与
    `ImageEmbeddingSupport#parseResponse` 的取数代码已就位（无需改），只需重跑一次基线确认真回流。
 2. **按次计价的换算系数不在本卡**（待决策）：把"调用次数"折成金额需要供应商单价，属业务定价口径，不应写进计量代码。
+
+## 7. 超管按用户查看（token-usage-admin-view，权限 810）
+
+超管侧读端点（`AiTokenUsageController`，只读、零写操作、零契约解冻）：
+
+| 端点 | 口径 |
+|---|---|
+| `GET /ai/token-usage/by-user` | 按 `user_id_ref` 聚合：token 三口径、`calls`（含失败）、`failedCalls`（`success = 0`）、`lastCallTime`、`sharePct`；按总 token 降序分页 |
+| `GET /ai/token-usage/summary` | 同区间总览：总 token / 总调用 / 失败 / 去重用户数 + 按 `usage_type` 分组占比 |
+
+**参数与上限**：`startTime` / `endTime` 为 ISO-8601（`2026-09-01T00:00:00`，也接受空格分隔），
+**两端必须同时提供或同时省略**（省略 = 近 30 天）；区间半开 `[start, end)`，上限 **366 天**，终点不得晚于当前时间；
+`usageType` 可空（`chat`/`embedding`/`ocr`/`vision`/`summary`/`intent`，大小写不敏感）；
+`pageNum ≥ 1`、`pageSize ∈ [1, 200]`。越界一律 VALIDATION(96007)，不新增错误码。
+
+**权限**：`PermissionOperates.AI_TOKEN_USAGE_VIEW(810L, "查看AI用量")`，迁移
+`V43__ai_token_usage_permission_seed.sql` **只种权限行、不授业务角色**——超管（roleId=1）由
+`PermissionsInterceptor` 直通，等价超管专享；放开给运营角色需另起授权迁移。前端菜单按"持有 810 才显示"。
+
+**用户维度还原**：表内 `user_id_ref` 前缀规则 `user:<id>`；返回体剥离前缀并批量回查 `sys_user.real_name`，
+`user:system` → 「系统」、`user:unknown` → 「未知来源」、查不到的 id → 「已删除用户(#id)」。`userRef` 原值保留供对账。
+
+**零 token 的正确读法**：本页把 `calls` / `failedCalls` 与 token 并列展示，并显式标注 §1 / §6 的端点限制。
+`totalTokens = 0` 的 embedding 行只说明"该端点没给 usage"，**不说明没有调用**；区间总量偏低时先看调用次数。
