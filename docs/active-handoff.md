@@ -46,9 +46,9 @@
 - **在途待合入卡**：**0 张！**（本卡已全链合入 master `98a4a91`；物料归档至 `openspec/changes/archive/production-gray-real-run/`（proposal + tasks）与 `work/archive/closed-cards/`（handoff + 任务卡）；`work/` 根本卡散落件已 SHA256 核对后删除）
 - **待办池**：**0 条**（本卡未消化待办池项，也未新进；⑮ `frontend/typed-router.d.ts` 生成物归属仍属 frontend 工程决策，**他人所有权，本线不擅动**）
 - **长期储备（本卡更新，多模态系列已全线闭环）**：
-  - **生产开关打开授权（Owner 决）**：本卡已产出「打开 `image-vector-ingest.enabled` 后的每图成本」（≈1 371 token / 9.8s），是否真正打开生产开关由 Owner 按成本基线拍板（属生产灰度授权，非代码卡）
-  - **异图硬阈值定标（后续卡候选）**：真实语料异图间隔可低至 +0.011，硬阈值需多图同类/跨类语料定标（本卡已诚实标注不套 0.90）
-  - **embedding 端点 token 计量补全（后续卡候选）**：image/text embedding 端点 token 恒 0（有样本无计量），token 级账单需 Provider 侧补计量（src/main 改动，另开卡）
+  - **生产开关打开授权 → 已登记灰度路径（`multimodal-gray-and-eval-threshold` 任务组 1，在途分支）**：owner 2026-10-22 拍板「只登记运行期灰度路径、不改代码」，打开顺序 / KB 白名单 / 生产图帽 5 / 回滚 / 观察指标 / 成本基线引用见 `docs/multimodal-gray-rollout.md`；**默认值仍 false，开关本身仍待 owner 拍板**
+  - **异图硬阈值定标 → 已定标落锚（本卡任务组 2）**：真实语料同图下限 0.9999999999999998 / 异图上限 0.9887359400788237 / 判别阈值 **0.9943679700394117**，锚 `docs/rag-quality/image-threshold-calibration-v1.json`（+ `.md`）；程序化套件 0.90 原样未动
+  - **embedding token 计量 → 已诚实化（本卡任务组 3）**：`ai.token.record.calls`（调用次数已计）+ `ai.token.usage.unavailable`（token 不可得声明），零伪造 token、未解冻冻结契约，口径见 `docs/token-metering.md`
   - 在线考试子域（`work/_online-exam-backlog.md` 留档）
 - **下批推荐**：无强制项，按 Owner 指令插队
 - **下批候选池总账**：`work/_paa-candidates-pool-v2.md`（观察树未跟踪留档，长期储备保留）

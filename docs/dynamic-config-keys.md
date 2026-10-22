@@ -121,6 +121,9 @@
 
 > 失败回退：视觉 embedding 抛错 / 返回空向量 / 写 image 集合失败 → 只丢该图（或该批）视觉向量并 WARN，描述切片与文本检索照常。
 > 查询侧：`AiChatImageUnderstandingService` 的图片向量同样走真视觉 embedding，检索路由改查 image 集合；image 库未装配时退回文本集合旧行为。
+> **运行期灰度授权路径**（multimodal-gray-and-eval-threshold，纯文档）：真视觉路嵌在 `image-slice-ingest.enabled` + KB 白名单门控之内，
+> 打开顺序 / 灰度 KB 白名单 / 生产图帽 5 / 回滚 / 观察指标 / 成本基线引用见 `docs/multimodal-gray-rollout.md`；**默认值不变、零代码改动**。
+> 真实语料判别阈值见 `docs/rag-quality/image-threshold-calibration-v1.json`；embedding token 不可得口径见 `docs/token-metering.md`。
 
 ## rag.retrieval.citation.* —— 引用对齐阈值（fix-citation-threshold-config）
 
