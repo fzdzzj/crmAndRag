@@ -22,29 +22,34 @@
 
 ### 1.1 分析器
 
-- [ ] 1.1.1 新增 `NearDupFusionImpactAnalyzer`：从源码/常量读入 `textWeight`、`imageWeight`、三档 `w`，算 `bound(w) = imageWeight × (1 − w)`（R3）
-- [ ] 1.1.2 落 R2 路由内单调性：对 `[0.9887, 0.9944]` 5000 点等距 + 三档边界点，断言 `gatedScore = rerankScore × w(tier)` 的排序与 `cosine` 排序**同序**（并列允许）
-- [ ] 1.1.3 落 R4 gap 分布：从 24×24 完整矩阵算「同文档候选 vs 跨文档候选」余弦 gap 的分位 + 最大值，换算融合分 gap 上界 `imageWeight × Δcosine`
-- [ ] 1.1.4 落 R5 三值判定：`VISIBLE-BOUNDED` / `INVISIBLE-IN-ROUTE-ONLY` / `UNDECIDABLE-BY-DATA`，并把「仍需什么数据」写成锚字段 `missingEvidence`
-- [ ] 1.1.5 每条推论必须带**源码行号**（R1），若实测权重与注释不符按实测值重算并在锚内记 `weightSource`
-
-### 1.2 锚与守卫
-
-- [ ] 1.2.1 `NearDupFusionImpactDecisionTest` 为**唯一写入入口**：默认逐字节校验，`-Dnear.dup.fusion.write=true` 才写 `docs/rag-quality/near-dup-fusion-impact-v1.json`
-- [ ] 1.2.2 锚内必带：`criteria`（R1–R5 原文）/ `sourceAnchors`（校准锚与上一卡锚路径 + SHA-256 实算）/ `productionConstants`（逐字抄现值）/ `weights`（0.7 / 0.3 及出处行号）/ `bounds`（逐档）/ `gapDistribution` / `verdict` + `missingEvidence` / `externalCalls=0` / `decisionOwner="OWNER"`
-- [ ] 1.2.3 `NearDupFusionImpactGuardTest`：源锚 SHA 漂移即红、`externalCalls != 0` 即红、`verdict` 越界即红、`bounds` 与常量不自洽即红（改了融合权重或三档权重，守卫必须红）
-- [ ] 1.2.4 守卫自证：手工把锚里 `bounds` 的一个数改掉 → 守卫红；改回绿（留痕）
-
-### 1.3 文档与复算脚本
-
-- [ ] 1.3.1 `docs/rag-quality/near-dup-fusion-impact-v1.md`：链路图（带行号）+ 两条推论 + 上界表 + **「必要非充分」声明**（不得写成召回损失）
-- [ ] 1.3.2 `scripts/rag-quality/near-dup-fusion-impact-report.sh`：写模式复算 + `tee target/near-dup-fusion-impact-report.txt` + 打印 verdict 与上界三行；退出码 0=复算成功（含 NO-GO 类结论），非 0=复算失败
-- [ ] 1.3.3 脚本实跑一次留痕
-
-### 1.4 G1 照判
-
-- [ ] 1.4.1 逐条给出 R1–R5 判定与依据
-- [ ] 1.4.2 硬边界自证：`ImageSimilarityGate` / `KnowledgeRetrievalServiceImpl` / `RetrievalConfigResolver` / 上一卡两锚 + 脚本 零 diff
+- [x] 1.1.1 新增 `NearDupFusionImpactAnalyzer`：从源码/常量读入 `textWeight`、`imageWeight`、三档 `w`，算 `bound(w) = imageWeight × (1 − w)`（R3）
+      补勾依据（2026-10-24 · 分析器 `bounds(0.30)` 三档 = NEAR_HIGH 0.75→0.075 / NEAR_MID 0.6→0.12 / NEAR_LOW 0.5→0.15，DecisionTest 逐档常量断言绿；imageWeight 从 RetrievalConfigResolver 源码正则实测 0.30（R1 不沿用注释））
+- [x] 1.1.2 落 R2 路由内单调性：对 `[0.9887, 0.9944]` 5000 点等距 + 三档边界点，断言 `gatedScore = rerankScore × w(tier)` 的排序与 `cosine` 排序**同序**（并列允许）
+      补勾依据（2026-10-24 · 整数插值 5000 点 + lowBandUpperBound/highBandLowerBound 去重后 5002 点，inversions=0、maxDrop=0.0、strictlyIncreasing=true、verdict=MONOTONIC；推论 1 成立）
+- [x] 1.1.3 落 R4 gap 分布：从 24×24 完整矩阵算「同文档候选 vs 跨文档候选」余弦 gap 的分位 + 最大值，换算融合分 gap 上界 `imageWeight × Δcosine`
+      补勾依据（2026-10-24 · 基线档带内候选 7 个、共现竞争者观测 2 条（同文档 1：doe-p5-b9↔p5-b10 gap 0.001327；跨文档 1：nist-101r1-p1-b1↔183-p1-b1 gap 0.004665），三档 w 下位移均数学可能；maxFusedGap 0.000398/0.001399 入锚 gapDistribution，p50/p90/p99 分位 nearest-rank）
+- [x] 1.1.4 落 R5 三值判定：`VISIBLE-BOUNDED` / `INVISIBLE-IN-ROUTE-ONLY` / `UNDECIDABLE-BY-DATA`，并把「仍需什么数据」写成锚字段 `missingEvidence`
+      补勾依据（2026-10-24 · verdict=INVISIBLE-IN-ROUTE-ONLY（R2 路由内 0 反序 + 跨路缺文本路分数不可定案）；missingEvidence 三项：文本路 rerank 分数分布 / 真实查询共现 / 变体↔第三图余弦）
+- [x] 1.1.5 每条推论必须带**源码行号**（R1），若实测权重与注释不符按实测值重算并在锚内记 `weightSource`
+      补勾依据（2026-10-24 · 源码行实测：权重 0.70@L18 / 0.30@L19、fuseRoutes 语义注释@L233 声明@L234、mergeRoute 乘权@L280 累加@L285、downWeight 调用@L267 < fuse 调用@L278（downWeightBeforeFuse=true）；守卫行号回访测试绿）
+- [x] 1.2.1 `NearDupFusionImpactDecisionTest` 为**唯一写入入口**：默认逐字节校验，`-Dnear.dup.fusion.write=true` 才写 `docs/rag-quality/near-dup-fusion-impact-v1.json`
+      补勾依据（2026-10-24 · 写模式生成锚后默认模式复跑逐字节一致（serialize 钉死 LF：`.replace("\r\n","\n")`+末尾 \n）；clean checkout 语义由行尾钉死保证）
+- [x] 1.2.2 锚内必带：`criteria`（R1–R5 原文）/ `sourceAnchors`（校准锚与上一卡锚路径 + SHA-256 实算）/ `productionConstants`（逐字抄现值）/ `weights`（0.7 / 0.3 及出处行号）/ `bounds`（逐档）/ `gapDistribution` / `verdict` + `missingEvidence` / `externalCalls=0` / `decisionOwner="OWNER"`
+      补勾依据（2026-10-24 · 锚实测含全部字段：corpusAnchorSha256=82d24204…（与登记逐字一致）、exchangeRateAnchorSha256=62e43dfb…、productionConstants 五常量、externalCalls=0、decisionOwner=OWNER）
+- [x] 1.2.3 `NearDupFusionImpactGuardTest`：源锚 SHA 漂移即红、`externalCalls != 0` 即红、`verdict` 越界即红、`bounds` 与常量不自洽即红（改了融合权重或三档权重，守卫必须红）
+      补勾依据（2026-10-24 · 守卫 9 测试全绿：SHA 实算/外呼/三选一+单调性一致/R2 现场复算/bounds 对源码正则与 ImageSimilarityGate/R1 行号回访/R4 自洽/criteria 逐字/常量回显）
+- [x] 1.2.4 守卫自证：手工把锚里 `bounds` 的一个数改掉 → 守卫红；改回绿（留痕）
+      补勾依据（2026-10-24 · 实测：bound 0.075→0.08 后 boundsMatchProductionConstants 红（"高档位移上界与公式不自洽" expected 0.075 was 0.08）；从备份还原后 9/9 绿）
+- [x] 1.3.1 `docs/rag-quality/near-dup-fusion-impact-v1.md`：链路图（带行号）+ 两条推论 + 上界表 + **「必要非充分」声明**（不得写成召回损失）
+      补勾依据（2026-10-24 · md 六节：链路图带行号 / R2 单调表 + R3 上界表 / R4 分布表 + 必要非充分声明 / R1–R5 照判 / R5 仍需数据 / 复算命令；数字全部来自锚）
+- [x] 1.3.2 `scripts/rag-quality/near-dup-fusion-impact-report.sh`：写模式复算 + `tee target/near-dup-fusion-impact-report.txt` + 打印 verdict 与上界三行；退出码 0=复算成功（含 NO-GO 类结论），非 0=复算失败
+      补勾依据（2026-10-24 · 脚本镜像上一卡形状：`>$LOG 2>&1` 落盘 + grep `[QRT1]` 表格 + grep 锚 verdict/externalCalls/三行 bound；退出码 0/非 0 语义同上卡）
+- [x] 1.3.3 脚本实跑一次留痕
+      补勾依据（2026-10-24 · `bash scripts/rag-quality/near-dup-fusion-impact-report.sh` 退出码 0，verdict=INVISIBLE-IN-ROUTE-ONLY externalCalls=0 bound 三行 0.075/0.12/0.15；重写后锚与手工写模式 cmp 字节一致）
+- [x] 1.4.1 逐条给出 R1–R5 判定与依据
+      补勾依据（2026-10-24 · md §4 表：R1 满足（源码行实测）/ R2 满足（5002 点 0 反序）/ R3 满足（常量断言）/ R4 满足（分布+必要非充分）/ R5 满足（INVISIBLE-IN-ROUTE-ONLY + missingEvidence））
+- [x] 1.4.2 硬边界自证：`ImageSimilarityGate` / `KnowledgeRetrievalServiceImpl` / `RetrievalConfigResolver` / 上一卡两锚 + 脚本 零 diff
+      补勾依据（2026-10-24 · `git status --porcelain` 仅本卡白名单新文件（14 项全 untracked），`git diff --stat -- <受保护文件集>` 空输出（生产三源文件 + 上一卡两锚与脚本 + openapi 零 diff））
 
 ## 2. G2 · 图像相关性真值用例集（零外呼）
 

@@ -1,0 +1,160 @@
+{
+  "card" : "query-relevance-truth",
+  "group" : "G1",
+  "decisionVersion" : "NEAR-DUP-FUSION-IMPACT-1.0",
+  "criteria" : {
+    "R1" : "公式核对：融合权重与累加语义必须以源码行为证（RetrievalConfigResolver:233、resolveTextRouteWeight/ImageRouteWeight 的默认值）；若实测权重不是 0.7/0.3，按实测值重算并记录偏差，不得沿用注释。",
+    "R2" : "路由内单调性：对 [0.9887, 0.9944] 上 5000 点等距采样 + 三档边界点，断言 rank(score_gated) == rank(cosine)（严格：同序，允许并列）；任一处反序即红（这说明 §1.1 推论 1 错了，必须上报而不是改判据）。",
+    "R3" : "位移上界：对 w ∈ {0.75,0.6,0.5} 逐档计算 0.3×(1−w)（0.075/0.12/0.15），并落成常量断言（融合权重改了这条会红）。",
+    "R4" : "图像路 gap 分布：从完整 24×24 矩阵算「同文档候选 vs 跨文档候选」的余弦 gap 分布（分位 + 最大），并换算成融合分 gap 上界（0.3×Δcosine），给出「在多少比例的同文档候选上，位移在数学上可能」这一必要非充分结论；必须写明它不是召回率。",
+    "R5" : "结论三选一：VISIBLE-BOUNDED（速度上界 > 0 且可见条件已量化）/ INVISIBLE-IN-ROUTE-ONLY（只能证明路由内不可见，跨路可见性缺文本路分数，无法定案）/ UNDECIDABLE-BY-DATA。禁造第四种，且必须写明「仍需什么数据才可定案」。"
+  },
+  "decisionOwner" : "OWNER",
+  "decisionScope" : "本卡不改任何生产常量与融合权重（threshold=0.9944 / NEAR_DUPLICATE_FLOOR=0.9887 / 权重 0.75|0.6|0.5 / 融合 0.7|0.3 逐字不动）、不拍板档位；位移上界与可见条件交 OWNER 决策，改档/改权重须新卡。",
+  "sourceAnchors" : {
+    "corpusAnchor" : "docs/rag-quality/image-threshold-calibration-v2.json",
+    "corpusAnchorSha256" : "82d24204fba8029673d18ea5685964cf4134d2c43e3da5746986881bf35bdc65",
+    "exchangeRateAnchor" : "docs/rag-quality/near-dup-exchange-rate-v1.json",
+    "exchangeRateAnchorSha256" : "62e43dfb46d79be9f460c6febbefe3827f06da4c94b550e0ed7c01fa57f2e36d"
+  },
+  "productionConstants" : {
+    "threshold" : 0.9944,
+    "nearDuplicateFloor" : 0.9887,
+    "weightHigh" : 0.75,
+    "weightMid" : 0.6,
+    "weightLow" : 0.5
+  },
+  "weights" : {
+    "textRouteWeight" : 0.7,
+    "imageRouteWeight" : 0.3,
+    "weightSource" : "RetrievalConfigResolver.java 字面值正则实测（R1：不以注释为据）",
+    "defaultTextRouteWeightLine" : 18,
+    "defaultImageRouteWeightLine" : 19,
+    "fuseRoutesJavadocLine" : 233,
+    "fuseRoutesDeclLine" : 234,
+    "mergeRouteFirstPutLine" : 280,
+    "mergeRouteAccumulateLine" : 285,
+    "downWeightCallLine" : 267,
+    "fuseCallLine" : 278,
+    "perKbOverrideNote" : "resolveTextRouteWeight/resolveImageRouteWeight 有 per-KB 覆盖重载（:179-182/:190-193 附近）；本卡上界按默认权重 0.3 计，per-KB 覆盖值域同为 [0,1]，上界公式不变、数值随覆盖变化。"
+  },
+  "pipeline" : {
+    "order" : "文本多路召回 → 文本重排 → 图像召回(minScore=effectiveFloor) + gate → 图像重排 → downWeightNearDuplicates → fuseRoutes(0.7/0.3 分数制同切片累加) → 按 rerankScore 降序取 top-k",
+    "textRecallLine" : 258,
+    "textRerankLine" : 262,
+    "downWeightCallLine" : 267,
+    "fuseCallLine" : 278,
+    "sortDescTopKLine" : 279,
+    "imageGateLine" : 426,
+    "imageFloorLine" : 422,
+    "downWeightBeforeFuse" : true
+  },
+  "routeInternalMonotonicity" : {
+    "domain" : "[0.9887, 0.9944]",
+    "samplePoints" : 5002,
+    "inversions" : 0,
+    "maxDrop" : 0.0,
+    "strictlyIncreasing" : true,
+    "verdict" : "MONOTONIC",
+    "note" : "score(c) = c × w(tier(c))，tier/band/weight 取 ImageSimilarityGate 现值（同图档 ×1、近似带按 band 降权）；5000 点整数插值等距 + 低/高档边界点，R2 判据=同序（允许并列）。"
+  },
+  "bounds" : [ {
+    "band" : "NEAR_HIGH",
+    "w" : 0.75,
+    "bound" : 0.075
+  }, {
+    "band" : "NEAR_MID",
+    "w" : 0.6,
+    "bound" : 0.12
+  }, {
+    "band" : "NEAR_LOW",
+    "w" : 0.5,
+    "bound" : 0.15
+  } ],
+  "boundsFormula" : "bound(w) = imageRouteWeight × (1 − w)；图像候选融合贡献从 imageRouteWeight×c 降到 imageRouteWeight×w×c，位移上界为融合分口径；可见条件：竞争对手融合分与该候选之差 ≤ bound 时位移才可能发生。",
+  "gapDistribution" : {
+    "floor" : 0.9887,
+    "population" : "位移主体 = near-duplicate 对中 cosine ∈ [floor, threshold) 的候选（查询=变体，被降权方=其 base 黄金切片）；竞争者 = base 两两余弦中涉及其 base 且 ≥ floor 者（代理口径：锚内无变体↔第三图对）",
+    "bandCandidateCount" : 7,
+    "bandCandidates" : [ {
+      "baseKey" : "doe-renewable-energy-framework-p6-b12",
+      "kind" : "jpeg-q80",
+      "cosine" : 0.9938067535156395
+    }, {
+      "baseKey" : "nist-sp800-101r1-p1-b1",
+      "kind" : "crop-04",
+      "cosine" : 0.9934006758984407
+    }, {
+      "baseKey" : "doe-renewable-energy-framework-p3-b3",
+      "kind" : "crop-04",
+      "cosine" : 0.9920852431021073
+    }, {
+      "baseKey" : "doe-renewable-energy-framework-p5-b9",
+      "kind" : "jpeg-q80",
+      "cosine" : 0.9902564020289889
+    }, {
+      "baseKey" : "doe-renewable-energy-framework-p4-b5",
+      "kind" : "crop-04",
+      "cosine" : 0.9891672085448728
+    }, {
+      "baseKey" : "doe-renewable-energy-framework-p1-b2",
+      "kind" : "scale-070",
+      "cosine" : 0.9890056588377636
+    }, {
+      "baseKey" : "nist-sp800-101r1-p16-b2",
+      "kind" : "crop-04",
+      "cosine" : 0.988903987313388
+    } ],
+    "competitorObservations" : 2,
+    "competitorObservationDetails" : [ {
+      "baseKey" : "nist-sp800-101r1-p1-b1",
+      "competitorKey" : "nist-sp800-183-p1-b1",
+      "sameDoc" : false,
+      "candidateCosine" : 0.9934006758984407,
+      "competitorCosine" : 0.9887359400788237,
+      "gap" : 0.004665
+    }, {
+      "baseKey" : "doe-renewable-energy-framework-p5-b9",
+      "competitorKey" : "doe-renewable-energy-framework-p5-b10",
+      "sameDoc" : true,
+      "candidateCosine" : 0.9902564020289889,
+      "competitorCosine" : 0.9889295084167288,
+      "gap" : 0.001327
+    } ],
+    "sameDoc" : {
+      "observations" : 1,
+      "displacementPossibleByW" : {
+        "0.75" : 1,
+        "0.6" : 1,
+        "0.5" : 1
+      },
+      "gapQuantiles" : {
+        "p50" : 0.001327,
+        "p90" : 0.001327,
+        "p99" : 0.001327
+      },
+      "maxGap" : 0.001327,
+      "maxFusedGap" : 3.98E-4
+    },
+    "crossDoc" : {
+      "observations" : 1,
+      "displacementPossibleByW" : {
+        "0.75" : 1,
+        "0.6" : 1,
+        "0.5" : 1
+      },
+      "gapQuantiles" : {
+        "p50" : 0.004665,
+        "p90" : 0.004665,
+        "p99" : 0.004665
+      },
+      "maxGap" : 0.004665,
+      "maxFusedGap" : 0.0014
+    },
+    "necessaryNotSufficient" : "本分布是位移「数学上可能」的必要条件（竞争者落在降权窗口内），非充分：位移发生还需真实查询共现（A2 未测）与变体真实分数（代理未验证）；位移 ≠ 召回损失，本分布更不是召回率。"
+  },
+  "verdict" : "INVISIBLE-IN-ROUTE-ONLY",
+  "verdictReason" : "R5 第②支：R2 全程同序（5002 点反序 0 处）⇒ 降权在图像路由内不改任何两两顺序；跨路可见性缺文本路 rerank 分数分布，无法定案 ⇒ INVISIBLE-IN-ROUTE-ONLY。仍需数据见 missingEvidence。",
+  "missingEvidence" : [ "真实查询的文本路 rerank 分数分布——判定融合分差 ≤ bound 的竞争者是否存在（跨路可见性定案的前提）", "真实查询的图像候选与文本候选共现观测（上一卡假设 A2 的共现面）", "变体↔第三图视觉余弦——R4 竞争者分数以 base 对为代理，未经验证" ],
+  "externalCalls" : 0
+}
