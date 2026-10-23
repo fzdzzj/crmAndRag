@@ -26,7 +26,7 @@
 1. **权限域双收口**：`PermissionModule` 号段单一事实源 + 授权页 UX + 权限字面量类型生成（`permission.gen.ts` 漂移即红）
 2. **契约自带权限维（本卡新增）**：OpenAPI 每个 operation 必带 `x-required-permission{code,name}` 或 `x-permission-status: OPEN`，由注解生成、与 `PermissionCoverageScanner`+`OpenEndpointRegistry` **集合相等**（`OpenApiPermissionContractParityTest` 守）；消费侧（前端按契约派生按钮权限）尚未做
 3. **图片四开关门控关系与热生效已实证（本卡新增）**：`image-slice-ingest.enabled`+`kb-allowlist` 门控在前、`image-vector-ingest.enabled` 在后，只开后者链路完全不动；四键均运行期热生效、写回即停（`ImageVectorSwitchHotFlipIT` 七条断言）
-4. **近重复三档降权（机制结论已出，未改任何常量）**：`[floor=0.9887, 阈值=0.9944)` 三等分 → `×0.75/×0.6/×0.5`；**机制决策 = UNDECIDABLE-BY-DATA**（详见 `docs/rag-quality/near-dup-mechanism-decision-v1.md`）；`ImageSimilarityGate` 全常量**零改动**
+4. **近重复三档降权（机制结论已出，未改任何常量）**：`[floor=0.9887, 阈值=0.9944)` 三等分 → `×0.75/×0.6/×0.5`；**机制决策 = UNDECIDABLE-BY-DATA**（详见 `docs/rag-quality/near-dup-mechanism-decision-v1.md`）；**交换率重定价（evidence-to-operations G1）= EXCHANGE-RATE**：泄漏已拆成有害半边（same-class，基线 2/3）与无害半边（cross-class，1/3），免费档不存在（same-class 0.988662 卡位，任一下探先压它），逐档 ΔR/ΔS_same 价目表见 `docs/rag-quality/near-dup-exchange-rate-v1.md`（锚唯一写入口 `NearDuplicateExchangeRateDecisionTest`，守卫 `NearDuplicateExchangeRateDecisionGuardTest`），**档位待 Owner 拍板**；`ImageSimilarityGate` 全常量**零改动**
 5. **图像路独立相似度硬闸门**（独立键 0.9944 + 三档 tier + 下限 0.9887 + 重排后降权）
 6. **超管按用户查看 AI token 消耗**（`/ai/token-usage/by-user`，权限 810 只授 role_id=1）
 7. 其余已闭环能力面（多模态真共享空间 / v6.0 主套件真跑 / PDF 图文评测 / 五路语义 hook / 公海 CAS / 写端点校验 / 向量运维收口 / 线索漏斗 V42 等）沿用上一版看板，不再复述
@@ -37,7 +37,7 @@
 
 - **在途待合入卡**：**0 张**；**已立卡待派发**：**0 张**；**待办池**：**0 条**
 - **长期储备（按优先级）**：
-  1. **定「保留率-泄漏率」交换率**（G1 的直接后续，**唯一有精确菜单的一项**）：数据侧已备 `M1` 前沿 8 点（`67.5%@1.81%` ↔ `94.2%@3.26%`），缺的是**查询-相关性真值或真实查询日志**（用于判断"9 对负样本被降权而非过滤"的实际伤害）。动 `NEAR_DUPLICATE_FLOOR` 前必须先有这份真值，且属新卡（会改生产常量）
+  1. **定「保留率-泄漏率」交换率**（evidence-to-operations G1 已把价目表量出：same-class/cross-class 拆分 + 200 点逐档 ΔR/ΔS_same，`docs/rag-quality/near-dup-exchange-rate-v1.md`）：**缺的只剩查询-相关性真值或 Owner 对价目表的接受决策**（A2 口径下 `S_same` 仍是上界）。动 `NEAR_DUPLICATE_FLOOR` 前必须先有这份真值或 Owner 拍板，且属新卡（会改生产常量）
   2. **前端按契约派生按钮级权限**（G3 的自然下一步）：用 `x-required-permission` 替代 TS 里手抄的权限常量，消除漂移温床
   3. **生产开关运行期打开（Owner 决，非代码）**：`rag.retrieval.image-vector-ingest.enabled` 默认 `false`；执行单 `docs/multimodal-gray-rollout.md`（§9 开前核对 / §10 开后可观测 / §11 回滚 / **§12 本卡新增的热生效实证**）
   4. 文档类存量：全域权限清单（`docs/permission-matrix-audit.md` 属**历史快照，遵裁决不改写**）；在线考试子域 `work/_online-exam-backlog.md`；候选总账 `work/_paa-candidates-pool-v2.md`
