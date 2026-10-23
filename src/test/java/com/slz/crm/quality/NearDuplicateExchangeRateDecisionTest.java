@@ -334,10 +334,16 @@ class NearDuplicateExchangeRateDecisionTest {
     Files.writeString(DECISION_FILE, serialize(decision), StandardCharsets.UTF_8);
   }
 
-  /** 序列化（缩进 + 末尾换行）；锚内无 volatile 字段，默认模式可做逐字节校验。 */
+  /**
+   * 序列化（缩进 + 末尾换行）；锚内无 volatile 字段，默认模式可做逐字节校验。
+   *
+   * <p><b>行尾钉死 LF</b>：Jackson 默认缩进器用 {@code System.lineSeparator()}，Windows 上产出 CRLF；而 {@code
+   * .gitattributes} 的 {@code *.json text eol=lf} 让仓库里存的是 LF。两者不钉死，会让「干净 checkout 上跑 verify」（读到
+   * LF）与「本机刚跑过写模式」（写成 CRLF）得出相反结论——本卡实测：合并树上 verify 红、跑一次写模式后绿。
+   */
   private static String serialize(ObjectNode decision) throws Exception {
     ObjectMapper writer = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
-    return writer.writeValueAsString(decision) + "\n";
+    return writer.writeValueAsString(decision).replace("\r\n", "\n") + "\n";
   }
 
   private static String firstDifference(String expected, String actual) {

@@ -171,3 +171,4 @@
 | 版本 | 日期 | 变更 |
 |---|---|---|
 | v1.0 | 2026-10-24 | 立项初稿：三组判据 E1–E6 / P1–P4 / Q1–Q4 预注册；G1 口径洞与假设 A1–A3 登记；G2 因 `operationId=0` 与体积余量 3960 B 定为「类型全量 + 运行期小表」。 |
+| v1.1 | 2026-10-24 | 复核后三处修正：① `uiEndpointPermissions.ts` Javadoc「53 项」→ 实数 **57**；② `near-dup-exchange-rate-v1.md` 与 `tasks.md` 1.1.4 的「`C_cross` **全网格**恒为 1/176」收窄为「基线档及以下 **178/200** 点恒为 1/176，`f > 0.98873594` 的 22 点为 0」（这是「比基线更严」的方向，不构成降 floor 的代价）；③ **合并树首次 `clean verify` 红在 G1 决策测试**：Jackson 默认缩进器用 `System.lineSeparator()`（Windows 上 CRLF），而 `.gitattributes` 的 `*.json text eol=lf` 把仓库存成 LF，于是「干净 checkout 读 LF」与「本机跑过写模式写 CRLF」给出相反结论——已在 `serialize()` 里钉死 LF 并在注释写明判据；证据：合并树 verify 红（`首个差异在第 1 行`，两行均打印 `{`）→ 跑一次写模式后默认模式转绿 → 修正后**干净 checkout 上复跑默认模式仍绿**。 |

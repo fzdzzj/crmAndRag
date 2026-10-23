@@ -28,7 +28,7 @@
 - [x] 1.1.3 落 E3 免费档判定：`f* < 0.9887` 且 `R(f*) > R(0.9887)` 且 `S_same(f*) <= S_same(0.9887)`，满足者取 `R` 最大
       补勾依据（2026-10-23 · `freeTier()` 实测 = none：same-class 0.988662 卡在基线 floor 下方一步，网格上所有 f<0.9887 的点 S_same≥0.03>0.02，条件全灭）
 - [x] 1.1.4 落 E4 交换率：无免费档时逐档输出 `ΔR/ΔS_same` 与多压掉的同文档图数
-      补勾依据（2026-10-23 · 200 档 ΔR/ΔS_same/extraSuppressedSameDoc/exchangeRate 全量入锚 `grid.items`；firstImprovingFloor=0.988（+1 同源变体/+1 同文档），bestValueFloor=0.982（ΔR/ΔS_same=8.333333，披露非推荐）；C_cross 全网格恒 1/176）
+      补勾依据（2026-10-23 · 200 档 ΔR/ΔS_same/extraSuppressedSameDoc/exchangeRate 全量入锚 `grid.items`；firstImprovingFloor=0.988（+1 同源变体/+1 同文档），bestValueFloor=0.982（ΔR/ΔS_same=8.333333，披露非推荐）；C_cross 在基线档及以下的 178/200 点上恒 1/176（`f > 0.98873594` 的其余 22 点为 0）——2026-10-24 收窄口径，见 proposal §10 v1.1）
 - [x] 1.1.5 落 E6 三值判定：`FREE-TIER-FOUND` / `EXCHANGE-RATE` / `UNDECIDABLE-BY-DATA`，禁第四种
       补勾依据（2026-10-23 · verdict() 三支按序短路（E3→EXCHANGE-RATE→UNDECIDABLE），实测 verdict=EXCHANGE-RATE；守卫测试断言三选一且与网格重算一致）
 
@@ -42,6 +42,8 @@
       补勾依据（2026-10-23 · GuardTest 7 用例全绿：双源锚 SHA 实算比对、externalCalls/decisionOwner/decisionScope、verdict 三选一 + 网格重算一致性、assumptions/criteria 逐字、productionConstants 逐值、每点比率-计数自洽、网格完整性 + 基线钉 70/2/1/273）
 - [x] 1.2.4 守卫测试自证：手工把锚里 `verdict` 改成一个非法值，测试必须红；改回后绿（留痕）
       补勾依据（2026-10-23 · 第一轮 sed 命中锚内 exchangeSummary.verdict（同名内嵌字段在顶层之前）守卫绿属正确；第二轮按行号改顶层 verdict→"GO" → GuardTest `verdictInRangeAndConsistentWithGrid:76 verdict 只能三选一，实测: GO`（Tests run: 7, Failures: 1）→ 还原后 7/7 绿）
+- [x] 1.2.5 **行尾稳定性**：锚的序列化必须与 `.gitattributes` 的 `*.json text eol=lf` 一致，否则「干净 checkout 上跑 verify」与「本机跑过写模式」结论相反
+      补勾依据（2026-10-24 · 合并树首次 `mvn clean verify` 红在 `NearDuplicateExchangeRateDecisionTest.recomputeExchangeRateAndEmitDecision:158`，报文「首个差异在第 1 行」且期望/实际都打印 `{`＝不可见差异；定位 = Jackson 默认缩进器用 `System.lineSeparator()`，Windows 写 CRLF 而仓库 blob 是 LF（`git show HEAD:<锚> | CR 计数 = 0`，工作树 CR 计数 = 4441）；`serialize()` 增 `.replace("\r\n", "\n")` 后：写模式产出 LF → 默认模式绿，且 `git checkout --` 重新物化后默认模式**仍绿**、`git status` 零条目）
 
 ### 1.3 文档与复算脚本
 
