@@ -362,29 +362,39 @@ final class NearDuplicateMechanismAnalyzer {
   }
 
   /**
-   * 会话裁决（C5 三选一）：有机制同时满足 C1∧C2∧C3 ⇒ GO；一条都没有 ⇒ NO-GO；只满足一半 ⇒ UNDECIDABLE-BY-DATA。
+   * 会话裁决（C5 四支，按序短路）：① 有点同时满足 C1∧C2∧C3 ⇒ GO；② 有点满足 C1∧C2、仅 C3 缺 ⇒ UNDECIDABLE-BY-DATA；③ 有点满足 C1（不论
+   * C2）或有点满足 C2（不论 C1），且两者不可同时满足 ⇒ UNDECIDABLE-BY-DATA（须给出"关节不可达 + 两侧可达"的量化前沿）；④ 连 C1 与 C2 都无任何点可达
+   * ⇒ NO-GO（按序短路后 ④ 的实际域；单侧可达由 ③ 先捕获，含"有 C2 无 C1"）。
+   *
+   * <p>四支取自 proposal §1.2 C5 规则（v1.2 消歧）；门槛 C1=0.90 / C2=0.02 / C3 规则与网格参数零改动。
    *
    * @param floorPoints M1 全网格
    * @param dhashPoints M2 全网格
    * @param hybridPoints M3 全网格
-   * @return 三选一
+   * @return 三选一（GO / UNDECIDABLE-BY-DATA / NO-GO）
    */
   static String verdict(
       List<FloorPoint> floorPoints, List<DHashPoint> dhashPoints, List<HybridPoint> hybridPoints) {
     boolean anyFull = false;
-    boolean anyHalf = false;
+    boolean anyHalfPoint = false;
+    boolean anyC1 = false;
+    boolean anyC2 = false;
     for (List<Outcome> outcomes : outcomesOf(floorPoints, dhashPoints, hybridPoints)) {
       for (Outcome outcome : outcomes) {
-        boolean criteria12 = outcome.satisfiesC1() && outcome.satisfiesC2();
-        boolean criteria3 = outcome.satisfiesC3();
-        anyFull = anyFull || (criteria12 && criteria3);
-        anyHalf = anyHalf || criteria12;
+        boolean c1 = outcome.satisfiesC1();
+        boolean c2 = outcome.satisfiesC2();
+        anyC1 = anyC1 || c1;
+        anyC2 = anyC2 || c2;
+        anyFull = anyFull || (c1 && c2 && outcome.satisfiesC3());
+        anyHalfPoint = anyHalfPoint || (c1 && c2);
       }
     }
     String verdict;
     if (anyFull) {
       verdict = VERDICT_GO;
-    } else if (anyHalf) {
+    } else if (anyHalfPoint) {
+      verdict = VERDICT_UNDECIDABLE;
+    } else if (anyC1 || anyC2) {
       verdict = VERDICT_UNDECIDABLE;
     } else {
       verdict = VERDICT_NO_GO;

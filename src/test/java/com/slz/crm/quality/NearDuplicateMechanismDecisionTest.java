@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -523,15 +524,41 @@ class NearDuplicateMechanismDecisionTest {
       String verdict, List<Scored> floors, List<Scored> dh, List<Scored> hybrid) {
     String reason;
     if (NearDuplicateMechanismAnalyzer.VERDICT_NO_GO.equals(verdict)) {
-      reason =
-          "三机制全网格无一点同时满足 C1(≥0.90)∧C2(≤0.02)；各机制最高 R_keep 与对应 L 见 raisingTarget，"
-              + "结论为合法 NO-GO（不调门槛），交付帕累托前沿与结案声明";
+      reason = "三机制全网格里 C1(≥0.90) 与 C2(≤0.02) 都无任何点可达 ⇒ NO-GO（此时“无可换机制”才为真）";
     } else if (NearDuplicateMechanismAnalyzer.VERDICT_GO.equals(verdict)) {
       reason = "存在机制同时满足 C1∧C2∧C3 ⇒ GO；本卡只交机制重构规格，不实施任何 src/main 变更";
     } else {
-      reason = "存在点满足 C1∧C2 但 C3 单调性不成立 ⇒ UNDECIDABLE-BY-DATA；翻案需补 crop/scale/jpeg 三段样本量";
+      Scored bestRetentionUnderC2 =
+          floors.stream()
+              .filter(candidate -> candidate.outcome().satisfiesC2())
+              .max(Comparator.comparingDouble(candidate -> candidate.outcome().retention()))
+              .orElseThrow();
+      Scored minLeakageUnderC1 =
+          floors.stream()
+              .filter(candidate -> candidate.outcome().satisfiesC1())
+              .min(Comparator.comparingDouble(candidate -> candidate.outcome().leakage()))
+              .orElseThrow();
+      reason =
+          "C5 第③支（关节不可达、两侧可达）：C2 满足点的最高保留 = "
+              + percent(bestRetentionUnderC2.outcome().retention(), 1)
+              + "（M1 floor="
+              + bestRetentionUnderC2.params().path("floor").asDouble()
+              + "，L="
+              + percent(bestRetentionUnderC2.outcome().leakage(), 2)
+              + "）；C1 满足点的最低泄漏 = "
+              + percent(minLeakageUnderC1.outcome().leakage(), 2)
+              + "（M1 floor="
+              + minLeakageUnderC1.params().path("floor").asDouble()
+              + "，R_keep="
+              + percent(minLeakageUnderC1.outcome().retention(), 1)
+              + "）；两者不可同时满足（关节不可达）⇒ UNDECIDABLE-BY-DATA；"
+              + "定夺需“流失-泄漏”交换率与泄漏真实伤害（查询-相关性真值）";
     }
     return reason + "（M1 点数 " + floors.size() + "、M2 " + dh.size() + "、M3 " + hybrid.size() + "）";
+  }
+
+  private static String percent(double ratio, int digits) {
+    return String.format(java.util.Locale.ROOT, "%." + digits + "f%%", ratio * 100D);
   }
 
   // ==================== 断言 / 写出 ====================

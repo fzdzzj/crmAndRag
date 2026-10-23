@@ -102,18 +102,22 @@ class NearDuplicateMechanismDecisionGuardTest {
   }
 
   @Test
-  @DisplayName("C5：verdict 与锚内 C1∧C2∧C3 重算一致，且只取三选一")
+  @DisplayName("C5：verdict 与锚内 C1/C2/C3 按四支重算一致，且只取三选一")
   void verdictAgreesWithCriteriaRecomputation() {
     boolean anyFull = false;
-    boolean anyHalf = false;
+    boolean anyHalfPoint = false;
+    boolean anyC1 = false;
+    boolean anyC2 = false;
     for (String mechanism : List.of("M1", "M2", "M3")) {
       for (JsonNode node : points(mechanism)) {
         JsonNode outcome = node.path("outcome");
-        boolean c12 =
-            outcome.path("satisfiesC1").asBoolean() && outcome.path("satisfiesC2").asBoolean();
+        boolean c1 = outcome.path("satisfiesC1").asBoolean();
+        boolean c2 = outcome.path("satisfiesC2").asBoolean();
         boolean c3 = outcome.path("satisfiesC3").asBoolean();
-        anyFull = anyFull || (c12 && c3);
-        anyHalf = anyHalf || c12;
+        anyC1 = anyC1 || c1;
+        anyC2 = anyC2 || c2;
+        anyFull = anyFull || (c1 && c2 && c3);
+        anyHalfPoint = anyHalfPoint || (c1 && c2);
         // 锚里的 satisfiesC1/C2 必须与比率自洽（防手写死值）
         assertEquals(
             outcome.path("retention").asDouble() >= 0.90D,
@@ -125,8 +129,15 @@ class NearDuplicateMechanismDecisionGuardTest {
             "satisfiesC2 与 leakage 不自洽");
       }
     }
-    String expected = anyFull ? "GO" : (anyHalf ? "UNDECIDABLE-BY-DATA" : "NO-GO");
-    assertEquals(expected, decision.path("verdict").asText(), "verdict 必须与 C1–C3 规则重算一致");
+    String expected;
+    if (anyFull) {
+      expected = "GO";
+    } else if (anyHalfPoint || anyC1 || anyC2) {
+      expected = "UNDECIDABLE-BY-DATA";
+    } else {
+      expected = "NO-GO";
+    }
+    assertEquals(expected, decision.path("verdict").asText(), "verdict 必须与 C1–C3 四支重算一致");
     assertTrue(
         List.of("GO", "NO-GO", "UNDECIDABLE-BY-DATA").contains(decision.path("verdict").asText()),
         "verdict 只能三选一");

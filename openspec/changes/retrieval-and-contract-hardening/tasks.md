@@ -6,7 +6,7 @@
 > 判据（C1–C6 / A1–N1 / P1–P4）见 `proposal.md` §1.2 / §2.2 / §3.3，**跑前写死，跑后禁改**。
 > 停步裁决见 `proposal.md` §5：任一组触发停步 ⇒ 该组产物整体回退到 master 状态，其余组继续做完。
 >
-> **执行结果一句话**：三组**全部交付**（无停步）。G1 = NO-GO（合法结论，交付帕累托 + 结案声明）；G2 七条断言全绿且真证到"未重启"；
+> **执行结果一句话**：三组**全部交付**（无停步）。G1 = UNDECIDABLE-BY-DATA（C5 第 ③ 支：关节不可达、两侧可达，交付两侧前沿 + 定夺所需数据）；G2 七条断言全绿且真证到"未重启"；
 > G3 P1/P2/P4 绿、P3 的前端 `build` 项**环境级红**（master 同红，非本卡引入，见 3.3.4 与 `report.md` §6）。
 
 ## 0. G0 · 立项与共用侦察（零外呼）
@@ -64,29 +64,29 @@
 - [x] 1.4.3 写模式：`-Dnear.dup.decision.write=true` 才写 `docs/rag-quality/near-dup-mechanism-decision-v1.json`（唯一写入口）；默认模式只断言不写
       补勾依据：`Boolean.parseBoolean(System.getProperty("near.dup.decision.write","false"))` 分支：true → `write(decision)`（`[G1] 写模式：决策锚已写入`）；false → `assertMatchesCommitted(...)` 与已提交锚逐字段相等（`generatedAt`/`elapsedMillis` 除外），实测两种模式各跑一次均绿。
 - [x] 1.4.4 锚字段齐全：`criteria`（C1–C6 原样回显）、`corpus`（含锚文件 SHA-256）、`mechanisms[]`（每机制**全网格**）、`pareto`、`verdict`+`verdictReason`、`externalCalls: 0`、`generatedAt`、`elapsedMillis`
-      补勾依据：决策锚实测字段 `card/group/decisionVersion/criteria/corpus/productionConstants/baseline/selfChecks/mechanisms(M1|M2|M3)/pareto(M1|M2|M3)/raisingTarget/externalCalls/verdict/verdictReason/generatedAt/elapsedMillis`；`corpus.anchorSha256=82d24204fba8029673d18ea5685964cf4134d2c43e3da5746986881bf35bdc65`（文件 SHA-256，python 复算一致）；锚大小 351520 字节。
+      补勾依据：决策锚实测字段 `card/group/decisionVersion/criteria/corpus/productionConstants/baseline/selfChecks/mechanisms(M1|M2|M3)/pareto(M1|M2|M3)/raisingTarget/externalCalls/verdict/verdictReason/generatedAt/elapsedMillis`；`corpus.anchorSha256=82d24204fba8029673d18ea5685964cf4134d2c43e3da5746986881bf35bdc65`（文件 SHA-256，python 复算一致）；锚大小 339590 字节（LF 口径，与 git 规范化后的工作树一致）；决策锚自身 SHA-256 `2f03f16a265f76f8a7397267e2085a71869365eb5ed75f23e6de3b3095f7b01b`（v1.2 重生成后按 LF 工作树取）。
 - [x] 1.4.5 打印固定表格到 stdout：基线表 / M1 200 行 / M2 25 行 / M3 帕累托 / 逐判据照判
-      补勾依据：stdout 五张表前缀固定 `[G1][表 1/5 基线]`、`[G1][表 2/5 M1 全网格] points=200`、`[G1][表 3/5 M2 全网格] points=25`、`[G1][表 4/5 M3 帕累托前沿] points=12`、`[G1][表 5/5 逐判据照判] verdict=NO-GO`，全部落盘 `target/near-dup-mechanism-report.txt`（复跑 `bash scripts/rag-quality/near-dup-mechanism-report.sh`）。
+      补勾依据：stdout 五张表前缀固定 `[G1][表 1/5 基线]`、`[G1][表 2/5 M1 全网格] points=200`、`[G1][表 3/5 M2 全网格] points=25`、`[G1][表 4/5 M3 帕累托前沿] points=12`、`[G1][表 5/5 逐判据照判] verdict=UNDECIDABLE-BY-DATA`，全部落盘 `target/near-dup-mechanism-report.txt`（复跑 `bash scripts/rag-quality/near-dup-mechanism-report.sh`）。
 - [x] 1.4.6 `NearDuplicateMechanismDecisionGuardTest`（默认跑）：floor 网格 ≥200 点且步长 0.0005、`D` 0..24 无缺、`externalCalls==0`、`verdict` 与 C 规则重算一致、`criteria` 与 proposal §1.2 逐字相同、锚内 `ImageSimilarityGate` 五常量回显等于现值
       补勾依据：守卫 7 个用例全绿（`mvn -B -ntp test -Dtest=NearDuplicateMechanismDecisionGuardTest` → Tests run: 7, Failures: 0，0.5 s，不重算语料）：网格 200/25/325 + 步长 0.0005 + 端点 0.90/0.9995、距离 0..24 全覆盖、`externalCalls=0`、verdict 与 C1∧C2∧C3 重算一致（且 `satisfiesC1/C2` 与比率自洽）、criteria 六条逐字比对、`productionConstants` 与 `ImageSimilarityGate` 五常量现值相等、语料身份 24/120/144/540/288 + 自证① 144/144/144。
 
 ### 1.5 复算脚本与决策文档
 
 - [x] 1.5.1 `scripts/rag-quality/near-dup-mechanism-report.sh`：跑写模式 + `tee target/near-dup-mechanism-report.txt`；脚本退出码即判定
-      补勾依据：脚本重定向 `>"$LOG"`（`target/near-dup-mechanism-report.txt`）后 grep 出表 1/表 5/模式行与锚 `verdict`/`externalCalls`；退出码 = mvn 退出码（0 = 复算成功；**NO-GO 也是 0**，语义写在脚本头注释）。实测：`退出码 = 0`，`verdict=NO-GO externalCalls=0`。SHA-256 `cba17abada368d3044dcdf9b1eb45c4f4cf9ef8868606c7095fe49360d990ff8`。
+      补勾依据：脚本重定向 `>"$LOG"`（`target/near-dup-mechanism-report.txt`）后 grep 出表 1/表 5/模式行与锚 `verdict`/`externalCalls`；退出码 = mvn 退出码（0 = 复算成功；**NO-GO / UNDECIDABLE 也是 0**，语义写在脚本头注释）。实测：`退出码 = 0`，`verdict=UNDECIDABLE-BY-DATA externalCalls=0`。SHA-256 `cba17abada368d3044dcdf9b1eb45c4f4cf9ef8868606c7095fe49360d990ff8`。
 - [x] 1.5.2 `docs/rag-quality/near-dup-mechanism-decision-v1.md`：§1 基线（标表号）§2 三机制全表 §3 帕累托前沿 §4 C1–C6 照判 §5 结论与后续卡边界 §6 数据质量与未覆盖类 §7 复算命令
       补勾依据：文档七节齐全（§0 一句话结论 + §1–§7），文首给出「表号 ↔ 报告位置」对照表；SHA-256 `d96026854092ea7302c0b187a0ef868590dffb900cc007814af475b022946cee`。
 - [x] 1.5.3 文档零手算数字；节点数与锚不一致即缺陷
       补勾依据：文中每个数字都标了表号（表 1/5–表 5/5）或锚字段路径（如 `raisingTarget`、`selfChecks`），无"我没算过但看着像"的数；节点数 200/25/325 与锚 `mechanisms.*.gridPoints` 一致（守卫测试数出同一组数字）。
-- [x] 1.5.4 GO ⇒ 写「机制重构规格」…；NO-GO ⇒ 写「近重复三档机制结案声明」+ 帕累托 + 翻案所需数据
-      补勾依据：verdict=**NO-GO** ⇒ 文档 §5 写「结案声明（不换机制、不调门槛）+ 三条翻案所需数据（业务负样本口径 / crop-12 语义裁决 / 换 embedding 底座另立 B 档卡）+ 后续卡档位」；§3 有 M1 8 点帕累托全表 + M2/M3 节选。
+- [x] 1.5.4 GO ⇒ 写「机制重构规格」…；NO-GO ⇒ 写「近重复三档机制结案声明」+ 帕累托 + 翻案所需数据；UNDECIDABLE ⇒ 写「关节不可达 + 两侧前沿 + 定夺所需数据」
+      补勾依据：verdict=**UNDECIDABLE-BY-DATA**（C5 第 ③ 支）⇒ 文档 §5 写「不换机制、不调门槛，本卡不结案」+ 7 行最小前沿（逐字抄 `pareto.M1`）+ 定夺数据（交换率与伤害 / 业务负样本口径 / crop-12 语义裁决 / 换 embedding 底座），并删去「已到顶」措辞；§3 有 M1 8 点帕累托全表 + M2/M3 节选。
 
 ### 1.6 G1 照判
 
 - [x] 1.6.1 照 proposal §1.2 原文填判定表（C1–C6 一行一条，结果列只许"满足/不满足"）
-      补勾依据：见 `docs/rag-quality/near-dup-mechanism-decision-v1.md` §4 与 `report.md` §2.1：C1 满足（最佳点 0.941667）；C2 **不满足**（所有 R≥0.90 点最小 L=0.032609）；C3 **基线不满足**（crop-12=0 ≤ crop-04=9 ≤ scale-070=22，但 scale-070 22 > scale-085 21；锚 `baseline.outcome.satisfiesC3=false`），`floor=0.9935` 亦不满足（jpeg-q80 17 < scale-070/085 21）；C4 满足（0）；C5 满足（NO-GO）；C6 满足（200/25/325）。
+      补勾依据：见 `docs/rag-quality/near-dup-mechanism-decision-v1.md` §4 与 `report.md` §2.1：C1 满足（最佳点 0.941667）；C2 **不满足**（所有 R≥0.90 点最小 L=0.032609）；C3 **基线不满足**（crop-12=0 ≤ crop-04=9 ≤ scale-070=22，但 scale-070 22 > scale-085 21；锚 `baseline.outcome.satisfiesC3=false`），`floor=0.9935` 亦不满足（jpeg-q80 17 < scale-070/085 21）；C4 满足（0）；C5 **命中第 ③ 支**（UNDECIDABLE-BY-DATA：C1 侧可达 0.941667@`floor=0.90`、C2 侧可达 0.675@`floor=0.98`、关节不可达）；C6 满足（200/25/325）。
 - [x] 1.6.2 给出 `verdict` 与推导链（哪条机制、哪组参数、为何不选其它）
-      补勾依据：`verdict=NO-GO`，推导链 = `[G1][表 5/5]` + `raisingTarget`：M1 到 0.90 的最小代价 L=0.032609(9/276)、M2 `D=22` L=0.224638(62/276)、M3 `(0,21)` L=0.170290(47/276)，三者均 > C2 的 0.02 ⇒ 无一点同时满足 C1∧C2 ⇒ NO-GO；不选 M2/M3 的理由 = 任何有用阈值上泄漏 ≥15/276（5.4%），像素差分分不开"同版面不同图"。
+      补勾依据：`verdict=UNDECIDABLE-BY-DATA`（C5 第 ③ 支），推导链 = `[G1][表 5/5]` + `verdictReason`：M1 到 0.90 的最小代价 L=0.032609(9/276)、M2 `D=22` L=0.224638(62/276)、M3 `(0,21)` L=0.170290(47/276)，三者均 > C2 的 0.02 ⇒ 无一点同时满足 C1∧C2（关节不可达）；但两侧**各自可达**——C1 侧 `floor=0.90` R=0.941667、C2 侧 `floor=0.98` R=0.675/L=0.018116 ⇒ 第 ③ 支；不选 M2/M3 的理由 = 任何有用阈值上泄漏 ≥15/276（5.4%），像素差分分不开"同版面不同图"。
 - [x] 1.6.3 逐 kind 保留率表 + 单调性结论（C3）；不单调须区分机制缺陷 vs 变换语义差异
       补勾依据：基线逐 kind **{jpeg-q80=18, scale-085=21, scale-070=22, crop-04=9, crop-12=0}**（表 1/5 实测）→ **C3 不单调**，违反点 `scale-070(22) > scale-085(21)`（差 1 对，两个无损缩放之间的边界噪声，与 jpeg 无关）。另起一句：`floor=0.9935` 逐 kind {17,21,21,5,0} 也不成立，但性质不同——jpeg-q80(17) 排在 scale 系之后，是有损重编码的变换语义差异（对齐 v2 文档 §9 已记录的 jpeg/scale 反序）；`floor=0.90` 逐 kind {24,24,24,24,17} → C3 成立。实跑输出原文：`C3 基线逐kind={jpeg-q80=18, scale-085=21, scale-070=22, crop-04=9} 单调=false`（命令：`D:\git\Git\bin\bash.exe -lc 'cd /d/code/crmAndRag-merge-add-knowledge-admin-api && mvn -B -ntp test -Dtest=NearDuplicateMechanismDecisionTest'`）。结论：jpeg 压缩保结构丢细节、裁切丢构图，两者不在同一条强度标尺上（**变换语义差异**，非机制缺陷）——文档 §4 与 §5 已写明。
 - [x] 1.6.4 帕累托前沿表：每档 `L` 下 `R_keep` 最大值（M1/M2/M3 各一列）+ "把 `R_keep` 从 0.583 提到 0.90 的最小泄漏代价"
@@ -248,7 +248,7 @@
 ### 4.2 分组照判（三份出表，一份总判定）
 
 - [x] 4.2.1 G1：C1–C6 逐条 + `verdict` + 帕累托一句话
-      补勾依据：见 `report.md` §2.1 与决策文档 §4；一句话 = 「R_keep 从 0.583 提到 0.90 的最小泄漏代价 = M1 `floor=0.90` 下的 L=**3.26%（9/276）**，为 C2 门槛的 1.63 倍 ⇒ NO-GO」。
+      补勾依据：见 `report.md` §2.1 与决策文档 §4；一句话 = 「C2 侧上限 67.5%（`floor=0.98`，L=1.81%）/ C1 侧代价 3.26%（`floor=0.90`，R=94.2%，门槛 1.63 倍）⇒ 关节不可达、两侧可达 ⇒ **UNDECIDABLE-BY-DATA**」。
 - [x] 4.2.2 G2：A1/A2/A2b/A3/F1/F2/N1 逐条 绿/红 + 是否真证到"未重启"
       补勾依据：七条全绿（A1 0/0/0/0、A2 0/0、A2b 3/0/0、A3 3/3、F1 0→3、F2 0、N1 3>0）；"未重启"= 单方法内三实例首尾 `assertSame`（L245-247）+ 无 Spring 上下文可重建，**真证到**。
 - [x] 4.2.3 G3：P1–P4 逐条 + operation 总数 + SECURED/OPEN 计数 + 前端生成物是否变化
@@ -263,11 +263,11 @@
 - [x] 4.3.2 每个勾选项的补勾依据都能被第三方独立复跑
       补勾依据：所有依据都给了可执行命令（`bash scripts/rag-quality/near-dup-mechanism-report.sh`、`mvn -B -ntp test -Dtest=...`、`bash scripts/check-openapi-consistency.sh`、`git diff --stat master -- <path>`）或可复算的哈希（决策锚 SHA-256、契约 SHA-256、customizer SHA-256）。
 - [x] 4.3.3 没有为让结论好看而调网格/改门槛/删数据点（C6 自证：点数与步长可被守卫测试独立数出）
-      补勾依据：网格 200/25/325 与步长 0.0005 由 `NearDuplicateMechanismDecisionGuardTest#gridIsCompleteAndStepped` 独立数出；判据常量 0.90/0.02 由 `NearDuplicateMechanismAnalyzerTest#criteriaConstantsArePinned` 断言；verdict 由守卫测试按 C1∧C2∧C3 重算一致（不是写死的字符串）。**NO-GO 就是 NO-GO，没有为了让结论变 GO 而放松任何一项**。
+      补勾依据：网格 200/25/325 与步长 0.0005 由 `NearDuplicateMechanismDecisionGuardTest#gridIsCompleteAndStepped` 独立数出；判据常量 0.90/0.02 由 `NearDuplicateMechanismAnalyzerTest#criteriaConstantsArePinned` 断言；verdict 由守卫测试按 C5 四支重算一致（不是写死的字符串）。**消歧只让结论更保守（NO-GO → UNDECIDABLE），没有为了让结论变 GO 而放松任何一项**。
 - [x] 4.3.4 停步组产物已回退干净（`git status` 与 `git diff master` 中不出现其半成品）
       补勾依据：**无停步组**，无需回退；G1/G2/G3 产物全部为终态。
 
 ## 5. 回报（≤300 字，细节留文件）
 
 - [x] 5.1 ① 三组各自 交付/停步 ② G1 的 `verdict` 与帕累托一句话 ③ G2 七条断言结论（是否真证到未重启）④ G3 的 P1–P4 与 operation 计数 ⑤ 门禁结果（含本卡 IT 实跑状态）⑥ 未解决/需指导侧决策项
-      补勾依据：六项全部已给出——①G1/G2/G3 均**交付**（无停步）；②`NO-GO` + 「最小泄漏代价 = M1 floor=0.90 的 L=3.26%（9/276）= 门槛 1.63 倍」；③七条全绿且**真证到未重启**（单方法 + 三实例 `assertSame`，L245-247）；④P1 绿（279 = 259 SECURED + 20 OPEN）/P2 绿（两路径集合相等）/P3 三项绿 + build 环境级红（master 同红）/P4 绿（2 文件）+ 生成物零变化；⑤`mvn test` 2076 全绿、`check-openapi-consistency.sh` 绿、merge-gate 与 baseline 见 `report.md` §4、G2 IT 实跑绿（非跳过，2.146 s）；⑥待决策项见 `report.md` §6。细节全文在 `report.md`。
+      补勾依据：六项全部已给出——①G1/G2/G3 均**交付**（无停步）；②`UNDECIDABLE-BY-DATA` + 「C2 侧 67.5% @`floor=0.98` / C1 侧 3.26% @`floor=0.90` ⇒ 关节不可达」；③七条全绿且**真证到未重启**（单方法 + 三实例 `assertSame`，L245-247）；④P1 绿（279 = 259 SECURED + 20 OPEN）/P2 绿（两路径集合相等）/P3 三项绿 + build 环境级红（master 同红）/P4 绿（2 文件）+ 生成物零变化；⑤`mvn test` 2076 全绿、`check-openapi-consistency.sh` 绿、merge-gate 与 baseline 见 `report.md` §4、G2 IT 实跑绿（非跳过，2.146 s）；⑥待决策项见 `report.md` §6。细节全文在 `report.md`。

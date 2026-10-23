@@ -12083,8 +12083,8 @@
     "answer" : "把 R_keep 从 0.583 提到 0.90 的最小泄漏代价 = M1 {\"floor\":0.9} 下 L=0.032609"
   },
   "externalCalls" : 0,
-  "verdict" : "NO-GO",
-  "verdictReason" : "三机制全网格无一点同时满足 C1(≥0.90)∧C2(≤0.02)；各机制最高 R_keep 与对应 L 见 raisingTarget，结论为合法 NO-GO（不调门槛），交付帕累托前沿与结案声明（M1 点数 200、M2 25、M3 325）",
-  "elapsedMillis" : 7468,
-  "generatedAt" : "2026-10-23T11:18:54.446938900Z"
+  "verdict" : "UNDECIDABLE-BY-DATA",
+  "verdictReason" : "C5 第③支（关节不可达、两侧可达）：C2 满足点的最高保留 = 67.5%（M1 floor=0.98，L=1.81%）；C1 满足点的最低泄漏 = 3.26%（M1 floor=0.9，R_keep=94.2%）；两者不可同时满足（关节不可达）⇒ UNDECIDABLE-BY-DATA；定夺需“流失-泄漏”交换率与泄漏真实伤害（查询-相关性真值）（M1 点数 200、M2 25、M3 325）",
+  "elapsedMillis" : 8460,
+  "generatedAt" : "2026-10-23T13:29:01.632820500Z"
 }

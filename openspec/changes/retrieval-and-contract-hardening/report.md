@@ -3,21 +3,21 @@
 > 分支 `feature/retrieval-and-contract-hardening`（从 `master` @ `5bb8b05` 检出；首个提交 `50b7603 docs(card): 立项…`）
 > 工作树 `D:\code\crmAndRag-merge-add-knowledge-admin-api`｜档位 **A**｜零真外呼 · 零新依赖 · 零迁移 · 未打开任何生产开关 · 权限语义零变更
 >
-> **总判定：三组全部交付，无停步。** G1 = **NO-GO（合法结论）**；G2 七条断言全绿且真证到"未重启"；G3 P1/P2/P4 绿、P3 三项绿 + `build` 项**环境级红（master 同红）**，列 §6 待决策项。
+> **总判定：三组全部交付，无停步。** G1 = **UNDECIDABLE-BY-DATA（C5 第 ③ 支：关节不可达、两侧可达）**；G2 七条断言全绿且真证到"未重启"；G3 P1/P2/P4 绿、P3 三项绿 + `build` 项**环境级红（master 同红）**，列 §6 待决策项。
 
 ## 1. 分组判定一览
 
 | 组 | 判定 | 核心结论 | 产物 |
 | --- | --- | --- | --- |
 | **G0** | 交付 | 三份锚点实测复述；分支与首提交就位；判据数值全部登记成常量 | tasks.md G0 四项补勾 |
-| **G1** | **交付（NO-GO）** | 三机制全网格 550 点无一点满足 C1∧C2；把 R_keep 提到 0.90 的最小泄漏代价 = **3.26%（9/276）**，为门槛 1.63 倍 ⇒ 结案 | 5 测试类 + 1 脚本 + 决策 JSON/MD |
+| **G1** | **交付（UNDECIDABLE-BY-DATA）** | 三机制全网格 550 点无一点同时满足 C1∧C2；C2 侧最高保留 **67.5%**（M1 `floor=0.98`，L=1.81%）、C1 侧最低泄漏 **3.26%**（M1 `floor=0.90`，R=94.2%）⇒ 关节不可达、两侧可达，待"流失-泄漏"交换率定夺 | 5 测试类 + 1 脚本 + 决策 JSON/MD |
 | **G2** | **交付** | 七条断言全绿；门控顺序、"白名单是唯一灰度粒度"、"运行期热生效 / 改回 false 即停"三句话全部变成可复跑实证 | 1 IT + runbook §12 |
 | **G3** | **交付（P3 的 build 项环境级红）** | 279 operations 全部携带权限维（259 SECURED + 20 OPEN）；契约 vs 扫描器两条独立路径集合相等；前端生成物零变化 | customizer + `OpenApiConfig` 注册 + 契约重导出 + parity 测试 + spec-delta + 解冻登记 |
 | **G4** | 交付 | 全量门禁与逐组照判（见 §4） | 本报告 + tasks.md 补勾依据 |
 
 ## 2. 三组照判
 
-### 2.1 G1 · 近重复机制决策（verdict = NO-GO）
+### 2.1 G1 · 近重复机制决策（verdict = UNDECIDABLE-BY-DATA）
 
 | 判据 | 门槛 | 实测 | 结果 |
 | --- | --- | --- | --- |
@@ -25,7 +25,7 @@
 | C2 负样本泄漏率 | ≤ 0.02 | 基线 3/276 = **0.010870**；所有 `R≥0.90` 点的最小 L = 9/276 = **0.032609** | **不满足** |
 | C3 逐 kind 单调 | crop-12 ≤ crop-04 ≤ scale-070 ≤ scale-085（jpeg 可与 scale-085 互换） | 基线**不满足**（0 ≤ 9 ≤ 22，但 scale-070 22 > scale-085 21）；`floor=0.9935` 不满足（jpeg 17 < scale-070/085 21）；`floor=0.90` 成立（24/24/24/24/17） | 逐点记录（锚 `outcome.satisfiesC3`） |
 | C4 外呼次数 | = 0 | `externalCalls=0` | 满足 |
-| C5 决策 | 三选一 | **NO-GO** | 满足 |
+| C5 决策 | 三选一 | **UNDECIDABLE-BY-DATA** | 命中第 ③ 支（关节不可达、两侧可达） |
 | C6 全网格披露 | 200 / 25 / 全组合 | 200 / 25 / 325 逐点入锚 | 满足 |
 
 **帕累托前沿（锚 `pareto`，文档 §3 摘录）**：
@@ -34,7 +34,7 @@
 - M2（网格 `D=0..24` 共 **25 点**，帕累托前沿 13 点；下表节选 3 点）：`D=1 → 0.316667 / 0.054348`；`D=22 → 0.900000 / 0.224638`；`D=24 → 0.933333 / 0.282609`。
 - M3（12 点，节选）：`(0,5) → 0.650000 / 0.057971`；`(0,21) → 0.900000 / 0.170290`；`(0,24) → 0.941667 / 0.282609`。
 
-**一句话**：把 `R_keep` 从 0.583 提到 0.90 最小要付 **L=3.26%（9/276）**（M1 `floor=0.90`），是门槛 2% 的 1.63 倍；两条 dHash 机制任何有用阈值上泄漏 ≥5.4% ⇒ **无机制满足 C1∧C2，NO-GO，不调门槛**。
+**一句话**：在 C2≤2% 上限内保留率上限 = **67.5%**（M1 `floor=0.98`，L=1.81%，较基线 +9.2pp）；要摸到 C1≥90% 须把泄漏放宽到 **3.26%**（`floor=0.90`，R=94.2%，门槛的 1.63 倍）；两条边不可同时成立 ⇒ **C5 第 ③ 支 UNDECIDABLE-BY-DATA（关节不可达、两侧可达），待交换率定夺**。
 
 **自证①**：144 个 same-image 对重算 dHash 距离 **全 0**、余弦回读 **全 1**（144/144/144）⇒ 语料可复现，两卡数字可比。
 **自证②**：决策文档每个数字都标了表号或锚字段路径，零手算数字。
@@ -106,7 +106,7 @@
 | `mvn -B -ntp test` | **BUILD SUCCESS**，`Tests run: 2076, Failures: 0, Errors: 0, Skipped: 0` | `target/g4-mvn-test.log` |
 | 本卡新增进 surefire 的用例 | **17**（Analyzer 6 + Decision 1 + Guard 7 + Parity 2 + Export 追加 1） | 同上各行 |
 | `mvn -B -ntp test -Dtest=ImageVectorSwitchHotFlipIT` | **实跑绿（非跳过）**：`Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, 2.146 s` | `target/g2-it.log` |
-| `bash scripts/rag-quality/near-dup-mechanism-report.sh` | **退出码 0**，`verdict=NO-GO`、`externalCalls=0`，五张表落盘 | `target/near-dup-mechanism-report.txt` |
+| `bash scripts/rag-quality/near-dup-mechanism-report.sh` | **退出码 0**，`verdict=UNDECIDABLE-BY-DATA`、`externalCalls=0`，五张表落盘 | `target/near-dup-mechanism-report.txt` |
 | `bash scripts/check-openapi-consistency.sh` | **绿**：「前后端契约一致：frontend/openapi.yaml 与后端 swagger 导出逐字相同」 | 见下 §4.1 |
 | `pnpm gen:api` | 生成物 **零变化**（`git status frontend/` 只有 `openapi.yaml`） | — |
 | `pnpm lint:check` / `type-check:check` / `test` | **绿**（0 / 0 / 22 文件 213 用例全过） | — |
@@ -152,4 +152,4 @@ failsafe 测试：报告=43（默认口径），Tests run=144，Failures=0，Err
 2. **`PerceptualHashSupportTest` 文件缺失（口径偏差）**：tasks.md 1.2.3 点名该文件，但 proposal §1.4 与 task-card 并集表都未列它。为不越写入面，dHash 四类断言并入 `NearDuplicateMechanismAnalyzerTest`。若 require 独立文件，请扩写入面后我再拆。
 3. **`getCode()` vs `getId()`（口径偏差）**：proposal §3.2 写 `PermissionOperates#getCode()`，实际枚举只有 Lombok `@Getter` 的 `getId()`。契约字段名仍为 `code`（数字），语义一致。若需严格对齐文案，请裁定是改 proposal 措辞还是给枚举加 `getCode()` 别名（后者会动 `src/main` 语义面，本卡未做）。
 4. **P2 的第二项归一化**（`ANY` → 7 方法常量集）：已按 tasks.md 3.4.4 登记进 spec-delta §3 并在本报告声明；实测只影响 `/permission/list`。若指导侧认为"归一化只允许去尾部 `/`"必须字面执行，则 P2 需改为"ANY 端点单列豁免表"——这会让判据变松，建议保持现状。
-5. **G1 结案后续**：NO-GO 已成立，翻案需三类新数据（业务负样本口径 / crop-12 语义裁决 / 换 embedding 底座另立 B 档卡），见决策文档 §5。
+5. **G1 定夺后续**：第 ③ 支已量出两条边（C2 侧 67.5% @ `floor=0.98` / C1 侧 3.26% @ `floor=0.90`），定夺需"流失-泄漏"交换率与泄漏真实伤害（查询-相关性真值）；其余翻案数据（业务负样本口径 / crop-12 语义裁决 / 换 embedding 底座另立 B 档卡）见决策文档 §5。

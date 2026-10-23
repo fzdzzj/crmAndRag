@@ -196,6 +196,47 @@ class NearDuplicateMechanismAnalyzerTest {
             NearDuplicateMechanismAnalyzer.VERDICT_UNDECIDABLE));
   }
 
+  @Test
+  @DisplayName("C5：verdict 四支按序短路（① GO / ② 半满足 / ③ 单侧可达 / ④ 均不可达）")
+  void verdictFollowsFourBranches() {
+    Map<String, Integer> monotonic = new LinkedHashMap<>();
+    monotonic.put("crop-12", 20);
+    monotonic.put("crop-04", 24);
+    monotonic.put("scale-070", 24);
+    monotonic.put("scale-085", 24);
+    monotonic.put("jpeg-q80", 24);
+    Map<String, Integer> brokenChain = new LinkedHashMap<>(monotonic);
+    brokenChain.put("scale-085", 10);
+
+    // ① C1∧C2∧C3（115/120=0.958、3/276=0.011、链单调）⇒ GO
+    assertEquals(NearDuplicateMechanismAnalyzer.VERDICT_GO, verdictOf(point(115, 3, monotonic)));
+    // ② C1∧C2，仅 C3 缺（scale-070 24 > scale-085 10）⇒ UNDECIDABLE
+    assertEquals(
+        NearDuplicateMechanismAnalyzer.VERDICT_UNDECIDABLE, verdictOf(point(115, 3, brokenChain)));
+    // ③ 只有 C1 可达（115/120 保留，但泄漏 60/276=0.217 > 0.02）⇒ UNDECIDABLE
+    assertEquals(
+        NearDuplicateMechanismAnalyzer.VERDICT_UNDECIDABLE, verdictOf(point(115, 60, monotonic)));
+    // ③ 只有 C2 可达（50/120=0.417 保留不足 C1，但泄漏 3/276 达标）⇒ UNDECIDABLE
+    assertEquals(
+        NearDuplicateMechanismAnalyzer.VERDICT_UNDECIDABLE, verdictOf(point(50, 3, monotonic)));
+    // ④ C1 与 C2 都无点可达 ⇒ NO-GO（此时"无可换机制"才为真）
+    assertEquals(
+        NearDuplicateMechanismAnalyzer.VERDICT_NO_GO, verdictOf(point(50, 100, monotonic)));
+  }
+
+  private static String verdictOf(NearDuplicateMechanismAnalyzer.Outcome outcome) {
+    return NearDuplicateMechanismAnalyzer.verdict(
+        List.of(new NearDuplicateMechanismAnalyzer.FloorPoint(0.90D, outcome)),
+        List.of(),
+        List.of());
+  }
+
+  private static NearDuplicateMechanismAnalyzer.Outcome point(
+      int retainedVariant, int leakedNegative, Map<String, Integer> retainedByKind) {
+    return new NearDuplicateMechanismAnalyzer.Outcome(
+        120, retainedVariant, 276, leakedNegative, Map.of(), retainedByKind, 0);
+  }
+
   private static NearDuplicateMechanismAnalyzer.Pair pair(
       String leftKey, String rightKey, String stratum, String kind, double cosine) {
     return new NearDuplicateMechanismAnalyzer.Pair(leftKey, rightKey, stratum, kind, cosine);
