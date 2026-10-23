@@ -1,0 +1,3607 @@
+{
+  "calibrationVersion" : "IMAGE-NEAR-DUPLICATE-CALIBRATION-2.0",
+  "generatedAt" : "2026-10-23T03:16:01.518321800Z",
+  "optIn" : "RAG_VISION_EMBED_REAL=1 + DASHSCOPE_API_KEY 显式真跑；语料 = 三份已登记公有领域 PDF 经生产 PdfImageExtractor 各取前 8/4/12 张位图（按 SHA-256 全局去重）+ 每 base 五种内存变体（jpeg-q80/scale-085/scale-070/crop-04/crop-12）；每图经真视觉 embedding（multimodal-embedding-v1）编码两次，同图档 = 两次编码的余弦，近重复档 = base 与其变体 A 向量的余弦，cross 仅 base 两两；本锚不改任何生产常量",
+  "corpus" : {
+    "bases" : 24,
+    "variants" : 120,
+    "images" : 144,
+    "imageEmbeddingCalls" : 288,
+    "skips" : 0,
+    "kinds" : [ "jpeg-q80", "scale-085", "scale-070", "crop-04", "crop-12" ],
+    "documents" : [ {
+      "key" : "nist-sp800-101r1",
+      "requested" : 8,
+      "taken" : 8
+    }, {
+      "key" : "nist-sp800-183",
+      "requested" : 4,
+      "taken" : 4
+    }, {
+      "key" : "doe-renewable-energy-framework",
+      "requested" : 12,
+      "taken" : 12
+    } ],
+    "skipDetail" : [ ]
+  },
+  "strata" : {
+    "same-image" : {
+      "count" : 144,
+      "min" : 0.9999999999999998,
+      "p05" : 0.9999999999999998,
+      "p25" : 1.0,
+      "median" : 1.0,
+      "p75" : 1.0,
+      "p95" : 1.0000000000000002,
+      "max" : 1.0000000000000002,
+      "mean" : 1.0
+    },
+    "near-duplicate" : {
+      "count" : 120,
+      "min" : 0.4070087706878587,
+      "p05" : 0.4199659629087774,
+      "p25" : 0.6612120072816552,
+      "median" : 0.9790809574955033,
+      "p75" : 0.9983354514251235,
+      "p95" : 0.99982075334535,
+      "max" : 0.9999298267210487,
+      "mean" : 0.8554928453058711
+    },
+    "same-class" : {
+      "count" : 100,
+      "min" : 0.08486202604727039,
+      "p05" : 0.10926898445169324,
+      "p25" : 0.19223417874977375,
+      "median" : 0.26065974314126705,
+      "p75" : 0.4394625252927609,
+      "p95" : 0.9784511853381223,
+      "max" : 0.9933404610426125,
+      "mean" : 0.38332215256451696
+    },
+    "cross-class" : {
+      "count" : 176,
+      "min" : 0.07467518763573623,
+      "p05" : 0.12345200453625053,
+      "p25" : 0.16207630687937766,
+      "median" : 0.2073574346298615,
+      "p75" : 0.27899287907909187,
+      "p95" : 0.49259436969256254,
+      "max" : 0.9887359400788237,
+      "mean" : 0.2464552833000365
+    }
+  },
+  "productionView" : {
+    "name" : "productionView",
+    "floor" : 0.9887,
+    "threshold" : 0.9944,
+    "separable" : true,
+    "pairCount" : 540,
+    "belowFloor" : 340,
+    "aboveThreshold" : 193,
+    "nearDuplicateCount" : 120,
+    "nearDuplicateBelowFloor" : 67,
+    "nearDuplicateBelowFloorShare" : 0.5583333333333333,
+    "bands" : [ {
+      "band" : "SAME_IMAGE",
+      "count" : 193,
+      "nearDuplicateCount" : 49,
+      "nearDuplicateShare" : 0.2538860103626943,
+      "stats" : {
+        "count" : 193,
+        "min" : 0.9945086991615528,
+        "p05" : 0.9974210892795565,
+        "p25" : 0.9999298267210487,
+        "median" : 1.0,
+        "p75" : 1.0,
+        "p95" : 1.0000000000000002,
+        "max" : 1.0000000000000002,
+        "mean" : 0.9996065699486341
+      }
+    }, {
+      "band" : "NEAR_HIGH",
+      "count" : 3,
+      "nearDuplicateCount" : 2,
+      "nearDuplicateShare" : 0.6666666666666666,
+      "stats" : {
+        "count" : 3,
+        "min" : 0.9933404610426125,
+        "p05" : 0.9933464825281954,
+        "p25" : 0.9933705684705266,
+        "median" : 0.9934006758984407,
+        "p75" : 0.9936037147070401,
+        "p95" : 0.9937661457539196,
+        "max" : 0.9938067535156395,
+        "mean" : 0.9935159634855643
+      }
+    }, {
+      "band" : "NEAR_MID",
+      "count" : 1,
+      "nearDuplicateCount" : 1,
+      "nearDuplicateShare" : 1.0,
+      "stats" : {
+        "count" : 1,
+        "min" : 0.9920852431021073,
+        "p05" : 0.9920852431021073,
+        "p25" : 0.9920852431021073,
+        "median" : 0.9920852431021073,
+        "p75" : 0.9920852431021073,
+        "p95" : 0.9920852431021073,
+        "max" : 0.9920852431021073,
+        "mean" : 0.9920852431021073
+      }
+    }, {
+      "band" : "NEAR_LOW",
+      "count" : 3,
+      "nearDuplicateCount" : 1,
+      "nearDuplicateShare" : 0.3333333333333333,
+      "stats" : {
+        "count" : 3,
+        "min" : 0.9887359400788237,
+        "p05" : 0.9887527448022801,
+        "p25" : 0.9888199636961059,
+        "median" : 0.988903987313388,
+        "p75" : 0.9889167478650585,
+        "p95" : 0.9889269563063947,
+        "max" : 0.9889295084167288,
+        "mean" : 0.9888564786029802
+      }
+    }, {
+      "band" : "CROSS_IMAGE",
+      "count" : 340,
+      "nearDuplicateCount" : 67,
+      "nearDuplicateShare" : 0.19705882352941176,
+      "stats" : {
+        "count" : 340,
+        "min" : 0.07467518763573623,
+        "p05" : 0.12405883555547303,
+        "p25" : 0.1816437955903159,
+        "median" : 0.2591467357201536,
+        "p75" : 0.4867968951722573,
+        "p95" : 0.9703513601458047,
+        "max" : 0.9886620316559677,
+        "mean" : 0.3779535764250249
+      }
+    } ]
+  },
+  "anchorView" : {
+    "name" : "anchorView",
+    "floor" : 0.9933404610426125,
+    "threshold" : 0.9966702305213062,
+    "separable" : true,
+    "pairCount" : 540,
+    "belowFloor" : 344,
+    "aboveThreshold" : 187,
+    "nearDuplicateCount" : 120,
+    "nearDuplicateBelowFloor" : 69,
+    "nearDuplicateBelowFloorShare" : 0.575,
+    "bands" : [ {
+      "band" : "SAME_IMAGE",
+      "count" : 187,
+      "nearDuplicateCount" : 43,
+      "nearDuplicateShare" : 0.22994652406417113,
+      "stats" : {
+        "count" : 187,
+        "min" : 0.9966773399383706,
+        "p05" : 0.9979681411151794,
+        "p25" : 0.9999999999999998,
+        "median" : 1.0,
+        "p75" : 1.0,
+        "p95" : 1.0000000000000002,
+        "max" : 1.0000000000000002,
+        "mean" : 0.9997390183883313
+      }
+    }, {
+      "band" : "NEAR_HIGH",
+      "count" : 3,
+      "nearDuplicateCount" : 3,
+      "nearDuplicateShare" : 1.0,
+      "stats" : {
+        "count" : 3,
+        "min" : 0.995828693966652,
+        "p05" : 0.9958524121529558,
+        "p25" : 0.9959472848981713,
+        "median" : 0.9960658758296906,
+        "p75" : 0.9963162527240587,
+        "p95" : 0.9965165542395531,
+        "max" : 0.9965666296184267,
+        "mean" : 0.9961537331382564
+      }
+    }, {
+      "band" : "NEAR_MID",
+      "count" : 3,
+      "nearDuplicateCount" : 3,
+      "nearDuplicateShare" : 1.0,
+      "stats" : {
+        "count" : 3,
+        "min" : 0.9945086991615528,
+        "p05" : 0.9945118370841644,
+        "p25" : 0.99452438877461,
+        "median" : 0.9945400783876672,
+        "p75" : 0.9949508314460525,
+        "p95" : 0.9952794338927605,
+        "max" : 0.9953615845044376,
+        "mean" : 0.994803454017886
+      }
+    }, {
+      "band" : "NEAR_LOW",
+      "count" : 3,
+      "nearDuplicateCount" : 2,
+      "nearDuplicateShare" : 0.6666666666666666,
+      "stats" : {
+        "count" : 3,
+        "min" : 0.9933404610426125,
+        "p05" : 0.9933464825281954,
+        "p25" : 0.9933705684705266,
+        "median" : 0.9934006758984407,
+        "p75" : 0.9936037147070401,
+        "p95" : 0.9937661457539196,
+        "max" : 0.9938067535156395,
+        "mean" : 0.9935159634855643
+      }
+    }, {
+      "band" : "CROSS_IMAGE",
+      "count" : 344,
+      "nearDuplicateCount" : 69,
+      "nearDuplicateShare" : 0.2005813953488372,
+      "stats" : {
+        "count" : 344,
+        "min" : 0.07467518763573623,
+        "p05" : 0.12410931155606038,
+        "p25" : 0.18223047493669253,
+        "median" : 0.26044878042281083,
+        "p75" : 0.49986862077018435,
+        "p95" : 0.973770622019364,
+        "max" : 0.9920852431021073,
+        "mean" : 0.3850664844866847
+      }
+    } ]
+  },
+  "nearDuplicateByKind" : {
+    "jpeg-q80" : {
+      "count" : 24,
+      "min" : 0.4070087706878587,
+      "p05" : 0.4393693002401045,
+      "p25" : 0.8393780949751151,
+      "median" : 0.9981345160895299,
+      "p75" : 0.9991314258511518,
+      "p95" : 0.9995934927581065,
+      "max" : 0.9996893882143023,
+      "mean" : 0.8728373160119194
+    },
+    "scale-085" : {
+      "count" : 24,
+      "min" : 0.4070087706878587,
+      "p05" : 0.4393693002401045,
+      "p25" : 0.8419154481030384,
+      "median" : 0.9982535476549812,
+      "p75" : 0.999661437086198,
+      "p95" : 0.9999076885761069,
+      "max" : 0.9999298267210487,
+      "mean" : 0.8725015906607902
+    },
+    "scale-070" : {
+      "count" : 24,
+      "min" : 0.4070087706878587,
+      "p05" : 0.4393693002401045,
+      "p25" : 0.8431212003235793,
+      "median" : 0.9971729275137056,
+      "p75" : 0.9994174309858026,
+      "p95" : 0.9998109153608158,
+      "max" : 0.9999161151554895,
+      "mean" : 0.8710103811279254
+    },
+    "crop-04" : {
+      "count" : 24,
+      "min" : 0.4070087706878587,
+      "p05" : 0.4393693002401045,
+      "p25" : 0.8259349238570626,
+      "median" : 0.965133293951816,
+      "p75" : 0.9869228178651769,
+      "p95" : 0.995238358586922,
+      "max" : 0.996942539027031,
+      "mean" : 0.8552877629637646
+    },
+    "crop-12" : {
+      "count" : 24,
+      "min" : 0.4070087706878587,
+      "p05" : 0.4393693002401045,
+      "p25" : 0.6612120072816552,
+      "median" : 0.9067722291810213,
+      "p75" : 0.950176922715934,
+      "p95" : 0.9851155840360546,
+      "max" : 0.9872989298117677,
+      "mean" : 0.8058271757649546
+    }
+  },
+  "monotonicity" : {
+    "kinds" : [ "jpeg-q80", "scale-085", "scale-070", "crop-04", "crop-12" ],
+    "medians" : [ 0.9981345160895299, 0.9982535476549812, 0.9971729275137056, 0.965133293951816, 0.9067722291810213 ],
+    "monotonic" : false,
+    "inversions" : [ {
+      "leftKind" : "jpeg-q80",
+      "rightKind" : "scale-085",
+      "leftMedian" : 0.9981345160895299,
+      "rightMedian" : 0.9982535476549812
+    } ]
+  },
+  "candidateFloor" : 0.4199659629087774,
+  "judgements" : [ {
+    "code" : "F0",
+    "condition" : "每带 NEAR_HIGH/NEAR_MID/NEAR_LOW >= 30 对且带内近重复占比 >= 0.5",
+    "hit" : false,
+    "evidence" : "productionView NEAR_HIGH=3(近重复占比 0.6667) NEAR_MID=1(近重复占比 1.0000) NEAR_LOW=3(近重复占比 0.3333)（门槛 30 对 / 0.5）"
+  }, {
+    "code" : "F1",
+    "condition" : "nearDuplicate 对中余弦 < 0.9887 的比例 > 0.5",
+    "hit" : true,
+    "evidence" : "productionView.nearDuplicateBelowFloor=67/120（占比 0.5583，门槛 0.5）"
+  }, {
+    "code" : "F2",
+    "condition" : "anchorView 不可分（crossImageCeiling >= sameImageFloor）",
+    "hit" : false,
+    "evidence" : "strata[\"same-image\"].min=0.9999999999999998，crossImageCeiling=0.9933404610426125，anchorView.separable=true"
+  }, {
+    "code" : "F3",
+    "condition" : "某带 >= 30 对但带内近重复占比 < 0.5",
+    "hit" : false,
+    "evidence" : "无「样本足但带内以异图为主」的带：NEAR_HIGH=3(近重复占比 0.6667) NEAR_MID=1(近重复占比 1.0000) NEAR_LOW=3(近重复占比 0.3333)"
+  }, {
+    "code" : "F4",
+    "condition" : "任一近似带 < 30 对",
+    "hit" : true,
+    "evidence" : "样本不足带：NEAR_HIGH=3(近重复占比 0.6667) NEAR_MID=1(近重复占比 1.0000) NEAR_LOW=3(近重复占比 0.3333)"
+  }, {
+    "code" : "F5",
+    "condition" : "anchorView 每带样本数 > productionView 同带样本数，且 F1 未触发",
+    "hit" : false,
+    "evidence" : "productionView NEAR_HIGH=3(近重复占比 0.6667) NEAR_MID=1(近重复占比 1.0000) NEAR_LOW=3(近重复占比 0.3333) vs anchorView NEAR_HIGH=3(近重复占比 1.0000) NEAR_MID=3(近重复占比 1.0000) NEAR_LOW=3(近重复占比 0.6667)（F1 命中=true）"
+  } ],
+  "pairs" : [ {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "nist-sp800-101r1-p1-b1",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "nist-sp800-101r1-p16-b2",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "nist-sp800-101r1-p18-b3",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "nist-sp800-101r1-p19-b4",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "nist-sp800-101r1-p22-b5",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "nist-sp800-101r1-p23-b6",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "nist-sp800-101r1-p27-b7",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "nist-sp800-101r1-p46-b8",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1",
+    "rightKey" : "nist-sp800-183-p1-b1",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999998
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2",
+    "rightKey" : "nist-sp800-183-p14-b2",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3",
+    "rightKey" : "nist-sp800-183-p16-b3",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4",
+    "rightKey" : "nist-sp800-183-p18-b4",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b2",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p3-b3",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b4",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999999
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b5",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b6",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999999
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b7",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b8",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999999
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b9",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b10",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b11",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b12",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999999
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1@jpeg-q80",
+    "rightKey" : "nist-sp800-101r1-p1-b1@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1@scale-085",
+    "rightKey" : "nist-sp800-101r1-p1-b1@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1@scale-070",
+    "rightKey" : "nist-sp800-101r1-p1-b1@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999998
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1@crop-04",
+    "rightKey" : "nist-sp800-101r1-p1-b1@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999998
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1@crop-12",
+    "rightKey" : "nist-sp800-101r1-p1-b1@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999998
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2@jpeg-q80",
+    "rightKey" : "nist-sp800-101r1-p16-b2@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999998
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2@scale-085",
+    "rightKey" : "nist-sp800-101r1-p16-b2@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2@scale-070",
+    "rightKey" : "nist-sp800-101r1-p16-b2@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2@crop-04",
+    "rightKey" : "nist-sp800-101r1-p16-b2@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2@crop-12",
+    "rightKey" : "nist-sp800-101r1-p16-b2@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3@jpeg-q80",
+    "rightKey" : "nist-sp800-101r1-p18-b3@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3@scale-085",
+    "rightKey" : "nist-sp800-101r1-p18-b3@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3@scale-070",
+    "rightKey" : "nist-sp800-101r1-p18-b3@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3@crop-04",
+    "rightKey" : "nist-sp800-101r1-p18-b3@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3@crop-12",
+    "rightKey" : "nist-sp800-101r1-p18-b3@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4@jpeg-q80",
+    "rightKey" : "nist-sp800-101r1-p19-b4@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4@scale-085",
+    "rightKey" : "nist-sp800-101r1-p19-b4@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4@scale-070",
+    "rightKey" : "nist-sp800-101r1-p19-b4@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4@crop-04",
+    "rightKey" : "nist-sp800-101r1-p19-b4@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4@crop-12",
+    "rightKey" : "nist-sp800-101r1-p19-b4@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5@jpeg-q80",
+    "rightKey" : "nist-sp800-101r1-p22-b5@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5@scale-085",
+    "rightKey" : "nist-sp800-101r1-p22-b5@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5@scale-070",
+    "rightKey" : "nist-sp800-101r1-p22-b5@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999999
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5@crop-04",
+    "rightKey" : "nist-sp800-101r1-p22-b5@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999998
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5@crop-12",
+    "rightKey" : "nist-sp800-101r1-p22-b5@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6@jpeg-q80",
+    "rightKey" : "nist-sp800-101r1-p23-b6@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6@scale-085",
+    "rightKey" : "nist-sp800-101r1-p23-b6@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6@scale-070",
+    "rightKey" : "nist-sp800-101r1-p23-b6@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6@crop-04",
+    "rightKey" : "nist-sp800-101r1-p23-b6@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999999
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6@crop-12",
+    "rightKey" : "nist-sp800-101r1-p23-b6@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999999
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7@jpeg-q80",
+    "rightKey" : "nist-sp800-101r1-p27-b7@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7@scale-085",
+    "rightKey" : "nist-sp800-101r1-p27-b7@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999998
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7@scale-070",
+    "rightKey" : "nist-sp800-101r1-p27-b7@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7@crop-04",
+    "rightKey" : "nist-sp800-101r1-p27-b7@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7@crop-12",
+    "rightKey" : "nist-sp800-101r1-p27-b7@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8@jpeg-q80",
+    "rightKey" : "nist-sp800-101r1-p46-b8@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8@scale-085",
+    "rightKey" : "nist-sp800-101r1-p46-b8@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8@scale-070",
+    "rightKey" : "nist-sp800-101r1-p46-b8@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8@crop-04",
+    "rightKey" : "nist-sp800-101r1-p46-b8@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999998
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8@crop-12",
+    "rightKey" : "nist-sp800-101r1-p46-b8@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1@jpeg-q80",
+    "rightKey" : "nist-sp800-183-p1-b1@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1@scale-085",
+    "rightKey" : "nist-sp800-183-p1-b1@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999998
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1@scale-070",
+    "rightKey" : "nist-sp800-183-p1-b1@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1@crop-04",
+    "rightKey" : "nist-sp800-183-p1-b1@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1@crop-12",
+    "rightKey" : "nist-sp800-183-p1-b1@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999998
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2@jpeg-q80",
+    "rightKey" : "nist-sp800-183-p14-b2@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999999
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2@scale-085",
+    "rightKey" : "nist-sp800-183-p14-b2@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2@scale-070",
+    "rightKey" : "nist-sp800-183-p14-b2@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2@crop-04",
+    "rightKey" : "nist-sp800-183-p14-b2@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2@crop-12",
+    "rightKey" : "nist-sp800-183-p14-b2@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999998
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3@jpeg-q80",
+    "rightKey" : "nist-sp800-183-p16-b3@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999999
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3@scale-085",
+    "rightKey" : "nist-sp800-183-p16-b3@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3@scale-070",
+    "rightKey" : "nist-sp800-183-p16-b3@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3@crop-04",
+    "rightKey" : "nist-sp800-183-p16-b3@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3@crop-12",
+    "rightKey" : "nist-sp800-183-p16-b3@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4@jpeg-q80",
+    "rightKey" : "nist-sp800-183-p18-b4@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4@scale-085",
+    "rightKey" : "nist-sp800-183-p18-b4@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999999
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4@scale-070",
+    "rightKey" : "nist-sp800-183-p18-b4@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4@crop-04",
+    "rightKey" : "nist-sp800-183-p18-b4@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999998
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4@crop-12",
+    "rightKey" : "nist-sp800-183-p18-b4@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1@jpeg-q80",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999998
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1@scale-085",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1@scale-070",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1@crop-04",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1@crop-12",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b2@jpeg-q80",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b2@scale-085",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b2@scale-070",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b2@crop-04",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b2@crop-12",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p3-b3@jpeg-q80",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p3-b3@scale-085",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p3-b3@scale-070",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p3-b3@crop-04",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p3-b3@crop-12",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b4@jpeg-q80",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999999
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b4@scale-085",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b4@scale-070",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b4@crop-04",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b4@crop-12",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b5@jpeg-q80",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b5@scale-085",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b5@scale-070",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b5@crop-04",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b5@crop-12",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b6@jpeg-q80",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b6@scale-085",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b6@scale-070",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b6@crop-04",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b6@crop-12",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b7@jpeg-q80",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b7@scale-085",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b7@scale-070",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b7@crop-04",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b7@crop-12",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b8@jpeg-q80",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b8@scale-085",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b8@scale-070",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b8@crop-04",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b8@crop-12",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b9@jpeg-q80",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b9@scale-085",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b9@scale-070",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b9@crop-04",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b9@crop-12",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b10@jpeg-q80",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b10@scale-085",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b10@scale-070",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b10@crop-04",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b10@crop-12",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b11@jpeg-q80",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b11@scale-085",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b11@scale-070",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999998
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b11@crop-04",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b11@crop-12",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0000000000000002
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b12@jpeg-q80",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12@jpeg-q80",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b12@scale-085",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12@scale-085",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999998
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b12@scale-070",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12@scale-070",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b12@crop-04",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12@crop-04",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 1.0
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b12@crop-12",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12@crop-12",
+    "stratum" : "same-image",
+    "kind" : null,
+    "cosine" : 0.9999999999999999
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "nist-sp800-101r1-p1-b1@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.9996893882143023
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "nist-sp800-101r1-p1-b1@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.9973830495759394
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "nist-sp800-101r1-p1-b1@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.995828693966652
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "nist-sp800-101r1-p1-b1@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.9934006758984407
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "nist-sp800-101r1-p1-b1@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.9675787237851207
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "nist-sp800-101r1-p16-b2@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.9994421993744687
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "nist-sp800-101r1-p16-b2@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.9997482445656453
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "nist-sp800-101r1-p16-b2@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.9996620697313995
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "nist-sp800-101r1-p16-b2@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.988903987313388
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "nist-sp800-101r1-p16-b2@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.9332646315543673
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "nist-sp800-101r1-p18-b3@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.9983369654989034
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "nist-sp800-101r1-p18-b3@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.9986361633053424
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "nist-sp800-101r1-p18-b3@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.9983349467338635
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "nist-sp800-101r1-p18-b3@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.9945400783876672
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "nist-sp800-101r1-p18-b3@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.9595832292651366
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "nist-sp800-101r1-p19-b4@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.9996070217879486
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "nist-sp800-101r1-p19-b4@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.9987180271311925
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "nist-sp800-101r1-p19-b4@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.9966773399383706
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "nist-sp800-101r1-p19-b4@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.9790479848309976
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "nist-sp800-101r1-p19-b4@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.9470414871995332
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "nist-sp800-101r1-p22-b5@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.9986415695376052
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "nist-sp800-101r1-p22-b5@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.9978709320046198
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "nist-sp800-101r1-p22-b5@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.9965666296184267
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "nist-sp800-101r1-p22-b5@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.958392729595298
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "nist-sp800-101r1-p22-b5@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.9215149231540796
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "nist-sp800-101r1-p23-b6@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.9995168282556681
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "nist-sp800-101r1-p23-b6@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.9996325012597156
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "nist-sp800-101r1-p23-b6@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.9993869295412166
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "nist-sp800-101r1-p23-b6@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.9836010537966308
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "nist-sp800-101r1-p23-b6@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.9400107826599186
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "nist-sp800-101r1-p27-b7@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.9982105221486071
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "nist-sp800-101r1-p27-b7@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.9974464490819679
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "nist-sp800-101r1-p27-b7@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.9977521101746206
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "nist-sp800-101r1-p27-b7@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.9862624280491065
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "nist-sp800-101r1-p27-b7@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.9206817442939882
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "nist-sp800-101r1-p46-b8@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.9973536844803418
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "nist-sp800-101r1-p46-b8@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.999565003997711
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "nist-sp800-101r1-p46-b8@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.9979294115800622
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "nist-sp800-101r1-p46-b8@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.9791139301600089
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "nist-sp800-101r1-p46-b8@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.9642806462037311
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1",
+    "rightKey" : "nist-sp800-183-p1-b1@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.9945086991615528
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1",
+    "rightKey" : "nist-sp800-183-p1-b1@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.998646623109268
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1",
+    "rightKey" : "nist-sp800-183-p1-b1@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.9976685150890405
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1",
+    "rightKey" : "nist-sp800-183-p1-b1@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.996942539027031
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1",
+    "rightKey" : "nist-sp800-183-p1-b1@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.9735783169924751
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2",
+    "rightKey" : "nist-sp800-183-p14-b2@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.9988662980013874
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2",
+    "rightKey" : "nist-sp800-183-p14-b2@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.9998252569715762
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2",
+    "rightKey" : "nist-sp800-183-p14-b2@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.9995089353195612
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2",
+    "rightKey" : "nist-sp800-183-p14-b2@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.9444845004157452
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2",
+    "rightKey" : "nist-sp800-183-p14-b2@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.8479307020746334
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3",
+    "rightKey" : "nist-sp800-183-p16-b3@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.9991579145697833
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3",
+    "rightKey" : "nist-sp800-183-p16-b3@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.9999109875420321
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3",
+    "rightKey" : "nist-sp800-183-p16-b3@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.9996892538002276
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3",
+    "rightKey" : "nist-sp800-183-p16-b3@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.9753283281736705
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3",
+    "rightKey" : "nist-sp800-183-p16-b3@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.9058601790494085
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4",
+    "rightKey" : "nist-sp800-183-p18-b4@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.9991225962782746
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4",
+    "rightKey" : "nist-sp800-183-p18-b4@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.9998754845294358
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4",
+    "rightKey" : "nist-sp800-183-p18-b4@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.9997565099685571
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4",
+    "rightKey" : "nist-sp800-183-p18-b4@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.9718738583083342
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4",
+    "rightKey" : "nist-sp800-183-p18-b4@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.9076842793126341
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.9994288320189618
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.9999298267210487
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.9999161151554895
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.9953615845044376
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.9872989298117677
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b2",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.9329352583143112
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b2",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.9363183958182089
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b2",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.9379260654455968
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b2",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.9370691749248339
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b2",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.6953804747230313
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p3-b3",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.9989456576146785
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p3-b3",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.999888994435864
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p3-b3",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.9998205163123908
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p3-b3",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.9920852431021073
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p3-b3",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.9871515723378628
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b4",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.9960658758296906
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b4",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.998943916629208
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b4",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.9977517975741699
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b4",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.9408635515192267
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b4",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.8129038970080239
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b5",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.5493215451176245
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b5",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.5493215451176245
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b5",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.5493215451176245
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b5",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.5493215451176245
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b5",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.5493215451176245
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b6",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.5587066049575269
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b6",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.5587066049575269
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b6",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.5587066049575269
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b6",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.5587066049575269
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b6",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.5587066049575269
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b7",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.5537172777458309
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b7",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.5537172777458309
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b7",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.5537172777458309
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b7",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.5537172777458309
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b7",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.5537172777458309
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b8",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.5576808482358694
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b8",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.5576808482358694
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b8",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.5576808482358694
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b8",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.5576808482358694
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b8",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.5576808482358694
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b9",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.4199659629087774
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b9",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.4199659629087774
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b9",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.4199659629087774
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b9",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.4199659629087774
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b9",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.4199659629087774
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b10",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.4070087706878587
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b10",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.4070087706878587
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b10",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.4070087706878587
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b10",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.4070087706878587
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b10",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.4070087706878587
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b11",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.9980585100304527
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b11",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.9845884800147205
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b11",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.9702712286635663
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b11",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.9482226233130251
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b11",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.8567155561024442
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b12",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12@jpeg-q80",
+    "stratum" : "near-duplicate",
+    "kind" : "jpeg-q80",
+    "cosine" : 0.9938067535156395
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b12",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12@scale-085",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-085",
+    "cosine" : 0.986708829511983
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b12",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12@scale-070",
+    "stratum" : "near-duplicate",
+    "kind" : "scale-070",
+    "cosine" : 0.9734010688035165
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b12",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12@crop-04",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-04",
+    "cosine" : 0.9150110301569079
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b12",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12@crop-12",
+    "stratum" : "near-duplicate",
+    "kind" : "crop-12",
+    "cosine" : 0.7649911331772652
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "nist-sp800-101r1-p16-b2",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.3235020039716748
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "nist-sp800-101r1-p18-b3",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.2676151146361461
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "nist-sp800-101r1-p19-b4",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.18540216597214235
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "nist-sp800-101r1-p22-b5",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.27406455855123246
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "nist-sp800-101r1-p23-b6",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.24281878508129526
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "nist-sp800-101r1-p27-b7",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.2641421884278597
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "nist-sp800-101r1-p46-b8",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.22621854446042713
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "nist-sp800-183-p1-b1",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.9887359400788237
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "nist-sp800-183-p14-b2",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.20909476583104755
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "nist-sp800-183-p16-b3",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.23833540327199618
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "nist-sp800-183-p18-b4",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.21793440788758092
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.17184546558657093
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.48537367221239375
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.13931878356008248
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.2581606377613034
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.18188837815945186
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.18234450719577278
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.17941900813189496
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.18064726158054797
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.1869218413815922
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.17933027403487775
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.2827914288537936
+  }, {
+    "leftKey" : "nist-sp800-101r1-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.2718273769297839
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "nist-sp800-101r1-p18-b3",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.36028477879349907
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "nist-sp800-101r1-p19-b4",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.38703748174178665
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "nist-sp800-101r1-p22-b5",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.5074462548305783
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "nist-sp800-101r1-p23-b6",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.3586600645444763
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "nist-sp800-101r1-p27-b7",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.4159663443312878
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "nist-sp800-101r1-p46-b8",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.4194563569724803
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "nist-sp800-183-p1-b1",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.32414707151991023
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "nist-sp800-183-p14-b2",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.4789359299037589
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "nist-sp800-183-p16-b3",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.49869301930226995
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "nist-sp800-183-p18-b4",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.5033954251739273
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.1464392322476556
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.3058749211616098
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.11658835368545083
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.26410978879958097
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.15768459483843122
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.14879981478918328
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.15744677513551936
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.16374747159069145
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.13945209445777043
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.12459197497981324
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.38710305883674445
+  }, {
+    "leftKey" : "nist-sp800-101r1-p16-b2",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.3380942604610391
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "nist-sp800-101r1-p19-b4",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.28476799608081005
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "nist-sp800-101r1-p22-b5",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.40008075887339334
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "nist-sp800-101r1-p23-b6",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.3584115549639462
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "nist-sp800-101r1-p27-b7",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.2854571048414078
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "nist-sp800-101r1-p46-b8",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.15341064511418231
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "nist-sp800-183-p1-b1",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.2604168373677687
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "nist-sp800-183-p14-b2",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.21906820228147927
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "nist-sp800-183-p16-b3",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.34076734540456943
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "nist-sp800-183-p18-b4",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.3307774192892982
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.15711236934481568
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.2025625919922885
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.09092702317542539
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.0890077823431468
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.141466669185346
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.12407517364296279
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.12432466863907249
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.13958834755914895
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.15018220261158616
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.13231374768587156
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.19175322531864675
+  }, {
+    "leftKey" : "nist-sp800-101r1-p18-b3",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.17737621637119405
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "nist-sp800-101r1-p22-b5",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.44409569591097425
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "nist-sp800-101r1-p23-b6",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.3086305813570915
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "nist-sp800-101r1-p27-b7",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.4288581052938273
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "nist-sp800-101r1-p46-b8",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.44770552885142617
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "nist-sp800-183-p1-b1",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.184952271139575
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "nist-sp800-183-p14-b2",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.38683813640814946
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "nist-sp800-183-p16-b3",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.4256403694270541
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "nist-sp800-183-p18-b4",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.43779135068932956
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.09602166471959739
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.20024724418476653
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.07467518763573623
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.14183434084956398
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.15074459504637763
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.14364639165721316
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.14891396653584865
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.15243250116658766
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.14138256135645916
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.12430275973028003
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.3223544673556445
+  }, {
+    "leftKey" : "nist-sp800-101r1-p19-b4",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.3157005706269787
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "nist-sp800-101r1-p23-b6",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.749741898724818
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "nist-sp800-101r1-p27-b7",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.4071889651235171
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "nist-sp800-101r1-p46-b8",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.4117471003648979
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "nist-sp800-183-p1-b1",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.27772669582085796
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "nist-sp800-183-p14-b2",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.5366381819959808
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "nist-sp800-183-p16-b3",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.729998935183977
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "nist-sp800-183-p18-b4",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.7070900638875222
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.17005821873115923
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.23501271353860367
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.2433185277722696
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.19779575628604174
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.13257526217885965
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.12256278246549901
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.13447523901480327
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.14156447103772793
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.11893846601805388
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.10783895701151429
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.3074956406893272
+  }, {
+    "leftKey" : "nist-sp800-101r1-p22-b5",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.24866936980817148
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "nist-sp800-101r1-p27-b7",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.3507314073586438
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "nist-sp800-101r1-p46-b8",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.31789113725994694
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "nist-sp800-183-p1-b1",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.25155532413151394
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "nist-sp800-183-p14-b2",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.491066564051848
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "nist-sp800-183-p16-b3",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.6049790291917835
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "nist-sp800-183-p18-b4",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.593673020725286
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.1919307338525944
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.25293977087370895
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.31981283550475603
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.2428427868188848
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.17818860398082012
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.1757212525205498
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.1737815728479651
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.18091004788290801
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.1692590422152938
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.15984304939795962
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.20982470140952494
+  }, {
+    "leftKey" : "nist-sp800-101r1-p23-b6",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.17473139969055557
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "nist-sp800-101r1-p46-b8",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.46805582959867886
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "nist-sp800-183-p1-b1",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.2612850279369488
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "nist-sp800-183-p14-b2",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.38362965773238056
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "nist-sp800-183-p16-b3",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.3841654620488143
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "nist-sp800-183-p18-b4",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.39295789389494395
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.1995456793308994
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.26296875954241766
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.1258657825216463
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.22007791785991587
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.233589135460212
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.2231594211705726
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.23087605059862285
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.23805147170935434
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.2081866627435262
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.19477711921791643
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.4059674612339986
+  }, {
+    "leftKey" : "nist-sp800-101r1-p27-b7",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.38600408546787596
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "nist-sp800-183-p1-b1",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.23605382840394282
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "nist-sp800-183-p14-b2",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.4371329734782956
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "nist-sp800-183-p16-b3",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.4185407174796913
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "nist-sp800-183-p18-b4",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.4455109926604763
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.12374841189316771
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.20386605910316166
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.09194674536889702
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.21213765664306516
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.2165356484610084
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.2203020017558613
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.22478377633282678
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.22602856854227102
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.18861973881326105
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.17819405320437434
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.4184936169741616
+  }, {
+    "leftKey" : "nist-sp800-101r1-p46-b8",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.4028799790075567
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1",
+    "rightKey" : "nist-sp800-183-p14-b2",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.22415369738856997
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1",
+    "rightKey" : "nist-sp800-183-p16-b3",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.25306573622956907
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1",
+    "rightKey" : "nist-sp800-183-p18-b4",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.23350901050096473
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.17935509231242017
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.4971777866147061
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.14985703034879405
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.2651643579839599
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.19302964243965184
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.1933361860067705
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.1878800847109895
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.18864951778181774
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.20142793823255045
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.19402543564402236
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.26737483113072036
+  }, {
+    "leftKey" : "nist-sp800-183-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.26478384478934935
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2",
+    "rightKey" : "nist-sp800-183-p16-b3",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.8505126093701909
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2",
+    "rightKey" : "nist-sp800-183-p18-b4",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.848264198474679
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.27312469215118695
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.22912411920547243
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.157945866899729
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.2604807234778529
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.21889452297113907
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.21551925546061626
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.21228243718236323
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.21222080542039834
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.21373873226262227
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.20750738499870794
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.44113772534880286
+  }, {
+    "leftKey" : "nist-sp800-183-p14-b2",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.3957850575141216
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3",
+    "rightKey" : "nist-sp800-183-p18-b4",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.9797088752692361
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.3003106058970634
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.20720241273191453
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.2072074842610151
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.24405595372464842
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.16956866205567883
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.16064673838509436
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.166043700413339
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.16972877426613464
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.14961743777967565
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.13949070788636744
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.3866167171166276
+  }, {
+    "leftKey" : "nist-sp800-183-p16-b3",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.3383041179431853
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4",
+    "rightKey" : "doe-renewable-energy-framework-p1-b1",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.3001637561932237
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.20124209620702274
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.20567761817083227
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.24972630850381836
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.16436075329882238
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.15454111889860722
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.16255282971080542
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.16636096236250184
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.13580436188932338
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.1250934747318541
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.3890778098126417
+  }, {
+    "leftKey" : "nist-sp800-183-p18-b4",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "cross-class",
+    "kind" : null,
+    "cosine" : 0.3559398744664175
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p1-b2",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.16704489754774302
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.14939356348500374
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.11713509662073779
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.17135003724512826
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.16345224785476115
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.1631634330654047
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.16566640187898213
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.1687295869113523
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.16773195608948013
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.20051067019594046
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b1",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.17234778913805265
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b2",
+    "rightKey" : "doe-renewable-energy-framework-p3-b3",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.1903503911925318
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b2",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.2946501238490571
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b2",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.25277836054403824
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b2",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.25621642944651796
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b2",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.24462696965519473
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b2",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.24257926846036448
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b2",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.2527489259688528
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b2",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.2494074453766414
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b2",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.2870576553062542
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p1-b2",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.23804988460561707
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p3-b3",
+    "rightKey" : "doe-renewable-energy-framework-p4-b4",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.2611866526035303
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p3-b3",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.192311096067503
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p3-b3",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.19206742494292203
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p3-b3",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.1897865244616635
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p3-b3",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.19228976335205764
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p3-b3",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.17945175966812946
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p3-b3",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.17645364892436974
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p3-b3",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.17197940257223884
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p3-b3",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.1997040900143157
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b4",
+    "rightKey" : "doe-renewable-energy-framework-p4-b5",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.10178813720475405
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b4",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.1059596823682393
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b4",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.10944315824555922
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b4",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.10524759287323054
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b4",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.08620630687121625
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b4",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.08486202604727039
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b4",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.43791813508668975
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b4",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.46147389697607477
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b5",
+    "rightKey" : "doe-renewable-energy-framework-p4-b6",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.9886620316559677
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b5",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.9783849911312215
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b5",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.9813610136400378
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b5",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.8842071659524477
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b5",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.8610240985457525
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b5",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.26013283367900386
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b5",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.2118062744623893
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b6",
+    "rightKey" : "doe-renewable-energy-framework-p4-b7",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.9738045582005797
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b6",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.9651545441505258
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b6",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.8892165163603163
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b6",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.8807216069818093
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b6",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.25166932768782474
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b6",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.20605280087906885
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b7",
+    "rightKey" : "doe-renewable-energy-framework-p4-b8",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.9933404610426125
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b7",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.8487814263295215
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b7",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.8346078876449667
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b7",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.2651164444334726
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b7",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.21679493459177981
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b8",
+    "rightKey" : "doe-renewable-energy-framework-p5-b9",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.8439757759197248
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b8",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.8204703899216443
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b8",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.2686666126096687
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p4-b8",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.2201659901683573
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b9",
+    "rightKey" : "doe-renewable-energy-framework-p5-b10",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.9889295084167288
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b9",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.23563755702218886
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b9",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.19944519344726086
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b10",
+    "rightKey" : "doe-renewable-energy-framework-p6-b11",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.22690118223067665
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p5-b10",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.1891598847104256
+  }, {
+    "leftKey" : "doe-renewable-energy-framework-p6-b11",
+    "rightKey" : "doe-renewable-energy-framework-p6-b12",
+    "stratum" : "same-class",
+    "kind" : null,
+    "cosine" : 0.846300732652632
+  } ],
+  "note" : "同图档 = 同字节两次编码的余弦；近重复档 = base 与其同源变体（5 类变换）的余弦；cross 只取 base 两两（同出版物 = same-class，跨出版物 = cross-class）；candidateFloor = near-duplicate 档 p05，仅作候选值，本锚不据此改任何常量",
+  "elapsedMillis" : 461683,
+  "failedCalls" : 0,
+  "throttledRetries" : 0,
+  "paceMillis" : 1100,
+  "runHost" : "Windows 11",
+  "totalNanos" : 461765963200
+}

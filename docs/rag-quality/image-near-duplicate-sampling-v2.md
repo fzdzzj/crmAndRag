@@ -104,3 +104,7 @@ vision 是唯一有真实 token 的环节，两类 embedding 端点 **token 不�
 - **S3 是否真跑：否。** 未设置 `RAG_VISION_EMBED_REAL`、未外呼、未产生新样本、未改锚、未改权重。
 - 已交付：`scripts/rag-quality/near-duplicate-band-stats.mjs`（复现 v1 落带 18/0/0/1/71，EXIT=0）+ 本操作单。
 - 待 Owner 授权项：扩样真跑（需明确授权 + key + 预算），并指定新锚文件名与扩样语料来源。
+
+### §8 追加（calibrate-near-dup-bands，2026-10-24）
+- **已真跑**：144 图 × 2 = 288 次视觉 embedding，461.7 s，0 失败；新锚 `docs/rag-quality/image-threshold-calibration-v2.json`（`IMAGE-NEAR-DUPLICATE-CALIBRATION-2.0`，唯一写入口 = `ImageNearDuplicateCalibrationIT`）。
+- **结论指路**：`docs/rag-quality/image-near-duplicate-bands-v2.md`（生产视图 193/3/1/3/340，判定树命中 F1 + F4 ⇒ 三档权重维持现值、建议另立卡议 floor；本节 §1–§7 口径未改）。

@@ -293,4 +293,566 @@ function main() {
   console.log('结果：复现 v1 落带 18/0/0/1/71 ✓（EXIT=0）');
 }
 
-main();
+// ==================== v2：--anchor / --expect（calibrate-near-dup-bands 任务 4.1） ====================
+//
+// 与不带参数路径的关系：**不带任何参数时行为逐字不变**——v2Main 只在出现 --anchor 时才被调用，上面那条 v1 路径一行未改，
+// 仍打印 18/0/0/1/71 且 EXIT=0（硬边界 B5）。
+//
+// 带 --anchor 时：只吃锚的 `pairs` 原始样本对，**逐数复算**落带、分位、带内精度、单调性、候选下限与判定树，
+// 再与锚内已存块交叉校验，因此 image-near-duplicate-bands-v2.md 的每个数字都能用这条命令复现（不许手算、不许手改）。
+//
+// 用法：
+//   node scripts/rag-quality/near-duplicate-band-stats.mjs \
+//     --anchor docs/rag-quality/image-threshold-calibration-v2.json --expect 193,3,1,3,340
+//
+// 退出码：0 = 复算与 --expect 一致且与锚内已存块一致；1 = 不一致或数据源不可读；2 = 用法错误（--anchor 缺 --expect 等）。
+
+const V2_BANDS = ['SAME_IMAGE', 'NEAR_HIGH', 'NEAR_MID', 'NEAR_LOW', 'CROSS_IMAGE'];
+const V2_NEAR_BANDS = ['NEAR_HIGH', 'NEAR_MID', 'NEAR_LOW'];
+const V2_STRATA = ['same-image', 'near-duplicate', 'same-class', 'cross-class'];
+// 判定树门槛（openspec/changes/calibrate-near-dup-bands/proposal.md §4 写死，跑后不改口径）。
+const V2_MIN_BAND_SAMPLES = 30;
+const V2_MIN_NEAR_PRECISION = 0.5;
+const V2_UNREACHABLE_SHARE = 0.5;
+
+const V2_VIEW_BANDS = 'bands';
+
+/** 解析 --anchor / --expect；缺 --expect 即用法错误（不许静默通过）。 */
+function parseAnchorArgs(argv) {
+  const anchorIndex = argv.indexOf('--anchor');
+  const expectIndex = argv.indexOf('--expect');
+  if (anchorIndex < 0) {
+    throw new Error('--expect 必须与 --anchor 一起使用（复算 v2 锚）');
+  }
+  const anchorPath = argv[anchorIndex + 1];
+  if (anchorPath === undefined || anchorPath.startsWith('--')) {
+    throw new Error('--anchor 缺少锚文件路径');
+  }
+  if (expectIndex < 0) {
+    throw new Error('给了 --anchor 却没给 --expect <SAME_IMAGE,NEAR_HIGH,NEAR_MID,NEAR_LOW,CROSS_IMAGE>');
+  }
+  const raw = argv[expectIndex + 1];
+  if (raw === undefined || raw.startsWith('--')) {
+    throw new Error('--expect 缺少取值（5 个整数，逗号分隔）');
+  }
+  const parts = raw.split(',').map((part) => part.trim());
+  if (parts.length !== 5) {
+    throw new Error(`--expect 需要 5 个数，实际 ${parts.length} 个：${raw}`);
+  }
+  const values = parts.map((part) => Number(part));
+  if (values.some((value) => !Number.isInteger(value) || value < 0)) {
+    throw new Error(`--expect 取值非法（要求非负整数）：${raw}`);
+  }
+  const expected = {};
+  V2_BANDS.forEach((band, index) => {
+    expected[band] = values[index];
+  });
+  return { anchorPath, expected };
+}
+
+/** 通用落带（floor 由调用方给：生产视图用闸门常量，锚视图用实测异图上限）。 */
+function v2BandOf(cosine, floor, threshold) {
+  if (cosine < floor || cosine >= threshold) return null;
+  if (cosine >= floor + (2 * (threshold - floor)) / 3) return 'NEAR_HIGH';
+  if (cosine >= floor + (threshold - floor) / 3) return 'NEAR_MID';
+  return 'NEAR_LOW';
+}
+
+/** 五档标签（与 NearDuplicateBandAnalyzer.labelOf 同式）。 */
+function v2LabelOf(cosine, floor, threshold) {
+  if (cosine >= threshold) return 'SAME_IMAGE';
+  return v2BandOf(cosine, floor, threshold) ?? 'CROSS_IMAGE';
+}
+
+/** 分位摘要（null 而非 0：空表不许装成"全 0"）。 */
+function v2Stats(values) {
+  if (values.length === 0) {
+    return {
+      count: 0,
+      min: null,
+      p05: null,
+      p25: null,
+      median: null,
+      p75: null,
+      p95: null,
+      max: null,
+      mean: null,
+    };
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  let sum = 0;
+  for (const value of sorted) sum += value;
+  return {
+    count: sorted.length,
+    min: sorted[0],
+    p05: quantile(sorted, 0.05),
+    p25: quantile(sorted, 0.25),
+    median: quantile(sorted, 0.5),
+    p75: quantile(sorted, 0.75),
+    p95: quantile(sorted, 0.95),
+    max: sorted[sorted.length - 1],
+    mean: sum / sorted.length,
+  };
+}
+
+/** 单视图落带（threshold 为 null 时不给落带表：不可分就不硬凑）。 */
+function v2View(name, floor, threshold, pairs) {
+  const byBand = new Map(V2_BANDS.map((band) => [band, []]));
+  let belowFloor = 0;
+  let aboveThreshold = 0;
+  let nearDuplicateCount = 0;
+  let nearDuplicateBelowFloor = 0;
+  for (const pair of pairs) {
+    const isNear = pair.stratum === 'near-duplicate';
+    if (isNear) nearDuplicateCount += 1;
+    if (pair.cosine < floor) {
+      belowFloor += 1;
+      if (isNear) nearDuplicateBelowFloor += 1;
+    }
+    if (threshold !== null) {
+      if (pair.cosine >= threshold) aboveThreshold += 1;
+      byBand.get(v2LabelOf(pair.cosine, floor, threshold)).push(pair);
+    }
+  }
+  const bands = V2_BANDS.map((band) => {
+    const list = byBand.get(band);
+    const near = list.filter((pair) => pair.stratum === 'near-duplicate').length;
+    return {
+      band,
+      count: list.length,
+      nearDuplicateCount: near,
+      share: list.length === 0 ? null : near / list.length,
+      stats: v2Stats(list.map((pair) => pair.cosine)),
+    };
+  });
+  return {
+    name,
+    floor,
+    threshold,
+    separable: threshold !== null,
+    pairCount: pairs.length,
+    bands,
+    belowFloor,
+    aboveThreshold,
+    nearDuplicateCount,
+    nearDuplicateBelowFloor,
+    nearDuplicateBelowFloorShare:
+      nearDuplicateCount === 0 ? null : nearDuplicateBelowFloor / nearDuplicateCount,
+  };
+}
+
+/** 异图上限 = max(same-class.max, cross-class.max)（空档忽略）。 */
+function v2CrossImageCeiling(strata) {
+  let ceiling = null;
+  for (const name of ['same-class', 'cross-class']) {
+    const max = strata[name].max;
+    if (max !== null && (ceiling === null || max > ceiling)) ceiling = max;
+  }
+  return ceiling;
+}
+
+/** 锚视图：floor = 实测异图上限；threshold = 其与同图下限的中点；不可分则阈值 null。 */
+function v2AnchorView(pairs, strata) {
+  const sameImageFloor = strata['same-image'].min;
+  const crossImageCeiling = v2CrossImageCeiling(strata);
+  const floor = crossImageCeiling === null ? GATE_NEAR_DUPLICATE_FLOOR : crossImageCeiling;
+  const separable =
+    sameImageFloor !== null && crossImageCeiling !== null && crossImageCeiling < sameImageFloor;
+  const threshold = separable ? (crossImageCeiling + sameImageFloor) / 2 : null;
+  return v2View('anchorView', floor, threshold, pairs);
+}
+
+/** 判定树 F0–F5 照判（条件原文与 proposal §4 一致；任何分支都不改常量）。 */
+function v2Judge(production, anchor, sameImageFloor, crossImageCeiling) {
+  const bandOfView = (view, band) => view.bands.find((entry) => entry.band === band);
+  const statsOf = (view) => V2_NEAR_BANDS.map((band) => bandOfView(view, band));
+  const describe = (bands) =>
+    bands
+      .map(
+        (entry) =>
+          `${entry.band}=${entry.count}(近重复占比 ${entry.share === null ? '—' : entry.share.toFixed(4)})`,
+      )
+      .join(' ');
+  const near = statsOf(production);
+  const anchorNear = statsOf(anchor);
+
+  const allEnough = near.every((entry) => entry.count >= V2_MIN_BAND_SAMPLES);
+  const allPrecise = near.every(
+    (entry) => entry.share !== null && entry.share >= V2_MIN_NEAR_PRECISION,
+  );
+  const belowShare = production.nearDuplicateBelowFloorShare;
+  const unreachable = belowShare !== null && belowShare > V2_UNREACHABLE_SHARE;
+  const inseparable =
+    sameImageFloor !== null && crossImageCeiling !== null && crossImageCeiling >= sameImageFloor;
+  const impure = near.filter(
+    (entry) =>
+      entry.count >= V2_MIN_BAND_SAMPLES &&
+      (entry.share === null || entry.share < V2_MIN_NEAR_PRECISION),
+  );
+  const thin = near.filter((entry) => entry.count < V2_MIN_BAND_SAMPLES);
+  const anchorWider = V2_NEAR_BANDS.every(
+    (band) => bandOfView(anchor, band).count > bandOfView(production, band).count,
+  );
+
+  return [
+    {
+      code: 'F0',
+      condition: '每带 NEAR_HIGH/NEAR_MID/NEAR_LOW >= 30 对且带内近重复占比 >= 0.5',
+      hit: allEnough && allPrecise,
+      evidence: `productionView ${describe(near)}（门槛 30 对 / 0.5）`,
+    },
+    {
+      code: 'F1',
+      condition: 'nearDuplicate 对中余弦 < 0.9887 的比例 > 0.5',
+      hit: unreachable,
+      evidence:
+        `productionView.nearDuplicateBelowFloor=${production.nearDuplicateBelowFloor}/` +
+        `${production.nearDuplicateCount}（占比 ${belowShare === null ? '—' : belowShare.toFixed(4)}，门槛 0.5）`,
+    },
+    {
+      code: 'F2',
+      condition: 'anchorView 不可分（crossImageCeiling >= sameImageFloor）',
+      hit: inseparable,
+      evidence:
+        `strata["same-image"].min=${sameImageFloor}，crossImageCeiling=${crossImageCeiling}，` +
+        `anchorView.separable=${anchor.separable}`,
+    },
+    {
+      code: 'F3',
+      condition: '某带 >= 30 对但带内近重复占比 < 0.5',
+      hit: impure.length > 0,
+      evidence:
+        impure.length === 0
+          ? `无「样本足但带内以异图为主」的带：${describe(near)}`
+          : `命中带：${describe(impure)}`,
+    },
+    {
+      code: 'F4',
+      condition: '任一近似带 < 30 对',
+      hit: thin.length > 0,
+      evidence: thin.length === 0 ? `三带均 >= 30 对：${describe(near)}` : `样本不足带：${describe(thin)}`,
+    },
+    {
+      code: 'F5',
+      condition: 'anchorView 每带样本数 > productionView 同带样本数，且 F1 未触发',
+      hit: anchorWider && !unreachable,
+      evidence:
+        `productionView ${describe(near)} vs anchorView ${describe(anchorNear)}` +
+        `（F1 命中=${unreachable}）`,
+    },
+  ];
+}
+
+/** 落带表（带 / 区间 / 对数 / 占比 / 近重复对 / 带内精度）。 */
+function v2PrintBands(view) {
+  if (!view.separable) {
+    console.log(
+      '不可分：crossImageCeiling >= sameImageFloor，本视图不给阈值与落带表（不硬凑，见 F2）',
+    );
+    return;
+  }
+  const floor = view.floor;
+  const threshold = view.threshold;
+  const b1 = floor + (threshold - floor) / 3;
+  const b2 = floor + (2 * (threshold - floor)) / 3;
+  const rows = V2_BANDS.map((band) => {
+    const entry = view.bands.find((candidate) => candidate.band === band);
+    let range = '[0, floor)';
+    if (band === 'SAME_IMAGE') range = `[${threshold}, 1]`;
+    if (band === 'NEAR_HIGH') range = `[${b2.toFixed(4)}, ${Number(threshold).toFixed(4)})`;
+    if (band === 'NEAR_MID') range = `[${b1.toFixed(4)}, ${b2.toFixed(4)})`;
+    if (band === 'NEAR_LOW') range = `[${Number(floor).toFixed(4)}, ${b1.toFixed(4)})`;
+    const share = view.pairCount === 0 ? '0.0%' : `${((entry.count / view.pairCount) * 100).toFixed(1)}%`;
+    const precision = entry.share === null ? '—' : entry.share.toFixed(4);
+    return [band, range, entry.count, share, entry.nearDuplicateCount, precision];
+  });
+  printTable(['带', '区间', '对数', '占比', '近重复对', '带内精度'], rows);
+  console.log(
+    `floor=${floor}  threshold=${threshold}  Δ=${(threshold - floor).toFixed(4)}  ` +
+      `b1(低/中)=${b1.toFixed(4)}  b2(中/高)=${b2.toFixed(4)}`,
+  );
+}
+
+/** 各带分位表。 */
+function v2PrintQuantiles(view) {
+  if (!view.separable) {
+    console.log('不可分：无落带，分位表不适用');
+    return;
+  }
+  const rows = view.bands
+    .filter((entry) => entry.count > 0)
+    .map((entry) => [
+      entry.band,
+      entry.count,
+      fixed(entry.stats.min),
+      fixed(entry.stats.p05),
+      fixed(entry.stats.p25),
+      fixed(entry.stats.median),
+      fixed(entry.stats.p75),
+      fixed(entry.stats.p95),
+      fixed(entry.stats.max),
+    ]);
+  printTable(['带', 'n', 'min', 'p05', 'p25', 'median', 'p75', 'p95', 'max'], rows);
+}
+
+/** v2 主流程：复算 → 打印 → 交叉校验 → --expect 核对。 */
+function v2Main(argv) {
+  let parsed;
+  try {
+    parsed = parseAnchorArgs(argv);
+  } catch (error) {
+    console.error(`[FAIL] 用法错误：${error.message}`);
+    console.error(
+      '用法：node scripts/rag-quality/near-duplicate-band-stats.mjs ' +
+        '--anchor docs/rag-quality/image-threshold-calibration-v2.json --expect S,N_H,N_M,N_L,C',
+    );
+    process.exit(2);
+  }
+  const { anchorPath, expected } = parsed;
+  const resolved = resolve(REPO_ROOT, anchorPath);
+  let anchor;
+  try {
+    anchor = JSON.parse(readFileSync(resolved, 'utf8'));
+  } catch (error) {
+    console.error(`[FAIL] 锚文件不可读：${anchorPath}（${error.message}）`);
+    process.exit(1);
+  }
+  const pairs = Array.isArray(anchor.pairs) ? anchor.pairs : [];
+  if (pairs.length === 0) {
+    console.error(`[FAIL] 锚文件没有 pairs：${anchorPath}`);
+    process.exit(1);
+  }
+  const bogus = pairs.filter((pair) => !Number.isFinite(pair.cosine));
+  if (bogus.length > 0) {
+    console.error(`[FAIL] ${bogus.length} 条 pair 的 cosine 不是有限数，拒绝统计`);
+    process.exit(1);
+  }
+
+  const corpus = anchor.corpus ?? {};
+  const strata = {};
+  for (const name of V2_STRATA) {
+    strata[name] = v2Stats(
+      pairs.filter((pair) => pair.stratum === name).map((pair) => pair.cosine),
+    );
+  }
+  const sameImageFloor = strata['same-image'].min;
+  const crossImageCeiling = v2CrossImageCeiling(strata);
+  const production = v2View('productionView', GATE_NEAR_DUPLICATE_FLOOR, GATE_DEFAULT_THRESHOLD, pairs);
+  const anchorView = v2AnchorView(pairs, strata);
+  const kinds =
+    Array.isArray(corpus.kinds) && corpus.kinds.length > 0
+      ? corpus.kinds
+      : ['jpeg-q80', 'scale-085', 'scale-070', 'crop-04', 'crop-12'];
+  const byKind = kinds.map((kind) => {
+    const values = pairs
+      .filter((pair) => pair.stratum === 'near-duplicate' && pair.kind === kind)
+      .map((pair) => pair.cosine);
+    return { kind, stats: v2Stats(values) };
+  });
+  const medians = byKind.map((entry) => entry.stats.median);
+  const inversions = [];
+  for (let index = 1; index < medians.length; index += 1) {
+    const previous = medians[index - 1];
+    const current = medians[index];
+    if (previous !== null && current !== null && current > previous) {
+      inversions.push({
+        leftKind: kinds[index - 1],
+        rightKind: kinds[index],
+        leftMedian: previous,
+        rightMedian: current,
+      });
+    }
+  }
+  const monotonic = inversions.length === 0;
+  const candidateFloor = strata['near-duplicate'].p05;
+  const judgements = v2Judge(production, anchorView, sameImageFloor, crossImageCeiling);
+
+  console.log('# 近重复三档落带统计（v2 锚复算，只读）');
+  console.log(`锚文件：${anchorPath}（${anchor.calibrationVersion ?? '未知版本'}）`);
+  console.log(`锚生成时间：${anchor.generatedAt ?? '未知'}`);
+  console.log(
+    `语料：bases=${corpus.bases ?? '缺失'} variants=${corpus.variants ?? '缺失'} ` +
+      `images=${corpus.images ?? '缺失'} skips=${corpus.skips ?? '缺失'} ` +
+      `imageEmbeddingCalls=${corpus.imageEmbeddingCalls ?? '缺失'} elapsedMillis=${anchor.elapsedMillis ?? '缺失'} ` +
+      `failedCalls=${anchor.failedCalls ?? '缺失'}`,
+  );
+  console.log(`样本对：${pairs.length}`);
+  console.log('');
+
+  console.log('## 1. 落带分布 · 生产视图（floor 0.9887 / threshold 0.9944，ImageSimilarityGate 现值）');
+  v2PrintBands(production);
+  console.log('');
+
+  console.log('## 2. 落带分布 · 锚视图（floor = 实测异图上限，threshold = 其与同图下限的中点）');
+  console.log(`实测：sameImageFloor=${sameImageFloor}  crossImageCeiling=${crossImageCeiling}`);
+  v2PrintBands(anchorView);
+  console.log('');
+
+  console.log('## 3. stratum × band 交叉表（生产视图；v2 新增 near-duplicate 档）');
+  printTable(
+    ['stratum', ...V2_BANDS, '合计'],
+    V2_STRATA.filter((name) => strata[name].count > 0).map((name) => {
+      const counts = V2_BANDS.map(
+        (band) =>
+          pairs.filter(
+            (pair) =>
+              pair.stratum === name &&
+              v2LabelOf(pair.cosine, production.floor, production.threshold) === band,
+          ).length,
+      );
+      return [name, ...counts, counts.reduce((sum, value) => sum + value, 0)];
+    }),
+  );
+  console.log('');
+
+  console.log('## 4. 各带分位 · 生产视图');
+  v2PrintQuantiles(production);
+  console.log('');
+
+  console.log('## 5. 各带分位 · 锚视图');
+  v2PrintQuantiles(anchorView);
+  console.log('');
+
+  console.log('## 6. 档位总览（同图下限 / 异图上限 / 候选下限）');
+  printTable(
+    ['stratum', 'n', 'min', 'p05', 'median', 'max'],
+    V2_STRATA.map((name) => [
+      name,
+      strata[name].count,
+      fixed(strata[name].min),
+      fixed(strata[name].p05),
+      fixed(strata[name].median),
+      fixed(strata[name].max),
+    ]),
+  );
+  console.log(`candidateFloor = near-duplicate.p05 = ${candidateFloor === null ? '缺失' : candidateFloor}`);
+  console.log('');
+
+  console.log('## 7. belowFloor / aboveThreshold（可达性口径）');
+  printTable(
+    ['视图', 'belowFloor', '占比', 'aboveThreshold', '占比', 'nearDup<floor', 'nearDup 占比'],
+    [production, anchorView].map((view) => [
+      view.name,
+      view.belowFloor,
+      `${((view.belowFloor / view.pairCount) * 100).toFixed(1)}%`,
+      view.aboveThreshold,
+      `${((view.aboveThreshold / view.pairCount) * 100).toFixed(1)}%`,
+      `${view.nearDuplicateBelowFloor}/${view.nearDuplicateCount}`,
+      view.nearDuplicateBelowFloorShare === null
+        ? '—'
+        : `${(view.nearDuplicateBelowFloorShare * 100).toFixed(1)}%`,
+    ]),
+  );
+  console.log('');
+
+  console.log('## 8. 按 kind 的强度单调性（jpeg-q80 < scale-085 < scale-070 < crop-04 < crop-12）');
+  printTable(
+    ['kind', 'n', 'min', 'p05', 'median', 'p75', 'max'],
+    byKind.map((entry) => [
+      entry.kind,
+      entry.stats.count,
+      fixed(entry.stats.min),
+      fixed(entry.stats.p05),
+      fixed(entry.stats.median),
+      fixed(entry.stats.p75),
+      fixed(entry.stats.max),
+    ]),
+  );
+  console.log(
+    `单调（中位数随强度非递增）：${monotonic ? '是' : `否，反序 ${inversions.length} 处`}`,
+  );
+  for (const inversion of inversions) {
+    console.log(
+      `  反序：${inversion.leftKind}(${fixed(inversion.leftMedian)}) → ` +
+        `${inversion.rightKind}(${fixed(inversion.rightMedian)})`,
+    );
+  }
+  console.log('');
+
+  console.log('## 9. 判定树照判（proposal §4；任何分支都不改常量）');
+  printTable(
+    ['分支', '条件', '命中', '依据'],
+    judgements.map((judgement) => [
+      judgement.code,
+      judgement.condition,
+      judgement.hit ? '命中' : '未命中',
+      judgement.evidence,
+    ]),
+  );
+  console.log('');
+
+  // ---- 与锚内已存块交叉校验（锚是 IT 写的，脚本不许信它，必须复算对得上） ----
+  const mismatches = [];
+  const check = (label, actual, stored) => {
+    if (stored !== undefined && !Object.is(actual, stored)) {
+      mismatches.push(`${label}: 复算 ${actual} ≠ 锚内 ${stored}`);
+    }
+  };
+  for (const band of V2_BANDS) {
+    check(
+      `productionView/${band}`,
+      production.bands.find((entry) => entry.band === band).count,
+      (anchor.productionView?.[V2_VIEW_BANDS] ?? []).find((entry) => entry.band === band)?.count,
+    );
+    check(
+      `anchorView/${band}`,
+      anchorView.bands.find((entry) => entry.band === band).count,
+      (anchor.anchorView?.[V2_VIEW_BANDS] ?? []).find((entry) => entry.band === band)?.count,
+    );
+  }
+  for (const name of V2_STRATA) {
+    check(`strata/${name}.count`, strata[name].count, anchor.strata?.[name]?.count);
+  }
+  check('productionView.belowFloor', production.belowFloor, anchor.productionView?.belowFloor);
+  check('anchorView.belowFloor', anchorView.belowFloor, anchor.anchorView?.belowFloor);
+  check('anchorView.threshold', anchorView.threshold, anchor.anchorView?.threshold ?? null);
+  check('candidateFloor', candidateFloor, anchor.candidateFloor ?? null);
+  check('monotonicity.monotonic', monotonic, anchor.monotonicity?.monotonic);
+  for (const judgement of judgements) {
+    const stored = (anchor.judgements ?? []).find((entry) => entry.code === judgement.code);
+    check(`judgements/${judgement.code}.hit`, judgement.hit, stored?.hit);
+  }
+
+  console.log('## 10. 与锚内已存块逐数核对');
+  if (mismatches.length === 0) {
+    console.log('锚内已存块与本次复算一致（productionView / anchorView / strata / candidateFloor / judgements）');
+  } else {
+    console.error(`[FAIL] 锚内已存块与本次复算不一致 ${mismatches.length} 处：`);
+    for (const message of mismatches) console.error(`  - ${message}`);
+  }
+  console.log('');
+
+  console.log('## 11. 与 --expect 逐数核对（生产视图）');
+  const expectMismatches = V2_BANDS.map((band) => ({
+    band,
+    actual: production.bands.find((entry) => entry.band === band).count,
+    expected: expected[band],
+  })).filter((entry) => entry.actual !== entry.expected);
+  if (expectMismatches.length === 0) {
+    console.log(
+      `生产视图落带 = ${V2_BANDS.map((band) => expected[band]).join('/')}（与 --expect 一致）`,
+    );
+  } else {
+    console.error('[FAIL] 生产视图落带与 --expect 不一致：');
+    for (const entry of expectMismatches) {
+      console.error(`  - ${entry.band}: 实际 ${entry.actual} ≠ 期望 ${entry.expected}`);
+    }
+  }
+  console.log('');
+
+  if (mismatches.length > 0 || expectMismatches.length > 0) {
+    console.error('结果：v2 锚复算未通过（EXIT=1）');
+    process.exit(1);
+  }
+  console.log(
+    `结果：复现 v2 生产视图落带 ${V2_BANDS.map(
+      (band) => production.bands.find((entry) => entry.band === band).count,
+    ).join('/')} ✓（EXIT=0）`,
+  );
+}
+
+if (process.argv.slice(2).includes('--anchor')) {
+  v2Main(process.argv.slice(2));
+} else {
+  main();
+}
