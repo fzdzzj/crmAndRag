@@ -15,8 +15,14 @@
 // 用法：
 //   node scripts/rag-quality/near-duplicate-band-stats.mjs
 //   node scripts/rag-quality/near-duplicate-band-stats.mjs --threshold 0.9944
+//   node scripts/rag-quality/near-duplicate-band-stats.mjs --anchor docs/rag-quality/image-threshold-calibration-v2.json --expect S,N_H,N_M,N_L,C
 //
-// 退出码：0 = 与 v1 落带基线逐数一致；1 = 不一致或数据源不可读。
+// 退出码：0 = 与 v1 落带基线逐数一致（无参数路径）/ 与 v2 锚复算及 --expect 一致（--anchor 路径）；
+//         1 = 数字不一致（含语料口径不自洽）；2 = 用法错误（给了 --anchor 却没给 --expect）。
+//
+// --anchor 路径（calibrate-near-dup-bands v2）：从锚的 pairs 重算双视图落带、分位、按 kind 单调性、判定树 F0–F5，
+// 另外核对语料口径三项（corpus.baseDetail 条数 = bases、corpus.excludedBases 条数 = excludedBaseCount、
+// corpus.imageEmbeddingCalls = images×2）与 candidateFloor 的 F1 门控（F1 未命中 ⇒ 锚里必须是 null，脚本也复算为 null）。
 
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -664,8 +670,12 @@ function v2Main(argv) {
     }
   }
   const monotonic = inversions.length === 0;
-  const candidateFloor = strata['near-duplicate'].p05;
   const judgements = v2Judge(production, anchorView, sameImageFloor, crossImageCeiling);
+  // candidateFloor 的处置写在 proposal §9.5：只有 F1 命中才给候选下限；否则一律 null，
+  // 不允许把「F1 未命中时算出的 p05」当成下调 floor 的建议（首轮 0.4199 就是这样被误读的）。
+  const nearDuplicateP05 = strata['near-duplicate'].p05;
+  const f1Judgement = judgements.find((entry) => entry.code === 'F1');
+  const candidateFloor = f1Judgement.hit ? nearDuplicateP05 : null;
 
   console.log('# 近重复三档落带统计（v2 锚复算，只读）');
   console.log(`锚文件：${anchorPath}（${anchor.calibrationVersion ?? '未知版本'}）`);
@@ -725,7 +735,12 @@ function v2Main(argv) {
       fixed(strata[name].max),
     ]),
   );
-  console.log(`candidateFloor = near-duplicate.p05 = ${candidateFloor === null ? '缺失' : candidateFloor}`);
+  console.log(`candidateFloor = ${candidateFloor === null ? 'null' : candidateFloor}（F1 命中=${f1Judgement.hit}）`);
+  console.log(
+    `  near-duplicate.p05 = ${
+      nearDuplicateP05 === null ? '缺失' : nearDuplicateP05
+    }${candidateFloor === null ? '（F1 未命中 ⇒ 不给候选下限；p05 仅作分布参考，不是建议值）' : '（F1 命中 ⇒ 候选下限取此值，仍需另立卡决策，本锚不改任何常量）'}`,
+  );
   console.log('');
 
   console.log('## 7. belowFloor / aboveThreshold（可达性口径）');
@@ -781,6 +796,67 @@ function v2Main(argv) {
   );
   console.log('');
 
+  console.log('## 10. 语料口径（逐 base 白底合成像素属性 / 退化剔除登记）');
+  const baseDetail = Array.isArray(corpus.baseDetail) ? corpus.baseDetail : [];
+  const excludedBases = Array.isArray(corpus.excludedBases) ? corpus.excludedBases : [];
+  const corpusMismatches = [];
+  if (baseDetail.length !== (corpus.bases ?? 0)) {
+    corpusMismatches.push(
+      `corpus.baseDetail 条数 ${baseDetail.length} ≠ corpus.bases ${corpus.bases ?? '缺失'}`,
+    );
+  }
+  for (const pixel of baseDetail) {
+    if (!(pixel.uniqueColors > 1)) {
+      corpusMismatches.push(`保留 base 的唯一色数不得 ≤ 1：${pixel.baseKey} = ${pixel.uniqueColors}`);
+    }
+  }
+  if (excludedBases.length !== (corpus.excludedBaseCount ?? 0)) {
+    corpusMismatches.push(
+      `corpus.excludedBases 条数 ${excludedBases.length} ≠ excludedBaseCount ${corpus.excludedBaseCount ?? '缺失'}`,
+    );
+  }
+  for (const excluded of excludedBases) {
+    if (!(excluded.uniqueColors <= 1)) {
+      corpusMismatches.push(`剔除理由必须是唯一色数 ≤ 1：${excluded.baseKey} = ${excluded.uniqueColors}`);
+    }
+  }
+  const doubledCalls = (corpus.images ?? 0) * 2;
+  if ((corpus.imageEmbeddingCalls ?? -1) !== doubledCalls) {
+    corpusMismatches.push(
+      `corpus.imageEmbeddingCalls ${corpus.imageEmbeddingCalls ?? '缺失'} ≠ images×2 ${doubledCalls}`,
+    );
+  }
+  printTable(
+    ['base', 'colorModel', 'hasAlpha', 'uniqueColors', 'mean', 'stdDev'],
+    baseDetail.map((pixel) => [
+      pixel.baseKey,
+      pixel.colorModel,
+      pixel.hasAlpha,
+      pixel.uniqueColors,
+      pixel.mean,
+      pixel.stdDev,
+    ]),
+  );
+  if (excludedBases.length === 0) {
+    console.log('退化剔除：0 个（没有任何 base 在「白底合成后像素全同」）');
+  } else {
+    printTable(
+      ['被剔除 base', 'uniqueColors', '原因'],
+      excludedBases.map((excluded) => [excluded.baseKey, excluded.uniqueColors, excluded.reason]),
+    );
+  }
+  console.log(
+    `保留 base ${corpus.bases ?? '缺失'} 个、剔除 ${excludedBases.length} 个、图 ${corpus.images ?? '缺失'} 张、` +
+      `外呼 ${corpus.imageEmbeddingCalls ?? '缺失'} 次（= images×2）`,
+  );
+  if (corpusMismatches.length === 0) {
+    console.log('语料口径自洽（baseDetail / excludedBases / imageEmbeddingCalls 三项均与计数一致）');
+  } else {
+    console.error(`[FAIL] 语料口径不自洽 ${corpusMismatches.length} 处：`);
+    for (const message of corpusMismatches) console.error(`  - ${message}`);
+  }
+  console.log('');
+
   // ---- 与锚内已存块交叉校验（锚是 IT 写的，脚本不许信它，必须复算对得上） ----
   const mismatches = [];
   const check = (label, actual, stored) => {
@@ -813,7 +889,7 @@ function v2Main(argv) {
     check(`judgements/${judgement.code}.hit`, judgement.hit, stored?.hit);
   }
 
-  console.log('## 10. 与锚内已存块逐数核对');
+  console.log('## 11. 与锚内已存块逐数核对');
   if (mismatches.length === 0) {
     console.log('锚内已存块与本次复算一致（productionView / anchorView / strata / candidateFloor / judgements）');
   } else {
@@ -822,7 +898,7 @@ function v2Main(argv) {
   }
   console.log('');
 
-  console.log('## 11. 与 --expect 逐数核对（生产视图）');
+  console.log('## 12. 与 --expect 逐数核对（生产视图）');
   const expectMismatches = V2_BANDS.map((band) => ({
     band,
     actual: production.bands.find((entry) => entry.band === band).count,
@@ -840,7 +916,7 @@ function v2Main(argv) {
   }
   console.log('');
 
-  if (mismatches.length > 0 || expectMismatches.length > 0) {
+  if (mismatches.length > 0 || expectMismatches.length > 0 || corpusMismatches.length > 0) {
     console.error('结果：v2 锚复算未通过（EXIT=1）');
     process.exit(1);
   }
