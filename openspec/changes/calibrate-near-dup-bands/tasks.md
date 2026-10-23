@@ -44,3 +44,16 @@
 - [ ] 8.1 **先清除 opt-in**（`Remove-Item Env:RAG_VISION_EMBED_REAL -ErrorAction SilentlyContinue`）再跑：`mvn -B -ntp clean verify` BUILD SUCCESS + `bash scripts/check-test-baseline.sh --update` + `bash scripts/check-test-baseline.sh` EXIT=0 + `bash scripts/merge-gate.sh` 全绿 + `bash scripts/check-openapi-consistency.sh` EXIT=0
       预期证据：五条命令的尾行与 EXIT；baseline `--update` 后的 `surefire`/`failsafe` 计数（本卡新增 4 个 surefire 类 + 1 个 failsafe IT）
 - [ ] 8.2 **停步**：不 merge、不 push、不删分支；回报分支名 / commit 列表 / 门禁尾行 / 真跑实际调用数与耗时 / 判定树命中分支 / 常量零改动自证 / 未解决项（≤300 字）
+
+## 9. 修订 v1.1 · 退化数据修复 + 第二次真跑（复核退回后新增，依据 `proposal.md` §9）
+
+> 背景：首轮四判据 PASS，但 24 个 base 中 6 个的五类变体余弦逐位全等（变体坍缩），使 F1 依据失效、`candidateFloor=0.42` 作废。判定树口径不变，只修数据质量。
+> **先补 §1–§8 的 17 项勾选与补勾依据（本轮已有实测可复现证据），再做本节。**
+
+- [ ] 9.1 变体栅格化**先铺白底再合成**（`fillRect` 白色）后再做五类变换；逐 base 记录像素属性（`colorModel` / `hasAlpha` / 唯一色数 / 均值、标准差）并写入锚的 `corpus.bases` 明细
+- [ ] 9.2 退化 base 剔除并登记：合成后唯一色数 ≤ 1 的 base 不参与语料，写进 `corpus.excludedBases`（含 `key` / 原因 / 唯一色数）；**不得静默保留或丢弃**；实际 base / 变体 / 图数按剔除后记账
+- [ ] 9.3 防退化守卫（surefire，默认跑、零外呼）：`NearDuplicateCorpusTest` 增 ①每 base 唯一色数 > 1 ②同 base 五变体两两 SHA-256 不同 ③变体与 base 字节不同；`ImageNearDuplicateCalibrationAnchorTest` 增 ④任一 base 的五类余弦不得全等（本轮缺陷的锚级回归检查）
+      预期证据：三条新断言各自的失败注入-还原记录（故意把某 base 变体置同字节 → 必红 → 还原），与 `mvn -B -ntp test -Dtest=NearDuplicateCorpusTest+ImageNearDuplicateCalibrationAnchorTest` 的 Tests run
+- [ ] 9.4 第二次真跑（覆盖同一锚路径；预计 base 18 / 变体 90 / 图 108 / 外呼 216 次）：回报实际计数、耗时、失败调用数，并确认 `corpus.imageEmbeddingCalls` 与 `images×2` 相等
+- [ ] 9.5 用脚本重算并**整节重写** `image-near-duplicate-bands-v2.md`：双视图落带表、`excludedBases` 明细与像素属性、F0–F5 重新照判、`candidateFloor` 按 §9.5 处置（F1 不命中则一律 `null` 并注明原因）、§1.1 台账与锚 `corpus.imageEmbeddingCalls` 显式对账（累计 720 次的作废轮说明保留）
+- [ ] 9.6 重跑门禁（清 opt-in 后 `clean verify` + baseline `--update` + baseline check + `merge-gate.sh` + `check-openapi-consistency.sh`）并重做 §7 硬边界自证；仍**不 merge、不 push**，回报 ≤300 字

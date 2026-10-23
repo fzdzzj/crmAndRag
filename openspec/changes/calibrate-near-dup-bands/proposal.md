@@ -2,7 +2,7 @@
 
 > 复核档位自 declare：**A 档**（判据「真跑 + 外呼」：本卡真跑视觉 embedding，产出新的定标锚并改写落带结论）。
 > 复核按 `docs/review-intensity-policy.md` 独立四判据走，**不因「只改测试与文档」降档**。
-> Owner 授权口径（2026-10-24）：「推真跑定标，语料你自己找，授权外呼」——语料选型与一次外呼授权已给定，**不改权重常量**不在授权内。
+> Owner 授权口径（2026-10-23）：「推真跑定标，语料你自己找，授权外呼」——语料选型与一次外呼授权已给定，**不改权重常量**不在授权内。
 
 ## 1. 为什么必须真跑
 
@@ -107,3 +107,22 @@ v1 语料是「9 图 + 9 图两两组合」，**结构上不可能产生同源�
 
 `tasks.md` 逐项；门禁 = `mvn -B -ntp clean verify` + `bash scripts/check-test-baseline.sh --update` 后 `bash scripts/check-test-baseline.sh` EXIT=0 + `bash scripts/merge-gate.sh` 全绿 + `bash scripts/check-openapi-consistency.sh` EXIT=0（本卡零契约改动，应零 diff）。
 复核方独立四判据：①真跑证据（锚的 `generatedAt`/`optIn`/调用数与本次运行自洽）②预注册判定树照判无事后改口径 ③v2 数字可由脚本逐数复算 ④常量与 v1 资产零 diff。
+
+## 9. 修订记录 v1.1（复核退回后的补强，**只补数据质量，不动判定口径**）
+
+首轮真跑 + A 档复核（2026-10-23，报告 `work/review-calibrate-near-dup-bands-a.md`）四判据 PASS，但复核抓出**数据质量缺陷**，主 Agent 裁决退回本卡（不 merge）：
+
+- **缺陷 D1（阻断）**：24 个 base 中 **6 个**（`doe-renewable-energy-framework-p4-b5…b8`、`p5-b9`、`p5-b10`）的五类变体余弦**逐 15 位完全相同**（如 `0.4070087706878587`×5）。五种不同像素变换给出同一余弦在真视觉 embedding 上不可能发生 ⇒ 变体退化：`toRgb` 用 `TYPE_INT_RGB` 且**不填底色**，源 PNG 带 alpha 时透明区被合成成黑，五类变体坍缩成同一张（近）纯色图。
+- **后果 1**：F1 依据 `67/120 = 55.8% > 50%` 里，**30 对**来自这 6 个退化 base；按有效对重算 `37/90 = 41.1% < 50%` ⇒ **F1 不再命中**。即当前 v2 文档「近似带基本不可达（缺陷证据）」这一结论**建立在退化数据上**，不可用。
+- **后果 2**：`candidateFloor = nearDuplicate.p05 = 0.4199…` 完全由最退化的 2 个 base 决定。若被当作建议实施，等于把 `NEAR_DUPLICATE_FLOOR` 从 0.9887 降到 0.42 ⇒ **几乎全部图像命中都会被当成"近似重复"降权而不是过滤**，属灾难性误读，必须作废。
+
+**补强（本卡修订，须在第二次真跑前落盘）**：
+
+1. 变体栅格化**先铺白底再合成**（`fillRect` 白色），alpha 源不再被合成成黑；并逐 base 记录像素属性（`colorModel` / `hasAlpha` / 唯一色数 / 均值标准差）进锚的 `corpus.bases` 明细。
+2. **退化 base 剔除并登记**：合成后像素**全同**（唯一色数 ≤ 1）的 base 视为"无可识别图像内容"，从语料剔除并进 `corpus.excludedBases`（含原因），**不得静默保留也不得静默丢弃**。
+3. **防退化守卫（默认跑、零外呼）**：`NearDuplicateCorpusTest` 断言①每 base 像素唯一色数 > 1 ②每 base 的五变体两两 SHA-256 不同 ③变体与 base 字节不同；`ImageNearDuplicateCalibrationAnchorTest` 断言④**任一 base 的五类余弦不得全等**（本轮缺陷的锚级回归检查）。
+4. **判定树口径不变**，仅明确分母：`nearDuplicate` 对 = **有效 base 的变体对**；被剔除的退化 base 不构成"同源变体对"，故不入分母。此明确写在第二次真跑**之前**，非事后调整。
+5. `candidateFloor`：若 F1 不命中，`candidateFloor` 一律写 `null` 并在文档注明"F1 未命中，不给候选下限"（不得保留一个由退化样本算出的数当建议）。
+6. 第二次真跑（语料随剔除收缩：预计 base 18 / 变体 90 / 图 108 / 外呼 **216 次**）覆盖同一路径 `docs/rag-quality/image-threshold-calibration-v2.json`（该锚尚未合入 master，属本卡产物，允许覆盖；v1 锚仍冻结）。
+7. 原 `720 次累计外呼` 台账保留，但须与锚的 `corpus.imageEmbeddingCalls` 显式对账：锚只记**一次成功运行**的调用数，累计含作废轮。
+
