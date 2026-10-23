@@ -151,11 +151,7 @@ function handleDelete(record: FinanceRecord) {
         <div class="flex items-center justify-between">
           <h2>{{ type === 'invoice' ? '发票列表' : '回款列表' }}</h2>
           <Permission
-            :allow="
-              type === 'invoice'
-                ? ['finance:FINANCE_RECORD_INVOICE']
-                : ['finance:FINANCE_RECORD_PAYMENT']
-            "
+            :endpoint="type === 'invoice' ? 'POST /invoice/info' : 'POST /payment/record'"
           >
             <Button type="primary" @click="openCreateModal">
               新增{{ type === 'invoice' ? '发票' : '回款' }}
@@ -166,11 +162,7 @@ function handleDelete(record: FinanceRecord) {
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'action'">
           <Permission
-            :allow="
-              type === 'invoice'
-                ? ['finance:FINANCE_VIEW_INVOICE']
-                : ['finance:FINANCE_VIEW_PAYMENT']
-            "
+            :endpoint="type === 'invoice' ? 'GET /invoice/info/{id}' : 'GET /payment/record/{id}'"
           >
             <Popover content="查看" placement="top">
               <EyeOutlined
@@ -180,11 +172,7 @@ function handleDelete(record: FinanceRecord) {
             </Popover>
           </Permission>
           <Permission
-            :allow="
-              type === 'invoice'
-                ? ['finance:FINANCE_EDIT_INVOICE']
-                : ['finance:FINANCE_EDIT_PAYMENT']
-            "
+            :endpoint="type === 'invoice' ? 'PUT /invoice/info' : 'PUT /payment/record'"
           >
             <Popover content="编辑" placement="top">
               <EditOutlined
@@ -194,11 +182,7 @@ function handleDelete(record: FinanceRecord) {
             </Popover>
           </Permission>
           <Permission
-            :allow="
-              type === 'invoice'
-                ? ['finance:FINANCE_DELETE_INVOICE']
-                : ['finance:FINANCE_DELETE_PAYMENT']
-            "
+            :endpoint="type === 'invoice' ? 'DELETE /invoice/info' : 'DELETE /payment/record'"
           >
             <Popover content="删除" placement="top">
               <DeleteOutlined

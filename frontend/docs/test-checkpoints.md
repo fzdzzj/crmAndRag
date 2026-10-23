@@ -247,3 +247,10 @@
 - [ ] 页面：/knowledge 知识库管理 | 点击"全部同步"调用 /knowledge/admin/sync/all，五实体结果全部刷新
 - [ ] 页面：/knowledge 知识库管理 | 非法 entity（如 /sync/unknownEntity）返回 400
 
+## evidence-to-operations（按钮权限从契约派生：endpoint prop + 运行期小表，2026-10-23）
+
+- [ ] 页面：任意带 `Permission` 的站点 | 有权限账号渲染按钮、无权限账号不渲染，行为与迁移前一致；按钮权限现由 `:endpoint="'METHOD /path'"` 派生（端点→权限名映射在 `src/constants/uiEndpointPermissions.ts`，与契约 `frontend/openapi.yaml` 的 `x-required-permission` 在编译期对齐，键写错或权限名不符 `pnpm type-check:check` 即红，P2 反向自证已留痕）
+- [ ] 页面：`/sale/list` 销售订单 | 「查看」按钮仍走手抄 `allow`（`SALES_VIEW_SALE_OPPORTUNITY_ONLY_MY` 不在契约任何端点上，见 `PermissionSiteAuditTest` 白名单），其余四钮（创建/编辑/推进/删除）由 `:endpoint` 派生
+- [ ] 页面：`/finance` 发票/回款表 | 同一按钮按 `type` 在发票与回款两契约端点间三元切换（如 `:endpoint="type === 'invoice' ? 'POST /invoice/info' : 'POST /payment/record'"`），有对应权限的账号才渲染
+- [ ] 门禁：`mvn test -Dtest=EndpointPermissionCatalogGenTest`（默认逐字校验生成物，`-Dpermission.endpoints.update=true` 重写）与 `mvn test -Dtest=PermissionSiteAuditTest`（`:allow=` 白名单外清零）默认随 surefire 全量跑；`src/utils/__tests__/endpointPermission.test.ts` 覆盖解析器已登记 / 未登记（fail-closed + console.warn 一次）/ OPEN（null 放行）/ 空值四类
+

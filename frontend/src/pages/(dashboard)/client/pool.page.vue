@@ -22,10 +22,10 @@
           <div class="flex items-center justify-between">
             <h2>客户公海池</h2>
             <div class="flex flex-wrap gap-2">
-              <Permission :allow="['customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY']">
+              <Permission :endpoint="'POST /company/pool/recycle/trigger'">
                 <Button :loading="isRecycling" @click="triggerRecycle">手动回收超时客户</Button>
               </Permission>
-              <Permission :allow="['customer:CUSTOMER_QUERY_COMPANY']">
+              <Permission :endpoint="'GET /company/pool'">
                 <Button @click="refetch()">刷新</Button>
               </Permission>
             </div>
@@ -34,12 +34,12 @@
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'action'">
             <span class="inline-flex items-center gap-2">
-              <Permission :allow="['customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY']">
+              <Permission :endpoint="'POST /company/pool/claim/{id}'">
                 <Button type="link" size="small" @click="onClaim(record as PoolListItem)">
                   认领
                 </Button>
               </Permission>
-              <Permission :allow="['customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY']">
+              <Permission :endpoint="'POST /company/pool/assign'">
                 <Button type="link" size="small" @click="openAssign(record as PoolListItem)">
                   分派
                 </Button>

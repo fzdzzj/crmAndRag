@@ -28,7 +28,7 @@ v-if="bulkManageMode" danger :disabled="selectedRowKeys.length === 0"
               <Button data-tour="task-batch" @click="toggleBulkManage">
                 {{ bulkManageMode ? '取消批量' : '批量管理' }}
               </Button>
-              <Permission :allow="['task:TASK_CREATE_TASK']">
+              <Permission :endpoint="'POST /contactTask/create'">
                 <Button type="primary" data-tour="task-create" @click="createContactTaskModalRef?.open()">
                   新增任务
                 </Button>
@@ -38,21 +38,21 @@ v-if="bulkManageMode" danger :disabled="selectedRowKeys.length === 0"
         </template>
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'action'">
-            <Permission :allow="['task:TASK_VIEW_TASK']">
+            <Permission :endpoint="'GET /contactTask/{id}'">
               <Popover content="查看" placement="top">
                 <EyeOutlined
 class="mr-2 cursor-pointer text-blue-500 hover:text-blue-700"
                   @click="viewContactTaskModalRef?.open(record)" />
               </Popover>
             </Permission>
-            <Permission :allow="['task:TASK_UPDATE_TASK']">
+            <Permission :endpoint="'PUT /contactTask/update'">
               <Popover content="编辑" placement="top">
                 <EditOutlined
 class="mr-2 cursor-pointer text-green-500 hover:text-green-700"
                   @click="editContactTaskModalRef?.open(record)" />
               </Popover>
             </Permission>
-            <Permission :allow="['task:TASK_DELETE_TASK']">
+            <Permission :endpoint="'DELETE /contactTask/{id}'">
               <Popover content="删除" placement="top">
                 <DeleteOutlined
 class="cursor-pointer text-red-500 hover:text-red-700"

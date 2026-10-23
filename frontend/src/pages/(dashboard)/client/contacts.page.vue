@@ -22,7 +22,7 @@
           <div class="flex items-center justify-between">
             <h2>联系人</h2>
             <div class="flex flex-wrap gap-2">
-              <Permission :allow="['customer:CUSTOMER_DELETE_CONTACT']">
+              <Permission :endpoint="'DELETE /contact/logical/batch'">
                 <Button
                   v-if="bulkManageMode && !isDeleted"
                   type="primary"
@@ -33,7 +33,7 @@
                   批量移入回收站
                 </Button>
               </Permission>
-              <Permission :allow="['customer:CUSTOMER_RECOVER_CONTACT']">
+              <Permission :endpoint="'PUT /contact/recover'">
                 <Button
                   v-if="bulkManageMode && isDeleted"
                   type="primary"
@@ -43,7 +43,7 @@
                   批量恢复
                 </Button>
               </Permission>
-              <Permission :allow="['customer:CUSTOMER_DELETE_CONTACT']">
+              <Permission :endpoint="'DELETE /contact'">
                 <Button
                   v-if="bulkManageMode && isDeleted"
                   type="primary"
@@ -55,7 +55,7 @@
                 </Button>
               </Permission>
               <Button :loading="isRefetching" @click="refetch()"> 刷新 </Button>
-              <Permission :allow="['customer:CUSTOMER_EXPORT_CONTACT']">
+              <Permission :endpoint="'GET /contact/excel'">
                 <Button
                   v-if="!bulkManageMode && !isDeleted"
                   :loading="isExporting"
@@ -71,7 +71,7 @@
                 {{ bulkManageMode ? '取消批量' : '批量管理' }}
               </Button>
               <Button @click="reset">重置筛选条件</Button>
-              <Permission :allow="['customer:CUSTOMER_ADD_CONTACT']">
+              <Permission :endpoint="'POST /contact'">
                 <Button v-if="!isDeleted" type="primary" data-tour="contact-create" @click="openCreate">
                   新增联系人
                 </Button>
@@ -99,7 +99,7 @@
           </template>
           <template v-if="column.key === 'action'">
             <template v-if="!isDeleted">
-              <Permission :allow="['customer:CUSTOMER_QUERY_CONTACT']">
+              <Permission :endpoint="'GET /contact/search'">
                 <Popover content="查看" placement="top">
                   <EyeOutlined
                     class="mr-2 cursor-pointer text-blue-500 hover:text-blue-700"
@@ -107,7 +107,7 @@
                   />
                 </Popover>
               </Permission>
-              <Permission :allow="['customer:CUSTOMER_UPDATE_CONTACT']">
+              <Permission :endpoint="'PUT /contact'">
                 <Popover content="编辑" placement="top">
                   <EditOutlined
                     data-tour="contact-edit"
@@ -116,7 +116,7 @@
                   />
                 </Popover>
               </Permission>
-              <Permission :allow="['customer:CUSTOMER_DELETE_CONTACT']">
+              <Permission :endpoint="'DELETE /contact/logical/batch'">
                 <Popover content="删除" placement="top">
                   <DeleteOutlined
                     class="cursor-pointer text-red-500 hover:text-red-700"
@@ -126,7 +126,7 @@
               </Permission>
             </template>
             <template v-else>
-              <Permission :allow="['customer:CUSTOMER_RECOVER_CONTACT']">
+              <Permission :endpoint="'PUT /contact/recover'">
                 <Popover content="恢复" placement="top">
                   <RetweetOutlined
                     class="mr-2 cursor-pointer text-orange-500 hover:text-orange-700"
@@ -134,7 +134,7 @@
                   />
                 </Popover>
               </Permission>
-              <Permission :allow="['customer:CUSTOMER_DELETE_CONTACT']">
+              <Permission :endpoint="'DELETE /contact'">
                 <Popover content="彻底删除" placement="top">
                   <DeleteOutlined
                     class="cursor-pointer text-red-500 hover:text-red-700"

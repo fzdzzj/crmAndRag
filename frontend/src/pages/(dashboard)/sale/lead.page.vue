@@ -47,7 +47,7 @@
               />
               <Button @click="handleResetFilter">重置</Button>
               <Button :loading="isRefetching" @click="refetch()">刷新</Button>
-              <Permission :allow="['customer:CUSTOMER_ADD_COMPANY']">
+              <Permission :endpoint="'POST /sales/lead'">
                 <Button type="primary" data-tour="sales-lead-create" @click="openCreate">
                   录入线索
                 </Button>
@@ -63,7 +63,7 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <span class="inline-flex items-center gap-2">
-              <Permission :allow="['customer:CUSTOMER_VIEW_COMPANY']">
+              <Permission :endpoint="'GET /sales/lead/{id}'">
                 <Popover content="查看" placement="top">
                   <EyeOutlined
                     class="cursor-pointer text-blue-500 hover:text-blue-700"
@@ -72,7 +72,7 @@
                 </Popover>
               </Permission>
               <Permission
-                :allow="['customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY']"
+                :endpoint="'PUT /sales/lead'"
               >
                 <Popover content="跟进修改" placement="top">
                   <EditOutlined
@@ -82,7 +82,7 @@
                 </Popover>
               </Permission>
               <Permission
-                :allow="['customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY']"
+                :endpoint="'PUT /sales/lead'"
               >
                 <Popover content="无效关闭" placement="top">
                   <StopOutlined
@@ -91,7 +91,7 @@
                   />
                 </Popover>
               </Permission>
-              <Permission :allow="['customer:CUSTOMER_ADD_COMPANY']">
+              <Permission :endpoint="'POST /sales/lead/convert'">
                 <Popover content="一键转客户商机" placement="top">
                   <SwapRightOutlined
                     class="cursor-pointer text-purple-500 hover:text-purple-700"
@@ -100,7 +100,7 @@
                 </Popover>
               </Permission>
               <Permission
-                :allow="['customer:CUSTOMER_DELETE_CUSTOMER_COMPANY']"
+                :endpoint="'DELETE /sales/lead/{id}'"
               >
                 <Popover content="删除" placement="top">
                   <DeleteOutlined
