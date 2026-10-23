@@ -33,7 +33,7 @@ v-if="bulkManageMode" danger :disabled="selectedRowKeys.length === 0"
               <Button @click="toggleBulkManage">
                 {{ bulkManageMode ? '取消批量' : '批量管理' }}
               </Button>
-              <Permission :allow="['sales:SALES_CREATE_BUSINESS_ACTIVITY']">
+              <Permission :endpoint="'POST /business/activity'">
                 <Button type="primary" data-tour="activity-create" @click="openCreateModal">新增活动</Button>
               </Permission>
             </div>
@@ -41,28 +41,28 @@ v-if="bulkManageMode" danger :disabled="selectedRowKeys.length === 0"
         </template>
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'action'">
-            <Permission :allow="['sales:SALES_VIEW_BUSINESS_ACTIVITY']">
+            <Permission :endpoint="'GET /business/activity/{id}'">
               <Popover content="查看" placement="top">
                 <EyeOutlined
 class="mr-2 cursor-pointer text-blue-500 hover:text-blue-700"
                   @click="openViewModal(record)" />
               </Popover>
             </Permission>
-            <Permission :allow="['sales:SALES_UPDATE_BUSINESS_ACTIVITY']">
+            <Permission :endpoint="'PUT /business/activity'">
               <Popover content="编辑" placement="top">
                 <EditOutlined
 class="mr-2 cursor-pointer text-green-500 hover:text-green-700"
                   @click="openEditModal(record)" />
               </Popover>
             </Permission>
-            <Permission :allow="['sales:SALES_UPDATE_BUSINESS_ACTIVITY']">
+            <Permission :endpoint="'POST /business/activity/{id}/attachments'">
               <Popover content="上传附件" placement="top">
                 <UploadOutlined
 class="mr-2 cursor-pointer text-orange-500 hover:text-orange-700"
                   @click="openUploadAttachmentModal(record)" />
               </Popover>
             </Permission>
-            <Permission :allow="['sales:SALES_DELETE_BUSINESS_ACTIVITY']">
+            <Permission :endpoint="'DELETE /business/activity'">
               <Popover content="删除" placement="top">
                 <DeleteOutlined
 class="cursor-pointer text-red-500 hover:text-red-700"

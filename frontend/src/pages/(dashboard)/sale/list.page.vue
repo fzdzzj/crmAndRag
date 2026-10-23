@@ -24,7 +24,7 @@
             <div class="flex flex-wrap gap-2">
               <Button @click="reset">重置筛选</Button>
               <Button :loading="isRefetching" @click="refetch()">刷新</Button>
-              <Permission :allow="['sales:SALES_CREATE_SALE_OPPORTUNITY']">
+              <Permission :endpoint="'POST /sales'">
                 <Button type="primary" data-tour="sale-create" @click="openCreateSaleModal"
                   >创建销售订单</Button
                 >
@@ -43,7 +43,7 @@
                 />
               </Popover>
             </Permission>
-            <Permission :allow="['sales:SALES_UPDATE_SALE_OPPORTUNITY']">
+            <Permission :endpoint="'PUT /sales'">
               <Popover content="编辑" placement="top">
                 <EditOutlined
                   class="mr-2 cursor-pointer text-green-500 hover:text-green-700"
@@ -51,7 +51,7 @@
                 />
               </Popover>
             </Permission>
-            <Permission :allow="['sales:SALES_PROGRESS_SALE_OPPORTUNITY_STAGE']">
+            <Permission :endpoint="'POST /sales/stage/approval'">
               <Tooltip title="申请推进到下一阶段">
                 <Button
                   type="primary"
@@ -65,7 +65,7 @@
                 </Button>
               </Tooltip>
             </Permission>
-            <Permission :allow="['sales:SALES_DELETE_SALE_OPPORTUNITY']">
+            <Permission :endpoint="'DELETE /sales/{id}'">
               <Popover content="删除" placement="top">
                 <DeleteOutlined
                   class="cursor-pointer text-red-500 hover:text-red-700"

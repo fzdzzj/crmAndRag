@@ -30,7 +30,7 @@
                 ]"
                 @change="handleViewModeChange"
               />
-              <Permission :allow="['sales:SALES_UPDATE_CONTRACT']">
+              <Permission :endpoint="'POST /contract/warning/trigger'">
                 <Button
                   type="primary"
                   :loading="triggerWarningPending"
@@ -40,7 +40,7 @@
                 >
               </Permission>
               <Button :loading="isRefetching" @click="handleRefresh">刷新</Button>
-              <Permission :allow="['sales:SALES_CREATE_CONTRACT']">
+              <Permission :endpoint="'POST /contract'">
                 <Button type="primary" data-tour="contract-create" @click="openCreateContractModal"
                   >快速创建合同</Button
                 >
@@ -51,7 +51,7 @@
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'action'">
             <template v-if="viewMode === 'all'">
-              <Permission :allow="['sales:SALES_VIEW_CONTRACT']">
+              <Permission :endpoint="'GET /contract/{id}'">
                 <Popover content="查看" placement="top">
                   <EyeOutlined
                     class="mr-2 cursor-pointer text-blue-500 hover:text-blue-700"
@@ -59,7 +59,7 @@
                   />
                 </Popover>
               </Permission>
-              <Permission :allow="['sales:SALES_UPDATE_CONTRACT']">
+              <Permission :endpoint="'PUT /contract'">
                 <Popover content="编辑" placement="top">
                   <EditOutlined
                     class="mr-2 cursor-pointer text-green-500 hover:text-green-700"

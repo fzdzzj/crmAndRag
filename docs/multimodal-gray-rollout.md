@@ -218,3 +218,43 @@ mvn -B -ntp test -Dtest=ImageVectorSwitchHotFlipIT
 | A3 | 视觉向量路没逐图落暂存（`embedImage` 不等于图数） | 先查是不是提取/描述闸门先失败（日志有 WARN），再确认开关是否真为 true |
 | F1 / F2 | **热生效**破了：配置值写后没被下一次调用读到（缓存没失效或调用点改成启动期读） | 同上停步；这是 §3 第 5 步与 §11 第 1 条的实证前提 |
 | N1 | 全 0 假绿：所有轮都没外呼 | 检查 fixture PDF 是否真含内嵌图（`IMAGE_COUNT` 与 `PdfImageExtractor` 抽取数） |
+
+## 13. 开启通道工具化（evidence-to-operations G3，只追加本节）
+
+> 本节只把 §9 的人工核对单变成**可判定脚本 + 自测 + 文档防漂移守卫**。本卡**不打开任何开关、不改任何默认值、
+> 不改注册表与档位策略**（`DynamicConfigKeyRegistry` / `ConfigKeyTierPolicy` 零 diff，由守卫测试逐键比对）；
+> §1–§12 逐字不动，打开动作仍是 **Owner 运行期决定**（§9 边界不变）。
+
+### 13.1 预检/守望脚本
+
+```bash
+# preflight：读四键快照，给出 GO/NO-GO 与原因码
+bash scripts/rag-quality/image-vector-ingest-preflight.sh preflight --snapshot <TSV 或扁平 JSON 文件>
+
+# 或直连管理端只读接口（GET /platform/config/items?namespace=rag.retrieval，需要 608/超管 token）
+bash scripts/rag-quality/image-vector-ingest-preflight.sh preflight --base-url http://<host> --token <JWT>
+
+# watch：按间隔重复判定（--times 0 = 无限轮询，Ctrl-C 结束）
+bash scripts/rag-quality/image-vector-ingest-preflight.sh watch --snapshot F --interval 30 --times 5
+```
+
+- 四键快照（TSV：`key<TAB>value`，`#` 注释；或扁平 JSON `{"key":"value"}`）覆盖 §2 的四个键
+  （A=`image-vector-ingest.enabled`、B=`image-slice-ingest.enabled`、白名单、图帽）；逐键回显 + 判定。
+- **退出码语义**：`0`=GO；`1`=NO-GO（**合法结论，不是故障**）；`2`=输入错误（缺键/值不合法/图帽越界 1~20/接口不可达）。
+- **原因码**（按序短路）：`GO`（B=true + 白名单非空 + A=false，= §3 第 1~3 步已就位，下一步才是第 4 步开 A）/
+  `A_WITHOUT_B`（A=true 而 B=false ⇒ **链路完全不动（§2/§12 已实证）**，不要当作已灰度）/ `B_OFF`（B=false，
+  四键全关即原始态）/ `NO_ALLOWLIST`（B=true 但白名单空 = 全库生效，违反 §3 第 1 步灰度约定）/
+  `ALREADY_ON`（A=true，重复打开无意义，变更走 §11）/ `BAD_INPUT`。
+- 与 §9/§10/§11 的对应：`GO`/`NO_ALLOWLIST`/`B_OFF` 三态对应 §9.1 的「判定」列（开前核对）；
+  `ALREADY_ON` 对应 §9.1 第 4 条「任一为 true 先按 §11 回滚」；`A_WITHOUT_B` 是 §2 结构事实（§12 七断言的 A1 案）的命令行复述；
+  开启后的观测仍走 §10（脚本不观测指标，只判通道状态）。
+
+### 13.2 自测与防漂移
+
+- `bash scripts/tests/image-vector-ingest-preflight-selftest.sh`：六 fixture 用例（GO / A_WITHOUT_B / B_OFF /
+  NO_ALLOWLIST / ALREADY_ON / 缺键 exit 2）+ watch 单轮一致性，逐案断言退出码与原因码（2026-10-23 实测 7/7 绿；
+  变异自证：把脚本 `A_WITHOUT_B` 改坏后自测红，改回绿——自测真的在看输出）。
+- `mvn -B -ntp test -Dtest=MultimodalRolloutKeysDocConsistencyTest`（surefire 默认集内）：把本文件 §2 四键表的
+  键名/默认值/档位与 §9.1 手抄默认行，逐键对 `DynamicConfigKeyRegistry` 静态默认 + `ConfigKeyTierPolicy`（COST）比对；
+  注册表或文档任一侧漂移即红（Q3 反向自证已留痕：手改 §9.1 `image-vector-ingest.enabled` 为 `true` → 测试红 → 还原绿）。
+

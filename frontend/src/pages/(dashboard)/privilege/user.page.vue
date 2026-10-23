@@ -30,7 +30,7 @@
                 <Button @click="toggleBulkManage">
                   {{ bulkManageMode ? '取消批量' : '批量管理' }}
                 </Button>
-                <Permission :allow="['system:SYSTEM_CREATE_USER']">
+                <Permission :endpoint="'POST /user/add'">
                   <Button type="primary" data-tour="user-create" @click="openCreateModal"
                     >新增用户</Button
                   >
@@ -44,7 +44,7 @@
           </template>
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'action'">
-              <Permission :allow="['system:SYSTEM_VIEW_USER']">
+              <Permission :endpoint="'POST /user/find'">
                 <Popover content="查看" placement="top">
                   <EyeOutlined
                     class="mr-2 cursor-pointer text-blue-500 hover:text-blue-700"
@@ -52,7 +52,7 @@
                   />
                 </Popover>
               </Permission>
-              <Permission :allow="['system:SYSTEM_UPDATE_USER']">
+              <Permission :endpoint="'POST /user/update'">
                 <Popover content="编辑" placement="top">
                   <EditOutlined
                     class="mr-2 cursor-pointer text-green-500 hover:text-green-700"
@@ -60,7 +60,7 @@
                   />
                 </Popover>
               </Permission>
-              <Permission :allow="['system:SYSTEM_UPDATE_USER']">
+              <Permission :endpoint="'POST /user/handover/execute'">
                 <Popover content="交接" placement="top">
                   <SwapOutlined
                     class="mr-2 cursor-pointer text-amber-500 hover:text-amber-700"

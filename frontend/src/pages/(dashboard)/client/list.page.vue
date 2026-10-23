@@ -47,7 +47,7 @@ v-if="tagManageMode && isDeleted" type="primary" :disabled="selectedRowKeys.leng
               >
                 {{ churnMode ? '返回客户列表' : '流失风险' }}
               </Button>
-              <Permission :allow="['customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY']">
+              <Permission :endpoint="'POST /customer/churn/warning/scan'">
                 <Button
                   type="primary"
                   :loading="triggerChurnPending"
@@ -73,7 +73,7 @@ v-if="tagManageMode && isDeleted" type="primary" :disabled="selectedRowKeys.leng
                   {{ groupByCompany ? '普通列表' : '按公司分组' }}
                 </Button>
               </span>
-              <Permission :allow="['customer:CUSTOMER_ADD_COMPANY']">
+              <Permission :endpoint="'POST /company'">
                 <Button type="primary" data-tour="client-create" @click="openCreateModal">新建客户</Button>
               </Permission>
             </div>
@@ -82,28 +82,28 @@ v-if="tagManageMode && isDeleted" type="primary" :disabled="selectedRowKeys.leng
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'action'">
             <template v-if="!isDeleted">
-              <Permission :allow="['customer:CUSTOMER_QUERY_COMPANY']">
+              <Permission :endpoint="'GET /company/custom'">
                 <Popover content="查看" placement="top">
                   <EyeOutlined
 class="mr-2 cursor-pointer text-blue-500 hover:text-blue-700"
                     @click="editModalRef?.openView(record as CompanyListItem)" />
                 </Popover>
               </Permission>
-              <Permission :allow="['customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY']">
+              <Permission :endpoint="'PUT /company'">
                 <Popover content="编辑" placement="top">
                   <EditOutlined
 class="mr-2 cursor-pointer text-green-500 hover:text-green-700"
                     @click="openEditModal(record as CompanyListItem)" />
                 </Popover>
               </Permission>
-              <Permission :allow="['customer:CUSTOMER_DELETE_CUSTOMER_COMPANY']">
+              <Permission :endpoint="'DELETE /company'">
                 <Popover content="删除" placement="top">
                   <DeleteOutlined
 class="cursor-pointer text-red-500 hover:text-red-700"
                     @click="handleDelete(record as CompanyListItem)" />
                 </Popover>
               </Permission>
-              <Permission :allow="['customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY']">
+              <Permission :endpoint="'POST /company/pool/release/{id}'">
                 <Popover content="退回公海" placement="top">
                   <LogoutOutlined
 class="cursor-pointer text-purple-500 hover:text-purple-700"
@@ -112,7 +112,7 @@ class="cursor-pointer text-purple-500 hover:text-purple-700"
               </Permission>
             </template>
             <template v-else>
-              <Permission :allow="['customer:CUSTOMER_RECOVER_CUSTOMER_COMPANY']">
+              <Permission :endpoint="'PUT /company/recover'">
                 <Popover content="恢复" placement="top">
                   <RetweetOutlined
 class="cursor-pointer text-orange-500 hover:text-orange-700"
@@ -152,22 +152,22 @@ class="cursor-pointer text-orange-500 hover:text-orange-700"
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'action'">
                 <template v-if="!isDeleted">
-                  <Permission :allow="['customer:CUSTOMER_QUERY_COMPANY']">
+                  <Permission :endpoint="'GET /company/custom'">
                     <Popover content="查看" placement="top">
                       <EyeOutlined class="mr-2 cursor-pointer text-blue-500 hover:text-blue-700" @click="editModalRef?.openView(record as CompanyListItem)" />
                     </Popover>
                   </Permission>
-                  <Permission :allow="['customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY']">
+                  <Permission :endpoint="'PUT /company'">
                     <Popover content="编辑" placement="top">
                       <EditOutlined class="mr-2 cursor-pointer text-green-500 hover:text-green-700" @click="openEditModal(record as CompanyListItem)" />
                     </Popover>
                   </Permission>
-                  <Permission :allow="['customer:CUSTOMER_DELETE_CUSTOMER_COMPANY']">
+                  <Permission :endpoint="'DELETE /company'">
                     <Popover content="删除" placement="top">
                       <DeleteOutlined class="cursor-pointer text-red-500 hover:text-red-700" @click="handleDelete(record as CompanyListItem)" />
                     </Popover>
                   </Permission>
-                  <Permission :allow="['customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY']">
+                  <Permission :endpoint="'POST /company/pool/release/{id}'">
                     <Popover content="退回公海" placement="top">
                       <LogoutOutlined class="cursor-pointer text-purple-500 hover:text-purple-700" @click="openRelease(record as CompanyListItem)" />
                     </Popover>
@@ -211,22 +211,22 @@ class="cursor-pointer text-orange-500 hover:text-orange-700"
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'action'">
                 <template v-if="!isDeleted">
-                  <Permission :allow="['customer:CUSTOMER_QUERY_COMPANY']">
+                  <Permission :endpoint="'GET /company/custom'">
                     <Popover content="查看" placement="top">
                       <EyeOutlined class="mr-2 cursor-pointer text-blue-500 hover:text-blue-700" @click="editModalRef?.openView(record as CompanyListItem)" />
                     </Popover>
                   </Permission>
-                  <Permission :allow="['customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY']">
+                  <Permission :endpoint="'PUT /company'">
                     <Popover content="编辑" placement="top">
                       <EditOutlined class="mr-2 cursor-pointer text-green-500 hover:text-green-700" @click="openEditModal(record as CompanyListItem)" />
                     </Popover>
                   </Permission>
-                  <Permission :allow="['customer:CUSTOMER_DELETE_CUSTOMER_COMPANY']">
+                  <Permission :endpoint="'DELETE /company'">
                     <Popover content="删除" placement="top">
                       <DeleteOutlined class="cursor-pointer text-red-500 hover:text-red-700" @click="handleDelete(record as CompanyListItem)" />
                     </Popover>
                   </Permission>
-                  <Permission :allow="['customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY']">
+                  <Permission :endpoint="'POST /company/pool/release/{id}'">
                     <Popover content="退回公海" placement="top">
                       <LogoutOutlined class="cursor-pointer text-purple-500 hover:text-purple-700" @click="openRelease(record as CompanyListItem)" />
                     </Popover>

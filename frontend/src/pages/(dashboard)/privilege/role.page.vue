@@ -30,7 +30,7 @@
               <Button @click="toggleBulkManage">
                 {{ bulkManageMode ? '取消批量' : '批量管理' }}
               </Button>
-              <Permission :allow="['system:SYSTEM_MANAGE_ROLE']">
+              <Permission :endpoint="'POST /role/add'">
                 <Button type="primary" data-tour="role-create" @click="openCreateModal">新增角色</Button>
               </Permission>
             </div>
@@ -38,7 +38,7 @@
         </template>
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'action'">
-            <Permission :allow="['system:SYSTEM_VIEW_ROLE']">
+            <Permission :endpoint="'GET /role/list'">
               <Popover content="查看" placement="top">
                 <EyeOutlined
                   class="mr-2 cursor-pointer text-blue-500 hover:text-blue-700"
@@ -46,7 +46,7 @@
                 />
               </Popover>
             </Permission>
-            <Permission :allow="['system:SYSTEM_ASSIGN_PERMISSION']">
+            <Permission :endpoint="'POST /permission/addORDeletePermissionsToRole'">
               <Popover content="编辑权限" placement="top">
                 <EditOutlined
                   class="mr-2 cursor-pointer text-green-500 hover:text-green-700"
@@ -54,7 +54,7 @@
                 />
               </Popover>
             </Permission>
-            <Permission :allow="['system:SYSTEM_MANAGE_ROLE']">
+            <Permission :endpoint="'DELETE /role'">
               <Popover content="删除" placement="top">
                 <DeleteOutlined
                   class="cursor-pointer text-red-500 hover:text-red-700"
