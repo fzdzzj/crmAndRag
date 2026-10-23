@@ -26,7 +26,7 @@ export function defineUiPermissionTable<
 }
 
 /**
- * UI 端点 → 权限名运行期小表（只登记按钮门控真正用到的端点，53 项）。
+ * UI 端点 → 权限名运行期小表（只登记按钮门控真正用到的端点，57 项）。
  *
  * <p>端点由各站点原权限名在生成物 `endpointPermission.gen.ts` 里反查得到（提交说明含逐站点取用依据）；
  * 唯一保留手抄 `allow` 的例外 = `sale/list.page.vue` 的 SALES_VIEW_SALE_OPPORTUNITY_ONLY_MY（契约 0 候选，
