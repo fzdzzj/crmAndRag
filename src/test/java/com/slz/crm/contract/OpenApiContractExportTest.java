@@ -102,6 +102,24 @@ class OpenApiContractExportTest {
         });
   }
 
+  /**
+   * 权限维生成化的点状断言（retrieval-and-contract-hardening G3 任务 3.4.5，**本卡只追加这一条**，不动上面三条用例的语义）： {@code
+   * /permission/list} 的 {@code get} 必须带 {@code x-required-permission.code == 606}（=
+   * SYSTEM_ASSIGN_PERMISSION）。
+   */
+  @Test
+  void permissionListCarriesRequiredPermissionExtension() {
+    Map<String, Object> spec = new Yaml().load(fetchSpec());
+    Map<?, ?> paths = section(spec, "paths");
+    Map<?, ?> operation = section(section(paths, "/permission/list"), "get");
+    Map<?, ?> required = section(operation, "x-required-permission");
+    assertEquals(606, required.get("code"), "/permission/list 的权限码必须 606");
+    assertEquals(
+        "SYSTEM_ASSIGN_PERMISSION",
+        required.get("name"),
+        "/permission/list 的权限名必须与 PermissionOperates 常量名一致");
+  }
+
   @SuppressWarnings("unchecked")
   private static Map<String, Object> section(Map<?, ?> parent, String key) {
     Object value = parent.get(key);

@@ -166,3 +166,55 @@
 4. **回滚验收**：再读四键确认 `false`/空/`5`（§9.1 只读查询）；观察 embedding 调用次数回落到基线；
    `knowledge_image` 点数不再增长（清理场景下应下降）。
 5. **禁止**：改代码、改默认值、回滚迁移（本卡零迁移）；回滚是运行期写值，不是发版。
+
+## 12. 热生效与门控关系实证（retrieval-and-contract-hardening G2，零真外呼）
+
+> 本节只追加**事实**：本卡**未打开任何开关**、未改任何默认值。§9 的 pre-flight 清单与 Owner 运行期授权流程**一字不变**，
+> 本节只是把 §2 / §3 第 5 步 / §6 第 1 条 / §11 第 1 条的措辞变成了可复跑的测试。
+
+### 12.1 断言表（`src/test/java/com/slz/crm/knowledge/document/ImageVectorSwitchHotFlipIT.java`）
+
+七条断言写**在同一个测试方法内**（`switchGateAndHotFlipAssertions`），A→B→F 顺序执行，全程只有一个
+`PdfImageSliceIngestService` / 一个 `DynamicConfigService` / 一个 `DynamicConfigCache` 实例。fixture PDF 内嵌 **N = 3** 张图。
+
+| 编号 | 场景（四键取值） | 必须观察到 | 实测 |
+| --- | --- | --- | --- |
+| **A1** | B=**false** + 白名单空 + A=true | `embedImage` **0**、vision **0**、切片 **0**、image 集合 **0** 点 | 0 / 0 / 0 / 0 |
+| **A2** | B=true + 白名单**不命中** + A=true | `embedImage` **0**、image 集合 **0** 点 | 0 / 0 |
+| **A2b** | B=true + 命中 + A=**false** | 描述切片 **= N**、`embedImage` **0**、image 集合 **0** 点 | 3 / 0 / 0 |
+| **A3** | B=true + 命中 + A=true | `embedImage` **= N**、image 集合点 **= N** | 3 / 3 |
+| **F1** | 同实例：A=false 跑一轮（0）→ **运行期**写 true → 再跑 | 第二轮 `embedImage` **> 0**（= N） | 0 → 3 |
+| **F2** | 紧接写回 false → 再跑 | `embedImage` **回到 0** | 0 |
+| **N1** | 反向自检 | A3 计数 **严格大于** A1 计数 | 3 > 0 |
+
+四键取值口径：A = `rag.retrieval.image-vector-ingest.enabled`（真视觉路），B = `rag.retrieval.image-slice-ingest.enabled`（方案 B 描述路），
+白名单 = `rag.retrieval.image-slice-ingest.kb-allowlist`，图数帽 = `rag.retrieval.image-slice-ingest.max-images-per-document`。
+
+### 12.2 「未重启」是怎么证的
+
+1. **实例同一性**：`assertSame` 覆盖 service / config / cache 三个关键实例（首尾两次取引用比对），测试结束打印三个
+   `System.identityHashCode`，日志形如 `[G2] 未重启证据：service@... config@... cache@...（7 轮共用，首尾 assertSame 通过）`。
+2. **没有可重启的东西**：本 IT 直接装配生产类（无 Spring 上下文），**不存在**上下文重建路径；每轮唯一变化的是
+   `DynamicConfigItemMapper` 的 **mock 行表**里那三行的值。
+3. **配置只能经生产服务写入**：每轮翻键都走 `DynamicConfigAdminService#updateValue`（越权闸 → 类型校验 → 版本乐见锁 → 写历史 → 写后失效），
+   测试**不直接改任何 map**；写后由真实 `DynamicConfigCache` 失效 + 真实 `DynamicConfigServiceImpl` 回读。
+4. **零真外呼**：`ModelProvider` 是计数替身（`vision` 返回定长描述、`embedImage` 返回定长向量），`embedImage` 的调用次数就是断言对象；
+   本类不出现真实模型客户端、不读环境变量、不读 `.env`，也不需要 Docker/H2（配置表持久化用 mock 行表，H2 兼容性由
+   `DynamicConfigSchemaH2Test` 单独覆盖）。
+
+### 12.3 复跑
+
+```bash
+mvn -B -ntp test -Dtest=ImageVectorSwitchHotFlipIT
+```
+
+预期：`Tests run: 1, Failures: 0`，日志里有一行 `[G2] 未重启证据`。
+
+### 12.4 失败怎么读
+
+| 红的是哪条 | 说明什么 | 怎么处理 |
+| --- | --- | --- |
+| A1 / A2 / A2b | **门控关系**变了：`buildSlices` 里的开关判断顺序或 KB 白名单语义被改（§2 的结构性断言为假） | 停手，按 proposal §5 写 G2 停步实证；**禁止改 `src/main` 让它变绿** |
+| A3 | 视觉向量路没逐图落暂存（`embedImage` 不等于图数） | 先查是不是提取/描述闸门先失败（日志有 WARN），再确认开关是否真为 true |
+| F1 / F2 | **热生效**破了：配置值写后没被下一次调用读到（缓存没失效或调用点改成启动期读） | 同上停步；这是 §3 第 5 步与 §11 第 1 条的实证前提 |
+| N1 | 全 0 假绿：所有轮都没外呼 | 检查 fixture PDF 是否真含内嵌图（`IMAGE_COUNT` 与 `PdfImageExtractor` 抽取数） |

@@ -71,6 +71,18 @@ public class OpenApiConfig {
     };
   }
 
+  /**
+   * 权限维度生成化（retrieval-and-contract-hardening G3）：方法级 {@code @RequirePermission} 投影为 {@code
+   * x-required-permission {code,name}}，无注解的 operation 标 {@code x-permission-status: OPEN}。
+   *
+   * <p>逻辑全在 {@link OpenApiPermissionCustomizer}，此处只注册 bean（与 {@link
+   * #multipartFileParameterCustomizer()} 并列）；既有两个自定义器的语义零变化。
+   */
+  @Bean
+  public OperationCustomizer openApiPermissionCustomizer() {
+    return new OpenApiPermissionCustomizer();
+  }
+
   /** 只认显式命名的注解；未命名时退回参数名（需要 -parameters 编译，取不到就跳过该参数） */
   private static String multipartParameterName(MethodParameter parameter) {
     String named = null;

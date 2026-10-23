@@ -20,6 +20,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 402
+        name: TASK_UPDATE_TASK
   /sales:
     get:
       tags:
@@ -44,6 +47,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageSalesOpportunityVO"
+      x-required-permission:
+        code: 204
+        name: SALES_VIEW_SALE_OPPORTUNITY
     put:
       tags:
       - sales-opportunity-controller
@@ -60,6 +66,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 202
+        name: SALES_UPDATE_SALE_OPPORTUNITY
     post:
       tags:
       - sales-opportunity-controller
@@ -76,6 +85,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultSalesOpportunityVO"
+      x-required-permission:
+        code: 201
+        name: SALES_CREATE_SALE_OPPORTUNITY
   /sales/stage:
     get:
       tags:
@@ -170,6 +182,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageSalesStageApprovalVO"
+      x-required-permission:
+        code: 220
+        name: SALES_VIEW_SALE_OPPORTUNITY_STAGE
     put:
       tags:
       - sales-stage-approval-controller
@@ -198,6 +213,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 218
+        name: SALES_APPROVE_STAGE_ADVANCE
     delete:
       tags:
       - sales-stage-approval-controller
@@ -217,6 +235,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 219
+        name: SALES_DELETE_STAGE_ADVANCE
   /sales/stage/approval/{id}/draft:
     put:
       tags:
@@ -278,6 +299,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultSalesStageApprovalVO"
+      x-required-permission:
+        code: 217
+        name: SALES_PROGRESS_SALE_OPPORTUNITY_STAGE
   /sales/lead:
     put:
       tags:
@@ -295,6 +319,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 113
+        name: CUSTOMER_UPDATE_CUSTOMER_COMPANY
     post:
       tags:
       - sales-lead-controller
@@ -311,6 +338,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultSalesLeadVO"
+      x-required-permission:
+        code: 111
+        name: CUSTOMER_ADD_COMPANY
   /payment/record:
     put:
       tags:
@@ -328,6 +358,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 302
+        name: FINANCE_EDIT_PAYMENT
     post:
       tags:
       - payment-record-controller
@@ -344,6 +377,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 301
+        name: FINANCE_RECORD_PAYMENT
     delete:
       tags:
       - payment-record-controller
@@ -363,6 +399,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 303
+        name: FINANCE_DELETE_PAYMENT
   /payment/record/confirm/{id}:
     put:
       tags:
@@ -381,6 +420,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 302
+        name: FINANCE_EDIT_PAYMENT
   /order:
     get:
       tags:
@@ -405,6 +447,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageOrderVO"
+      x-required-permission:
+        code: 211
+        name: SALES_VIEW_ORDER
     put:
       tags:
       - contract-order-item-controller
@@ -423,6 +468,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 210
+        name: SALES_UPDATE_ORDER
     post:
       tags:
       - contract-order-item-controller
@@ -441,6 +489,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 206
+        name: SALES_APPEND_ORDER
     delete:
       tags:
       - contract-order-item-controller
@@ -460,6 +511,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 210
+        name: SALES_UPDATE_ORDER
   /knowledge/strategies/{key}:
     put:
       tags:
@@ -489,6 +543,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultKbRetrievalStrategyItem"
+      x-required-permission:
+        code: 900
+        name: KNOWLEDGE_ADMIN_MANAGE
     delete:
       tags:
       - knowledge-admin-controller
@@ -511,6 +568,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 900
+        name: KNOWLEDGE_ADMIN_MANAGE
   /invoice/info:
     put:
       tags:
@@ -528,6 +588,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 307
+        name: FINANCE_EDIT_INVOICE
     post:
       tags:
       - invoice-info-controller
@@ -544,6 +607,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 306
+        name: FINANCE_RECORD_INVOICE
     delete:
       tags:
       - invoice-info-controller
@@ -563,6 +629,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 308
+        name: FINANCE_DELETE_INVOICE
   /invoice/info/void/{id}:
     put:
       tags:
@@ -581,6 +650,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 307
+        name: FINANCE_EDIT_INVOICE
   /dept:
     put:
       tags:
@@ -598,6 +670,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 603
+        name: SYSTEM_UPDATE_USER
     post:
       tags:
       - sys-dept-controller
@@ -614,6 +689,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 601
+        name: SYSTEM_CREATE_USER
   /contract:
     get:
       tags:
@@ -638,6 +716,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageContractVO"
+      x-required-permission:
+        code: 215
+        name: SALES_VIEW_CONTRACT
     put:
       tags:
       - contract-controller
@@ -654,6 +735,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 214
+        name: SALES_UPDATE_CONTRACT
     post:
       tags:
       - contract-controller
@@ -670,6 +754,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultContractVO"
+      x-required-permission:
+        code: 212
+        name: SALES_CREATE_CONTRACT
     delete:
       tags:
       - contract-controller
@@ -689,6 +776,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 214
+        name: SALES_UPDATE_CONTRACT
   /contact:
     get:
       tags:
@@ -713,6 +803,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageCustomerContactVO"
+      x-required-permission:
+        code: 106
+        name: CUSTOMER_QUERY_CONTACT
     put:
       tags:
       - customer-contact-controller
@@ -731,6 +824,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 102
+        name: CUSTOMER_UPDATE_CONTACT
     post:
       tags:
       - customer-contact-controller
@@ -747,6 +843,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 103
+        name: CUSTOMER_ADD_CONTACT
     delete:
       tags:
       - customer-contact-controller
@@ -766,6 +865,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 104
+        name: CUSTOMER_DELETE_CONTACT
   /contactTask/update:
     put:
       tags:
@@ -783,6 +885,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 402
+        name: TASK_UPDATE_TASK
   /contactTask/batch:
     put:
       tags:
@@ -802,6 +907,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 402
+        name: TASK_UPDATE_TASK
     delete:
       tags:
       - contact-task-controller
@@ -821,6 +929,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 403
+        name: TASK_DELETE_TASK
   /contact/recover:
     put:
       tags:
@@ -841,6 +952,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 105
+        name: CUSTOMER_RECOVER_CONTACT
   /company:
     get:
       tags:
@@ -865,6 +979,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageCustomerCompanyVO"
+      x-required-permission:
+        code: 117
+        name: CUSTOMER_VIEW_COMPANY
     put:
       tags:
       - customer-company-controller
@@ -883,6 +1000,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 113
+        name: CUSTOMER_UPDATE_CUSTOMER_COMPANY
     post:
       tags:
       - customer-company-controller
@@ -899,6 +1019,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 111
+        name: CUSTOMER_ADD_COMPANY
     delete:
       tags:
       - customer-company-controller
@@ -918,6 +1041,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 114
+        name: CUSTOMER_DELETE_CUSTOMER_COMPANY
   /company/recover:
     put:
       tags:
@@ -938,6 +1064,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 115
+        name: CUSTOMER_RECOVER_CUSTOMER_COMPANY
   /company/merge:
     put:
       tags:
@@ -955,6 +1084,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 119
+        name: CUSTOMER_MERGE_COMPANY
   /company-group:
     put:
       tags:
@@ -972,6 +1104,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultCompanyGroupEntity"
+      x-required-permission:
+        code: 607
+        name: SYSTEM_MANAGE_ORG
     post:
       tags:
       - company-group-controller
@@ -988,6 +1123,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultCompanyGroupEntity"
+      x-required-permission:
+        code: 111
+        name: CUSTOMER_ADD_COMPANY
   /company-group/{id}/status:
     put:
       tags:
@@ -1012,6 +1150,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 607
+        name: SYSTEM_MANAGE_ORG
   /company-dept:
     put:
       tags:
@@ -1029,6 +1170,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultCompanyDeptEntity"
+      x-required-permission:
+        code: 607
+        name: SYSTEM_MANAGE_ORG
     post:
       tags:
       - company-dept-controller
@@ -1045,6 +1189,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultCompanyDeptEntity"
+      x-required-permission:
+        code: 111
+        name: CUSTOMER_ADD_COMPANY
   /company-dept/{id}/status:
     put:
       tags:
@@ -1069,6 +1216,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 607
+        name: SYSTEM_MANAGE_ORG
   /business/activity:
     get:
       tags:
@@ -1093,6 +1243,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListBusinessActivityVO"
+      x-required-permission:
+        code: 225
+        name: SALES_VIEW_BUSINESS_ACTIVITY
     put:
       tags:
       - business-activity-controller
@@ -1111,6 +1264,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 223
+        name: SALES_UPDATE_BUSINESS_ACTIVITY
     post:
       tags:
       - business-activity-controller
@@ -1127,6 +1283,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 222
+        name: SALES_CREATE_BUSINESS_ACTIVITY
     delete:
       tags:
       - business-activity-controller
@@ -1146,6 +1305,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 224
+        name: SALES_DELETE_BUSINESS_ACTIVITY
   /assist:
     put:
       tags:
@@ -1163,6 +1325,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 802
+        name: AI_ASSIST_HANDLE
   /ai/actions/{pendingId}/edit:
     put:
       tags:
@@ -1187,6 +1352,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultAiPendingActionVO"
+      x-required-permission:
+        code: 807
+        name: AI_ACTION_CONFIRM
   /user/update:
     post:
       tags:
@@ -1204,6 +1372,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultString"
+      x-required-permission:
+        code: 603
+        name: SYSTEM_UPDATE_USER
   /user/update/my:
     post:
       tags:
@@ -1221,6 +1392,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultString"
+      x-permission-status: OPEN
   /user/password:
     post:
       tags:
@@ -1238,6 +1410,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-permission-status: OPEN
   /user/password/reset:
     post:
       tags:
@@ -1255,6 +1428,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 603
+        name: SYSTEM_UPDATE_USER
   /user/logout:
     post:
       tags:
@@ -1266,6 +1442,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultString"
+      x-permission-status: OPEN
   /user/login:
     post:
       tags:
@@ -1283,6 +1460,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultString"
+      x-permission-status: OPEN
   /user/handover/query:
     post:
       tags:
@@ -1300,6 +1478,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageUserHandoverVO"
+      x-required-permission:
+        code: 602
+        name: SYSTEM_VIEW_USER
   /user/handover/execute:
     post:
       tags:
@@ -1317,6 +1498,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultUserHandoverVO"
+      x-required-permission:
+        code: 603
+        name: SYSTEM_UPDATE_USER
   /user/find:
     post:
       tags:
@@ -1396,6 +1580,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageUserVO"
+      x-required-permission:
+        code: 602
+        name: SYSTEM_VIEW_USER
   /user/add:
     post:
       tags:
@@ -1413,6 +1600,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultString"
+      x-required-permission:
+        code: 601
+        name: SYSTEM_CREATE_USER
   /taskComment/create:
     post:
       tags:
@@ -1430,6 +1620,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 401
+        name: TASK_CREATE_TASK
   /sales/stage/approval:
     post:
       tags:
@@ -1484,6 +1677,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultSalesStageApprovalVO"
+      x-required-permission:
+        code: 217
+        name: SALES_PROGRESS_SALE_OPPORTUNITY_STAGE
   /sales/stage/approval/{id}/submit:
     post:
       tags:
@@ -1502,6 +1698,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 217
+        name: SALES_PROGRESS_SALE_OPPORTUNITY_STAGE
   /sales/stage/approval/draft:
     get:
       tags:
@@ -1520,6 +1719,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultSalesStageApprovalVO"
+      x-required-permission:
+        code: 217
+        name: SALES_PROGRESS_SALE_OPPORTUNITY_STAGE
     post:
       tags:
       - sales-stage-approval-controller
@@ -1573,6 +1775,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultSalesStageApprovalVO"
+      x-required-permission:
+        code: 217
+        name: SALES_PROGRESS_SALE_OPPORTUNITY_STAGE
   /sales/reingestAll:
     post:
       tags:
@@ -1584,6 +1789,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultReingestResult"
+      x-required-permission:
+        code: 201
+        name: SALES_CREATE_SALE_OPPORTUNITY
   /sales/lead/query:
     post:
       tags:
@@ -1615,6 +1823,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageSalesLeadVO"
+      x-required-permission:
+        code: 116
+        name: CUSTOMER_QUERY_COMPANY
   /sales/lead/convert:
     post:
       tags:
@@ -1632,6 +1843,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultLeadConvertVO"
+      x-required-permission:
+        code: 111
+        name: CUSTOMER_ADD_COMPANY
   /role/add:
     post:
       tags:
@@ -1654,6 +1868,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 605
+        name: SYSTEM_MANAGE_ROLE
   /promptTemplate/{id}/revert:
     post:
       tags:
@@ -1678,6 +1895,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 809
+        name: PROMPT_TEMPLATE_MANAGE
   /promptTemplate/{id}/feedback:
     post:
       tags:
@@ -1702,6 +1922,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 808
+        name: PROMPT_TEMPLATE_VIEW
   /promptTemplate/update:
     post:
       tags:
@@ -1719,6 +1942,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 809
+        name: PROMPT_TEMPLATE_MANAGE
   /promptTemplate/status:
     post:
       tags:
@@ -1743,6 +1969,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 809
+        name: PROMPT_TEMPLATE_MANAGE
   /promptTemplate/render:
     post:
       tags:
@@ -1760,6 +1989,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPromptTemplateRenderVO"
+      x-required-permission:
+        code: 808
+        name: PROMPT_TEMPLATE_VIEW
   /promptTemplate/create:
     post:
       tags:
@@ -1777,6 +2009,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultLong"
+      x-required-permission:
+        code: 809
+        name: PROMPT_TEMPLATE_MANAGE
   /project/file/upload/standalone:
     post:
       tags:
@@ -1810,6 +2045,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 226
+        name: SALES_UPLOAD_PROJECT_FILE
   /project/file/upload/order/{orderId}:
     post:
       tags:
@@ -1850,6 +2088,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 226
+        name: SALES_UPLOAD_PROJECT_FILE
   /project/file/upload/activity/{activityId}:
     post:
       tags:
@@ -1890,6 +2131,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 226
+        name: SALES_UPLOAD_PROJECT_FILE
   /project/file/query:
     post:
       tags:
@@ -1921,6 +2165,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageProjectFileVO"
+      x-required-permission:
+        code: 229
+        name: SALES_VIEW_PROJECT_FILE
   /platform/config/items:
     get:
       tags:
@@ -1938,6 +2185,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListConfigItemView"
+      x-required-permission:
+        code: 608
+        name: PLATFORM_DYNAMIC_CONFIG_MANAGE
     post:
       tags:
       - dynamic-config-admin-controller
@@ -1954,6 +2204,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultConfigItemView"
+      x-required-permission:
+        code: 608
+        name: PLATFORM_DYNAMIC_CONFIG_MANAGE
   /platform/config/items/{key}/rollback:
     post:
       tags:
@@ -1977,6 +2230,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultConfigItemView"
+      x-required-permission:
+        code: 608
+        name: PLATFORM_DYNAMIC_CONFIG_MANAGE
   /platform/config/cost-requests:
     get:
       tags:
@@ -2013,6 +2269,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageCostKeyChangeRequestVO"
+      x-required-permission:
+        code: 608
+        name: PLATFORM_DYNAMIC_CONFIG_MANAGE
     post:
       tags:
       - cost-key-change-request-controller
@@ -2029,6 +2288,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultCostKeyChangeRequestVO"
+      x-required-permission:
+        code: 608
+        name: PLATFORM_DYNAMIC_CONFIG_MANAGE
   /platform/config/cost-requests/{id}/withdraw:
     post:
       tags:
@@ -2047,6 +2309,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultCostKeyChangeRequestVO"
+      x-required-permission:
+        code: 608
+        name: PLATFORM_DYNAMIC_CONFIG_MANAGE
   /platform/config/cost-requests/{id}/reject:
     post:
       tags:
@@ -2070,6 +2335,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultCostKeyChangeRequestVO"
+      x-required-permission:
+        code: 608
+        name: PLATFORM_DYNAMIC_CONFIG_MANAGE
   /platform/config/cost-requests/{id}/approve:
     post:
       tags:
@@ -2088,6 +2356,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultCostKeyChangeRequestVO"
+      x-required-permission:
+        code: 608
+        name: PLATFORM_DYNAMIC_CONFIG_MANAGE
   /platform/config/cache/refresh:
     post:
       tags:
@@ -2099,6 +2370,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 608
+        name: PLATFORM_DYNAMIC_CONFIG_MANAGE
   /permission/addORDeletePermissionsToRole:
     post:
       tags:
@@ -2116,6 +2390,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 606
+        name: SYSTEM_ASSIGN_PERMISSION
   /payment/record/query:
     post:
       tags:
@@ -2146,6 +2423,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPagePaymentRecordVO"
+      x-required-permission:
+        code: 304
+        name: FINANCE_VIEW_PAYMENT
   /order/query:
     post:
       tags:
@@ -2176,6 +2456,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageOrderVO"
+      x-required-permission:
+        code: 211
+        name: SALES_VIEW_ORDER
   /knowledge/strategies/{key}/rollback:
     post:
       tags:
@@ -2205,6 +2488,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 900
+        name: KNOWLEDGE_ADMIN_MANAGE
   /knowledge/retrieval/test:
     post:
       tags:
@@ -2222,6 +2508,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultKnowledgeAdminRetrievalResponse"
+      x-required-permission:
+        code: 900
+        name: KNOWLEDGE_ADMIN_MANAGE
   /knowledge/files:
     get:
       tags:
@@ -2258,6 +2547,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListKnowledgeFileVO"
+      x-required-permission:
+        code: 900
+        name: KNOWLEDGE_ADMIN_MANAGE
     post:
       tags:
       - knowledge-admin-controller
@@ -2281,6 +2573,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultDocumentIngestionResult"
+      x-required-permission:
+        code: 900
+        name: KNOWLEDGE_ADMIN_MANAGE
   /knowledge/files/{id}/reingest:
     post:
       tags:
@@ -2298,6 +2593,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultDocumentIngestionResult"
+      x-required-permission:
+        code: 900
+        name: KNOWLEDGE_ADMIN_MANAGE
   /knowledge/customer/reingest:
     post:
       tags:
@@ -2309,6 +2607,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultReingestResult"
+      x-required-permission:
+        code: 900
+        name: KNOWLEDGE_ADMIN_MANAGE
   /knowledge/admin/sync/{entity}:
     post:
       tags:
@@ -2326,6 +2627,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultSyncResult"
+      x-required-permission:
+        code: 900
+        name: KNOWLEDGE_ADMIN_MANAGE
   /knowledge/admin/sync/all:
     post:
       tags:
@@ -2337,6 +2641,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultMapStringSyncResult"
+      x-required-permission:
+        code: 900
+        name: KNOWLEDGE_ADMIN_MANAGE
   /invoice/info/query:
     post:
       tags:
@@ -2367,6 +2674,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageInvoiceInfoVO"
+      x-required-permission:
+        code: 309
+        name: FINANCE_VIEW_INVOICE
   /dataStatistics/summary:
     post:
       tags:
@@ -2384,6 +2694,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultStatisticsSummaryVO"
+      x-required-permission:
+        code: 501
+        name: REPORT_VIEW_REPORT
   /dataStatistics/chart:
     post:
       tags:
@@ -2403,6 +2716,9 @@ paths:
                 type: string
                 format: byte
       deprecated: true
+      x-required-permission:
+        code: 502
+        name: REPORT_GENERATE_REPORT
   /dataStatistics/chartData:
     post:
       tags:
@@ -2420,6 +2736,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultChartDataVO"
+      x-required-permission:
+        code: 502
+        name: REPORT_GENERATE_REPORT
   /customer/churn/warning/scan:
     post:
       tags:
@@ -2431,6 +2750,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 113
+        name: CUSTOMER_UPDATE_CUSTOMER_COMPANY
   /contract/warning/trigger:
     post:
       tags:
@@ -2442,6 +2764,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 214
+        name: SALES_UPDATE_CONTRACT
   /contract/reingestAll:
     post:
       tags:
@@ -2453,6 +2778,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultReingestResult"
+      x-required-permission:
+        code: 212
+        name: SALES_CREATE_CONTRACT
   /contract/query:
     post:
       tags:
@@ -2483,6 +2811,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageContractVO"
+      x-required-permission:
+        code: 215
+        name: SALES_VIEW_CONTRACT
   /contactTask/{id}/attachments:
     get:
       tags:
@@ -2501,6 +2832,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListApprovalAttachmentVO"
+      x-required-permission:
+        code: 404
+        name: TASK_VIEW_TASK
     post:
       tags:
       - contact-task-controller
@@ -2543,6 +2877,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 402
+        name: TASK_UPDATE_TASK
     delete:
       tags:
       - contact-task-controller
@@ -2568,6 +2905,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultAttachmentDeleteResultVO"
+      x-required-permission:
+        code: 403
+        name: TASK_DELETE_TASK
   /contactTask/reingestAll:
     post:
       tags:
@@ -2579,6 +2919,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultReingestResult"
+      x-required-permission:
+        code: 401
+        name: TASK_CREATE_TASK
   /contactTask/query:
     post:
       tags:
@@ -2611,6 +2954,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageContactTaskVO"
+      x-required-permission:
+        code: 404
+        name: TASK_VIEW_TASK
   /contactTask/create:
     post:
       tags:
@@ -2628,6 +2974,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 401
+        name: TASK_CREATE_TASK
   /contact/list:
     post:
       tags:
@@ -2649,6 +2998,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 101
+        name: CUSTOMER_EXCEL_ADD
   /company/pool/release/{id}:
     post:
       tags:
@@ -2672,6 +3024,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 113
+        name: CUSTOMER_UPDATE_CUSTOMER_COMPANY
   /company/pool/recycle/trigger:
     post:
       tags:
@@ -2683,6 +3038,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 113
+        name: CUSTOMER_UPDATE_CUSTOMER_COMPANY
   /company/pool/claim/{id}:
     post:
       tags:
@@ -2701,6 +3059,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 113
+        name: CUSTOMER_UPDATE_CUSTOMER_COMPANY
   /company/pool/assign:
     post:
       tags:
@@ -2718,6 +3079,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 113
+        name: CUSTOMER_UPDATE_CUSTOMER_COMPANY
   /company/list:
     post:
       tags:
@@ -2739,6 +3103,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 111
+        name: CUSTOMER_ADD_COMPANY
   /business/activity/{id}/attachments:
     get:
       tags:
@@ -2757,6 +3124,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListApprovalAttachmentVO"
+      x-required-permission:
+        code: 225
+        name: SALES_VIEW_BUSINESS_ACTIVITY
     post:
       tags:
       - business-activity-controller
@@ -2799,6 +3169,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 223
+        name: SALES_UPDATE_BUSINESS_ACTIVITY
   /business/activity/{activityId}/users:
     post:
       tags:
@@ -2825,6 +3198,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 223
+        name: SALES_UPDATE_BUSINESS_ACTIVITY
   /business/activity/{activityId}/contacts:
     post:
       tags:
@@ -2851,6 +3227,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 223
+        name: SALES_UPDATE_BUSINESS_ACTIVITY
   /business/activity/reingestAll:
     post:
       tags:
@@ -2862,6 +3241,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultReingestResult"
+      x-required-permission:
+        code: 222
+        name: SALES_CREATE_BUSINESS_ACTIVITY
   /business/activity/query:
     post:
       tags:
@@ -2892,6 +3274,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageBusinessActivityVO"
+      x-required-permission:
+        code: 225
+        name: SALES_VIEW_BUSINESS_ACTIVITY
   /assist/{id}/source-attachments:
     post:
       tags:
@@ -2935,6 +3320,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 801
+        name: AI_ASSIST_APPLY
     delete:
       tags:
       - assist-controller
@@ -2960,6 +3348,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultAttachmentDeleteResultVO"
+      x-required-permission:
+        code: 802
+        name: AI_ASSIST_HANDLE
   /assist/{id}/messages:
     get:
       tags:
@@ -2978,6 +3369,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListAssistMessageVO"
+      x-required-permission:
+        code: 800
+        name: AI_ASSIST_VIEW
     post:
       tags:
       - assist-controller
@@ -3001,6 +3395,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 801
+        name: AI_ASSIST_APPLY
   /assist/{id}/attachments:
     get:
       tags:
@@ -3019,6 +3416,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListApprovalAttachmentVO"
+      x-required-permission:
+        code: 800
+        name: AI_ASSIST_VIEW
     post:
       tags:
       - assist-controller
@@ -3061,6 +3461,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 801
+        name: AI_ASSIST_APPLY
     delete:
       tags:
       - assist-controller
@@ -3086,6 +3489,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultAttachmentDeleteResultVO"
+      x-required-permission:
+        code: 802
+        name: AI_ASSIST_HANDLE
   /assist/reapply:
     post:
       tags:
@@ -3103,6 +3509,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultLong"
+      x-required-permission:
+        code: 801
+        name: AI_ASSIST_APPLY
   /assist/apply:
     post:
       tags:
@@ -3134,6 +3543,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 801
+        name: AI_ASSIST_APPLY
   /assist/append:
     post:
       tags:
@@ -3151,6 +3563,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 801
+        name: AI_ASSIST_APPLY
   /ai/sessions:
     get:
       tags:
@@ -3184,6 +3599,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListAiSessionVO"
+      x-required-permission:
+        code: 803
+        name: AI_CHAT_SESSION
     post:
       tags:
       - ai-chat-controller
@@ -3200,6 +3618,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultAiSessionVO"
+      x-required-permission:
+        code: 803
+        name: AI_CHAT_SESSION
   /ai/sessions/{sessionId}/images:
     post:
       tags:
@@ -3228,6 +3649,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultAiChatImageUploadVO"
+      x-required-permission:
+        code: 803
+        name: AI_CHAT_SESSION
   /ai/insight/customer/{companyId}/to-action:
     post:
       tags:
@@ -3252,6 +3676,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInsightToActionResult"
+      x-required-permission:
+        code: 117
+        name: CUSTOMER_VIEW_COMPANY
   /ai/chat/stream:
     post:
       tags:
@@ -3275,6 +3702,9 @@ paths:
             text/event-stream:
               schema:
                 $ref: "#/components/schemas/SseEmitter"
+      x-required-permission:
+        code: 804
+        name: AI_CHAT_STREAM
   /ai/chat/cancel:
     post:
       tags:
@@ -3293,6 +3723,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 805
+        name: AI_CHAT_CANCEL
   /ai/actions/{pendingId}/confirm:
     post:
       tags:
@@ -3310,6 +3743,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultAiConfirmResultVO"
+      x-required-permission:
+        code: 807
+        name: AI_ACTION_CONFIRM
   /ai/actions/{pendingId}/cancel:
     post:
       tags:
@@ -3327,6 +3763,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 807
+        name: AI_ACTION_CONFIRM
   /user:
     get:
       tags:
@@ -3351,6 +3790,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageUserVO"
+      x-required-permission:
+        code: 602
+        name: SYSTEM_VIEW_USER
     delete:
       tags:
       - user-controller
@@ -3370,6 +3812,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 603
+        name: SYSTEM_UPDATE_USER
   /user/options:
     get:
       tags:
@@ -3381,6 +3826,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListUserOptionVO"
+      x-permission-status: OPEN
   /user/my:
     get:
       tags:
@@ -3392,6 +3838,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultUserVO"
+      x-permission-status: OPEN
   /user/handover/statistics/{userId}:
     get:
       tags:
@@ -3410,6 +3857,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListHandoverStatisticsVO"
+      x-required-permission:
+        code: 602
+        name: SYSTEM_VIEW_USER
   /taskComment/{id}:
     get:
       tags:
@@ -3428,6 +3878,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultTaskCommentVO"
+      x-required-permission:
+        code: 404
+        name: TASK_VIEW_TASK
     delete:
       tags:
       - task-comment-controller
@@ -3445,6 +3898,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 403
+        name: TASK_DELETE_TASK
   /taskComment/task/{taskId}:
     get:
       tags:
@@ -3463,6 +3919,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListTaskCommentVO"
+      x-required-permission:
+        code: 404
+        name: TASK_VIEW_TASK
   /taskComment/task/{taskId}/page:
     get:
       tags:
@@ -3495,6 +3954,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageTaskCommentVO"
+      x-required-permission:
+        code: 404
+        name: TASK_VIEW_TASK
   /taskComment/all:
     get:
       tags:
@@ -3521,6 +3983,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageTaskCommentVO"
+      x-required-permission:
+        code: 404
+        name: TASK_VIEW_TASK
   /sales/stage/attachment:
     get:
       tags:
@@ -3541,6 +4006,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListApprovalAttachmentVO"
+      x-required-permission:
+        code: 220
+        name: SALES_VIEW_SALE_OPPORTUNITY_STAGE
   /sales/query:
     get:
       tags:
@@ -3656,6 +4124,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageSalesOpportunityVO"
+      x-required-permission:
+        code: 204
+        name: SALES_VIEW_SALE_OPPORTUNITY
   /sales/lead/{id}:
     get:
       tags:
@@ -3674,6 +4145,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultSalesLeadVO"
+      x-required-permission:
+        code: 117
+        name: CUSTOMER_VIEW_COMPANY
     delete:
       tags:
       - sales-lead-controller
@@ -3691,6 +4165,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 114
+        name: CUSTOMER_DELETE_CUSTOMER_COMPANY
   /sales/detail/{opportunityId}:
     get:
       tags:
@@ -3709,6 +4186,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultOpportunityDetailVO"
+      x-required-permission:
+        code: 204
+        name: SALES_VIEW_SALE_OPPORTUNITY
   /sales/detail/by-contract/{contractId}:
     get:
       tags:
@@ -3727,6 +4207,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultOpportunityDetailVO"
+      x-required-permission:
+        code: 204
+        name: SALES_VIEW_SALE_OPPORTUNITY
   /role:
     get:
       tags:
@@ -3738,6 +4221,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultRoleVO"
+      x-permission-status: OPEN
     delete:
       tags:
       - role-controller
@@ -3755,6 +4239,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 605
+        name: SYSTEM_MANAGE_ROLE
   /role/list:
     get:
       tags:
@@ -3781,6 +4268,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageRoleANDPermissionVO"
+      x-required-permission:
+        code: 604
+        name: SYSTEM_VIEW_ROLE
   /report/contract:
     get:
       tags:
@@ -3805,6 +4295,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultContractNumVO"
+      x-required-permission:
+        code: 501
+        name: REPORT_VIEW_REPORT
   /report/business:
     get:
       tags:
@@ -3829,6 +4322,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultSalesNumVO"
+      x-required-permission:
+        code: 501
+        name: REPORT_VIEW_REPORT
   /public/attachment/download:
     get:
       tags:
@@ -3842,6 +4338,7 @@ paths:
       responses:
         "200":
           description: OK
+      x-permission-status: OPEN
   /promptTemplate/{id}:
     get:
       tags:
@@ -3860,6 +4357,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPromptTemplateVO"
+      x-required-permission:
+        code: 808
+        name: PROMPT_TEMPLATE_VIEW
     delete:
       tags:
       - prompt-template-controller
@@ -3877,6 +4377,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 809
+        name: PROMPT_TEMPLATE_MANAGE
   /promptTemplate/{id}/history:
     get:
       tags:
@@ -3895,6 +4398,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListPromptTemplateHistoryVO"
+      x-required-permission:
+        code: 808
+        name: PROMPT_TEMPLATE_VIEW
   /promptTemplate/{id}/feedback/list:
     get:
       tags:
@@ -3927,6 +4433,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPagePromptTemplateFeedbackVO"
+      x-required-permission:
+        code: 808
+        name: PROMPT_TEMPLATE_VIEW
   /promptTemplate/page:
     get:
       tags:
@@ -3974,6 +4483,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPagePromptTemplateVO"
+      x-required-permission:
+        code: 808
+        name: PROMPT_TEMPLATE_VIEW
   /project/file/list/order/{orderId}:
     get:
       tags:
@@ -3992,6 +4504,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListProjectFileVO"
+      x-required-permission:
+        code: 229
+        name: SALES_VIEW_PROJECT_FILE
   /project/file/list/opportunity/{opportunityId}:
     get:
       tags:
@@ -4010,6 +4525,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListProjectFileVO"
+      x-required-permission:
+        code: 229
+        name: SALES_VIEW_PROJECT_FILE
   /project/file/list/contract/{contractId}:
     get:
       tags:
@@ -4028,6 +4546,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListProjectFileVO"
+      x-required-permission:
+        code: 229
+        name: SALES_VIEW_PROJECT_FILE
   /project/file/list/activity/{activityId}:
     get:
       tags:
@@ -4046,6 +4567,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListProjectFileVO"
+      x-required-permission:
+        code: 229
+        name: SALES_VIEW_PROJECT_FILE
   /platform/config/items/{key}:
     get:
       tags:
@@ -4063,6 +4587,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultConfigItemView"
+      x-required-permission:
+        code: 608
+        name: PLATFORM_DYNAMIC_CONFIG_MANAGE
     delete:
       tags:
       - dynamic-config-admin-controller
@@ -4084,6 +4611,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultConfigItemView"
+      x-required-permission:
+        code: 608
+        name: PLATFORM_DYNAMIC_CONFIG_MANAGE
   /platform/config/items/{key}/history:
     get:
       tags:
@@ -4101,6 +4631,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListConfigHistoryView"
+      x-required-permission:
+        code: 608
+        name: PLATFORM_DYNAMIC_CONFIG_MANAGE
   /permission/getByRole:
     get:
       tags:
@@ -4119,6 +4652,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPermissionGroupedVO"
+      x-required-permission:
+        code: 606
+        name: SYSTEM_ASSIGN_PERMISSION
   /permission/auditor:
     get:
       tags:
@@ -4130,6 +4666,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListAuditorVO"
+      x-permission-status: OPEN
   /payment/record/{id}:
     get:
       tags:
@@ -4148,6 +4685,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPaymentRecordVO"
+      x-required-permission:
+        code: 304
+        name: FINANCE_VIEW_PAYMENT
   /payment/record/order-item/{orderItemId}:
     get:
       tags:
@@ -4166,6 +4706,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListPaymentRecordVO"
+      x-required-permission:
+        code: 304
+        name: FINANCE_VIEW_PAYMENT
   /payment/record/contract/{contractId}:
     get:
       tags:
@@ -4184,6 +4727,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListPaymentRecordVO"
+      x-required-permission:
+        code: 304
+        name: FINANCE_VIEW_PAYMENT
   /order/{id}:
     get:
       tags:
@@ -4202,6 +4748,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultOrderVO"
+      x-required-permission:
+        code: 211
+        name: SALES_VIEW_ORDER
   /knowledge/strategies:
     get:
       tags:
@@ -4220,6 +4769,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListKbRetrievalStrategyItem"
+      x-required-permission:
+        code: 900
+        name: KNOWLEDGE_ADMIN_MANAGE
   /knowledge/images/{assetId}:
     get:
       tags:
@@ -4238,6 +4790,9 @@ paths:
               schema:
                 type: string
                 format: byte
+      x-required-permission:
+        code: 803
+        name: AI_CHAT_SESSION
   /knowledge/files/{id}:
     get:
       tags:
@@ -4255,6 +4810,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultKnowledgeFileVO"
+      x-required-permission:
+        code: 900
+        name: KNOWLEDGE_ADMIN_MANAGE
     delete:
       tags:
       - knowledge-admin-controller
@@ -4271,6 +4829,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 900
+        name: KNOWLEDGE_ADMIN_MANAGE
   /knowledge/documents/{documentId}/chunks:
     get:
       tags:
@@ -4300,6 +4861,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageKnowledgeChunkVO"
+      x-required-permission:
+        code: 803
+        name: AI_CHAT_SESSION
   /knowledge/bases:
     get:
       tags:
@@ -4311,6 +4875,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListKnowledgeBaseVO"
+      x-required-permission:
+        code: 900
+        name: KNOWLEDGE_ADMIN_MANAGE
   /invoice/info/{id}:
     get:
       tags:
@@ -4329,6 +4896,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInvoiceInfoVO"
+      x-required-permission:
+        code: 309
+        name: FINANCE_VIEW_INVOICE
   /invoice/info/payment/{paymentId}:
     get:
       tags:
@@ -4347,6 +4917,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListInvoiceInfoVO"
+      x-required-permission:
+        code: 309
+        name: FINANCE_VIEW_INVOICE
   /invoice/info/contract/{contractId}:
     get:
       tags:
@@ -4365,6 +4938,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListInvoiceInfoVO"
+      x-required-permission:
+        code: 309
+        name: FINANCE_VIEW_INVOICE
   /health:
     get:
       tags:
@@ -4376,6 +4952,7 @@ paths:
             '*/*':
               schema:
                 type: string
+      x-permission-status: OPEN
   /dept/list:
     get:
       tags:
@@ -4387,6 +4964,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListSysDeptEntity"
+      x-required-permission:
+        code: 602
+        name: SYSTEM_VIEW_USER
   /dept/all:
     get:
       tags:
@@ -4398,6 +4978,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListSysDeptEntity"
+      x-required-permission:
+        code: 602
+        name: SYSTEM_VIEW_USER
   /dataStatistics/opportunityStageDistribution:
     get:
       tags:
@@ -4409,6 +4992,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultOpportunityStageDistributionVO"
+      x-required-permission:
+        code: 501
+        name: REPORT_VIEW_REPORT
   /customer/churn/warning/list:
     get:
       tags:
@@ -4427,6 +5013,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListCustomerChurnWarningVO"
+      x-required-permission:
+        code: 117
+        name: CUSTOMER_VIEW_COMPANY
   /contract/{id}:
     get:
       tags:
@@ -4445,6 +5034,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultContractANDOrderVO"
+      x-required-permission:
+        code: 215
+        name: SALES_VIEW_CONTRACT
   /contract/warning/overdue-payment:
     get:
       tags:
@@ -4471,6 +5063,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageContractOverduePaymentVO"
+      x-required-permission:
+        code: 215
+        name: SALES_VIEW_CONTRACT
   /contract/warning/expiring:
     get:
       tags:
@@ -4503,6 +5098,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageContractExpiringVO"
+      x-required-permission:
+        code: 215
+        name: SALES_VIEW_CONTRACT
   /contactTask/{id}:
     get:
       tags:
@@ -4521,6 +5119,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultContactTaskVO"
+      x-required-permission:
+        code: 404
+        name: TASK_VIEW_TASK
     delete:
       tags:
       - contact-task-controller
@@ -4538,6 +5139,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 403
+        name: TASK_DELETE_TASK
   /contactTask/opportunity/{opportunityId}:
     get:
       tags:
@@ -4556,6 +5160,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListContactTaskVO"
+      x-required-permission:
+        code: 404
+        name: TASK_VIEW_TASK
   /contactTask/contact/{contactId}:
     get:
       tags:
@@ -4574,6 +5181,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListContactTaskVO"
+      x-required-permission:
+        code: 404
+        name: TASK_VIEW_TASK
   /contactTask/company/{companyId}:
     get:
       tags:
@@ -4592,6 +5202,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListContactTaskVO"
+      x-required-permission:
+        code: 404
+        name: TASK_VIEW_TASK
   /contactTask/assignee/{assigneeId}:
     get:
       tags:
@@ -4610,6 +5223,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListContactTaskVO"
+      x-required-permission:
+        code: 404
+        name: TASK_VIEW_TASK
   /contactTask/all:
     get:
       tags:
@@ -4636,6 +5252,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageContactTaskVO"
+      x-required-permission:
+        code: 404
+        name: TASK_VIEW_TASK
   /contact/template:
     get:
       tags:
@@ -4647,6 +5266,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultByte[]"
+      x-permission-status: OPEN
   /contact/search:
     get:
       tags:
@@ -4742,6 +5362,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageCustomerContactVO"
+      x-required-permission:
+        code: 106
+        name: CUSTOMER_QUERY_CONTACT
   /contact/group:
     get:
       tags:
@@ -4759,6 +5382,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultGroupResultVO"
+      x-required-permission:
+        code: 106
+        name: CUSTOMER_QUERY_CONTACT
   /contact/getContactByCompanyId:
     get:
       tags:
@@ -4839,6 +5465,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListCustomerContactVO"
+      x-required-permission:
+        code: 106
+        name: CUSTOMER_QUERY_CONTACT
   /contact/excel:
     get:
       tags:
@@ -4850,6 +5479,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultByte[]"
+      x-required-permission:
+        code: 107
+        name: CUSTOMER_EXPORT_CONTACT
   /contact/birthdays:
     get:
       tags:
@@ -4861,6 +5493,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListContactBirthdayVO"
+      x-required-permission:
+        code: 106
+        name: CUSTOMER_QUERY_CONTACT
   /contact/birthday-message/{id}:
     get:
       tags:
@@ -4879,6 +5514,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListString"
+      x-required-permission:
+        code: 106
+        name: CUSTOMER_QUERY_CONTACT
   /contact/auditor:
     get:
       tags:
@@ -4890,6 +5528,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListUserVO"
+      x-permission-status: OPEN
   /company/{id}:
     get:
       tags:
@@ -4920,6 +5559,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultMapStringObject"
+      x-required-permission:
+        code: 117
+        name: CUSTOMER_VIEW_COMPANY
     delete:
       tags:
       - customer-company-controller
@@ -4937,6 +5579,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 114
+        name: CUSTOMER_DELETE_CUSTOMER_COMPANY
   /company/template:
     get:
       tags:
@@ -4948,6 +5593,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultByte[]"
+      x-permission-status: OPEN
   /company/pool:
     get:
       tags:
@@ -4990,6 +5636,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageCustomerCompanyVO"
+      x-required-permission:
+        code: 116
+        name: CUSTOMER_QUERY_COMPANY
   /company/pool/logs/{companyId}:
     get:
       tags:
@@ -5008,6 +5657,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListCustomerPoolLogVO"
+      x-required-permission:
+        code: 117
+        name: CUSTOMER_VIEW_COMPANY
   /company/group:
     get:
       tags:
@@ -5025,6 +5677,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultGroupResultVO"
+      x-required-permission:
+        code: 116
+        name: CUSTOMER_QUERY_COMPANY
   /company/group/find:
     get:
       tags:
@@ -5056,6 +5711,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageCustomerCompanyVO"
+      x-required-permission:
+        code: 116
+        name: CUSTOMER_QUERY_COMPANY
   /company/getCompanyByCondition/{id}:
     get:
       tags:
@@ -5074,6 +5732,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultCustomerCompanyVO"
+      x-required-permission:
+        code: 117
+        name: CUSTOMER_VIEW_COMPANY
   /company/find:
     get:
       tags:
@@ -5103,6 +5764,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageCustomerCompanyVO"
+      x-required-permission:
+        code: 116
+        name: CUSTOMER_QUERY_COMPANY
   /company/excel:
     get:
       tags:
@@ -5114,6 +5778,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultByte[]"
+      x-required-permission:
+        code: 118
+        name: CUSTOMER_EXPORT_CUSTOMER_COMPANY
   /company/custom:
     get:
       tags:
@@ -5206,6 +5873,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageCustomerCompanyVO"
+      x-required-permission:
+        code: 116
+        name: CUSTOMER_QUERY_COMPANY
   /company-group/list:
     get:
       tags:
@@ -5229,6 +5899,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListCompanyGroupEntity"
+      x-required-permission:
+        code: 116
+        name: CUSTOMER_QUERY_COMPANY
   /company-dept/list:
     get:
       tags:
@@ -5258,6 +5931,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListCompanyDeptEntity"
+      x-required-permission:
+        code: 116
+        name: CUSTOMER_QUERY_COMPANY
   /business/activity/{id}:
     get:
       tags:
@@ -5276,6 +5952,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBusinessActivityVO"
+      x-required-permission:
+        code: 225
+        name: SALES_VIEW_BUSINESS_ACTIVITY
   /assist/{id}/task:
     get:
       tags:
@@ -5294,6 +5973,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultContactTaskVO"
+      x-required-permission:
+        code: 800
+        name: AI_ASSIST_VIEW
   /assist/{id}/task/attachments:
     get:
       tags:
@@ -5312,6 +5994,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListApprovalAttachmentVO"
+      x-required-permission:
+        code: 800
+        name: AI_ASSIST_VIEW
   /assist/{id}/related:
     get:
       tags:
@@ -5330,6 +6015,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultAssistRelatedRecordVO"
+      x-required-permission:
+        code: 800
+        name: AI_ASSIST_VIEW
   /assist/{id}/opportunity:
     get:
       tags:
@@ -5348,6 +6036,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultOpportunityDetailVO"
+      x-required-permission:
+        code: 800
+        name: AI_ASSIST_VIEW
   /assist/{id}/detail:
     get:
       tags:
@@ -5366,6 +6057,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultAssistVO"
+      x-required-permission:
+        code: 800
+        name: AI_ASSIST_VIEW
   /assist/{id}/contact:
     get:
       tags:
@@ -5384,6 +6078,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultCustomerContactVO"
+      x-required-permission:
+        code: 800
+        name: AI_ASSIST_VIEW
   /assist/{id}/company:
     get:
       tags:
@@ -5402,6 +6099,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultCustomerCompanyVO"
+      x-required-permission:
+        code: 800
+        name: AI_ASSIST_VIEW
   /assist/{id}/approval:
     get:
       tags:
@@ -5420,6 +6120,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultSalesStageApprovalVO"
+      x-required-permission:
+        code: 800
+        name: AI_ASSIST_VIEW
   /assist/{id}/activity:
     get:
       tags:
@@ -5438,6 +6141,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBusinessActivityVO"
+      x-required-permission:
+        code: 800
+        name: AI_ASSIST_VIEW
   /assist/{id}/activity/attachments:
     get:
       tags:
@@ -5456,6 +6162,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListApprovalAttachmentVO"
+      x-required-permission:
+        code: 800
+        name: AI_ASSIST_VIEW
   /assist/my:
     get:
       tags:
@@ -5486,6 +6195,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageAssistVO"
+      x-required-permission:
+        code: 800
+        name: AI_ASSIST_VIEW
   /assist/applications:
     get:
       tags:
@@ -5516,6 +6228,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPageAssistVO"
+      x-required-permission:
+        code: 800
+        name: AI_ASSIST_VIEW
   /ai/token-usage/summary:
     get:
       tags:
@@ -5543,6 +6258,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultTokenUsageSummaryVO"
+      x-required-permission:
+        code: 810
+        name: AI_TOKEN_USAGE_VIEW
   /ai/token-usage/by-user:
     get:
       tags:
@@ -5584,6 +6302,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultTokenUsageByUserPageVO"
+      x-required-permission:
+        code: 810
+        name: AI_TOKEN_USAGE_VIEW
   /ai/sessions/{id}/messages:
     get:
       tags:
@@ -5617,6 +6338,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultListAiMessageVO"
+      x-required-permission:
+        code: 803
+        name: AI_CHAT_SESSION
   /ai/insight/customer/{companyId}:
     get:
       tags:
@@ -5635,6 +6359,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultCustomerInsightResult"
+      x-required-permission:
+        code: 117
+        name: CUSTOMER_VIEW_COMPANY
   /ai/actions/{pendingId}:
     get:
       tags:
@@ -5652,6 +6379,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultAiPendingActionVO"
+      x-required-permission:
+        code: 806
+        name: AI_ACTION_VIEW
   /taskComment/batch:
     delete:
       tags:
@@ -5672,6 +6402,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 403
+        name: TASK_DELETE_TASK
   /sales/{id}:
     delete:
       tags:
@@ -5690,6 +6423,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 203
+        name: SALES_DELETE_SALE_OPPORTUNITY
   /project/file:
     delete:
       tags:
@@ -5710,6 +6446,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 228
+        name: SALES_DELETE_PROJECT_FILE
   /dept/{id}:
     delete:
       tags:
@@ -5728,6 +6467,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 603
+        name: SYSTEM_UPDATE_USER
   /contact/logical/{id}:
     delete:
       tags:
@@ -5746,6 +6488,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 104
+        name: CUSTOMER_DELETE_CONTACT
   /contact/logical/batch:
     delete:
       tags:
@@ -5766,6 +6511,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 104
+        name: CUSTOMER_DELETE_CONTACT
   /company/logical/{id}:
     delete:
       tags:
@@ -5784,6 +6532,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 114
+        name: CUSTOMER_DELETE_CUSTOMER_COMPANY
   /company/logical/batch:
     delete:
       tags:
@@ -5804,6 +6555,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultInteger"
+      x-required-permission:
+        code: 114
+        name: CUSTOMER_DELETE_CUSTOMER_COMPANY
   /company-group/{id}:
     delete:
       tags:
@@ -5822,6 +6576,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 607
+        name: SYSTEM_MANAGE_ORG
   /company-dept/{id}:
     delete:
       tags:
@@ -5840,6 +6597,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 607
+        name: SYSTEM_MANAGE_ORG
   /business/activity/{activityId}/associations:
     delete:
       tags:
@@ -5864,6 +6624,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 224
+        name: SALES_DELETE_BUSINESS_ACTIVITY
   /business/activity/attachments:
     delete:
       tags:
@@ -5884,6 +6647,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultAttachmentDeleteResultVO"
+      x-required-permission:
+        code: 224
+        name: SALES_DELETE_BUSINESS_ACTIVITY
   /ai/sessions/{id}:
     delete:
       tags:
@@ -5902,6 +6668,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultBoolean"
+      x-required-permission:
+        code: 803
+        name: AI_CHAT_SESSION
   /permission/list:
     get:
       tags:
@@ -5913,6 +6682,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultMapStringPermissionGroupedVO"
+      x-required-permission:
+        code: 606
+        name: SYSTEM_ASSIGN_PERMISSION
     put:
       tags:
       - permission-controller
@@ -5923,6 +6695,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultMapStringPermissionGroupedVO"
+      x-required-permission:
+        code: 606
+        name: SYSTEM_ASSIGN_PERMISSION
     post:
       tags:
       - permission-controller
@@ -5933,6 +6708,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultMapStringPermissionGroupedVO"
+      x-required-permission:
+        code: 606
+        name: SYSTEM_ASSIGN_PERMISSION
     delete:
       tags:
       - permission-controller
@@ -5943,6 +6721,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultMapStringPermissionGroupedVO"
+      x-required-permission:
+        code: 606
+        name: SYSTEM_ASSIGN_PERMISSION
     options:
       tags:
       - permission-controller
@@ -5953,6 +6734,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultMapStringPermissionGroupedVO"
+      x-required-permission:
+        code: 606
+        name: SYSTEM_ASSIGN_PERMISSION
     head:
       tags:
       - permission-controller
@@ -5963,6 +6747,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultMapStringPermissionGroupedVO"
+      x-required-permission:
+        code: 606
+        name: SYSTEM_ASSIGN_PERMISSION
     patch:
       tags:
       - permission-controller
@@ -5973,6 +6760,9 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultMapStringPermissionGroupedVO"
+      x-required-permission:
+        code: 606
+        name: SYSTEM_ASSIGN_PERMISSION
   /permission/getMyPermission:
     get:
       tags:
@@ -5984,6 +6774,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPermissionGroupedVO"
+      x-permission-status: OPEN
     put:
       tags:
       - permission-controller
@@ -5994,6 +6785,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPermissionGroupedVO"
+      x-permission-status: OPEN
     post:
       tags:
       - permission-controller
@@ -6004,6 +6796,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPermissionGroupedVO"
+      x-permission-status: OPEN
     delete:
       tags:
       - permission-controller
@@ -6014,6 +6807,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPermissionGroupedVO"
+      x-permission-status: OPEN
     options:
       tags:
       - permission-controller
@@ -6024,6 +6818,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPermissionGroupedVO"
+      x-permission-status: OPEN
     head:
       tags:
       - permission-controller
@@ -6034,6 +6829,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPermissionGroupedVO"
+      x-permission-status: OPEN
     patch:
       tags:
       - permission-controller
@@ -6044,6 +6840,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ResultPermissionGroupedVO"
+      x-permission-status: OPEN
 components:
   schemas:
     TaskCommentDTO:
