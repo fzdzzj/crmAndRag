@@ -209,13 +209,15 @@ final class NearDuplicateBandAnalyzer {
   /**
    * 锚的语料元信息（IT 从 {@link NearDuplicateCorpus.Corpus} 投影）。
    *
-   * @param bases base 数
+   * @param bases base 数（去重且剔除退化后）
    * @param variants 变体数
    * @param images 图总数
    * @param imageEmbeddingCalls 实际视觉 embedding 调用次数
    * @param skips 跳过的变体数
    * @param documents 逐文档取图数
    * @param skipDetail 跳过明细
+   * @param baseDetail 逐 base 像素属性（退化判据与数据质量留痕，见 {@link NearDuplicateCorpus.BasePixel}）
+   * @param excludedBases 退化 base 剔除登记（不静默保留、不静默丢弃）
    */
   record CorpusMeta(
       int bases,
@@ -224,7 +226,9 @@ final class NearDuplicateBandAnalyzer {
       int imageEmbeddingCalls,
       int skips,
       List<NearDuplicateCorpus.DocumentCount> documents,
-      List<NearDuplicateCorpus.Skip> skipDetail) {}
+      List<NearDuplicateCorpus.Skip> skipDetail,
+      List<NearDuplicateCorpus.BasePixel> baseDetail,
+      List<NearDuplicateCorpus.ExcludedBase> excludedBases) {}
 
   /**
    * 一次完整分析（双视图 + 分位 + 单调性 + 候选下限 + 判定树）。
@@ -235,7 +239,8 @@ final class NearDuplicateBandAnalyzer {
    * @param anchorView 锚视图
    * @param byKind 按变体类型的统计
    * @param monotonicity 强度单调性
-   * @param candidateFloor 候选下限 = near-duplicate 档 p05
+   * @param candidateFloor 候选下限：<b>仅当 F1 命中</b>时取 near-duplicate 档 p05，否则 {@code null}（proposal
+   *     §9.5： 不得保留一个由退化/不可达样本算出的数当建议）
    * @param judgements 判定树逐支结论
    */
   record Analysis(
@@ -265,8 +270,12 @@ final class NearDuplicateBandAnalyzer {
     View anchor = anchorView(pairs, sameImageFloor, crossImageCeiling);
     List<KindStat> byKind = byKind(pairs);
     Monotonicity monotonicity = monotonicity(byKind);
-    Double candidateFloor = strata.get(STRATUM_NEAR_DUPLICATE).p05();
     List<Judgement> judgements = judge(production, anchor, sameImageFloor, crossImageCeiling);
+    // candidateFloor 的处置写在 proposal §9.5：只有 F1 命中（近重复对确实基本落在 floor 以下）才给候选下限；
+    // 否则一律 null——不允许把「F1 未命中时算出的 p05」当成下调 floor 的建议（首轮 0.4199 就是这样被误读的）。
+    boolean unreachable =
+        judgements.stream().anyMatch(item -> "F1".equals(item.code()) && item.hit());
+    Double candidateFloor = unreachable ? strata.get(STRATUM_NEAR_DUPLICATE).p05() : null;
     return new Analysis(
         List.copyOf(pairs),
         strata,
@@ -640,6 +649,24 @@ final class NearDuplicateBandAnalyzer {
       node.put("height", skip.height());
       node.put("reason", skip.reason());
     }
+    ArrayNode baseDetail = corpus.putArray("baseDetail");
+    for (NearDuplicateCorpus.BasePixel pixel : meta.baseDetail()) {
+      ObjectNode node = baseDetail.addObject();
+      node.put("baseKey", pixel.baseKey());
+      node.put("colorModel", pixel.colorModel());
+      node.put("hasAlpha", pixel.hasAlpha());
+      node.put("uniqueColors", pixel.uniqueColors());
+      node.put("mean", pixel.mean());
+      node.put("stdDev", pixel.stdDev());
+    }
+    corpus.put("excludedBaseCount", meta.excludedBases().size());
+    ArrayNode excludedBases = corpus.putArray("excludedBases");
+    for (NearDuplicateCorpus.ExcludedBase excluded : meta.excludedBases()) {
+      ObjectNode node = excludedBases.addObject();
+      node.put("baseKey", excluded.baseKey());
+      node.put("uniqueColors", excluded.uniqueColors());
+      node.put("reason", excluded.reason());
+    }
 
     ObjectNode strata = root.putObject("strata");
     analysis.strata().forEach((name, stat) -> strata.set(name, statsNode(stat)));
@@ -700,7 +727,9 @@ final class NearDuplicateBandAnalyzer {
         "note",
         "同图档 = 同字节两次编码的余弦；近重复档 = base 与其同源变体（5 类变换）的余弦；"
             + "cross 只取 base 两两（同出版物 = same-class，跨出版物 = cross-class）；"
-            + "candidateFloor = near-duplicate 档 p05，仅作候选值，本锚不据此改任何常量");
+            + "candidateFloor 仅在 F1 命中时取 near-duplicate 档 p05，否则 null（proposal §9.5），"
+            + "本锚不据此改任何常量；corpus.baseDetail 是逐 base 的白底合成像素属性（唯一色数 / 均值 / 标准差），"
+            + "唯一色数 <= 1 的 base 进 corpus.excludedBases 并从语料剔除");
     return root;
   }
 

@@ -1,6 +1,7 @@
 package com.slz.crm.quality;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -51,7 +52,9 @@ import org.springframework.web.client.HttpClientErrorException;
  *   <li><b>base</b>：三份已登记公有领域 PDF 经生产提取器各取前 8 / 4 / 12 张位图，按 SHA-256 全局去重（见 {@link
  *       NearDuplicateCorpus}）；
  *   <li><b>变体</b>：每个 base 五种确定性变换（{@code jpeg-q80} / {@code scale-085} / {@code scale-070} / {@code
- *       crop-04} / {@code crop-12}），只在内存里生成；
+ *       crop-04} / {@code crop-12}），只在内存里生成；栅格化<b>先铺白底再合成</b>（否则 alpha 源的透明区会合成成黑，五类变体坍缩成同图， 见
+ *       {@code proposal.md} §9 缺陷 D1）；
+ *   <li><b>退化剔除</b>：白底合成后唯一色数 ≤ 1 的 base 不进语料，登记进锚的 {@code corpus.excludedBases}（不静默保留、不静默丢弃）；
  *   <li><b>每图编码两次</b>（同字节再编码）：两次的余弦就是该图的「同图下限」观测，A 向量参与其它比较。因此外呼次数 = 图数 × 2。
  * </ol>
  *
@@ -61,7 +64,7 @@ import org.springframework.web.client.HttpClientErrorException;
  * <p><b>落盘纪律</b>：全部编码成功后<b>一次性</b>写锚；任一调用返回空向量或非限流失败即整体失败，<b>不落半成品锚</b>。判定树（F0–F5）由 {@link
  * NearDuplicateBandAnalyzer#judge} 按 proposal §4 的条件原文照判，<b>任何分支都不改常量</b>。
  *
- * <p><b>调用节奏（2026-10-24 实测补丁）</b>：端点有速率配额，2 QPS 连打会中途 {@code 429 Throttling.RateQuota}，故按 {@link
+ * <p><b>调用节奏（2026-10-23 实测补丁）</b>：端点有速率配额，2 QPS 连打会中途 {@code 429 Throttling.RateQuota}，故按 {@link
  * #PACE_MILLIS} 主动降速到约 0.9 QPS，并对 {@code 429} 做有界退避重试（{@link #THROTTLE_RETRIES} 次）；重试次数落进锚的 {@code
  * throttledRetries}。节奏与重试只影响墙钟时间，<b>不改变样本对、不改任何定标口径</b>。
  */
@@ -96,8 +99,14 @@ class ImageNearDuplicateCalibrationIT {
   private static final int PROGRESS_EVERY = 24;
 
   /**
+   * 保留 base 数的下限（语料规模的兜底，不是目标值）：三份文档计划取 24 张，剔除「白底合成后像素全同」的退化 base 后为实际值 （首轮实测剔除 6 个 ⇒ 18，见 {@code
+   * proposal.md} §9 与 {@code docs/rag-quality/image-near-duplicate-bands-v2.md}）。
+   */
+  static final int MIN_BASES = 18;
+
+  /**
    * 调用间隔（毫秒）：DashScope 视觉 embedding 端点实测有速率配额，2 QPS 连打会在中途收 {@code 429 Throttling.RateQuota}（本卡
-   * 2026-10-24 实测：72 图 / 144 次调用、约 2 QPS 时被限流）。
+   * 2026-10-23 实测：72 图 / 144 次调用、约 2 QPS 时被限流）。
    *
    * <p>本卡选择"主动降速"而不是"加重试"：限流不是样本质量信号，压到 ~0.9 QPS（{@link #PACE_MILLIS}=1100）后仍在 官方 QPS
    * 配额内连续取数；这最多拉长墙钟时间，<b>不改变任何定标口径与样本对</b>。
@@ -121,7 +130,17 @@ class ImageNearDuplicateCalibrationIT {
     NearDuplicateCorpus.Corpus corpus = NearDuplicateCorpus.generate();
     assertEquals(
         NearDuplicateCorpus.plan().size(), corpus.documents().size(), "逐文档取图登记必须覆盖计划的全部文档");
-    assertTrue(corpus.bases().size() >= 20, "base 数少于 20：语料被替换或生产提取器口径变了");
+    assertTrue(corpus.bases().size() >= MIN_BASES, "保留 base 数少于 " + MIN_BASES + "：语料被替换或生产提取器口径变了");
+    assertEquals(corpus.bases().size(), corpus.basePixels().size(), "逐 base 像素属性必须与保留 base 一一对应");
+    int kept = 0;
+    for (NearDuplicateCorpus.DocumentCount document : corpus.documents()) {
+      kept += document.taken();
+    }
+    assertEquals(corpus.bases().size(), kept, "逐文档保留数之和必须等于保留 base 数（退化 base 不算保留）");
+    for (NearDuplicateCorpus.ExcludedBase excluded : corpus.excludedBases()) {
+      assertTrue(excluded.uniqueColors() <= 1, "被剔除的 base 必须确实是「白底合成后像素全同」: " + excluded.baseKey());
+      assertFalse(excluded.reason().isBlank(), "剔除必须写明原因: " + excluded.baseKey());
+    }
     assertTrue(
         corpus.skips().isEmpty(), "有变体被跳过（最短边 < 48px）：near-duplicate 对数将不再等于 base×5，须先扩语料再定标");
 
@@ -199,7 +218,9 @@ class ImageNearDuplicateCalibrationIT {
             calls,
             corpus.skips().size(),
             corpus.documents(),
-            corpus.skips());
+            corpus.skips(),
+            corpus.basePixels(),
+            corpus.excludedBases());
     ObjectNode root =
         NearDuplicateBandAnalyzer.toJson(analysis, meta, Instant.now().toString(), OPT_IN_NOTE);
     root.put("elapsedMillis", elapsedMillis);

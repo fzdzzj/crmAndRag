@@ -240,14 +240,16 @@ class NearDuplicateBandAnalyzerTest {
   }
 
   @Test
-  @DisplayName("候选下限 = near-duplicate 档 p05，档位分位摘要自洽")
-  void candidateFloorIsP05() {
+  @DisplayName("候选下限：F1 未命中时一律 null（不给由不可达/退化样本算出的建议值）")
+  void candidateFloorIsNullWhenF1Misses() {
     Analysis analysis = NearDuplicateBandAnalyzer.analyze(syntheticPairs());
     Stats nearDuplicate = analysis.strata().get(NearDuplicateBandAnalyzer.STRATUM_NEAR_DUPLICATE);
     assertEquals(10, nearDuplicate.count(), "近重复档样本数");
     assertEquals(0.980D, nearDuplicate.min(), 1e-12D, "近重复档最小值 = 低于下限的那批");
-    assertEquals(nearDuplicate.p05(), analysis.candidateFloor(), 0D, "候选下限必须就是 p05");
-    assertEquals(0.980D, analysis.candidateFloor(), 1e-12D, "10 个样本里最小的两个同值，p05 落在它们之间");
+    assertEquals(0.980D, nearDuplicate.p05(), 1e-12D, "10 个样本里最小的两个同值，p05 落在它们之间");
+    assertFalse(judgement("F1", analysis.judgements()).hit(), "合成样本只有 2/10 低于下限，F1 未命中");
+    assertNull(
+        analysis.candidateFloor(), "F1 未命中时不得给候选下限（proposal §9.5：首轮 0.4199 就是这样被当成下调 floor 的建议的）");
     assertEquals(
         0.1D * 0.95D + 0.9D * 0.05D,
         NearDuplicateBandAnalyzer.quantile(List.of(0.1D, 0.9D), 0.05D),
@@ -315,7 +317,13 @@ class NearDuplicateBandAnalyzerTest {
             120,
             0,
             List.of(new NearDuplicateCorpus.DocumentCount("nist-sp800-101r1", 8, 10)),
-            List.of());
+            List.of(),
+            List.of(
+                new NearDuplicateCorpus.BasePixel(
+                    "nist-sp800-101r1-p1-b1", "DirectColorModel#3", false, 4096, 231.5D, 40.25D)),
+            List.of(
+                new NearDuplicateCorpus.ExcludedBase(
+                    "doe-renewable-energy-framework-p4-b5", 1, "白底合成后像素全同（唯一色数 ≤ 1）")));
     JsonNode root =
         NearDuplicateBandAnalyzer.toJson(analysis, meta, "2026-10-24T00:00:00Z", "opt-in 说明");
     assertEquals(
@@ -325,6 +333,16 @@ class NearDuplicateBandAnalyzerTest {
     assertEquals(10, root.path("corpus").path("bases").asInt(), "语料 base 数落盘");
     assertEquals(50, root.path("corpus").path("variants").asInt(), "语料变体数落盘");
     assertEquals(120, root.path("corpus").path("imageEmbeddingCalls").asInt(), "调用次数落盘（成本留痕）");
+    assertEquals(1, root.path("corpus").path("baseDetail").size(), "逐 base 像素属性必须落盘");
+    assertEquals(
+        4096,
+        root.path("corpus").path("baseDetail").get(0).path("uniqueColors").asInt(),
+        "唯一色数必须落盘");
+    assertEquals(1, root.path("corpus").path("excludedBaseCount").asInt(), "退化剔除计数必须落盘");
+    assertEquals(
+        "doe-renewable-energy-framework-p4-b5",
+        root.path("corpus").path("excludedBases").get(0).path("baseKey").asText(),
+        "退化剔除明细必须落盘（不许静默丢弃）");
     assertEquals(syntheticPairs().size(), root.path("pairs").size(), "全量样本对必须可逐对复核");
     assertEquals(6, root.path("judgements").size(), "判定树结论必须落盘");
     for (JsonNode pair : root.path("pairs")) {
@@ -334,7 +352,9 @@ class NearDuplicateBandAnalyzerTest {
     assertTrue(root.path("anchorView").path("separable").asBoolean(), "合成样本可分");
     assertFalse(root.path("anchorView").path("threshold").isNull(), "可分时阈值必须落盘");
     assertFalse(root.path("monotonicity").path("monotonic").isNull(), "单调性结论必须落盘");
-    assertTrue(root.path("candidateFloor").isNumber(), "候选下限必须落盘");
+    assertTrue(
+        root.path("candidateFloor").isNull(),
+        "合成样本 F1 未命中 ⇒ candidateFloor 必须是 JSON null（不是 0、不是 p05）");
     assertEquals(
         NearDuplicateBandAnalyzer.CALIBRATION_VERSION,
         MAPPER.readTree(root.toString()).path("calibrationVersion").asText(),

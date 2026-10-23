@@ -6,6 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
@@ -14,15 +17,21 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import javax.imageio.ImageIO;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link NearDuplicateCorpus} 的零外呼单测（calibrate-near-dup-bands 任务 1.3）。
+ * {@link NearDuplicateCorpus} 的零外呼单测（calibrate-near-dup-bands 任务 1.3 + 9.3）。
  *
- * <p>守四条：<b>计数自洽</b>（base / variant / skip / images 互相闭合）、<b>确定性</b>（同 base 两次生成字节相等，无随机源/时间戳）、
- * <b>可回指</b>（每个变体都能追到 kind 与 baseKey）、<b>变体确有扰动</b>（每变体 SHA-256 与 base 不同——否则「同源近重复」不成立）。
+ * <p>守六条：<b>计数自洽</b>（base / variant / skip / 剔除 / images 互相闭合）、<b>确定性</b>（同 base
+ * 两次生成字节相等，无随机源/时间戳）、 <b>可回指</b>（每个变体都能追到 kind 与 baseKey）、<b>变体确有扰动</b>（每变体 SHA-256 与 base
+ * 不同）、<b>防退化①</b>（每 base 与每变体 白底合成后唯一色数 &gt; 1）、<b>防退化②</b>（同 base 五变体两两 SHA-256 不同）。
+ *
+ * <p><b>为什么要有防退化两条</b>：首轮真跑 24 个 base 里 6 个的五类变体余弦逐位全等——栅格化没铺白底，alpha 源被合成成黑，五类变体坍缩成同一张
+ * 纯色图，近重复对退化成同图对，还差点据此把 {@code NEAR_DUPLICATE_FLOOR} 下调到 0.42（见 {@code proposal.md} §9）。这两条断言让同类退化
+ * 在<b>默认测试</b>里就红，不必花一次外呼才发现。
  */
 @DisplayName("近重复定标语料（零外呼）")
 class NearDuplicateCorpusTest {
@@ -46,13 +55,19 @@ class NearDuplicateCorpusTest {
     int skips = current.skips().size();
 
     assertTrue(bases > 0, "base 数为 0：真实 PDF 资产或生产提取器异常");
-    assertEquals(PLANNED_BASES, bases, "base 数必须等于计划值（去重后不足说明语料被替换或提取器口径变了）");
+    assertEquals(
+        PLANNED_BASES,
+        bases + current.excludedBases().size(),
+        "保留 base + 剔除的退化 base 必须等于计划值（去重后不足说明语料被替换或提取器口径变了）");
     assertEquals(
         bases * NearDuplicateCorpus.KINDS.size(),
         variants + skips,
         "每个 base 必须产出 KINDS.size() 个变体名额（产出 + 跳过）");
     assertEquals(bases + variants, current.imageCount(), "images 必须 = base + 变体");
-    assertEquals(144, current.imageCount(), "图总数必须是 144（24 base + 120 变体）");
+    assertEquals(
+        bases * (NearDuplicateCorpus.KINDS.size() + 1),
+        current.imageCount(),
+        "图总数必须 = base × (1 + 变体类型数)（计数关系式，不写死魔法数）");
 
     int perDocument = 0;
     for (NearDuplicateCorpus.DocumentCount document : current.documents()) {
@@ -62,6 +77,27 @@ class NearDuplicateCorpusTest {
     }
     assertEquals(bases, perDocument, "逐文档取图数之和必须等于 base 数（去重是全局的）");
     assertEquals(NearDuplicateCorpus.plan().size(), current.documents().size(), "文档数与计划文档数不一致");
+    System.out.println(
+        "[near-dup-corpus] bases="
+            + bases
+            + " variants="
+            + variants
+            + " skips="
+            + skips
+            + " excludedBases="
+            + current.excludedBases().size()
+            + " images="
+            + current.imageCount()
+            + "（计划 "
+            + PLANNED_BASES
+            + " 张 base）");
+    for (NearDuplicateCorpus.ExcludedBase excluded : current.excludedBases()) {
+      System.out.println(
+          "[near-dup-corpus] 剔除 "
+              + excluded.baseKey()
+              + " uniqueColors="
+              + excluded.uniqueColors());
+    }
   }
 
   @Test
@@ -147,6 +183,91 @@ class NearDuplicateCorpusTest {
           Math.min(skip.width(), skip.height()) < NearDuplicateCorpus.MIN_EDGE_PX,
           "跳过原因必须是「最短边不足」，否则属于静默丢弃: " + skip.baseKey() + "@" + skip.kind());
       assertTrue(seen.add(skip.baseKey() + "@" + skip.kind()), "跳过记录不得重复");
+    }
+  }
+
+  @Test
+  @DisplayName("防退化①：每 base 与每变体白底合成后唯一色数 > 1，退化 base 必须登记剔除")
+  void pixelContentIsNotDegenerate() {
+    assertEquals(
+        corpus.bases().size(), corpus.basePixels().size(), "逐 base 像素属性必须与保留 base 一一对应（不多不少）");
+    Set<String> baseKeys = new LinkedHashSet<>();
+    for (NearDuplicateCorpus.Base base : corpus.bases()) {
+      baseKeys.add(base.key());
+    }
+    for (NearDuplicateCorpus.BasePixel pixel : corpus.basePixels()) {
+      assertTrue(baseKeys.contains(pixel.baseKey()), "像素属性回指的 base 不存在: " + pixel.baseKey());
+      assertFalse(pixel.colorModel().isBlank(), "必须记录源 PNG 的颜色模型: " + pixel.baseKey());
+      System.out.println(
+          "[near-dup-corpus] 像素 "
+              + pixel.baseKey()
+              + " model="
+              + pixel.colorModel()
+              + " hasAlpha="
+              + pixel.hasAlpha()
+              + " uniqueColors="
+              + pixel.uniqueColors()
+              + " mean="
+              + pixel.mean()
+              + " stdDev="
+              + pixel.stdDev());
+      assertTrue(
+          pixel.uniqueColors() > 1,
+          "base 白底合成后像素全同（唯一色数 = "
+              + pixel.uniqueColors()
+              + "）：无可识别图像内容，其五类变体必然坍缩成同图，近重复对会退化成同图对: "
+              + pixel.baseKey());
+      assertTrue(
+          pixel.mean() >= 0D && pixel.mean() <= 255D, "亮度均值必须落在 [0, 255]: " + pixel.baseKey());
+      assertTrue(pixel.stdDev() >= 0D, "亮度标准差不得为负: " + pixel.baseKey());
+    }
+    for (NearDuplicateCorpus.ExcludedBase excluded : corpus.excludedBases()) {
+      assertTrue(excluded.uniqueColors() <= 1, "剔除理由必须是「唯一色数 ≤ 1」，否则属于误剔: " + excluded.baseKey());
+      assertFalse(excluded.reason().isBlank(), "剔除必须写明原因: " + excluded.baseKey());
+      assertFalse(
+          baseKeys.contains(excluded.baseKey()), "被剔除的 base 不得同时出现在语料里: " + excluded.baseKey());
+    }
+    for (NearDuplicateCorpus.Variant variant : corpus.variants()) {
+      NearDuplicateCorpus.BasePixel pixel = pixels(variant.key(), variant.png());
+      assertTrue(
+          pixel.uniqueColors() > 1,
+          "变体白底合成后像素全同（唯一色数 = "
+              + pixel.uniqueColors()
+              + "）：该变体不含可识别图像内容，本轮的「五变体余弦逐位全等」就是这样发生的: "
+              + variant.key());
+    }
+  }
+
+  @Test
+  @DisplayName("防退化②：同 base 的五类变体两两 SHA-256 不同（五类变换不得坍缩成同图）")
+  void variantsOfEachBaseArePairwiseDistinct() {
+    Map<String, Map<String, String>> digestsByBase = new LinkedHashMap<>();
+    for (NearDuplicateCorpus.Variant variant : corpus.variants()) {
+      digestsByBase
+          .computeIfAbsent(variant.baseKey(), key -> new LinkedHashMap<>())
+          .put(variant.kind(), RealPdfAssets.sha256(variant.png()));
+    }
+    assertEquals(
+        corpus.bases().size(), digestsByBase.size(), "每个保留 base 都必须产出变体（有 base 无变体说明生成中断）");
+    for (Map.Entry<String, Map<String, String>> entry : digestsByBase.entrySet()) {
+      Map<String, String> digests = entry.getValue();
+      assertEquals(
+          NearDuplicateCorpus.KINDS.size(), digests.size(), "每个 base 的五类变体必须齐全: " + entry.getKey());
+      assertEquals(
+          NearDuplicateCorpus.KINDS.size(),
+          new LinkedHashSet<>(digests.values()).size(),
+          "同 base 五变体的 SHA-256 必须两两不同（出现重复即变换坍缩成同图，近重复对不再成立）: " + entry.getKey());
+    }
+  }
+
+  /** 解码 PNG 后按白底合成统计像素属性（与 {@link NearDuplicateCorpus} 内部同一口径）。 */
+  private static NearDuplicateCorpus.BasePixel pixels(String key, byte[] png) {
+    try {
+      BufferedImage image = ImageIO.read(new ByteArrayInputStream(png));
+      assertNotNull(image, "PNG 必须可解码: " + key);
+      return NearDuplicateCorpus.pixelsOf(key, image);
+    } catch (IOException exception) {
+      throw new IllegalStateException("PNG 解码失败: " + key, exception);
     }
   }
 

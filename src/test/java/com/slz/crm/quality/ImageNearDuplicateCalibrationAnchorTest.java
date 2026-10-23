@@ -11,8 +11,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -32,6 +34,9 @@ import org.junit.jupiter.api.Test;
  * <p><b>余弦上界的诚实说明</b>：{@code ImageCrossModalEvaluator#cosine} 是浮点计算，同字节再编码实测可得到 {@code
  * 1.0000000000000002}（v1 锚 {@code sameImage.max} 就是这个值）。因此本类断言 {@code 0 < cosine <= 1 +
  * 1e-9}，<b>不</b>把浮点舍入 当成缺陷去篡改原始观测，也不放宽到"能装下任何数"。
+ *
+ * <p><b>防退化闸（proposal §9.3 ④）</b>：任一 base 的五类变体余弦不得全等。首轮锚里 6 个 base 的五类余弦逐 15 位相同（变体坍缩），
+ * 却一路通过了结构自检、直到复核才被抓；这条断言把同一类错误挡在默认测试里。
  */
 @DisplayName("v2 近重复定标锚结构自检（零外呼）")
 class ImageNearDuplicateCalibrationAnchorTest {
@@ -49,6 +54,12 @@ class ImageNearDuplicateCalibrationAnchorTest {
 
   /** 余弦上界的浮点容差（IEEE 双精度累加误差的量级，不是"随便给个数"）。 */
   private static final double COSINE_TOLERANCE = 1e-9D;
+
+  /**
+   * 保留 base 数的下限：计划取 24 张，剔除「白底合成后像素全同」的退化 base 后是实际值（首轮实测剔除 6 个 ⇒ 18， 见 {@code proposal.md}
+   * §9）。这里只做语料规模兜底，不做定标结论。
+   */
+  private static final int MIN_BASES = 18;
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -80,7 +91,7 @@ class ImageNearDuplicateCalibrationAnchorTest {
     int bases = corpus.path("bases").asInt();
     int images = corpus.path("images").asInt();
     int variants = corpus.path("variants").asInt();
-    assertTrue(bases >= 20, "base 数少于 20：语料规模不足以定标（实际 " + bases + "）");
+    assertTrue(bases >= MIN_BASES, "base 数少于 " + MIN_BASES + "：语料规模不足以定标（实际 " + bases + "）");
     assertEquals(bases + variants, images, "images 必须 = bases + variants");
     assertEquals(
         bases * NearDuplicateCorpus.KINDS.size(),
@@ -204,11 +215,23 @@ class ImageNearDuplicateCalibrationAnchorTest {
     }
 
     double p05 = anchor.path("strata").path("near-duplicate").path("p05").asDouble();
-    assertEquals(
-        p05,
-        anchor.path("candidateFloor").asDouble(),
-        1e-12D,
-        "candidateFloor 必须就是 near-duplicate 档 p05");
+    boolean f1Hit = false;
+    for (JsonNode judgement : anchor.path("judgements")) {
+      if ("F1".equals(judgement.path("code").asText())) {
+        f1Hit = judgement.path("hit").asBoolean();
+      }
+    }
+    if (f1Hit) {
+      assertEquals(
+          p05,
+          anchor.path("candidateFloor").asDouble(),
+          1e-12D,
+          "F1 命中时 candidateFloor 必须就是 near-duplicate 档 p05");
+    } else {
+      assertTrue(
+          anchor.path("candidateFloor").isNull(),
+          "F1 未命中时 candidateFloor 必须是 JSON null（proposal §9.5：不给由不可达样本算出的候选下限）");
+    }
 
     JsonNode judgements = anchor.path("judgements");
     assertEquals(6, judgements.size(), "判定树必须 F0–F5 六支齐全");
@@ -219,6 +242,65 @@ class ImageNearDuplicateCalibrationAnchorTest {
       assertFalse(judgement.path("evidence").asText().isBlank(), "每支必须给出证据");
     }
     assertEquals(List.of("F0", "F1", "F2", "F3", "F4", "F5"), codes, "分支编号与顺序必须与 proposal §4 一致");
+  }
+
+  /**
+   * 防退化闸（proposal §9.3 ④）：<b>任一 base 的五类变体余弦不得全等</b>。
+   *
+   * <p>这是本轮缺陷（6 个 base 的五类变体余弦逐 15 位全等、F1 依据被 30 对退化样本改写）的锚级回归检查： 五种不同像素变换给出同一个真视觉 embedding
+   * 余弦，只可能是变体坍缩成同一张图。锚一旦被写成这样，默认 {@code mvn test} 立刻红， 不需要等下一次花 216 次外呼才发现。
+   */
+  @Test
+  @DisplayName("⑦防退化：任一 base 的五类变体余弦不得全等，像素属性与剔除登记自洽")
+  void variantsOfEachBaseAreNotCollapsed() {
+    Map<String, Map<String, Double>> cosinesByBase = new LinkedHashMap<>();
+    int nearDuplicatePairs = 0;
+    for (JsonNode pair : anchor.path("pairs")) {
+      if (!"near-duplicate".equals(pair.path("stratum").asText())) {
+        continue;
+      }
+      nearDuplicatePairs++;
+      cosinesByBase
+          .computeIfAbsent(pair.path("leftKey").asText(), key -> new LinkedHashMap<>())
+          .put(pair.path("kind").asText(), pair.path("cosine").asDouble());
+    }
+    assertTrue(nearDuplicatePairs > 0, "近重复对为空：防退化闸无从判定");
+    List<String> collapsed = new ArrayList<>();
+    for (Map.Entry<String, Map<String, Double>> entry : cosinesByBase.entrySet()) {
+      Map<String, Double> byKind = entry.getValue();
+      assertEquals(
+          NearDuplicateCorpus.KINDS.size(),
+          byKind.size(),
+          "每个 base 必须有五类变体各一对（缺类说明变体生成被改坏）: " + entry.getKey());
+      if (new LinkedHashSet<>(byKind.values()).size() == 1) {
+        collapsed.add(entry.getKey() + " → " + byKind.values().iterator().next() + " × 5");
+      }
+    }
+    assertTrue(
+        collapsed.isEmpty(),
+        "五类变体的余弦逐位全等 = 变体坍缩（栅格化把 alpha 合成成黑），该 base 的近重复对不可用于定标: " + collapsed);
+
+    JsonNode corpus = anchor.path("corpus");
+    JsonNode baseDetail = corpus.path("baseDetail");
+    assertEquals(
+        corpus.path("bases").asInt(), baseDetail.size(), "逐 base 像素属性必须与 corpus.bases 一一对应");
+    for (JsonNode pixel : baseDetail) {
+      assertFalse(pixel.path("baseKey").asText().isBlank(), "像素属性必须回指 base 键");
+      assertFalse(pixel.path("colorModel").asText().isBlank(), "像素属性必须记录颜色模型");
+      assertTrue(
+          pixel.path("uniqueColors").asInt() > 1,
+          "保留的 base 白底合成后唯一色数必须 > 1: " + pixel.path("baseKey").asText());
+    }
+    assertEquals(
+        corpus.path("excludedBaseCount").asInt(),
+        corpus.path("excludedBases").size(),
+        "剔除计数必须与剔除明细一致");
+    for (JsonNode excluded : corpus.path("excludedBases")) {
+      assertTrue(
+          excluded.path("uniqueColors").asInt() <= 1,
+          "剔除理由必须是唯一色数 ≤ 1: " + excluded.path("baseKey").asText());
+      assertFalse(excluded.path("reason").asText().isBlank(), "剔除必须写明原因");
+    }
   }
 
   /** 锚里某档位的样本对数。 */

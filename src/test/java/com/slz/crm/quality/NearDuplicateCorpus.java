@@ -1,5 +1,6 @@
 package com.slz.crm.quality;
 
+import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
@@ -7,6 +8,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -78,7 +80,7 @@ final class NearDuplicateCorpus {
    *
    * @param docKey 出版物键（{@code sources.json} 的 {@code key}；同类判定依据）
    * @param pageNo 页码（1 起）
-   * @param index 本文档内序号（1 起，按提取顺序）
+   * @param index 本文档内提取序号（1 起；按 SHA-256 去重后的候选计数，<b>退化剔除者仍占号</b>，故保留 base 的序号可能不连续）
    * @param key 图键（{@code docKey-p<page>-b<index>}）
    * @param png 原始 PNG 字节（生产提取器输出，未改写）
    * @param width 宽
@@ -115,20 +117,57 @@ final class NearDuplicateCorpus {
    *
    * @param docKey 出版物键
    * @param requested 计划取图数（传给生产提取器的上界）
-   * @param taken 去重后实际取到的图数
+   * @param taken 去重且剔除退化 base 后实际保留的图数
    */
   record DocumentCount(String docKey, int requested, int taken) {}
 
   /**
+   * 一条 base 的像素属性（锚 {@code corpus.baseDetail} 的一行）。
+   *
+   * <p>唯一色数按<b>白底合成后</b>的 RGB 逐像素精确计数（{@code BitSet} 覆盖 2^24 色域，不抽样）；均值与标准差取自亮度 {@code 0.299R +
+   * 0.587G + 0.114B}，保留 4 位小数（确定性：无浮点顺序依赖，逐像素单调累加）。
+   *
+   * @param baseKey 图键
+   * @param colorModel 源 PNG 的颜色模型（{@code getClass().getSimpleName()#组件数}）
+   * @param hasAlpha 源 PNG 是否带 alpha
+   * @param uniqueColors 白底合成后的唯一色数（≤ 1 即「像素全同」）
+   * @param mean 亮度均值
+   * @param stdDev 亮度标准差
+   */
+  record BasePixel(
+      String baseKey,
+      String colorModel,
+      boolean hasAlpha,
+      int uniqueColors,
+      double mean,
+      double stdDev) {}
+
+  /**
+   * 一条退化 base 的剔除登记（不静默保留、不静默丢弃）。
+   *
+   * @param baseKey 图键
+   * @param uniqueColors 白底合成后的唯一色数
+   * @param reason 剔除原因
+   */
+  record ExcludedBase(String baseKey, int uniqueColors, String reason) {}
+
+  /**
    * 语料全集。
    *
-   * @param bases base 图（SHA-256 全局去重后）
+   * @param bases 保留的 base 图（SHA-256 全局去重且非退化）
    * @param variants 变体图
    * @param skips 跳过的变体（最短边不足）
-   * @param documents 逐文档的实际取图数
+   * @param documents 逐文档的实际保留图数
+   * @param basePixels 逐 base 的像素属性（与本记录 {@code bases} 同序、等长）
+   * @param excludedBases 退化 base 剔除登记（唯一色数 ≤ 1）
    */
   record Corpus(
-      List<Base> bases, List<Variant> variants, List<Skip> skips, List<DocumentCount> documents) {
+      List<Base> bases,
+      List<Variant> variants,
+      List<Skip> skips,
+      List<DocumentCount> documents,
+      List<BasePixel> basePixels,
+      List<ExcludedBase> excludedBases) {
 
     /**
      * @return 图总数 = base + 变体
@@ -145,6 +184,8 @@ final class NearDuplicateCorpus {
    */
   static Corpus generate() {
     List<Base> bases = new ArrayList<>();
+    List<BasePixel> basePixels = new ArrayList<>();
+    List<ExcludedBase> excludedBases = new ArrayList<>();
     List<DocumentCount> documents = new ArrayList<>();
     Set<String> seenDigests = new LinkedHashSet<>();
     Map<String, Integer> plan = plan();
@@ -153,23 +194,36 @@ final class NearDuplicateCorpus {
       if (requested == null) {
         continue;
       }
-      int taken = 0;
-      for (RealPdfAssets.Extracted extracted : RealPdfAssets.extract(asset.pdf(), requested)) {
-        if (!seenDigests.add(RealPdfAssets.sha256(extracted.png()))) {
+      int extracted = 0;
+      int kept = 0;
+      for (RealPdfAssets.Extracted item : RealPdfAssets.extract(asset.pdf(), requested)) {
+        if (!seenDigests.add(RealPdfAssets.sha256(item.png()))) {
           continue;
         }
-        taken++;
+        // 提取序号按「去重后的候选」累加（退化剔除者仍占号）：保留 base 的键与首轮逐字对齐，
+        // 剔除登记里的键也能直接与复核报告 §关键问题 的键对上。
+        extracted++;
+        String key = key(asset.key(), item.pageNo(), extracted);
+        BasePixel pixels = pixelsOf(key, readPng(item.png()));
+        if (pixels.uniqueColors() <= 1) {
+          excludedBases.add(
+              new ExcludedBase(
+                  key, pixels.uniqueColors(), "白底合成后像素全同（唯一色数 ≤ 1）：无可识别图像内容，不作为 base、不生成变体"));
+          continue;
+        }
+        kept++;
         bases.add(
             new Base(
                 asset.key(),
-                extracted.pageNo(),
-                taken,
-                key(asset.key(), extracted.pageNo(), taken),
-                extracted.png(),
-                extracted.width(),
-                extracted.height()));
+                item.pageNo(),
+                extracted,
+                key,
+                item.png(),
+                item.width(),
+                item.height()));
+        basePixels.add(pixels);
       }
-      documents.add(new DocumentCount(asset.key(), requested, taken));
+      documents.add(new DocumentCount(asset.key(), requested, kept));
     }
     List<Variant> variants = new ArrayList<>();
     List<Skip> skips = new ArrayList<>();
@@ -198,7 +252,12 @@ final class NearDuplicateCorpus {
       }
     }
     return new Corpus(
-        List.copyOf(bases), List.copyOf(variants), List.copyOf(skips), List.copyOf(documents));
+        List.copyOf(bases),
+        List.copyOf(variants),
+        List.copyOf(skips),
+        List.copyOf(documents),
+        List.copyOf(basePixels),
+        List.copyOf(excludedBases));
   }
 
   /**
@@ -254,7 +313,7 @@ final class NearDuplicateCorpus {
     }
   }
 
-  /** 双线性重采样（模拟客户端预览图 / 缩略图）。 */
+  /** 双线性重采样（模拟客户端预览图 / 缩略图；<b>先铺白底</b>再合成，否则 alpha 源会合成成黑）。 */
   private static BufferedImage scale(BufferedImage source, double factor) {
     int width = Math.max(1, (int) Math.round(source.getWidth() * factor));
     int height = Math.max(1, (int) Math.round(source.getHeight() * factor));
@@ -264,6 +323,8 @@ final class NearDuplicateCorpus {
       graphics.setRenderingHint(
           RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
       graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+      graphics.setColor(Color.WHITE);
+      graphics.fillRect(0, 0, width, height);
       graphics.drawImage(source, 0, 0, width, height, null);
     } finally {
       graphics.dispose();
@@ -271,7 +332,7 @@ final class NearDuplicateCorpus {
     return target;
   }
 
-  /** 四周各裁 {@code margin} 比例（模拟版面裁切 / 去页眉页脚）。 */
+  /** 四周各裁 {@code margin} 比例（模拟版面裁切 / 去页眉页脚；<b>先铺白底</b>再合成）。 */
   private static BufferedImage crop(BufferedImage source, double margin) {
     int insetX = (int) Math.round(source.getWidth() * margin);
     int insetY = (int) Math.round(source.getHeight() * margin);
@@ -280,6 +341,8 @@ final class NearDuplicateCorpus {
     BufferedImage target = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
     Graphics2D graphics = target.createGraphics();
     try {
+      graphics.setColor(Color.WHITE);
+      graphics.fillRect(0, 0, width, height);
       graphics.drawImage(
           source, 0, 0, width, height, insetX, insetY, insetX + width, insetY + height, null);
     } finally {
@@ -334,7 +397,16 @@ final class NearDuplicateCorpus {
     }
   }
 
-  /** 统一转 {@code TYPE_INT_RGB}（JPEG 不支持 alpha；也避免 ARGB/灰度源产出不稳定字节）。 */
+  /**
+   * 统一转 {@code TYPE_INT_RGB}（JPEG 不支持 alpha；也避免 ARGB/灰度源产出不稳定字节）。
+   *
+   * <p><b>必须先铺白底再合成</b>（缺陷修复 D1，`proposal.md` §9）：{@code TYPE_INT_RGB} 的初始像素是黑， 直接用带 alpha 的源
+   * {@code drawImage} 时透明区会与黑底做 source-over，得到「近纯黑」图——五类变体因此坍缩成同一张图，
+   * 同源近重复对退化成「同图对」。铺白底后透明区按白处理（与浏览器/PDF 渲染器的默认背景一致）。
+   *
+   * @param source 源位图
+   * @return {@code TYPE_INT_RGB} 位图（白底）
+   */
   private static BufferedImage rgb(BufferedImage source) {
     if (source.getType() == BufferedImage.TYPE_INT_RGB) {
       return source;
@@ -344,10 +416,58 @@ final class NearDuplicateCorpus {
     Graphics2D graphics = target.createGraphics();
     try {
       graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+      graphics.setColor(Color.WHITE);
+      graphics.fillRect(0, 0, source.getWidth(), source.getHeight());
       graphics.drawImage(source, 0, 0, null);
     } finally {
       graphics.dispose();
     }
     return target;
+  }
+
+  /**
+   * 逐像素统计白底合成后的唯一色数与亮度分布（退化 base 的判据来源，见 {@link BasePixel}）。
+   *
+   * @param baseKey 图键
+   * @param source 源 PNG 位图
+   * @return 像素属性
+   */
+  static BasePixel pixelsOf(String baseKey, BufferedImage source) {
+    BufferedImage flat = rgb(source);
+    BitSet seen = new BitSet(1 << 24);
+    double sum = 0D;
+    double sumSquares = 0D;
+    long count = 0L;
+    for (int y = 0; y < flat.getHeight(); y++) {
+      for (int x = 0; x < flat.getWidth(); x++) {
+        int pixel = flat.getRGB(x, y);
+        int red = (pixel >> 16) & 0xFF;
+        int green = (pixel >> 8) & 0xFF;
+        int blue = pixel & 0xFF;
+        seen.set((red << 16) | (green << 8) | blue);
+        double luma = 0.299D * red + 0.587D * green + 0.114D * blue;
+        sum += luma;
+        sumSquares += luma * luma;
+        count++;
+      }
+    }
+    double mean = count == 0L ? 0D : sum / count;
+    double variance = count == 0L ? 0D : Math.max(0D, sumSquares / count - mean * mean);
+    String colorModel =
+        source.getColorModel().getClass().getSimpleName()
+            + "#"
+            + source.getColorModel().getNumComponents();
+    return new BasePixel(
+        baseKey,
+        colorModel,
+        source.getColorModel().hasAlpha(),
+        seen.cardinality(),
+        round(mean),
+        round(Math.sqrt(variance)));
+  }
+
+  /** 4 位小数（确定性的十进制收敛，用于锚里的像素属性）。 */
+  private static double round(double value) {
+    return Math.round(value * 10000D) / 10000D;
   }
 }
