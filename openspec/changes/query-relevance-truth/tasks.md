@@ -95,12 +95,18 @@
 
 ## 4. G4 · 全量门禁与照判回报
 
-- [ ] 4.1 `mvn -B -ntp clean verify` BUILD SUCCESS（计数只增不减）
-- [ ] 4.2 `bash scripts/check-test-baseline.sh` EXIT=0（**只在全量 `clean verify` 之后跑**）
-- [ ] 4.3 `bash scripts/check-openapi-consistency.sh` EXIT=0
-- [ ] 4.4 三份分组判定分别出表 + 一份总判定；停步项写清「停了哪组 / 其余组状态 / 已回退路径」
-- [ ] 4.5 交付前自检：生产常量零 diff、融合权重零 diff、评测口径零 diff、零迁移、零新依赖、零外呼
-- [ ] 4.6 回报 ≤300 字：产出路径 / 行数 / 校验结果 / 未解决项 / 待决策项
+- [x] 4.1 `mvn -B -ntp clean verify` BUILD SUCCESS（计数只增不减）
+      补勾依据（2026-10-24 · 全量 clean verify 退出码 0（mvn `$?` 实采）；surefire 341/2109/0（基线 337/2092/0，+4 报告 +17 测=本卡新测试数）、failsafe 44/145/13 与基线持平）
+- [x] 4.2 `bash scripts/check-test-baseline.sh` EXIT=0（**只在全量 `clean verify` 之后跑**）
+      补勾依据（2026-10-24 · 基线门禁在全量 clean verify 后实跑 EXIT=0（reports 341>=337、tests 2109>=2092、skipped 0<=0、failsafe 持平）；随后 `--update` 重锚：source-revision=52c4856、surefire 341/2109/0、failsafe 44/145/13，复跑 EXIT=0）
+- [x] 4.3 `bash scripts/check-openapi-consistency.sh` EXIT=0
+      补勾依据（2026-10-24 · 实跑 EXIT=0，输出「前后端契约一致：frontend/openapi.yaml 与后端 swagger 导出逐字相同」）
+- [x] 4.4 三份分组判定分别出表 + 一份总判定；停步项写清「停了哪组 / 其余组状态 / 已回退路径」
+      补勾依据（2026-10-24 · G1 全绿（R1–R5 满足，md §4）/ G2 全绿（T1–T5 满足，md §4，T4 八档零偏差）/ G3 全绿（D1–D4 满足，守卫 6/6）；无停步组、无回退路径；总判定=三门禁全绿 + 守卫 16 测试全绿（G1 9 + G2 1 写入/校验 + G3 6））
+- [x] 4.5 交付前自检：生产常量零 diff、融合权重零 diff、评测口径零 diff、零迁移、零新依赖、零外呼
+      补勾依据（2026-10-24 · `git diff --stat` 对生产三源文件/评测口径四文件/上一卡两锚与脚本/frontend/openapi.yaml 为空；`src/main/resources/db/migration` 与 `pom.xml` 零 diff（零迁移零新依赖）；全部测试代码无网络/无 env（T5/R5 零外呼，锚 externalCalls=0））
+- [x] 4.6 回报 ≤300 字：产出路径 / 行数 / 校验结果 / 未解决项 / 待决策项
+      补勾依据（2026-10-24 · 回报已按卡 §10 格式随本笔提交交付于执行端会话；未解决项=无；待决策项=档位四候选签收（near-dup-floor-decision-request-v1.md §6））
 
 ## 5. 铁律（违反任一条 = 整卡作废）
 
