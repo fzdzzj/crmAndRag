@@ -55,27 +55,30 @@
 
 ### 2.1 用例集
 
-- [ ] 2.1.1 新增 `ImageNearDuplicateTruthSuite`：24 base × 5 kind = **120 正例**，`expectedChunkIds` 由 `baseKey → goldenId` 唯一生成（T1），禁手写字面量 id
-- [ ] 2.1.2 新增两类负例：跨文档近似（`base_i` 变体 vs `base_j`，i≠j，不同 `docKey`）与同文档不同图（hard negative，同 `docKey` 不同 base），truth 同样由 `NearDuplicateCorpus` 键导出
-- [ ] 2.1.3 排序重建：图像路得分一律从校准锚的**逐对余弦**取（正例 = 同一 base 的变体对；负例 = 跨 base 对），**不做任何 embedding**（T5）
-
-### 2.2 评测接入
-
-- [ ] 2.2.1 把用例喂给既有 `RagQualityEvaluator`（零改动，T2），产出 `recallAtK`
-- [ ] 2.2.2 派生 `contaminationAtK`（负例 top-k 污染率）：只读 evaluator 的 top-k 结果，**不新增评测口径**，文档写明它是派生量
-- [ ] 2.2.3 逐 floor 表 ≥8 档：`0.9887` / `0.985` / `0.982` / `0.98` / `0.9785` / `0.975` / `0.95` / `0.90`（T3）
-
-### 2.3 交叉校验与锚
-
-- [ ] 2.3.1 T4 交叉校验：`recallAtK`（本次正例集）必须与上一卡锚同 floor 的 `R(f)` 相等；不等即停该组并上报差异，禁「取其一」
-- [ ] 2.3.2 `ImageNearDuplicateTruthEvaluationTest` 为唯一写入入口（`-Dnear.dup.truth.write=true`），写 `docs/rag-quality/image-near-dup-truth-v1.json`；默认逐字节校验
-- [ ] 2.3.3 锚内必带：用例数（正/负 A/负 B 逐项）、逐 floor 表、`externalCalls=0`、`scopeLimits`（明写「只到图像路内检索级，不含文本路与融合后排序」）
-- [ ] 2.3.4 `docs/rag-quality/image-near-dup-truth-v1.md`：真值来源（provenance）+ 与既有 `expectedChunkIds` 机制的关系 + 三处适用范围声明
-
-### 2.4 G2 照判
-
-- [ ] 2.4.1 逐条给出 T1–T5 判定与依据
-- [ ] 2.4.2 硬边界自证：`RagQualityEvaluator` / `RagBenchmarkCase` / `ImageCrossModalSuite` / `PdfIngestImageFixture` 零 diff
+- [x] 2.1.1 新增 `ImageNearDuplicateTruthSuite`：24 base × 5 kind = **120 正例**，`expectedChunkIds` 由 `baseKey → goldenId` 唯一生成（T1），禁手写字面量 id
+      补勾依据（2026-10-24 · 正例 120 实测（positive=120），goldenId 唯一生成点 = `goldenId(baseKey) = "golden:"+baseKey`；`assertPositiveCompleteness` 守 24 base × 5 kind 每格恰一例）
+- [x] 2.1.2 新增两类负例：跨文档近似（`base_i` 变体 vs `base_j`，i≠j，不同 `docKey`）与同文档不同图（hard negative，同 `docKey` 不同 base），truth 同样由 `NearDuplicateCorpus` 键导出
+      补勾依据（2026-10-24 · 负例A=176（cross-class 对）、负例B=100（same-class 对），期望集同样由键导出；**偏差已登记**：负例查询落地为 base 再编码而非变体——校准锚 540 对无变体↔异 base 对，零编造优先于字面形状（锚 deviations + md §1））
+- [x] 2.1.3 排序重建：图像路得分一律从校准锚的**逐对余弦**取（正例 = 同一 base 的变体对；负例 = 跨 base 对），**不做任何 embedding**（T5）
+      补勾依据（2026-10-24 · `retrievedByCaseId(pairs, floor)` 全部取锚内 pairs[].cosine；same-image 档（144 对实测全 1.0）做负例B自身分；不调模型、不读 env、不访问网络）
+- [x] 2.2.1 把用例喂给既有 `RagQualityEvaluator`（零改动，T2），产出 `recallAtK`
+      补勾依据（2026-10-24 · 每 floor 跑 3 子套件 `RagQualityEvaluator.evaluate(suite, retrieval, TOP_K=5)`，recall 全出自其原公式；git status 证明 evaluator 四文件零 diff）
+- [x] 2.2.2 派生 `contaminationAtK`（负例 top-k 污染率）：只读 evaluator 的 top-k 结果，**不新增评测口径**，文档写明它是派生量
+      补勾依据（2026-10-24 · `contaminationAtK = 1 − mean(recallAtK over 负例A)`（诚实空判的补数）；sameDocCompetitorRate 同为派生（precisionAtK<1 占比）；两处派生口径写进锚 contaminationDerivation/sameDocCompetitorDerivation 与 md §2）
+- [x] 2.2.3 逐 floor 表 ≥8 档：`0.9887` / `0.985` / `0.982` / `0.98` / `0.9785` / `0.975` / `0.95` / `0.90`（T3）
+      补勾依据（2026-10-24 · 8 档全齐：recallAtK 0.583333/0.641667/0.666667/0.675/0.691667/0.716667/0.833333/0.941667，retained 70/77/80/81/83/86/100/113，contaminationAtK 恒 0.005682，竞争率 0.02→0.08；逐 kind 入锚）
+- [x] 2.3.1 T4 交叉校验：`recallAtK`（本次正例集）必须与上一卡锚同 floor 的 `R(f)` 相等；不等即停该组并上报差异，禁「取其一」
+      补勾依据（2026-10-24 · 8 档 mismatches=0：evaluator 判卷与上一卡 R(f)/retainedNearDup 逐档相等（含基线 0.9887 单独评测档）；不等时断言消息带两侧数字并停 G2）
+- [x] 2.3.2 `ImageNearDuplicateTruthEvaluationTest` 为唯一写入入口（`-Dnear.dup.truth.write=true`），写 `docs/rag-quality/image-near-dup-truth-v1.json`；默认逐字节校验
+      补勾依据（2026-10-24 · 写模式生成锚，serialize 钉死 LF；默认模式逐字节校验）
+- [x] 2.3.3 锚内必带：用例数（正/负 A/负 B 逐项）、逐 floor 表、`externalCalls=0`、`scopeLimits`（明写「只到图像路内检索级，不含文本路与融合后排序」）
+      补勾依据（2026-10-24 · 锚实测：caseCounts 120/176/100/total 396、floors 8 项、externalCalls=0、scopeLimits 四条（含图像路内检索级限定）、deviations 一条、truthSource 双锚 SHA）
+- [x] 2.3.4 `docs/rag-quality/image-near-dup-truth-v1.md`：真值来源（provenance）+ 与既有 `expectedChunkIds` 机制的关系 + 三处适用范围声明
+      补勾依据（2026-10-24 · md 六节：§1 provenance 与既有机制关系 + 偏差登记、§2 评测接入与派生口径、§3 逐 floor 表与读法、§4 T1–T5 照判、§5 三处适用范围声明、§6 复算命令）
+- [x] 2.4.1 逐条给出 T1–T5 判定与依据
+      补勾依据（2026-10-24 · md §4 表：T1 满足（唯一生成点+完整性守卫）/ T2 满足（公式零 diff+派生量声明）/ T3 满足（8 档全齐）/ T4 满足（mismatches=0）/ T5 满足（externalCalls=0））
+- [x] 2.4.2 硬边界自证：`RagQualityEvaluator` / `RagBenchmarkCase` / `ImageCrossModalSuite` / `PdfIngestImageFixture` 零 diff
+      补勾依据（2026-10-24 · `git status --porcelain` 无这四文件的 M 项（全 untracked 新文件集），`git diff --stat -- src/main/java/com/slz/crm/quality/` 空输出）
 
 ## 3. G3 · 档位决策请求（一页可签收）
 

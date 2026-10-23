@@ -1,0 +1,200 @@
+{
+  "card" : "query-relevance-truth",
+  "group" : "G2",
+  "decisionVersion" : "IMAGE-NEAR-DUP-TRUTH-1.0",
+  "criteria" : {
+    "T1" : "真值可复算：每条用例的 expectedChunkIds 必须能由 NearDuplicateCorpus 的键唯一定出（baseKey → goldenId），不得出现手写字面量 id；用例数与语料（24 base × 5 kind = 120 正例）逐数相等。",
+    "T2" : "口径复用：RagQualityEvaluator 的既有公式零改动（git diff 证明）；contaminationAtK 只读取其结果，不改任何既有指标。",
+    "T3" : "逐 floor 表：至少 8 档（含 0.9887 基线与 0.982/0.98/0.975/0.95/0.90）逐档给 recallAtK / contaminationAtK / 保留数。",
+    "T4" : "结构性自检：recallAtK + drop 必须与上一卡 R(f) 一致（同一 120 个正例、同一 floor 判定）——两条独立路径算出同一个数，不一致即红。",
+    "T5" : "零外呼：不读 .env、不设 RAG_*_REAL、不访问网络；锚内 externalCalls=0。"
+  },
+  "decisionOwner" : "OWNER",
+  "decisionScope" : "本卡不改任何生产常量、不改既有评测口径（RagQualityEvaluator/RagBenchmarkCase/ImageCrossModalSuite/PdfIngestImageFixture 零 diff）、不拍板档位；检索级真值结果交 OWNER 结合 pair 级与融合级证据决策。",
+  "truthSource" : {
+    "mechanism" : "语料 provenance：baseKey → goldenId（golden:<baseKey>，唯一生成点 ImageNearDuplicateTruthSuite.goldenId）。正例期望来自 near-duplicate 对左键；负例 A 期望空；负例 B 期望 = 查询 base 自身。无手写字面量 id。",
+    "corpusAnchor" : "docs/rag-quality/image-threshold-calibration-v2.json",
+    "corpusAnchorSha256" : "82d24204fba8029673d18ea5685964cf4134d2c43e3da5746986881bf35bdc65",
+    "prevExchangeAnchor" : "docs/rag-quality/near-dup-exchange-rate-v1.json",
+    "prevExchangeAnchorSha256" : "62e43dfb46d79be9f460c6febbefe3827f06da4c94b550e0ed7c01fa57f2e36d"
+  },
+  "caseCounts" : {
+    "positive" : 120,
+    "negativeACrossDoc" : 176,
+    "negativeBSameDocHard" : 100,
+    "total" : 396
+  },
+  "evaluator" : {
+    "class" : "com.slz.crm.quality.RagQualityEvaluator",
+    "modified" : false,
+    "topK" : 5,
+    "runsPerFloor" : 3,
+    "note" : "recall/precision/MRR 公式零改动（T2，git 状态自证见任务 2.4.2）；contaminationAtK 与 sameDocCompetitorRate 只读其逐例结果派生。"
+  },
+  "floors" : [ {
+    "floor" : 0.9887,
+    "positiveRecallAtK" : 0.583333,
+    "retained" : 70,
+    "retainedByKind" : {
+      "jpeg-q80" : 18,
+      "scale-085" : 21,
+      "scale-070" : 22,
+      "crop-04" : 9
+    },
+    "negativeAContaminationAtK" : 0.005682,
+    "negativeARecallHonestEmpty" : 0.994318,
+    "negativeBRecallAtK" : 1.0,
+    "negativeBSameDocCompetitorRate" : 0.02,
+    "negativeBSameDocCompetitorCases" : 2,
+    "previousCardR" : 0.583333,
+    "previousCardRetained" : 70,
+    "t4Match" : true
+  }, {
+    "floor" : 0.985,
+    "positiveRecallAtK" : 0.641667,
+    "retained" : 77,
+    "retainedByKind" : {
+      "jpeg-q80" : 19,
+      "scale-085" : 23,
+      "scale-070" : 22,
+      "crop-04" : 11,
+      "crop-12" : 2
+    },
+    "negativeAContaminationAtK" : 0.005682,
+    "negativeARecallHonestEmpty" : 0.994318,
+    "negativeBRecallAtK" : 1.0,
+    "negativeBSameDocCompetitorRate" : 0.03,
+    "negativeBSameDocCompetitorCases" : 3,
+    "previousCardR" : 0.641667,
+    "previousCardRetained" : 77,
+    "t4Match" : true
+  }, {
+    "floor" : 0.982,
+    "positiveRecallAtK" : 0.666667,
+    "retained" : 80,
+    "retainedByKind" : {
+      "jpeg-q80" : 20,
+      "scale-085" : 24,
+      "scale-070" : 22,
+      "crop-04" : 12,
+      "crop-12" : 2
+    },
+    "negativeAContaminationAtK" : 0.005682,
+    "negativeARecallHonestEmpty" : 0.994318,
+    "negativeBRecallAtK" : 1.0,
+    "negativeBSameDocCompetitorRate" : 0.03,
+    "negativeBSameDocCompetitorCases" : 3,
+    "previousCardR" : 0.666667,
+    "previousCardRetained" : 80,
+    "t4Match" : true
+  }, {
+    "floor" : 0.98,
+    "positiveRecallAtK" : 0.675,
+    "retained" : 81,
+    "retainedByKind" : {
+      "jpeg-q80" : 21,
+      "scale-085" : 24,
+      "scale-070" : 22,
+      "crop-04" : 12,
+      "crop-12" : 2
+    },
+    "negativeAContaminationAtK" : 0.005682,
+    "negativeARecallHonestEmpty" : 0.994318,
+    "negativeBRecallAtK" : 1.0,
+    "negativeBSameDocCompetitorRate" : 0.04,
+    "negativeBSameDocCompetitorCases" : 4,
+    "previousCardR" : 0.675,
+    "previousCardRetained" : 81,
+    "t4Match" : true
+  }, {
+    "floor" : 0.9785,
+    "positiveRecallAtK" : 0.691667,
+    "retained" : 83,
+    "retainedByKind" : {
+      "jpeg-q80" : 21,
+      "scale-085" : 24,
+      "scale-070" : 22,
+      "crop-04" : 14,
+      "crop-12" : 2
+    },
+    "negativeAContaminationAtK" : 0.005682,
+    "negativeARecallHonestEmpty" : 0.994318,
+    "negativeBRecallAtK" : 1.0,
+    "negativeBSameDocCompetitorRate" : 0.05,
+    "negativeBSameDocCompetitorCases" : 5,
+    "previousCardR" : 0.691667,
+    "previousCardRetained" : 83,
+    "t4Match" : true
+  }, {
+    "floor" : 0.975,
+    "positiveRecallAtK" : 0.716667,
+    "retained" : 86,
+    "retainedByKind" : {
+      "jpeg-q80" : 22,
+      "scale-085" : 24,
+      "scale-070" : 22,
+      "crop-04" : 16,
+      "crop-12" : 2
+    },
+    "negativeAContaminationAtK" : 0.005682,
+    "negativeARecallHonestEmpty" : 0.994318,
+    "negativeBRecallAtK" : 1.0,
+    "negativeBSameDocCompetitorRate" : 0.06,
+    "negativeBSameDocCompetitorCases" : 6,
+    "previousCardR" : 0.716667,
+    "previousCardRetained" : 86,
+    "t4Match" : true
+  }, {
+    "floor" : 0.95,
+    "positiveRecallAtK" : 0.833333,
+    "retained" : 100,
+    "retainedByKind" : {
+      "jpeg-q80" : 24,
+      "scale-085" : 24,
+      "scale-070" : 24,
+      "crop-04" : 20,
+      "crop-12" : 8
+    },
+    "negativeAContaminationAtK" : 0.005682,
+    "negativeARecallHonestEmpty" : 0.994318,
+    "negativeBRecallAtK" : 1.0,
+    "negativeBSameDocCompetitorRate" : 0.08,
+    "negativeBSameDocCompetitorCases" : 8,
+    "previousCardR" : 0.833333,
+    "previousCardRetained" : 100,
+    "t4Match" : true
+  }, {
+    "floor" : 0.9,
+    "positiveRecallAtK" : 0.941667,
+    "retained" : 113,
+    "retainedByKind" : {
+      "jpeg-q80" : 24,
+      "scale-085" : 24,
+      "scale-070" : 24,
+      "crop-04" : 24,
+      "crop-12" : 17
+    },
+    "negativeAContaminationAtK" : 0.005682,
+    "negativeARecallHonestEmpty" : 0.994318,
+    "negativeBRecallAtK" : 1.0,
+    "negativeBSameDocCompetitorRate" : 0.08,
+    "negativeBSameDocCompetitorCases" : 8,
+    "previousCardR" : 0.941667,
+    "previousCardRetained" : 113,
+    "t4Match" : true
+  } ],
+  "t4CrossCheck" : {
+    "floorsChecked" : 8,
+    "mismatches" : 0,
+    "prevAnchor" : "docs/rag-quality/near-dup-exchange-rate-v1.json",
+    "note" : "本套件 120 正例的 recallAtK 与上一卡锚同 floor 的 R(f) 两条独立路径逐档相等（含基线 0.9887 单独评测档）。"
+  },
+  "contaminationDerivation" : "contaminationAtK = 1 − mean(recallAtK over 负例A)：expected 为空时 RagQualityEvaluator 的诚实空判（top-k 空=1/非空=0）即正确拒答率，污染率是其补数——既有 top-k 结果的派生量，不是新评测口径。",
+  "sameDocCompetitorDerivation" : "negativeBSameDocCompetitorRate = 负例B中 precisionAtK < 1 的用例占比：自身（same-image）恒在 top-k 内，同文档竞争者（same-class 对 ≥ floor）出现即把 precision 从 1 拉低——同样是从 evaluator 逐例结果派生。",
+  "scopeLimits" : [ "只覆盖图像路内检索级（pair 级重建），不含文本路、不含融合后排序、不覆盖生产重排器行为。", "负例查询 = base 再编码（校准锚 540 对中不存在变体↔第三图余弦，不做外推）；正例查询 = 变体（唯一有逐对余弦的判别面）。", "真值 = 语料 provenance（同图/同源/同文档键关系），不是用户意图标注——上一卡 A1（同文档 ⇒ 可能相关）仍是假设。", "contaminationAtK 是既有 top-k 结果的派生量，不是新评测口径；负例 B 的同文档竞争者按「相关但不必须」处理，不计污染。" ],
+  "deviations" : [ {
+    "proposalSection" : "§2.2 负例 A/B",
+    "deviation" : "proposal §2.2 负例 A/B 的「query = base_i 变体」落地为「query = base_i 再编码」：校准锚 540 对（144 同图 + 120 近重复 + 276 base 两两）已穷尽，不存在变体↔异 base 对，零编造优先于字面形状；正例不受影响（变体↔自身 base 对恰是锚内 near-duplicate 档）。"
+  } ],
+  "externalCalls" : 0
+}
