@@ -35,7 +35,7 @@ v2 锚 `docs/rag-quality/image-threshold-calibration-v2.json` 的 `pairs` 共 **
 | --- | --- | --- | --- |
 | **C1** | 同源**保留率** `R_keep` | **≥ 0.90** | **0.583**（70/120） |
 | **C2** | 负样本**泄漏率** `L` = retained/276 | **≤ 0.02** | **0.0109**（3/276） |
-| **C3** | 逐 kind 保留率单调 `crop-12 ≤ crop-04 ≤ scale-070 ≤ scale-085`（`jpeg-q80` 允许与 `scale-085` 互换） | 必须成立 | 4 项成立，jpeg 为已知反序 |
+| **C3** | 逐 kind 保留率单调 `crop-12 ≤ crop-04 ≤ scale-070 ≤ scale-085`（`jpeg-q80` 允许与 `scale-085` 互换） | 必须成立 | **基线不满足**：crop-12=0 ≤ crop-04=9 ≤ scale-070=22，但 22 > scale-085=21（锚 `baseline.outcome.satisfiesC3=false`） |
 | **C4** | 外呼次数 | **= 0** | 0 |
 | **C5** | 决策 ∈ {GO, NO-GO, UNDECIDABLE-BY-DATA} | 三选一，禁造第四种 | — |
 | **C6** | **全网格披露**：floor 0.90→0.9995 步长 0.0005（**200 点**）、dHash `D` 0..24、混合 `(D_low,D_high)` 全组合，逐点入锚 | 必须全量 | — |
@@ -228,3 +228,4 @@ spec/changes/add-crm-rag-fusion-platform/contracts-frozen.md               （�
 ## 10. 修订记录
 
 - v1.0（2026-10-23）：由三张独立卡（`near-dup-mechanism-decision` / `image-vector-switch-hotflip` / `openapi-permission-extension`）**三合一**而来。合并依据：三者同为"把软断言变硬"，且写入面无重叠。合并后档位取最高（A）；新增 §5 停步裁决，确保一组停步不连坐其余两组；判据、写入面、禁止清单逐条保留，未做任何放松。
+- v1.1（2026-10-23）：修正 C3 基线栏。原写"4 项成立"系误移用 `docs/rag-quality/image-near-duplicate-bands-v2.md` §9 的**余弦中位数**单调性口径，而 C3 判的是**逐 kind 保留数**单调性（两个不同量）。实测基线不满足（scale-070 22 > scale-085 21）。**判据规则与门槛一字未改**，仅更正基线观测值。

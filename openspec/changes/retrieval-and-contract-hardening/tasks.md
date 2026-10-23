@@ -84,11 +84,11 @@
 ### 1.6 G1 照判
 
 - [x] 1.6.1 照 proposal §1.2 原文填判定表（C1–C6 一行一条，结果列只许"满足/不满足"）
-      补勾依据：见 `docs/rag-quality/near-dup-mechanism-decision-v1.md` §4 与 `report.md` §2.1：C1 满足（最佳点 0.941667）；C2 **不满足**（所有 R≥0.90 点最小 L=0.032609）；C3 逐点记录（基线成立、`floor=0.9935` 不成立因 jpeg 17<scale-070 21）；C4 满足（0）；C5 满足（NO-GO）；C6 满足（200/25/325）。
+      补勾依据：见 `docs/rag-quality/near-dup-mechanism-decision-v1.md` §4 与 `report.md` §2.1：C1 满足（最佳点 0.941667）；C2 **不满足**（所有 R≥0.90 点最小 L=0.032609）；C3 **基线不满足**（crop-12=0 ≤ crop-04=9 ≤ scale-070=22，但 scale-070 22 > scale-085 21；锚 `baseline.outcome.satisfiesC3=false`），`floor=0.9935` 亦不满足（jpeg-q80 17 < scale-070/085 21）；C4 满足（0）；C5 满足（NO-GO）；C6 满足（200/25/325）。
 - [x] 1.6.2 给出 `verdict` 与推导链（哪条机制、哪组参数、为何不选其它）
       补勾依据：`verdict=NO-GO`，推导链 = `[G1][表 5/5]` + `raisingTarget`：M1 到 0.90 的最小代价 L=0.032609(9/276)、M2 `D=22` L=0.224638(62/276)、M3 `(0,21)` L=0.170290(47/276)，三者均 > C2 的 0.02 ⇒ 无一点同时满足 C1∧C2 ⇒ NO-GO；不选 M2/M3 的理由 = 任何有用阈值上泄漏 ≥15/276（5.4%），像素差分分不开"同版面不同图"。
 - [x] 1.6.3 逐 kind 保留率表 + 单调性结论（C3）；不单调须区分机制缺陷 vs 变换语义差异
-      补勾依据：基线逐 kind {jpeg 18, scale-085 21, scale-070 22, crop-04 9, crop-12 0}（表 1/5）；`floor=0.9935` 逐 kind {17,21,21,5,0} → C3 不成立只因 jpeg 与 scale-070 反序；`floor=0.90` 逐 kind {24,24,24,24,17} → C3 成立。结论：jpeg 压缩保结构丢细节、裁切丢构图，两者不在同一条强度标尺上（**变换语义差异**，非机制缺陷）——文档 §4 与 §5 已写明。
+      补勾依据：基线逐 kind **{jpeg-q80=18, scale-085=21, scale-070=22, crop-04=9, crop-12=0}**（表 1/5 实测）→ **C3 不单调**，违反点 `scale-070(22) > scale-085(21)`（差 1 对，两个无损缩放之间的边界噪声，与 jpeg 无关）。另起一句：`floor=0.9935` 逐 kind {17,21,21,5,0} 也不成立，但性质不同——jpeg-q80(17) 排在 scale 系之后，是有损重编码的变换语义差异（对齐 v2 文档 §9 已记录的 jpeg/scale 反序）；`floor=0.90` 逐 kind {24,24,24,24,17} → C3 成立。实跑输出原文：`C3 基线逐kind={jpeg-q80=18, scale-085=21, scale-070=22, crop-04=9} 单调=false`（命令：`D:\git\Git\bin\bash.exe -lc 'cd /d/code/crmAndRag-merge-add-knowledge-admin-api && mvn -B -ntp test -Dtest=NearDuplicateMechanismDecisionTest'`）。结论：jpeg 压缩保结构丢细节、裁切丢构图，两者不在同一条强度标尺上（**变换语义差异**，非机制缺陷）——文档 §4 与 §5 已写明。
 - [x] 1.6.4 帕累托前沿表：每档 `L` 下 `R_keep` 最大值（M1/M2/M3 各一列）+ "把 `R_keep` 从 0.583 提到 0.90 的最小泄漏代价"
       补勾依据：M1 8 点前沿（0.9935→R 0.533333/L 0 … 0.90→R 0.941667/L 0.032609）、M2 13 点、M3 12 点，全表在锚 `pareto`，文档 §3 摘录；**最小泄漏代价 = M1 `floor=0.90` → L=0.032609（9/276）= 门槛 2% 的 1.63 倍**（锚 `raisingTarget.answer`，报告表 4/5 M1 段最后一行）。
 
@@ -176,7 +176,7 @@
 ### 3.2 自定义器
 
 - [x] 3.2.1 新增 `OpenApiPermissionCustomizer implements OperationCustomizer`：有 `@RequirePermission` ⇒ `x-required-permission {code,name}`；无 ⇒ `x-permission-status: OPEN`
-      补勾依据：`src/main/java/com/slz/crm/server/config/OpenApiPermissionCustomizer.java`（91 行），`customize()` 读 `handlerMethod.getMethodAnnotation(RequirePermission.class)` 二分；实测契约里 `x-required-permission` 259 处、`x-permission-status: OPEN` 20 处，样例 `/permission/list.get → code: 606 / name: SYSTEM_ASSIGN_PERMISSION`。SHA-256 `6eae6d6d095ac776e0742938e705efa9b78a7c8e77865b65e37103eaae85e6b1`。
+      补勾依据：`src/main/java/com/slz/crm/server/config/OpenApiPermissionCustomizer.java`（49 行），`customize()` 读 `handlerMethod.getMethodAnnotation(RequirePermission.class)` 二分；实测契约里 `x-required-permission` 259 处、`x-permission-status: OPEN` 20 处，样例 `/permission/list.get → code: 606 / name: SYSTEM_ASSIGN_PERMISSION`。SHA-256 `DAD0AC6D0A93E9DA9547BAFEECAFDBC41DA2195104472DBE699013EEF5420512`。本文件曾被 pmd 注释缩短后未重取哈希；凡后再改该源文件，必须重取哈希再补勾。
 - [x] 3.2.2 只读方法级注解；不扫 classpath、不 import 测试源码、不留可变全局状态；`code` 用 `getCode()` 的 `Long` 原样
       补勾依据：类无字段（无可变全局状态）、只 `getMethodAnnotation`；import 仅 common 注解/枚举 + swagger `Operation` + springdoc `OperationCustomizer` + `HandlerMethod`（无测试源码）；`code` 取枚举 `Long` 主键——**口径偏差已声明**：proposal §3.2 写 `getCode()`，实际枚举由 Lombok `@Getter` 暴露 **`getId()`**（`PermissionOperates` L10 `@Getter` + L289 `private final Long id`），契约字段名仍固定为 `code`（数字）。
 - [x] 3.2.3 在 `OpenApiConfig` 注册 bean（与既有 multipart customizer 并列），不动既有两个 customizer 逻辑
@@ -193,7 +193,7 @@
 - [x] 3.3.3 复跑 `bash scripts/check-openapi-consistency.sh` 必须绿
       补勾依据：`--update` 内置复校通过；收尾门禁再单独跑一次 `bash scripts/check-openapi-consistency.sh` → 「前后端契约一致：frontend/openapi.yaml 与后端 swagger 导出逐字相同。」（见 `report.md` §4 门禁原始结论）。
 - [x] 3.3.4 前端四项 `pnpm lint:check` / `type-check:check` / `test` / `build` 全绿（对应 P3）
-      补勾依据：`lint:check`=0、`type-check:check`=0（app + config 两段）、`test`=0（22 文件 / 213 用例全过）、**`build`=1（红）**。红因 = `[vite:esbuild-transpile] remove C:\Users\...\Temp\esbuild-*: Access is denied`（OS 级临时文件删除被拒），**连续 3 次复现**（含把 TMP/TEMP 指到 `target/tmp` 仍红）；**master 纯净工作树（5bb8b05 + `pnpm gen:api`）实测同红**（`target/master-build2.log`：`✓ 4151 modules transformed` 后 `✗ Build failed in 24.20s ... Access is denied`）⇒ **非本卡引入、非契约侧可修**。另：`build` 会顺带把 `frontend/typed-router.d.ts` 写脏，已 `git checkout --` 还原，现零 diff。详见 `report.md` §6 待决策项。
+      补勾依据：`lint:check`=0、`type-check:check`=0（app + config 两段）、`test`=0（22 文件 / 213 用例全过）、**`build`=1（红）**。红因 = `[vite:esbuild-transpile] remove C:\Users\...\Temp\esbuild-*: Access is denied`（OS 级临时文件删除被拒），**连续 3 次复现**（含把 TMP/TEMP 指到 `target/tmp` 仍红）；**master 纯净工作树（5bb8b05 + `pnpm gen:api`）实测同红**（`target/master-build2.log`：`✓ 4151 modules transformed` 后 `✗ Build failed in 24.20s ... Access is denied`）⇒ **非本卡引入、非契约侧可修**。另：`build` 会顺带把 `frontend/typed-router.d.ts` 写脏，已 `git checkout --` 还原，现零 diff。详见 `report.md` §6 待决策项。**修复第 2 轮重试**：把 `TEMP/TMP` 指到新建空目录 `target/esbuild-tmp2` 后再跑仍红，原文 `[vite:esbuild-transpile] remove D:\code\crmAndRag-merge-add-knowledge-admin-api\target\esbuild-tmp2\esbuild-273dba6034ab9ff6c09c80c68e43d3317eed67735dcafb041e08b52de71eb82c: Access is denied.`；已排除代码原因（同仓 `type-check:check` 绿，失败发生在 vite 的 esbuild 临时文件删除步骤，与契约/源码无关）⇒ 记为**环境限制**，build 一项**移交 CI `frontend-quality`（build budget）判定**；若合并后该 job 红，G3 整体回退（不得为绿删构建步骤或改 `pnpm run build`）。
 
 ### 3.4 守卫测试 P1/P2
 
