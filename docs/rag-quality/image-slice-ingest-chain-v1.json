@@ -1,0 +1,180 @@
+{
+  "anchor" : "image-slice-ingest-chain-v1",
+  "card" : "image-slice-ingest-chain-reconciliation",
+  "verdict" : "COUNTER-SUPPRESSED",
+  "brokenLink" : null,
+  "missingEvidence" : null,
+  "zeroExternalCall" : {
+    "realProviderConstructed" : false,
+    "structuralGuarantee" : "全程仅 Mockito 桩 ModelProvider；未构造真实 provider、未读取 DASHSCOPE_API_KEY 或 .env；外呼次数=0 由桩计数器复算",
+    "stubCallCounters" : {
+      "vision" : 27,
+      "embedImage" : 25,
+      "embed" : 22,
+      "embedCacheHits" : 1
+    }
+  },
+  "r1" : {
+    "chainOrder" : [
+      "提取图数",
+      "describe次数",
+      "过闸数",
+      "切片数",
+      "子块行数",
+      "embed调用次数",
+      "image向量暂存数"
+    ],
+    "rows" : [
+      {
+        "label" : "n1",
+        "extracted" : 1,
+        "describeCalls" : 1,
+        "gatePassed" : 1,
+        "slices" : 1,
+        "childRows" : 1,
+        "embedCalls" : 1,
+        "imageStaged" : 1,
+        "deltas" : [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "label" : "n8",
+        "extracted" : 8,
+        "describeCalls" : 8,
+        "gatePassed" : 8,
+        "slices" : 8,
+        "childRows" : 8,
+        "embedCalls" : 8,
+        "imageStaged" : 8,
+        "deltas" : [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    ],
+    "skipPoints" : [
+      {
+        "chain" : "gatePassed<describeCalls",
+        "line" : "PdfImageSliceIngestService:286",
+        "semantics" : "未过质量闸门，单图跳过"
+      },
+      {
+        "chain" : "gatePassed<describeCalls",
+        "line" : "PdfImageSliceIngestService:290",
+        "semantics" : "描述调用失败 catch，单图跳过"
+      },
+      {
+        "chain" : "slices<gatePassed",
+        "line" : "PdfImageSliceIngestService:310",
+        "semantics" : "对象落盘失败 catch，单图跳过"
+      },
+      {
+        "chain" : "slices=0（整批）",
+        "line" : "PdfImageSliceIngestService:138",
+        "semantics" : "buildSlices 内层文档级 catch：提取/装配异常吞掉，文本不受影响"
+      },
+      {
+        "chain" : "slices=0（整批）",
+        "line" : "ImageSliceIngestSupport:132",
+        "semantics" : "文档级 catch(Exception)：buildSlices 抛出时整批图片切片丢弃，文本照常"
+      }
+    ]
+  },
+  "r2" : {
+    "invocationsNoCache" : 6,
+    "invocationsWithCache" : 5,
+    "distinctEmbedTexts" : 5,
+    "childRows" : 6,
+    "corpus" : "doc1=同文件名同页码[图A,图B] / doc2=同文件名同页码[图A,图C]（A 的 embedText 逐字相同） / doc3=异文件名 / doc4=异类目",
+    "hitConstructed" : true,
+    "collidingEmbedTextsIdentical" : true,
+    "chainCountsUnchangedByCache" : true,
+    "cacheSuppressionVerdict" : "COUNTER-SUPPRESSED"
+  },
+  "r3" : {
+    "storageFailurePerImage" : {
+      "images" : 3,
+      "describeCalls" : 3,
+      "storeCalls" : 3,
+      "slices" : 2,
+      "survivingPageNos" : [
+        1,
+        3
+      ],
+      "childRows" : 2,
+      "embedCalls" : 2,
+      "imageStaged" : 2,
+      "warnCount" : 1,
+      "textChunksPreserved" : 2
+    },
+    "documentLevelSwallow" : {
+      "imageSlicesLost" : true,
+      "textChunksPreserved" : 2,
+      "warnCount" : 1,
+      "describeCalls" : 0
+    },
+    "extractorThrowInnerLayer" : {
+      "slices" : 0,
+      "describeCalls" : 0,
+      "warnCount" : 1
+    }
+  },
+  "r4" : {
+    "allRowIndexNull" : true,
+    "rowIndexNullCount" : 17,
+    "tripleCount" : 8,
+    "triples" : [
+      {
+        "pageNo" : 1,
+        "rowIndex" : null,
+        "embedText" : "【reconcile-chain-probe.pdf | 对账类目甲 | 第1页】\n确定性对账描述[42785f2]；含三层节点区块与两条箭头连线，附五根柱体与两条坐标轴的确定性转写替身，用于过生产四十字质量闸门"
+      },
+      {
+        "pageNo" : 2,
+        "rowIndex" : null,
+        "embedText" : "【reconcile-chain-probe.pdf | 对账类目甲 | 第2页】\n确定性对账描述[d9166267]；含三层节点区块与两条箭头连线，附五根柱体与两条坐标轴的确定性转写替身，用于过生产四十字质量闸门"
+      },
+      {
+        "pageNo" : 3,
+        "rowIndex" : null,
+        "embedText" : "【reconcile-chain-probe.pdf | 对账类目甲 | 第3页】\n确定性对账描述[ad58a272]；含三层节点区块与两条箭头连线，附五根柱体与两条坐标轴的确定性转写替身，用于过生产四十字质量闸门"
+      },
+      {
+        "pageNo" : 4,
+        "rowIndex" : null,
+        "embedText" : "【reconcile-chain-probe.pdf | 对账类目甲 | 第4页】\n确定性对账描述[91bf20c1]；含三层节点区块与两条箭头连线，附五根柱体与两条坐标轴的确定性转写替身，用于过生产四十字质量闸门"
+      },
+      {
+        "pageNo" : 5,
+        "rowIndex" : null,
+        "embedText" : "【reconcile-chain-probe.pdf | 对账类目甲 | 第5页】\n确定性对账描述[c4dc7f73]；含三层节点区块与两条箭头连线，附五根柱体与两条坐标轴的确定性转写替身，用于过生产四十字质量闸门"
+      },
+      {
+        "pageNo" : 6,
+        "rowIndex" : null,
+        "embedText" : "【reconcile-chain-probe.pdf | 对账类目甲 | 第6页】\n确定性对账描述[2d47d8df]；含三层节点区块与两条箭头连线，附五根柱体与两条坐标轴的确定性转写替身，用于过生产四十字质量闸门"
+      },
+      {
+        "pageNo" : 7,
+        "rowIndex" : null,
+        "embedText" : "【reconcile-chain-probe.pdf | 对账类目甲 | 第7页】\n确定性对账描述[a42cfd77]；含三层节点区块与两条箭头连线，附五根柱体与两条坐标轴的确定性转写替身，用于过生产四十字质量闸门"
+      },
+      {
+        "pageNo" : 8,
+        "rowIndex" : null,
+        "embedText" : "【reconcile-chain-probe.pdf | 对账类目甲 | 第8页】\n确定性对账描述[59dcdf52]；含三层节点区块与两条箭头连线，附五根柱体与两条坐标轴的确定性转写替身，用于过生产四十字质量闸门"
+      }
+    ],
+    "sufficientCollisionCondition" : "两个不同图片切片的 embedText 相同 ⇔ ChunkHeaderText.wrap 的四个区分输入全同：原始文件名相同 ∧ 类目相同 ∧ 图片所在页码相同 ∧ 描述文本逐字相同（rowIndex 图片切片恒 null，不参与区分）。数据实证：四输入全同 ⇒ 相同（doc1 图A vs doc2 图A 跨文档命中）；描述不同 ⇒ 不同（doc1 图B vs doc2 图C 同页同名）；文件名不同 ⇒ 不同（doc3 图A vs doc1 图A 同页同描述）；类目不同 ⇒ 不同（doc4 图A vs doc1 图A 同页同描述）；页码不同 ⇒ 不同（n1/n8 八图同名同类目跨八页两两互异）"
+  }
+}
