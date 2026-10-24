@@ -28,7 +28,8 @@ VLM 合计 2886 token；「（截图不清）」出现 0 次；影子分类与�
   无隐藏调用、无计量漏记；embedding token 端点不回流 usage，记 null（`docs/token-metering.md` §1，未按字符数估算）。
 - R0 保真：6 份单图合成 PDF 逐份「抠出 1 图 + 宽高逐一对上」；守卫另覆盖单图 PDF / 21 图切两份（帽截断 20）/ 非 PDF
   字节经生产旁路返回空表且零外呼。
-- 默认复跑（opt-in 无 write）：语料与 PDF 重建 + 生产提取器复验 + 派生字段重算，与磁盘锚**逐字节一致**，零外呼。
+- 默认复跑（opt-in 无 write）：语料与 PDF 重建 + 生产提取器复验 + 派生字段重算，与磁盘锚**逐字节一致**（比对前剔除
+  顶层 runtime 块——活值投影不参与字节恒等，fix1），零外呼。
 
 ## 4. 选取规则（冻结于锚 `selectionRule`）
 
@@ -46,3 +47,14 @@ VLM 合计 2886 token；「（截图不清）」出现 0 次；影子分类与�
    命中风险低；S1 仍有拆分子查询预热与硬帽保护兜底。
 3. `crop-12`（最重裁切）compact 45 字仍过 40 字闸门——闸门对退化变体的拒绝面比预期窄，S1 的 48 图入库率
    大概率接近满额；闸门连带丢图耦合（proposal §3.2）的实际杀伤面将由 S1 的 `GATE-REJECTED` 三态实测。
+
+## 6. fix1 收卡（2026-10-25，S0-only）
+
+- **NF-1 修复（冻结投影）**：原 `constants.visionModel` 落运行时活值（写锚时的 `qwen3-vl-plus`）⇒ 默认参数下 replay
+  必不等、锚不可复认证。修后 `constants.visionModel` 只落编译期常量 `qwen-vl-plus`（可复算、不读属性），活值移入顶层
+  `runtime` 块（`excludedFromReplay: ["visionModel"]` 白名单锁死，`overrideReason` 即上方 model_not_found 记载）；
+  replay 整体剔除 `runtime` 后逐字节比对，写锚与 replay 共用同一份 `buildAnchor`。本锚 `runtime` 为手工迁移，
+  未重跑任何外呼。
+- **收卡裁定**：Owner 裁定 A′——S1 未授权（首轮 124 次外呼中止，重跑需 ~120 次将破 162 累计帽），S1 消融不跑、
+  装置拆除；负结论预注册于 `near-dup-ingest-s1-not-run-v1.json`，骨架留 `d7abc37` 供后续卡取回。§5 的「移交 S1」
+  表述随裁定作废（历史记录保留）。

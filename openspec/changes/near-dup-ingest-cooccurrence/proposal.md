@@ -2,6 +2,9 @@
 
 > 状态：**已立项，待 Owner 派发**。Owner 2026-10-24 授权 **S0→S1 阶梯**：先 6 图探针（18 次外呼），通过后再 48 图（144 次外呼），**累计上限 162 次外呼**。
 > 本卡是储备 ② 的执行卡，直接后续口径四 `near-dup-displacement-evidence-v1`（`POSSIBLY-DISPLACED`）。
+> **fix1 收卡（2026-10-25）**：Owner 裁定 A′——S1 未授权（首轮 124 次外呼后红于计数恒等式，重跑需 ~120 次将破
+> 162 累计帽），收窄为 S0-only：S1 消融不跑、S1 装置拆除（骨架留 `d7abc37` 供后续卡取回）、负结论预注册于
+> `docs/rag-quality/near-dup-ingest-s1-not-run-v1.json`；§5 判据 R2–R7 随 S1 封存（不改判据文本），R0/R1 已交付。
 
 ## 1. 要回答的问题（一句话）
 
@@ -93,10 +96,10 @@
 
 ## 7. 交付物
 
-- `src/test/java/com/slz/crm/quality/NearDupIngestPdfBuilder.java`（变体 → 合成 PDF，含零外呼自检）
+- `src/test/java/com/slz/crm/quality/NearDupIngestPdfBuilder.java`（变体 → 合成 PDF，含零外呼自检；fix1：S0 所需能力内联进 GateProbeIT，原类拆除、全文留 d7abc37）
 - `src/test/java/com/slz/crm/quality/NearDupIngestGateProbeIT.java`（S0，6 图）
-- `src/test/java/com/slz/crm/quality/NearDupIngestCooccurrenceIT.java`（S1，48 图 + 消融）
-- `src/test/java/com/slz/crm/quality/NearDupIngestGateProbeGuardTest.java` / `NearDupIngestCooccurrenceGuardTest.java`（锚守卫，默认跑）
+- `src/test/java/com/slz/crm/quality/NearDupIngestCooccurrenceIT.java`（S1，48 图 + 消融；fix1：拆除、全文留 d7abc37）
+- `src/test/java/com/slz/crm/quality/NearDupIngestGateProbeGuardTest.java`（锚守卫，默认跑）/ `NearDupIngestCooccurrenceGuardTest.java`（fix1：拆除、全文留 d7abc37）
 - `docs/rag-quality/near-dup-ingest-gate-probe-v1.json` / `.md`（S0 锚）
-- `docs/rag-quality/near-dup-ingest-cooccurrence-v1.json` / `.md`（S1 锚，含 `verdict` 三选一）
+- `docs/rag-quality/near-dup-ingest-s1-not-run-v1.json`（fix1：S1 NOT-RUN 负结论锚；原 S1 锚 `near-dup-ingest-cooccurrence-v1.json` 必须不存在——守卫断言负空间）
 - `scripts/test-baseline.txt`（仅经 `--update`）

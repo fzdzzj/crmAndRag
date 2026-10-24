@@ -1,6 +1,7 @@
 package com.slz.crm.quality;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -40,7 +41,9 @@ import reactor.core.publisher.Flux;
  *   <li><b>R0 合成 PDF 可行性</b>：3 图合成 PDF → 生产 {@code PdfImageExtractor} 抠图，图数与像素尺寸逐一对上；
  *   <li><b>边界覆盖</b>：单图 PDF、&gt;20 图 PDF（构造侧切两份 + 提取侧帽截断）、非 PDF 字节（生产 buildSlices 返回空表且零外呼）；
  *   <li><b>锚对账</b>：定标锚 SHA 实算、影子分类与闸门结论逐图一致（重算）、gatePassRate/gateVerdict 由逐图结果重算、 externalCalls
- *       与分项对账且不超硬帽（写 0 或硬写即红）。
+ *       与分项对账且不超硬帽（写 0 或硬写即红）；
+ *   <li><b>S0-only 收卡（fix1）</b>：S1 NOT-RUN 锚在位自洽（callLedger 三分项对账）+ S1 锚必须不存在 + S0 锚 runtime
+ *       冻结投影（constants 无运行时派生值、excludedFromReplay 恒 [visionModel]、 活值≠常量时 overrideReason 非空）。
  * </ul>
  */
 class NearDupIngestGateProbeGuardTest {
@@ -71,9 +74,9 @@ class NearDupIngestGateProbeGuardTest {
       inputs.add(programmaticPng(edge, edge + 7, index));
       dims.add(new int[] {edge, edge + 7});
     }
-    byte[] pdf = NearDupIngestPdfBuilder.buildPdfs(inputs).get(0);
+    byte[] pdf = NearDupIngestGateProbeIT.buildPdfs(inputs).get(0);
     List<RealPdfAssets.Extracted> extracted =
-        RealPdfAssets.extract(pdf, NearDupIngestPdfBuilder.MAX_IMAGES_PER_PDF);
+        RealPdfAssets.extract(pdf, NearDupIngestGateProbeIT.MAX_IMAGES_PER_PDF);
     assertEquals(3, extracted.size(), "3 图 PDF 必须抠出 3 图");
     for (int index = 0; index < dims.size(); index++) {
       assertEquals(dims.get(index)[0], extracted.get(index).width(), "抠图宽度漂移 @" + index);
@@ -85,23 +88,23 @@ class NearDupIngestGateProbeGuardTest {
   @DisplayName("边界：单图 PDF；>20 图构造侧切两份且提取侧帽截断；非 PDF 字节走生产旁路返回空表且零外呼")
   void builderBoundaries() throws Exception {
     byte[] single = programmaticPng(70, 70, 0);
-    byte[] singlePdf = NearDupIngestPdfBuilder.buildSingleImagePdf(single);
+    byte[] singlePdf = NearDupIngestGateProbeIT.buildSingleImagePdf(single);
     assertEquals(1, RealPdfAssets.extract(singlePdf, 20).size(), "单图 PDF 必须抠出 1 图");
 
     List<byte[]> twentyOne = new ArrayList<>();
     for (int index = 0; index < 21; index++) {
       twentyOne.add(programmaticPng(70, 70, index));
     }
-    List<byte[]> pdfs = NearDupIngestPdfBuilder.buildPdfs(twentyOne);
+    List<byte[]> pdfs = NearDupIngestGateProbeIT.buildPdfs(twentyOne);
     assertEquals(
-        2, pdfs.size(), "21 图必须切成两份（帽 " + NearDupIngestPdfBuilder.MAX_IMAGES_PER_PDF + "）");
+        2, pdfs.size(), "21 图必须切成两份（帽 " + NearDupIngestGateProbeIT.MAX_IMAGES_PER_PDF + "）");
     assertEquals(
         20,
-        RealPdfAssets.extract(pdfs.get(0), NearDupIngestPdfBuilder.MAX_IMAGES_PER_PDF).size(),
+        RealPdfAssets.extract(pdfs.get(0), NearDupIngestGateProbeIT.MAX_IMAGES_PER_PDF).size(),
         "第一份必须被提取帽截断在 20 图");
     assertEquals(
         1,
-        RealPdfAssets.extract(pdfs.get(1), NearDupIngestPdfBuilder.MAX_IMAGES_PER_PDF).size(),
+        RealPdfAssets.extract(pdfs.get(1), NearDupIngestGateProbeIT.MAX_IMAGES_PER_PDF).size(),
         "第二份恰 1 图");
 
     // 非 PDF 字节：生产 buildSlices 的旁路语义 = 整体跳过返回空表（提取异常被生产 catch 吞掉，零外呼零落盘）
@@ -184,6 +187,43 @@ class NearDupIngestGateProbeGuardTest {
     assertTrue(externalCalls <= NearDupIngestGateProbeIT.S0_CALL_CAP, "S0 外呼实测超硬帽");
   }
 
+  @Test
+  @DisplayName("S0-only 收卡（fix1）：NOT-RUN 锚在位自洽 + S1 锚必须不存在 + S0 锚 runtime 冻结投影")
+  void s0OnlyClosureAndFrozenProjection() throws Exception {
+    Path notRunAnchor = Path.of("docs", "rag-quality", "near-dup-ingest-s1-not-run-v1.json");
+    assertTrue(Files.exists(notRunAnchor), "S1 NOT-RUN 锚缺失（收卡负结论未落盘？）: " + notRunAnchor);
+    JsonNode notRun = MAPPER.readTree(Files.readAllBytes(notRunAnchor));
+    assertEquals("NOT-RUN", notRun.path("s1Status").asText(), "s1Status 必须显式 NOT-RUN");
+    Path s1Anchor = Path.of("docs", "rag-quality", "near-dup-ingest-cooccurrence-v1.json");
+    assertFalse(Files.exists(s1Anchor), "S1 锚不得存在（S1 未授权未跑，锚落盘即伪造）: " + s1Anchor);
+    JsonNode ledger = notRun.path("callLedger");
+    assertEquals(
+        ledger.path("vision").asInt(-1)
+            + ledger.path("embedImage").asInt(-1)
+            + ledger.path("embed").asInt(-1),
+        ledger.path("total").asInt(-1),
+        "callLedger.total 必须等于 vision+embedImage+embed 三分项之和");
+
+    assertNotNull(anchor, "S0 锚缺失（未真跑或被删）: " + ANCHOR.toAbsolutePath());
+    JsonNode runtime = anchor.path("runtime");
+    assertTrue(runtime.isObject(), "S0 锚缺顶层 runtime 块（NF-1 冻结投影迁移未做？）");
+    assertEquals(
+        NearDupIngestGateProbeIT.DEFAULT_VISION_MODEL,
+        anchor.path("constants").path("visionModel").asText(),
+        "constants.visionModel 必须等于编译期常量（运行时派生值只许落 runtime 块）");
+    JsonNode excluded = runtime.path("excludedFromReplay");
+    assertTrue(excluded.isArray() && excluded.size() == 1, "runtime.excludedFromReplay 必须恰 1 项");
+    assertEquals(
+        "visionModel", excluded.get(0).asText(), "runtime.excludedFromReplay 白名单只许 visionModel");
+    String liveModel = runtime.path("visionModel").asText(null);
+    assertNotNull(liveModel, "runtime.visionModel 缺失（活值投影不完整）");
+    if (!NearDupIngestGateProbeIT.DEFAULT_VISION_MODEL.equals(liveModel)) {
+      assertTrue(
+          runtime.path("overrideReason").asText("").length() > 0,
+          "活值≠常量时 runtime.overrideReason 必须非空");
+    }
+  }
+
   /** 程序化确定性样张（≥64px 短边，唯一底色区分图序）。 */
   private static byte[] programmaticPng(int width, int height, int ordinal) throws Exception {
     BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
@@ -227,7 +267,7 @@ class NearDupIngestGateProbeGuardTest {
     matrix.put(PdfImageSliceIngestService.ENABLED_KEY, Boolean.TRUE);
     matrix.put(PdfImageSliceIngestService.IMAGE_VECTOR_ENABLED_KEY, Boolean.TRUE);
     matrix.put(
-        PdfImageSliceIngestService.MAX_IMAGES_KEY, NearDupIngestPdfBuilder.MAX_IMAGES_PER_PDF);
+        PdfImageSliceIngestService.MAX_IMAGES_KEY, NearDupIngestGateProbeIT.MAX_IMAGES_PER_PDF);
     return RagBenchmarkPipelineFactory.dynamicConfig(matrix);
   }
 

@@ -85,3 +85,31 @@ RAG_NEAR_DUP_INGEST_REAL=1 mvn -B -ntp -Dit.test=NearDupIngestCooccurrenceIT -Dn
 - **实测新发现**：① 带内对 `doe-p1-b2@scale-070` 短边 <64px，真实提取期即丢（S1 三态 `EXTRACTION-DROPPED`，预注册 INSUFFICIENT-COVERAGE 语义）；② S1 期望三态分布 ≈ 47 提取 / 41 过闸 / 6 闸拒。
 - **外呼台账（全部 API 请求口径）**：S0 终版 18 + S0 废跑 ~11（write4 视觉模型 model_not_found ≤6、write5 三图 9 次成功后于第 4 图提取断言中止）+ S1 中止 124 ≈ **153 ≤ 162**；**S1 重跑需 ~120 次，必然超 162 硬帽** ⇒ 按 §5 停手上报，待 Owner 决策（追加授权 or 以 S0 交付收卡）。
 - 未授权动作零发生：无 push、无 src/main diff、无既有锚/IT/语料改动。
+
+## 11. fix1 执行记录（2026-10-25，收卡为 S0-only）
+
+Owner 裁定 A′ 后的 fix1 卡：修 NF-1、拆 S1 装置、预注册 NOT-RUN 锚。**零新外呼**（累计 153 ≤ 162）。
+
+### 改动面
+
+- **NF-1 冻结投影**（NearDupIngestGateProbeIT）：constants.visionModel 由运行时活值改为编译期常量 DEFAULT_VISION_MODEL（qwen-vl-plus）；新增顶层 runtime 块（活值 visionModel() + excludedFromReplay=["visionModel"] 白名单 + 覆盖原因常量 VISION_MODEL_OVERRIDE_REASON，活值=常量时为 null）；replay 改为剔除 runtime 后逐字节比对（白名单先锁死）；写锚与 replay 共用同一份 buildAnchor（结构未动）。
+- **锚手工迁移**（near-dup-ingest-gate-probe-v1.json，未重跑外呼）：constants.visionModel 落回 qwen-vl-plus；新增 runtime（活值 qwen3-vl-plus + overrideReason=model_not_found 覆盖原因，与 .md 头部一致）；byteIdentityBasis 同步「剔除 runtime」口径，其余字节未动；near-dup-ingest-gate-probe-v1.md §3/§6 同步。
+- **守卫**（NearDupIngestGateProbeGuardTest）：新增 s0OnlyClosureAndFrozenProjection（NOT-RUN 锚在位 + s1Status=NOT-RUN + callLedger 三分项对账 + S1 锚必须不存在 + constants 无运行时派生值 + runtime 白名单恒 [visionModel] + 活值≠常量时 overrideReason 非空）；对 NearDupIngestPdfBuilder 的引用改指 NearDupIngestGateProbeIT（与既有 classify/GATE_PASS_MIN 引用同模式）。
+- **NOT-RUN 锚**（新文件 docs/rag-quality/near-dup-ingest-s1-not-run-v1.json，LF）：s1Status=NOT-RUN / authorizedBy=OWNER / decidedOn=2026-10-25 / callLedger（vision 47 + embedImage 41 + embed 36 = total 124，累计 153 ≤ 162，evidence=_nds1-write1.log:72）/ partialFindings F1-F3（各带 evidence）/ revivalPointer=d7abc37 / negativeConclusion。
+- **S1 装置拆除**（git rm）：NearDupIngestCooccurrenceIT.java、NearDupIngestCooccurrenceGuardTest.java、NearDupIngestPdfBuilder.java。
+- **执行裁定（偏离提示词字面，需 Owner 复核追认）**：NearDupIngestPdfBuilder 非纯 S1 装置——S0 的 ProbeIT（6 处引用，含零外呼 replay 路径）与守卫（8 处）是它的活依赖，直接删除则分支不可编译、复认证不可能。处置：把 S0 所需能力（MAX_IMAGES_PER_PDF / buildSingleImagePdf / buildPdfs / buildMultiImagePdf / readPng）内联进 NearDupIngestGateProbeIT，守卫改引 ProbeIT，再删原类；原类全文留在 d7abc37。全仓 grep 三类名：src、scripts、docs 的代码引用 = 0；余下命中均为史录性文本（本卡 §3/§6/§10、tasks A.2 史录、ProbeIT 内联出处注释），无一在编译面。
+- **tasks.md**：C 组 12-22 与 D 组 24/26/27 记「不做（Owner 裁定 A′）」（[x] 为处置勾非完成勾，组注已声明）；D 组 25/28/29 为 fix1 实际执行留真凭据；D23 为 fix1 前历史完成记录原样保留。
+- **proposal.md**：头部补 fix1 收卡状态注记；§7 交付物对拆除项逐一标注（判据 §4/§5 未动）。
+
+### 验收（提示词 §5 顺序）
+
+1. **全仓 grep 三被删类**：src/、scripts/、docs/ 计代码引用 0（openspec 与 work 内史录文本除外，均已注明性质）。
+2. **mvn -B -ntp clean verify**（Docker 29.6.2 在线；work/_fix1-verify2.log）：BUILD SUCCESS；surefire 2137/0/0/0（reports 345）；failsafe 148/0/0/16（reports 47）；两个真外呼 IT 均 Skipped: 1（NearDupDisplacementEvidenceIT、NearDupIngestGateProbeIT）。首轮 verify 红于 spotless GJF 排版两处（预折行不符），spotless:apply 修复后复跑全绿（_fix1-verify.log → _fix1-verify2.log，apply 只触写集内两个 java）。
+3. **零覆盖 replay**（work/_fix1-replay.log；RAG_NEAR_DUP_INGEST_REAL=1 mvn -B -ntp test -Dtest=NearDupIngestGateProbeIT，无任何 -D 应用属性覆盖）：Tests run: 1, Failures: 0；输出「默认复跑逐字节一致（gatePassRate=1.0 verdict=PROCEED-S1 零外呼）」——NF-1 缺陷（默认参数 replay 必不等）修复实证。靶向跑残留 surefire 报告已删（残留报告污染基线口径的坑）。
+4. **bash scripts/check-test-baseline.sh**：EXIT=1，未 --update（重锚属 M1）。实际红因与提示词预测（计数下漂）方向相反：计数全部上漂且在下限内（surefire 345/2137 ≥ 344/2133、failsafe 47/148 ≥ 46/147），红在 failsafe skipped 上限 16 > 15——多出的 1 skip = S0 gate-probe IT 自身（d7abc37 引入，基线锚定于其前的 0d42809）；fix1 删除 S1 IT 恰好避免它再 +1。M1 重锚新口径应为 345/2137/0 + 47/148/16。
+
+### 边界自证
+
+- src/main 对 master git diff --stat 空；六锚 + 签收锚 SHA 复算与 A.1 台账逐字符等值（d84838c2 / 82d24204 / 5444719a / 62e43dfb / 43c54ba6 / 3adde4ec + 签收 dbe79947）。
+- git status 仅写集内文件（4 改 + 3 删 + 1 新增）；git diff --check 干净；两个锚 JSON LF 零 0x0d。
+- 零新外呼；git push、merge、改写历史零发生。

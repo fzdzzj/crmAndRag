@@ -34,6 +34,10 @@ import com.slz.crm.platform.contract.VectorSearchHit;
 import com.slz.crm.platform.contract.VectorSearchRequest;
 import com.slz.crm.platform.model.ModelProviderImpl;
 import com.slz.crm.platform.model.ModelProviderProperties;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -42,6 +46,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.imageio.ImageIO;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -73,8 +84,8 @@ import reactor.core.publisher.Flux;
  *   <li><b>opt-in + write</b>：全量真跑（真 VLM + 真 embedding），逐图证据冻结进锚；计量计数同时做「实测 == 派生」对账
  *       （embedImage/embed 恰等于过闸门图数，多出的计数即隐藏调用，直接红）；
  *   <li><b>opt-in 无 write（默认复跑）</b>：重新生成语料与合成 PDF、重过生产提取器（R0 复验），从锚冻结的逐图记录重算全部派生字段 （failReason /
- *       gatePassRate / gateVerdict / externalCalls），序列化后与磁盘锚<b>逐字节比对</b>。全程不构造 {@code
- *       ModelProvider}——复跑零外呼由结构保证。
+ *       gatePassRate / gateVerdict / externalCalls），剔除顶层 runtime 块（活值投影）后与磁盘锚<b>逐字节比对</b>。全程不构造
+ *       {@code ModelProvider}——复跑零外呼由结构保证。
  * </ol>
  *
  * <p><b>影子分类声明</b>：生产闸门 {@code VisionIngestSupport#passesQualityGate} 在 {@code src/main}（本卡只读）， 拒图的
@@ -137,7 +148,15 @@ class NearDupIngestGateProbeIT {
   /** 视觉模型覆盖属性（与既有真跑 IT 同枚）。 */
   private static final String VISION_MODEL_PROP = "rag.pdf.image.vision-model";
 
-  private static final String DEFAULT_VISION_MODEL = "qwen-vl-plus";
+  /** 视觉模型冻结投影常量（锚 constants.visionModel 只落此值；运行时活值见顶层 runtime 块）。 */
+  static final String DEFAULT_VISION_MODEL = "qwen-vl-plus";
+
+  /** 活值≠常量时的覆盖原因（与锚 .md 头部 model_not_found 记载一致；replay 无覆盖时为 null）。 */
+  static final String VISION_MODEL_OVERRIDE_REASON =
+      "生产默认 qwen-vl-plus 在本 key 返回 model_not_found，写锚运行覆盖为 qwen3-vl-plus（灰卡同款覆盖）";
+
+  /** 每份 PDF 图片数帽（= 生产 PdfImageSliceIngestService.HARD_MAX_IMAGES 同值，不引用生产常量）。 */
+  static final int MAX_IMAGES_PER_PDF = 20;
 
   /** 带内区间（定标锚判读口径：近重复带 [0.9887, 0.9944)，冻结）。 */
   static final double BAND_LOW = 0.9887D;
@@ -385,9 +404,8 @@ class NearDupIngestGateProbeIT {
       int expectedVisionSequence,
       long chunkIdSeed)
       throws Exception {
-    byte[] pdf = NearDupIngestPdfBuilder.buildSingleImagePdf(image.png());
-    List<RealPdfAssets.Extracted> extracted =
-        RealPdfAssets.extract(pdf, NearDupIngestPdfBuilder.MAX_IMAGES_PER_PDF);
+    byte[] pdf = buildSingleImagePdf(image.png());
+    List<RealPdfAssets.Extracted> extracted = RealPdfAssets.extract(pdf, MAX_IMAGES_PER_PDF);
     assertEquals(1, extracted.size(), image.assetKey() + " 合成 PDF 必须恰好抠出 1 图（R0 保真）");
     assertEquals(image.width(), extracted.get(0).width(), image.assetKey() + " 抠图宽度必须与输入一致（R0）");
     assertEquals(image.height(), extracted.get(0).height(), image.assetKey() + " 抠图高度必须与输入一致（R0）");
@@ -520,7 +538,7 @@ class NearDupIngestGateProbeIT {
     ObjectNode constants = root.putObject("constants");
     constants.put("minCompactChars", MIN_COMPACT_CHARS);
     constants.put("unclearHanRatioLimit", UNCLEAR_HAN_RATIO_LIMIT);
-    constants.put("hardMaxImagesPerDocument", NearDupIngestPdfBuilder.MAX_IMAGES_PER_PDF);
+    constants.put("hardMaxImagesPerDocument", MAX_IMAGES_PER_PDF);
     constants.put(
         "gateImplNote",
         "闸门实现 = 生产 VisionIngestSupport.passesQualityGate（src/main 只读）；failReason 为测试侧影子分类（同阈值），"
@@ -531,7 +549,15 @@ class NearDupIngestGateProbeIT {
         "meteringNote",
         "embedding token 不可得时显式 null（端点限制，docs/token-metering.md §1），禁按字符数估算；VISION token 由 "
             + "TokenUsageRecorder 真实计量点落账");
-    constants.put("visionModel", visionModel());
+    // NF-1 冻结投影：constants 只落编译期常量（默认参数下可复算），不读属性；运行时活值落 runtime 块
+    constants.put("visionModel", DEFAULT_VISION_MODEL);
+    ObjectNode runtime = root.putObject("runtime");
+    String liveVisionModel = visionModel();
+    runtime.put("visionModel", liveVisionModel);
+    runtime.putArray("excludedFromReplay").add("visionModel");
+    runtime.put(
+        "overrideReason",
+        DEFAULT_VISION_MODEL.equals(liveVisionModel) ? null : VISION_MODEL_OVERRIDE_REASON);
     root.put("baselineHead", "cdf3382");
 
     root.put(
@@ -614,8 +640,8 @@ class NearDupIngestGateProbeIT {
     root.put(
         "byteIdentityBasis",
         "锚内 corpusMaterial.images 冻结逐图证据（闸门结论/token/影子指标/描述文本）；默认复跑重新生成语料与合成 PDF、"
-            + "重过生产提取器（R0 复验），从冻结子集重算 failReason/gatePassRate/gateVerdict/externalCalls 后逐字节比对；"
-            + "复跑不构造 ModelProvider，零外呼由结构保证");
+            + "重过生产提取器（R0 复验），从冻结子集重算 failReason/gatePassRate/gateVerdict/externalCalls 后逐字节比对"
+            + "（比对前整体剔除顶层 runtime 块——活值投影不参与字节恒等）；复跑不构造 ModelProvider，零外呼由结构保证");
     return root;
   }
 
@@ -679,9 +705,8 @@ class NearDupIngestGateProbeIT {
 
     // R0 复验（零外呼）：合成 PDF 重新过生产提取器，图数与像素尺寸逐一对上
     for (int index = 0; index < images.size(); index++) {
-      byte[] pdf = NearDupIngestPdfBuilder.buildSingleImagePdf(images.get(index).png());
-      List<RealPdfAssets.Extracted> extracted =
-          RealPdfAssets.extract(pdf, NearDupIngestPdfBuilder.MAX_IMAGES_PER_PDF);
+      byte[] pdf = buildSingleImagePdf(images.get(index).png());
+      List<RealPdfAssets.Extracted> extracted = RealPdfAssets.extract(pdf, MAX_IMAGES_PER_PDF);
       assertEquals(1, extracted.size(), "复跑 R0：PDF @" + index + " 必须恰好抠出 1 图");
       assertEquals(images.get(index).width(), extracted.get(0).width(), "复跑 R0：宽度漂移 @" + index);
       assertEquals(images.get(index).height(), extracted.get(0).height(), "复跑 R0：高度漂移 @" + index);
@@ -693,8 +718,18 @@ class NearDupIngestGateProbeIT {
     }
     int gatePassCount = (int) probes.stream().filter(FrozenProbe::gatePass).count();
     ObjectNode rebuilt = buildAnchor(probes, probes.size(), gatePassCount, gatePassCount);
+    // runtime 块是活值投影（写锚时实际所用视觉模型）：白名单锁死后整体剔除，再逐字节比对（NF-1）
+    JsonNode storedRuntime = root.path("runtime");
+    assertTrue(storedRuntime.isObject(), "磁盘锚缺顶层 runtime 块（冻结投影迁移未做？）");
+    assertVisionModelWhitelist(storedRuntime);
+    assertVisionModelWhitelist(rebuilt.path("runtime"));
+    ((ObjectNode) root).remove("runtime");
+    ((ObjectNode) rebuilt).remove("runtime");
     String rebuiltJson = MAPPER.writeValueAsString(rebuilt);
-    assertEquals(stored, rebuiltJson, "默认复跑序列化与磁盘锚不一致（锚被手改或派生算术漂移）——逐字节比对失败");
+    assertEquals(
+        MAPPER.writeValueAsString(root),
+        rebuiltJson,
+        "默认复跑序列化与磁盘锚不一致（剔除 runtime 后；锚被手改或派生算术漂移）——逐字节比对失败");
     System.out.println(
         "[near-dup-ingest-gate-probe] 默认复跑逐字节一致（gatePassRate="
             + root.path("gatePassRate").asDouble()
@@ -703,14 +738,85 @@ class NearDupIngestGateProbeIT {
             + " 零外呼）");
   }
 
+  /** runtime 白名单锁死：excludedFromReplay 恰等于 [visionModel]（多、少、换名都红）。 */
+  private static void assertVisionModelWhitelist(JsonNode runtime) {
+    JsonNode excluded = runtime.path("excludedFromReplay");
+    assertTrue(excluded.isArray() && excluded.size() == 1, "runtime.excludedFromReplay 必须恰 1 项");
+    assertEquals(
+        "visionModel", excluded.get(0).asText(), "runtime.excludedFromReplay 白名单只许 visionModel");
+  }
+
+  // ==================== 合成 PDF 装配（原 NearDupIngestPdfBuilder 内联） ====================
+  // S1 装置拆除（Owner 裁定 A′）后 S0 仍依赖合成 PDF（write 与 replay 的 R0 复验都走它），原类全文留 d7abc37。
+
+  /**
+   * 单图合成 PDF：一页，页尺寸 = 图片尺寸，图片满页无缩放内嵌（S0 探针用，逐图隔离闸门判定）。
+   *
+   * @param png 变体/base 的 PNG 字节
+   * @return PDF 字节
+   */
+  static byte[] buildSingleImagePdf(byte[] png) {
+    return buildMultiImagePdf(List.of(png));
+  }
+
+  /**
+   * 批量图 → 合成 PDF 序列：按输入顺序每 {@value #MAX_IMAGES_PER_PDF} 图切一份，每份一图一页（守卫边界测试用）。
+   *
+   * @param pngImages 保序的 PNG 字节序列（非空）
+   * @return PDF 字节序列（每份 ≤ {@value #MAX_IMAGES_PER_PDF} 图）
+   */
+  static List<byte[]> buildPdfs(List<byte[]> pngImages) {
+    if (pngImages == null || pngImages.isEmpty()) {
+      throw new IllegalArgumentException("合成 PDF 需要至少一张图");
+    }
+    List<byte[]> pdfs = new ArrayList<>();
+    for (int from = 0; from < pngImages.size(); from += MAX_IMAGES_PER_PDF) {
+      int to = Math.min(from + MAX_IMAGES_PER_PDF, pngImages.size());
+      pdfs.add(buildMultiImagePdf(pngImages.subList(from, to)));
+    }
+    return List.copyOf(pdfs);
+  }
+
+  /** 一份多页 PDF：每页一图（页尺寸 = 图尺寸，lossless 内嵌），页序 = 输入序；无时间戳，同一输入字节一致。 */
+  private static byte[] buildMultiImagePdf(List<byte[]> pngImages) {
+    try (PDDocument document = new PDDocument()) {
+      for (byte[] png : pngImages) {
+        BufferedImage image = readPng(png);
+        PDPage page = new PDPage(new PDRectangle(image.getWidth(), image.getHeight()));
+        document.addPage(page);
+        PDImageXObject xobject = LosslessFactory.createFromImage(document, image);
+        try (PDPageContentStream content = new PDPageContentStream(document, page)) {
+          content.drawImage(xobject, 0F, 0F, image.getWidth(), image.getHeight());
+        }
+      }
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      document.save(out);
+      return out.toByteArray();
+    } catch (IOException exception) {
+      throw new IllegalStateException("合成 PDF 生成失败", exception);
+    }
+  }
+
+  /** 解码 PNG（失败即抛，不吞；与语料侧同一纪律）。 */
+  private static BufferedImage readPng(byte[] png) {
+    try {
+      BufferedImage image = ImageIO.read(new ByteArrayInputStream(png));
+      if (image == null) {
+        throw new IllegalStateException("PNG 解码失败（无可用解码器？）");
+      }
+      return image;
+    } catch (IOException exception) {
+      throw new IllegalStateException("PNG 解码失败", exception);
+    }
+  }
+
   // ==================== 装配与辅助 ====================
 
   private static Map<String, Object> config() {
     Map<String, Object> matrix = new LinkedHashMap<>();
     matrix.put(PdfImageSliceIngestService.ENABLED_KEY, Boolean.TRUE);
     matrix.put(PdfImageSliceIngestService.IMAGE_VECTOR_ENABLED_KEY, Boolean.TRUE);
-    matrix.put(
-        PdfImageSliceIngestService.MAX_IMAGES_KEY, NearDupIngestPdfBuilder.MAX_IMAGES_PER_PDF);
+    matrix.put(PdfImageSliceIngestService.MAX_IMAGES_KEY, MAX_IMAGES_PER_PDF);
     matrix.put("rag.retrieval.query-rewrite.enabled", Boolean.FALSE);
     return matrix;
   }
