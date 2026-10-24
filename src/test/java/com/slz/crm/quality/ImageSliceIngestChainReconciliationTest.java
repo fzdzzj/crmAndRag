@@ -97,6 +97,29 @@ class ImageSliceIngestChainReconciliationTest {
   /** 首次生成开关（-Dimage.slice.chain.anchor.write=true）：常规运行只做逐字节比对，绝不落盘。 */
   private static final boolean WRITE_MODE = Boolean.getBoolean("image.slice.chain.anchor.write");
 
+  /**
+   * 卡 26 S1 期三份合成 PDF 的文件名（`d7abc37` 版 {@code NearDupIngestCooccurrenceIT:437}： {@code
+   * "near-dup-ingest-cooc-p" + (pdfIndex + 1) + ".pdf"}）。
+   *
+   * <p>为什么这个前提必须进锚：本锚 R2 只证明「缓存能抑制计数」；要把卡 26 的缺口归因到缓存，还需「S1 语料真能产生 embedText 碰撞」。R4 推出的碰撞条件是 文件名 ∧
+   * 类目 ∧ 页码 ∧ 描述 四输入全同；而 S1 三份 PDF 文件名互异、同文档内每页一图 ⇒ 碰撞为零 ⇒ 缓存抑制**不适用于** S1。
+   */
+  private static final List<String> S1_PDF_FILENAMES =
+      List.of(
+          "near-dup-ingest-cooc-p1.pdf",
+          "near-dup-ingest-cooc-p2.pdf",
+          "near-dup-ingest-cooc-p3.pdf");
+
+  /** S1 缺口归因不可得时的缺失证据说明（verdict=INCONCLUSIVE 时写入锚）。 */
+  private static final String S1_INAPPLICABLE_MISSING_EVIDENCE =
+      "① 卡 26 的 S1 三份合成 PDF 文件名互异（near-dup-ingest-cooc-p1/p2/p3.pdf，d7abc37 版"
+          + " NearDupIngestCooccurrenceIT:437），同文档内每页一图 ⇒ 按本锚 r4 推出的碰撞充分条件"
+          + "（文件名∧类目∧页码∧描述四输入全同），S1 不可能出现 embedText 碰撞 ⇒ 测试侧缓存零命中，"
+          + "无法解释该缺口；② 缺口两端 41/36 出自一个已不存在的断言版本（中止日志文案「ingest 阶段文本"
+          + " embed 外呼必须等于过闸门图数」在提交版 :344/:350 均不存在），分母口径不可考 ⇒ 不能据此做精确"
+          + "归因。定案需重放 S1 的第三份 PDF 语料做逐文档计数（需外呼授权），或承认该缺口不可考、"
+          + "消融改用实测子块行数做分母";
+
   private static final String FILENAME = "reconcile-chain-probe.pdf";
 
   /** 异文件名对照组（R4 文件名因子）。 */
@@ -1006,14 +1029,19 @@ class ImageSliceIngestChainReconciliationTest {
                 == r2.childRows() - r2.distinctEmbedTexts()
             && r2.hitConstructed()
             && r2.collidingEmbedTextsIdentical();
+    // 前提：缓存抑制要能解释卡 26 的缺口，S1 语料必须真能产生 embedText 碰撞（R4 的碰撞条件含「文件名相同」）
+    boolean suppressionAppliesToS1 = S1_PDF_FILENAMES.stream().distinct().count() == 1;
     String verdict;
     String brokenLink = null;
     String missingEvidence = null;
     if (!chainIntact) {
       verdict = "CHAIN-BROKEN";
       brokenLink = firstBrokenLink(n1, n8);
-    } else if (cacheSuppressed) {
+    } else if (cacheSuppressed && suppressionAppliesToS1) {
       verdict = "COUNTER-SUPPRESSED";
+    } else if (cacheSuppressed) {
+      verdict = "INCONCLUSIVE";
+      missingEvidence = S1_INAPPLICABLE_MISSING_EVIDENCE;
     } else {
       verdict = "INCONCLUSIVE";
       missingEvidence = "链路完好但缓存抑制关系不成立（差值 != childRows − distinctEmbedTexts）";
@@ -1103,6 +1131,12 @@ class ImageSliceIngestChainReconciliationTest {
     r2Node.put("collidingEmbedTextsIdentical", r2.collidingEmbedTextsIdentical());
     r2Node.put("chainCountsUnchangedByCache", r2.chainCountsUnchangedByCache());
     r2Node.put("cacheSuppressionVerdict", r2.cacheSuppressionVerdict());
+    // 适用性前提（fix2）：机制可复现 ≠ 能解释卡 26 的缺口——归因还需 S1 语料真能碰撞
+    r2Node.put("collisionAppliesToS1", S1_PDF_FILENAMES.stream().distinct().count() == 1);
+    r2Node.put(
+        "s1ApplicabilityBasis",
+        "S1 三份合成 PDF 文件名互异（near-dup-ingest-cooc-p1/p2/p3.pdf，d7abc37 版 NearDupIngestCooccurrenceIT:437）"
+            + "且同文档内每页一图 ⇒ 按 r4 碰撞充分条件（文件名∧类目∧页码∧描述四输入全同），S1 不可能出现 embedText 碰撞");
 
     ObjectNode r3 = root.putObject("r3");
     ObjectNode perImage = r3.putObject("storageFailurePerImage");

@@ -60,7 +60,6 @@ class ImageSliceIngestChainGuardTest {
       case "COUNTER-SUPPRESSED" -> {
         assertTrue(anchor.path("brokenLink").isNull(), "链路完好结论不得带 brokenLink");
         assertTrue(anchor.path("missingEvidence").isNull(), "链路完好结论不得带 missingEvidence");
-        assertTrue(r1AllDeltasZero(), "COUNTER-SUPPRESSED 要求七链相邻差值全 0");
       }
       case "CHAIN-BROKEN" -> {
         assertFalse(anchor.path("brokenLink").asText("").isBlank(), "CHAIN-BROKEN 必须带 brokenLink");
@@ -69,6 +68,8 @@ class ImageSliceIngestChainGuardTest {
       default ->
           assertFalse(anchor.path("missingEvidence").asText("").isBlank(), "INCONCLUSIVE 必须写缺哪条证据");
     }
+    // fix2：七链相邻差值全 0 是实测事实，与本卡归因无关——提为无条件断言，不随 verdict 存废
+    assertTrue(r1AllDeltasZero(), "七链相邻差值必须全 0（实测事实）");
   }
 
   @Test

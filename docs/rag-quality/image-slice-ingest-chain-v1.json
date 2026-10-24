@@ -1,9 +1,9 @@
 {
   "anchor" : "image-slice-ingest-chain-v1",
   "card" : "image-slice-ingest-chain-reconciliation",
-  "verdict" : "COUNTER-SUPPRESSED",
+  "verdict" : "INCONCLUSIVE",
   "brokenLink" : null,
-  "missingEvidence" : null,
+  "missingEvidence" : "① 卡 26 的 S1 三份合成 PDF 文件名互异（near-dup-ingest-cooc-p1/p2/p3.pdf，d7abc37 版 NearDupIngestCooccurrenceIT:437），同文档内每页一图 ⇒ 按本锚 r4 推出的碰撞充分条件（文件名∧类目∧页码∧描述四输入全同），S1 不可能出现 embedText 碰撞 ⇒ 测试侧缓存零命中，无法解释该缺口；② 缺口两端 41/36 出自一个已不存在的断言版本（中止日志文案「ingest 阶段文本 embed 外呼必须等于过闸门图数」在提交版 :344/:350 均不存在），分母口径不可考 ⇒ 不能据此做精确归因。定案需重放 S1 的第三份 PDF 语料做逐文档计数（需外呼授权），或承认该缺口不可考、消融改用实测子块行数做分母",
   "zeroExternalCall" : {
     "realProviderConstructed" : false,
     "structuralGuarantee" : "全程仅 Mockito 桩 ModelProvider；未构造真实 provider、未读取 DASHSCOPE_API_KEY 或 .env；外呼次数=0 由桩计数器复算",
@@ -99,7 +99,9 @@
     "hitConstructed" : true,
     "collidingEmbedTextsIdentical" : true,
     "chainCountsUnchangedByCache" : true,
-    "cacheSuppressionVerdict" : "COUNTER-SUPPRESSED"
+    "cacheSuppressionVerdict" : "COUNTER-SUPPRESSED",
+    "collisionAppliesToS1" : false,
+    "s1ApplicabilityBasis" : "S1 三份合成 PDF 文件名互异（near-dup-ingest-cooc-p1/p2/p3.pdf，d7abc37 版 NearDupIngestCooccurrenceIT:437）且同文档内每页一图 ⇒ 按 r4 碰撞充分条件（文件名∧类目∧页码∧描述四输入全同），S1 不可能出现 embedText 碰撞"
   },
   "r3" : {
     "storageFailurePerImage" : {

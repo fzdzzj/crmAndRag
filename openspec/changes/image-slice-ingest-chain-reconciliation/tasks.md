@@ -52,9 +52,10 @@
 - [x] 14. 由数据**推出**「两个不同图 embedText 相同」的充分条件，写进锚（禁凭推理写）
       实测：锚 `r4.sufficientCollisionCondition`——四因子全同⇔相同，每个因子一个数据对照：描述（doc1 图B vs doc2 图C 同页同名异描述）、文件名（doc3）、类目（doc4）、页码（n1/n8 八图同名同类目跨八页两两互异）；四全同命中对 doc1-A vs doc2-A。
 - [x] 15. 锚 `docs/rag-quality/image-slice-ingest-chain-v1.json`（LF）+ `.md`（≤40 行：方法、七链表、R2 四数、两条丢弃语义、verdict、缺失证据）
-      实测：json 180 行纯 LF（测试内 `DefaultIndenter("  ","\n")` 生成 + `contains("\r")` 断言 + 逐字节复算比对）；md 15 行；数值全部由 `anchorIsByteReproducible` 全链重算钉死，非手写。
+      实测：json 180 行纯 LF（测试内 `DefaultIndenter("  ","\n")` 生成 + `contains("\r")` 断言 + 逐字节复算比对）；md 31 行（原记 15 行系笔误，复核 MINOR-1）；数值全部由 `anchorIsByteReproducible` 全链重算钉死，非手写。
 - [x] 16. `verdict` ∈ {`COUNTER-SUPPRESSED`, `CHAIN-BROKEN`, `INCONCLUSIVE`} 三选一；`CHAIN-BROKEN` 必须带 `brokenLink` 与逐链差值；**禁**夹带修复建议
-      实测：`verdict=COUNTER-SUPPRESSED`（七链差值全 0 + R2 差值=重复 embedText 数 机械推导）；brokenLink/missingEvidence 均 null；守卫 `verdictThreeWayWithConditionalFields` 三选一 + 条件字段钉死。
+      实测（fix2 后）：`verdict="INCONCLUSIVE"`、`missingEvidence` 写两条硬理由、`brokenLink` 仍 null、`r2.cacheSuppressionVerdict` 保持 `COUNTER-SUPPRESSED`（机制层为真不动）；守卫 `verdictThreeWayWithConditionalFields` 三选一 + 条件字段钉死。
+      fix2 追记（2026-10-25，主 agent 代笔）：原判 `COUNTER-SUPPRESSED` 用本锚自己推出的 `r4` 条件一照即不成立——S1 三份 PDF 文件名互异（`near-dup-ingest-cooc-p1/p2/p3.pdf`，`d7abc37` 版 `NearDupIngestCooccurrenceIT:437`）、同文档内每页一图 ⇒ `embedText` 碰撞为零。七链全等是事实（已提为守卫**无条件**断言），但它证明的是「这一步没丢」，不是「卡 26 的 5 个缺口由缓存造成」；`r3` 的文档级吞异常比缓存更贴合该缺口形状。
 
 ## F · 守卫与门禁
 
