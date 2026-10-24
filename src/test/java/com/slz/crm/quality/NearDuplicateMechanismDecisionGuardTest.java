@@ -156,7 +156,7 @@ class NearDuplicateMechanismDecisionGuardTest {
   }
 
   @Test
-  @DisplayName("生产常量回显：锚内 threshold/floor/三档权重等于 ImageSimilarityGate 现值")
+  @DisplayName("生产常量回显：threshold/三档权重等于现值；floor 等于冻结带基准（锚测于 0.9887，不随生产准入下限 0.982 变动）")
   void productionConstantsMatchImageSimilarityGate() {
     JsonNode production = decision.path("productionConstants");
     assertEquals(
@@ -164,11 +164,12 @@ class NearDuplicateMechanismDecisionGuardTest {
         production.path("threshold").asDouble(),
         1e-12D,
         "threshold 漂移：src/main 改了阈值但锚没重算");
+    // 比对冻结带基准而非生产常量：锚是「测于 0.9887」的历史事实，生产准入下限已下探至 0.982（near-dup-floor-lowering）
     assertEquals(
-        ImageSimilarityGate.NEAR_DUPLICATE_FLOOR,
+        ImageSimilarityGate.BAND_REFERENCE_FLOOR,
         production.path("nearDuplicateFloor").asDouble(),
         1e-12D,
-        "floor 漂移");
+        "floor 漂移（应等于冻结带基准 0.9887）");
     assertEquals(
         ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_HIGH,
         production.path("weightHigh").asDouble(),

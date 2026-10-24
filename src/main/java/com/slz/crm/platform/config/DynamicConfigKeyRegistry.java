@@ -542,7 +542,8 @@ public class DynamicConfigKeyRegistry {
             ConfigValueType.DOUBLE,
             "0.9944",
             "图像路同图判别阈值（0~1，默认 0.9944 = 定标锚判别阈值）：cosine ≥ 阈值 = 高置信同图正常召回；"
-                + "[近似同图下限 0.9887, 阈值) = 近似同图召回但重排后降权标记；< 0.9887 = 异图过滤。"
+                + "[0.982, 0.9944) = 近似同图召回并降权（生产准入下限 0.982，Owner 2026-10-24 签收下探；"
+                + "三档内边界仍以定标锚异图上限 0.9887 为冻结基准）；< 0.982 = 异图过滤。"
                 + "消费方 KnowledgeRetrievalServiceImpl#recallImage + ImageSimilarityGate；"
                 + "与文本 rag.retrieval.minScore（0.20）互不影响，越界值回落 0.9944。",
             "0.0",

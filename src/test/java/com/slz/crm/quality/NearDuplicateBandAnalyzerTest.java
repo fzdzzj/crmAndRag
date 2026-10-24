@@ -34,14 +34,14 @@ class NearDuplicateBandAnalyzerTest {
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   @Test
-  @DisplayName("边界值归上一档：0.9887 / b1 / b2 / 0.9944 逐点对账")
+  @DisplayName("边界值归上一档：0.982 / b1 / b2 / 0.9944 逐点对账")
   void boundariesGoToUpperBand() {
     double floor = ImageSimilarityGate.NEAR_DUPLICATE_FLOOR;
     double threshold = ImageSimilarityGate.DEFAULT_THRESHOLD;
     double lowUpper = ImageSimilarityGate.lowBandUpperBound(threshold);
     double highLower = ImageSimilarityGate.highBandLowerBound(threshold);
 
-    assertEquals(0.9887D, floor, 0D, "下限必须仍是锚的异图上限展示口径");
+    assertEquals(0.982D, floor, 0D, "下限必须是生产准入下限现值（Owner 2026-10-24 签收下探 0.982）");
     assertEquals(0.9944D, threshold, 0D, "阈值必须仍是锚的判别阈值展示口径");
 
     assertNull(ImageSimilarityGate.bandOf(floor - 1e-12D, threshold), "下限下面是异图");
@@ -80,7 +80,8 @@ class NearDuplicateBandAnalyzerTest {
   @DisplayName("逐式对齐：全区间扫描下与闸门 bandOf 完全一致")
   void alignsWithGateEverywhere() {
     for (double threshold : new double[] {0.9944D, 0.996D, 0.99D, 0.9887D, 0.98D}) {
-      double floor = ImageSimilarityGate.effectiveFloor(threshold);
+      // 闸门内边界自 near-dup-floor-lowering 起由冻结带基准推导，对齐基准随之换成 bandReferenceFloor
+      double floor = ImageSimilarityGate.bandReferenceFloor(threshold);
       assertEquals(
           ImageSimilarityGate.lowBandUpperBound(threshold),
           NearDuplicateBandAnalyzer.lowBandUpperBound(floor, threshold),

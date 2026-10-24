@@ -361,7 +361,7 @@ class ProductionGrayRealRunIT {
               + outcome.sameCosine()
               + "（真视觉分不开不同图，增量价值不成立）");
     }
-    // 「每条必召回」隐含依赖图像路近似同图下限 0.9887 低于真实同图余弦；重标定抬锚后此处会先炸成
+    // 「每条必召回」隐含依赖图像路近似同图下限（现 0.982；改档前 0.9887）低于真实同图余弦；重标定抬锚后此处会先炸成
     // 「装配有问题」的误导信息，排查顺序：先看 ImageSimilarityGate.NEAR_DUPLICATE_FLOOR，再看 image 集合装配。
     assertEquals(rows.size(), visionHits, "每条 query-by-image 都必须召回自己那张切片（image 集合装配/过滤键有问题？）");
     assertEquals(rows.size(), textHits, "文本对照路必须同样命中自己的切片（文本集合装配有问题？）");

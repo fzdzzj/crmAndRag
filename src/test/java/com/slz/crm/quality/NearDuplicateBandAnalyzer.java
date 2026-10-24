@@ -21,9 +21,10 @@ import java.util.Map;
  * ImageSimilarityGate#highBandLowerBound(double)}），生产 视图一行不重写；只有「用实测异图上限当 floor」的锚视图才需要一条带 floor
  * 参数的通用式，且该式与闸门公式逐项同形（见 {@link #lowBandUpperBound(double, double)}）。
  *
- * <p><b>双视图</b>：{@code productionView} 用生产现值（floor 0.9887 / threshold 0.9944）回答「现在的闸门看得见多少近重复」；
- * {@code anchorView} 用本锚实测的异图上限当 floor、其与同图下限的中点当 threshold，回答「间隔带本来能装多少」。两视图的差就是 floor 取值挡掉真重复的
- * 证据（proposal §4 F5）。
+ * <p><b>双视图</b>：{@code productionView} 用生产现值（准入下限跟随 {@code NEAR_DUPLICATE_FLOOR}，2026-10-24 起为
+ * 0.982 / threshold 0.9944）回答「现在的闸门看得见多少近重复」，落带<b>直接委托</b> {@link
+ * ImageSimilarityGate#bandOf(double, double)}； {@code anchorView} 用本锚实测的异图上限当 floor、其与同图下限的中点当
+ * threshold，回答「间隔带本来能装多少」。两视图的差就是 floor 取值挡掉真重复的 证据（proposal §4 F5）。
  *
  * <p><b>禁止手算</b>：本类同时负责把分析结果装配成锚 JSON（{@link #toJson}），{@code
  * docs/rag-quality/image-near-duplicate-bands-v2.md} 的每个数字都由 {@code
@@ -34,13 +35,15 @@ final class NearDuplicateBandAnalyzer {
   /** v2 锚版本号（与 v1 的 {@code IMAGE-THRESHOLD-CALIBRATION-1.0} 并列，互不覆盖）。 */
   static final String CALIBRATION_VERSION = "IMAGE-NEAR-DUPLICATE-CALIBRATION-2.0";
 
-  /** 生产视图名（生产现值：floor 0.9887 / threshold 0.9944）。 */
+  /** 生产视图名（准入下限 0.982 / 阈值 0.9944；三档内边界仍由冻结基准 0.9887 推导）。 */
   static final String PRODUCTION_VIEW = "productionView";
 
   /** 锚视图名（floor = 实测异图上限、threshold = 其与同图下限的中点）。 */
   static final String ANCHOR_VIEW = "anchorView";
 
-  /** 生产下限 = 闸门常量（不新写数字）。 */
+  /**
+   * 生产准入下限（跟随生产现值，2026-10-24 起为 0.982）= 闸门常量（不新写数字）；三档内边界不取它（带基准见闸门 {@code BAND_REFERENCE_FLOOR}）。
+   */
   static final double PRODUCTION_FLOOR = ImageSimilarityGate.NEAR_DUPLICATE_FLOOR;
 
   /** 生产阈值 = 闸门常量（不新写数字）。 */
@@ -288,13 +291,13 @@ final class NearDuplicateBandAnalyzer {
   }
 
   /**
-   * 生产视图（floor / threshold 取闸门现值）。
+   * 生产视图（floor = 生产准入下限、threshold 取闸门现值；落带<b>直接委托闸门</b> {@code bandOf}，双公式收口）。
    *
    * @param pairs 样本对
    * @return 视图
    */
   static View productionView(List<Pair> pairs) {
-    return view(PRODUCTION_VIEW, PRODUCTION_FLOOR, PRODUCTION_THRESHOLD, pairs);
+    return view(PRODUCTION_VIEW, PRODUCTION_FLOOR, PRODUCTION_THRESHOLD, pairs, true);
   }
 
   /**
@@ -311,23 +314,32 @@ final class NearDuplicateBandAnalyzer {
           ANCHOR_VIEW,
           crossImageCeiling == null ? PRODUCTION_FLOOR : crossImageCeiling,
           null,
-          pairs);
+          pairs,
+          false);
     }
     double floor = crossImageCeiling;
     Double threshold =
         crossImageCeiling < sameImageFloor ? (crossImageCeiling + sameImageFloor) / 2D : null;
-    return view(ANCHOR_VIEW, floor, threshold, pairs);
+    return view(ANCHOR_VIEW, floor, threshold, pairs, false);
   }
 
   /**
-   * 五档落带标签（与 {@code near-duplicate-band-stats.mjs} 的 {@code labelOf} 同序）：区间外落同图/异图。
+   * 五档落带标签（生产口径，<b>直接委托闸门</b> {@link ImageSimilarityGate#bandOf(double, double)}——生产视图与生产降权
+   * 永远同一个公式，不持第二套边界推导）：区间外落同图/异图。
    *
    * @param cosine 余弦
-   * @param threshold 生效阈值（生产口径，floor 由闸门 {@link ImageSimilarityGate#effectiveFloor} 现算）
+   * @param threshold 生效阈值
    * @return 五档标签之一
    */
   static String labelOf(double cosine, double threshold) {
-    return labelOf(cosine, ImageSimilarityGate.effectiveFloor(threshold), threshold);
+    String label;
+    if (cosine >= threshold) {
+      label = ImageSimilarityGate.TIER_SAME_IMAGE;
+    } else {
+      String band = ImageSimilarityGate.bandOf(cosine, threshold);
+      label = band == null ? ImageSimilarityGate.TIER_CROSS_IMAGE : band;
+    }
+    return label;
   }
 
   /**
@@ -793,8 +805,9 @@ final class NearDuplicateBandAnalyzer {
     }
   }
 
-  /** 单视图落带的公共实现（不可分时 threshold = null → bands 为空表）。 */
-  private static View view(String name, double floor, Double threshold, List<Pair> pairs) {
+  /** 单视图落带的公共实现（不可分时 threshold = null → bands 为空表；{@code productionBasis}=true 时落带委托闸门）。 */
+  private static View view(
+      String name, double floor, Double threshold, List<Pair> pairs, boolean productionBasis) {
     Map<String, List<Pair>> byBand = new LinkedHashMap<>();
     for (String band : BANDS) {
       byBand.put(band, new ArrayList<>());
@@ -818,7 +831,11 @@ final class NearDuplicateBandAnalyzer {
         if (pair.cosine() >= threshold) {
           aboveThreshold++;
         }
-        byBand.get(labelOf(pair.cosine(), floor, threshold)).add(pair);
+        String label =
+            productionBasis
+                ? labelOf(pair.cosine(), threshold)
+                : labelOf(pair.cosine(), floor, threshold);
+        byBand.get(label).add(pair);
       }
     }
     List<BandStat> bands = new ArrayList<>();

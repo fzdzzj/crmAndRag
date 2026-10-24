@@ -39,8 +39,11 @@ final class NearDupFusionImpactAnalyzer {
   /** 生产判别阈值（{@code ImageSimilarityGate.DEFAULT_THRESHOLD} 现值引用：生产一改，本类跟着变，锚比对即红）。 */
   static final double THRESHOLD = ImageSimilarityGate.DEFAULT_THRESHOLD;
 
-  /** 生产近重复下限（{@code ImageSimilarityGate.NEAR_DUPLICATE_FLOOR} 现值引用）。 */
-  static final double BASELINE_FLOOR = ImageSimilarityGate.NEAR_DUPLICATE_FLOOR;
+  /**
+   * 基线下限 = 定标锚 v2 异图上限 4 位小数（冻结基准 {@code ImageSimilarityGate.BAND_REFERENCE_FLOOR}）：本类<b>测于 0.9887
+   * 档</b>，不随生产准入下限（{@code NEAR_DUPLICATE_FLOOR}，2026-10-24 起为 0.982）变动——锚记录的是「测于该档」的历史事实。
+   */
+  static final double BASELINE_FLOOR = ImageSimilarityGate.BAND_REFERENCE_FLOOR;
 
   /** R2 等距采样点数（proposal 判据原文写死 5000）。 */
   static final int R2_SAMPLE_POINTS = 5000;
@@ -246,15 +249,15 @@ final class NearDupFusionImpactAnalyzer {
   }
 
   /**
-   * 图像路内单点路由分（R2 的被测函数，语义 = 生产 {@code downWeightNearDuplicates} 现值）：同图档不降权（×1），近似带按 {@code
-   * weightOfBand(bandOf(c))} 降权，异图档不在本卡定义域。
+   * 图像路内单点路由分（R2 的被测函数，<b>测于 0.9887 冻结档</b>，不随生产准入下限变动）：同图档不降权（×1），近似带按 {@code
+   * weightOfBand(bandOf(c))} 降权，定义域下沿 = {@link #BASELINE_FLOOR}（冻结档内 gate 的分档/降权行为与测档时逐点相同）。
    *
-   * @param cosine 图像路余弦（ ∈ [floor, threshold]）
+   * @param cosine 图像路余弦（ ∈ [BASELINE_FLOOR, threshold]）
    * @param threshold 生效阈值
    * @return 降权后的路由分
    */
   static double routeScore(double cosine, double threshold) {
-    if (cosine < ImageSimilarityGate.effectiveFloor(threshold) - EPS || cosine > threshold + EPS) {
+    if (cosine < BASELINE_FLOOR - EPS || cosine > threshold + EPS) {
       throw new IllegalArgumentException("cosine 超出图像路保留定义域 [floor, threshold]: " + cosine);
     }
     String tier = ImageSimilarityGate.tierOf(cosine, threshold);

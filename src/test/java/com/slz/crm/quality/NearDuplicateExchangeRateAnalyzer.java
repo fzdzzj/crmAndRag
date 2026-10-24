@@ -34,7 +34,7 @@ final class NearDuplicateExchangeRateAnalyzer {
   /** 生产判别阈值 = {@code ImageSimilarityGate.DEFAULT_THRESHOLD}（0.9944），本卡不改、只作带内上界。 */
   static final double THRESHOLD = 0.9944D;
 
-  /** 生产近重复下限 = {@code ImageSimilarityGate.NEAR_DUPLICATE_FLOOR}（0.9887），本卡的基线档。 */
+  /** 基线档 = 定标锚异图上限 0.9887（历史测档；生产准入下限已下探至 0.982，本类不跟随，字面量冻结）。 */
   static final double BASELINE_FLOOR = 0.9887D;
 
   /** E5 网格下界（含），与上一卡 M1 同源。 */
@@ -215,7 +215,7 @@ final class NearDuplicateExchangeRateAnalyzer {
    * 单点统计（E1 口径的唯一实现）。
    *
    * <p><b>保留判定与上一卡 {@code tierOfCosine} 同语义</b>：{@code cosine >= THRESHOLD} 先判同图（保留），其余 {@code
-   * cosine >= floor} 判近似带（保留），其余丢弃。生产 floor（0.9887）低于阈值时两者等价于 {@code cosine >= floor}；
+   * cosine >= floor} 判近似带（保留），其余丢弃。基线档 floor（0.9887，历史测档）低于阈值时两者等价于 {@code cosine >= floor}；
    * 网格顶部高于阈值的点不是物理档位，R 平台在 {@code #(cosine>=0.9944)/120}——只为 E2 与上一卡锚逐点相等而披露。 降权带（S_same/C_cross）仍按
    * E1 字面定义 {@code [floor, 0.9944)}，与保留判定互相独立。
    *

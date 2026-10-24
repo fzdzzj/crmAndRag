@@ -98,7 +98,10 @@ class ImageVariantCrossMatrixIT {
   /** M2 偏差阈值（冻结；超阈值停 G2）。 */
   static final double DEVIATION_LIMIT = 1e-3D;
 
-  /** 近似同图下限（ImageSimilarityGate.NEAR_DUPLICATE_FLOOR 同值；M3 判据用）。 */
+  /**
+   * 近似同图下限（= 冻结带基准 {@code ImageSimilarityGate.BAND_REFERENCE_FLOOR} 0.9887；M3 判据测于该档，不随生产准入下限 0.982
+   * 变动）。
+   */
   static final double NEAR_DUPLICATE_FLOOR = 0.9887D;
 
   /** 本卡起点基线（master @ 5519c43，任务 0.5 记录项）。 */
