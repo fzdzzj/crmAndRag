@@ -47,7 +47,7 @@ final class NearDuplicateMechanismAnalyzer {
   /** M1 固定的判别阈值 = {@code ImageSimilarityGate.DEFAULT_THRESHOLD}（0.9944），本卡不改它。 */
   static final double THRESHOLD = 0.9944D;
 
-  /** M3 余弦兜底下限 = {@code ImageSimilarityGate.NEAR_DUPLICATE_FLOOR}（0.9887）。 */
+  /** M3 余弦兜底下限 = 0.9887（历史档位字面量：本锚测于该档，不随生产准入下限 0.982 变动）。 */
   static final double COSINE_FLOOR = 0.9887D;
 
   /** 决策三选一（C5），禁造第四种。 */

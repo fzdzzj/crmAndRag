@@ -131,12 +131,13 @@ class NearDupFusionImpactDecisionTest {
     printBounds(bounds);
 
     // R4：基线档 gap 分布（同文档 vs 跨文档竞争者，代理口径见分析器类注）
+    // 基线档测于 0.9887（冻结带基准），不随生产准入下限（0.982）变动——锚逐字节校验依赖此口径
     List<NearDupFusionImpactAnalyzer.BandCandidate> bandCandidates =
         NearDupFusionImpactAnalyzer.bandCandidates(
-            pairs, ImageSimilarityGate.NEAR_DUPLICATE_FLOOR, ImageSimilarityGate.DEFAULT_THRESHOLD);
+            pairs, ImageSimilarityGate.BAND_REFERENCE_FLOOR, ImageSimilarityGate.DEFAULT_THRESHOLD);
     List<NearDupFusionImpactAnalyzer.CompetitorObservation> observations =
         NearDupFusionImpactAnalyzer.competitorObservations(
-            pairs, bandCandidates, ImageSimilarityGate.NEAR_DUPLICATE_FLOOR);
+            pairs, bandCandidates, ImageSimilarityGate.BAND_REFERENCE_FLOOR);
     NearDupFusionImpactAnalyzer.GapDistribution sameDoc =
         NearDupFusionImpactAnalyzer.gapDistribution(
             observations, true, resolver.imageRouteWeight());
@@ -155,6 +156,8 @@ class NearDupFusionImpactDecisionTest {
     decision.put("decisionVersion", "NEAR-DUP-FUSION-IMPACT-1.0");
     decision.set("criteria", stringNode(CRITERIA));
     decision.put("decisionOwner", "OWNER");
+    // decisionScope 是锚内冻结的历史串（逐字节校验，禁改）：0.9887 是锚生成时的测档（「锚测于 0.9887」口径），
+    // 生产下限已由 near-dup-floor-lowering 卡下探至 0.982；本串描述的是 G1 卡当时的事实，改串即破锚字节等值。
     decision.put(
         "decisionScope",
         "本卡不改任何生产常量与融合权重（threshold=0.9944 / NEAR_DUPLICATE_FLOOR=0.9887 / 权重 0.75|0.6|0.5 /"
@@ -336,7 +339,8 @@ class NearDupFusionImpactDecisionTest {
   private static ObjectNode productionNode() {
     ObjectNode node = MAPPER.createObjectNode();
     node.put("threshold", ImageSimilarityGate.DEFAULT_THRESHOLD);
-    node.put("nearDuplicateFloor", ImageSimilarityGate.NEAR_DUPLICATE_FLOOR);
+    // 锚内 nearDuplicateFloor 记录的是测档 0.9887（冻结带基准），非生产现值 0.982
+    node.put("nearDuplicateFloor", ImageSimilarityGate.BAND_REFERENCE_FLOOR);
     node.put("weightHigh", ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_HIGH);
     node.put("weightMid", ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_MID);
     node.put("weightLow", ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_LOW);
@@ -386,7 +390,7 @@ class NearDupFusionImpactDecisionTest {
     node.put(
         "domain",
         "["
-            + ImageSimilarityGate.NEAR_DUPLICATE_FLOOR
+            + ImageSimilarityGate.BAND_REFERENCE_FLOOR
             + ", "
             + ImageSimilarityGate.DEFAULT_THRESHOLD
             + "]");
@@ -419,7 +423,8 @@ class NearDupFusionImpactDecisionTest {
       NearDupFusionImpactAnalyzer.GapDistribution sameDoc,
       NearDupFusionImpactAnalyzer.GapDistribution crossDoc) {
     ObjectNode node = MAPPER.createObjectNode();
-    node.put("floor", ImageSimilarityGate.NEAR_DUPLICATE_FLOOR);
+    // gapDistribution.floor 记录测档 0.9887（冻结带基准），非生产现值
+    node.put("floor", ImageSimilarityGate.BAND_REFERENCE_FLOOR);
     node.put(
         "population",
         "位移主体 = near-duplicate 对中 cosine ∈ [floor, threshold) 的候选（查询=变体，被降权方=其 base 黄金切片）；"

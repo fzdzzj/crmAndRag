@@ -91,18 +91,19 @@
 > `KnowledgeRetrievalServiceImpl#recallImage` + `ImageSimilarityGate`，文本路 minScore 行为零变化。
 >
 > **锚重标定耦合（手工同步，无编译期保护）**：重跑定标产出新锚后必须同时改三处，否则三者不一致——
-> `ImageSimilarityGate.DEFAULT_THRESHOLD`（0.9944）、`ImageSimilarityGate.NEAR_DUPLICATE_FLOOR`（0.9887）、
-> 以及 `DynamicConfigKeyRegistry` 里该键的默认串 `"0.9944"`；本表的 0.9944/0.9887 与定标 json 同步更新。
-> **近似带：段边界自动缩放、权重常量需人工复核**——三等分段边界由 `[effectiveFloor(阈值), 阈值]` 现算
-> （`floor` 或阈值一变，0.9906 / 0.9925 两个边界随之移动，**没有第二处需要同步的常量**）；但三档权重
+> `ImageSimilarityGate.DEFAULT_THRESHOLD`（0.9944）、`ImageSimilarityGate.NEAR_DUPLICATE_FLOOR`（0.982，Owner 2026-10-24 签收下探；三档内边界基准 `BAND_REFERENCE_FLOOR` 冻结在 0.9887）、
+> 以及 `DynamicConfigKeyRegistry` 里该键的默认串 `"0.9944"`；本表的 0.9944 与定标 json 同步更新。
+> **近似带：段边界以冻结基准推导、权重常量需人工复核**——三等分段边界由 `[bandReferenceFloor(阈值), 阈值]` 现算
+> （`bandReferenceFloor` = min(0.9887, 阈值)：阈值一变，0.9906 / 0.9925 两个边界随之移动；准入下限 0.982 一变内边界**不动**，
+> `NEAR_LOW` 的下沿随准入下限向下延伸，**没有第二处需要同步的常量**）；但三档权重
 > `NEAR_DUPLICATE_WEIGHT_HIGH/MID/LOW`（0.75 / 0.6 / 0.5）是代码常量、**不随锚缩放**，锚重标定后须人工复核
 > 这三档是否仍匹配新的间隔带宽度（落带分布与「当前三档是否合理」的结论见
 > `docs/rag-quality/image-near-duplicate-bands-v1.md`）。
-> 另注意 `ProductionGrayRealRunIT` 的「每条必召回」断言隐含依赖下限 0.9887 低于真实同图余弦，抬锚时需一并复跑。
+> 另注意 `ProductionGrayRealRunIT` 的「每条必召回」断言隐含依赖准入下限 0.982 低于真实同图余弦，抬锚时需一并复跑。
 
 | 键 | 类型 | 默认值 | 权限档位 | 语义与回退 |
 |---|---|---|---|---|
-| `rag.retrieval.image-similarity-threshold` | Double | 0.9944 | OPERATIONAL | 图像路同图判别阈值（0~1）：cosine ≥ 阈值 = 高置信同图正常召回；[近似同图下限 0.9887, 阈值) = 近似同图**召回并打 `imageSimilarityTier=NEAR_DUPLICATE`**，重排后按余弦所在 1/3 段降权（`imageSimilarityBand`：`NEAR_HIGH` ×0.75 / `NEAR_MID` ×0.6 / `NEAR_LOW` ×0.5，段边界由 `[0.9887, 阈值]` 三等分推导、随锚自动缩放；band 缺失回落 0.5）；&lt; 0.9887 = 异图过滤。越界（&lt;0 或 &gt;1）回落 0.9944；不在 per-KB 12 键白名单内（per-KB 覆盖不生效） |
+| `rag.retrieval.image-similarity-threshold` | Double | 0.9944 | OPERATIONAL | 图像路同图判别阈值（0~1）：cosine ≥ 阈值 = 高置信同图正常召回；[0.982, 阈值) = 近似同图**召回并打 `imageSimilarityTier=NEAR_DUPLICATE`**，重排后按余弦所在 1/3 段降权（`imageSimilarityBand`：`NEAR_HIGH` ×0.75 / `NEAR_MID` ×0.6 / `NEAR_LOW` ×0.5，段边界由 `[0.9887（冻结基准）, 阈值]` 三等分推导、随阈值自动缩放、不随准入下限 0.982 移动；band 缺失回落 0.5）；&lt; 0.982 = 异图过滤。越界（&lt;0 或 &gt;1）回落 0.9944；不在 per-KB 12 键白名单内（per-KB 覆盖不生效） |
 
 ## rag.retrieval.vision-pdf.* —— 图像 PDF 视觉转写试点（add-vision-pdf-ingest-pilot）
 

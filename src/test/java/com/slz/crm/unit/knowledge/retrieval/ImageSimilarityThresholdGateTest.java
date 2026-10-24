@@ -44,7 +44,7 @@ import org.springframework.test.util.ReflectionTestUtils;
  * image-retrieval-threshold-gate 任务 3.1 + image-near-duplicate-band-weight：图像路独立同图阈值 + 三档分档 +
  * 近似带（NEAR_HIGH/MID/LOW）降权单测。
  *
- * <p>覆盖：①三档边界（阈值 / 近似下限 0.9887 / 异图下限以下）；②近重复图「不误杀但按落带降权」； ③文本路 minScore 仍为 0.20
+ * <p>覆盖：①三档边界（阈值 / 准入下限 0.982 / 异图下限以下，带内边界以冻结基准 0.9887 推导）；②近重复图「不误杀但按落带降权」； ③文本路 minScore 仍为 0.20
  * 且与图像路阈值完全解耦（零回归）；④运营改独立键即改档界（含段边界随锚缩放）； ⑤异图过滤；⑥band 缺失回落 0.5、重复降权幂等。
  */
 @ExtendWith(MockitoExtension.class)
@@ -85,7 +85,7 @@ class ImageSimilarityThresholdGateTest {
   // ---------------- 1. 三档边界 ----------------
 
   @Test
-  @DisplayName("三档边界：≥阈值=同图 / [下限,阈值)=近似 / <下限=异图，下限取锚的异图上限")
+  @DisplayName("三档边界：≥阈值=同图 / [下限,阈值)=近似 / <下限=异图，下限取生产准入下限 0.982")
   void tierBoundaries() {
     assertThat(ImageSimilarityGate.tierOf(DEFAULT_THRESHOLD, DEFAULT_THRESHOLD))
         .isEqualTo(ImageSimilarityGate.TIER_SAME_IMAGE);
@@ -94,14 +94,14 @@ class ImageSimilarityThresholdGateTest {
     // 阈值下方一点点（锚的 recommendedThreshold 原始值 0.9943679700394117）落近似档
     assertThat(ImageSimilarityGate.tierOf(0.9943679700394117D, DEFAULT_THRESHOLD))
         .isEqualTo(ImageSimilarityGate.TIER_NEAR_DUPLICATE);
-    // 近似下限闭区间：恰等于锚的异图上限算近似同图
+    // 近似下限闭区间：恰等于生产准入下限算近似同图
     assertThat(
             ImageSimilarityGate.tierOf(ImageSimilarityGate.NEAR_DUPLICATE_FLOOR, DEFAULT_THRESHOLD))
         .isEqualTo(ImageSimilarityGate.TIER_NEAR_DUPLICATE);
     assertThat(ImageSimilarityGate.tierOf(ANCHOR_CROSS_IMAGE_CEILING, DEFAULT_THRESHOLD))
         .isEqualTo(ImageSimilarityGate.TIER_NEAR_DUPLICATE);
-    // 下限以下 = 异图
-    assertThat(ImageSimilarityGate.tierOf(0.98869D, DEFAULT_THRESHOLD))
+    // 下限以下 = 异图（near-dup-floor-lowering 后 0.982–0.9887 的旧「异图」样本已准入，异图样本换 0.978）
+    assertThat(ImageSimilarityGate.tierOf(0.978D, DEFAULT_THRESHOLD))
         .isEqualTo(ImageSimilarityGate.TIER_CROSS_IMAGE);
     assertThat(ImageSimilarityGate.tierOf(0.85D, DEFAULT_THRESHOLD))
         .isEqualTo(ImageSimilarityGate.TIER_CROSS_IMAGE);
@@ -194,23 +194,24 @@ class ImageSimilarityThresholdGateTest {
   // ---------------- 3. 异图过滤 ----------------
 
   @Test
-  @DisplayName("异图（0.985 < 近似下限 0.9887）过滤，文本路命中照常返回")
+  @DisplayName("异图（0.978 < 准入下限 0.982）过滤，文本路命中照常返回")
   void crossImageFilteredTextUnaffected() {
     when(embeddingService.embed(anyString())).thenReturn(TEXT_VECTOR);
     when(vectorStore.search(any(VectorSearchRequest.class))).thenReturn(List.of(hit("10", 0.85D)));
     when(imageVectorStore.search(any(VectorSearchRequest.class)))
-        .thenReturn(List.of(hit("502", 0.985D)));
+        .thenReturn(List.of(hit("502", 0.978D)));
 
     withDefaultConfig();
     KnowledgeRetrievalPort.RetrievalResult result = retrieve();
 
     assertThat(result.sources()).extracting(SourceReference::chunkId).containsExactly("10");
+    // near-dup-floor-lowering：原样本 0.985 已随准入下限下探（0.982）被准入并降权，异图样本换 0.978
   }
 
   // ---------------- 4. 独立阈值键 / 文本路零回归 ----------------
 
   @Test
-  @DisplayName("独立阈值：图像路按 0.9887 检索，文本路仍按 minScore 0.20（两路阈值彻底解耦）")
+  @DisplayName("独立阈值：图像路按 0.982 检索，文本路仍按 minScore 0.20（两路阈值彻底解耦）")
   void imageRouteUsesIndependentThresholdWhileTextKeepsMinScore() {
     when(embeddingService.embed(anyString())).thenReturn(TEXT_VECTOR);
     // 文本路 0.25 > 0.20 → 必须仍被召回（文本路零回归）
@@ -267,14 +268,15 @@ class ImageSimilarityThresholdGateTest {
   }
 
   @Test
-  @DisplayName("落带边界：floor / floor+Δ/3 / floor+2Δ/3 / threshold 各取 ±1e-6，边界值归上一档")
+  @DisplayName("落带边界：带基准 / 基准+Δ/3 / 基准+2Δ/3 / threshold 各取 ±1e-6，边界值归上一档")
   void bandBoundariesAtDefaultThreshold() {
     double lowUpper = ImageSimilarityGate.lowBandUpperBound(DEFAULT_THRESHOLD);
     double highLower = ImageSimilarityGate.highBandLowerBound(DEFAULT_THRESHOLD);
-    // 锚 0.9887/0.9944 的三等分点：0.9906、0.9925——由 floor/threshold 推导，无第二处常量可同步
+    // 带基准 0.9887/0.9944 的三等分点：0.9906、0.9925——由 bandReferenceFloor/threshold 推导，
+    // 准入下限 0.982 变动不移动内边界（near-dup-floor-lowering 的纯加性硬约束）
     assertThat(lowUpper).isCloseTo(0.9906D, within(1.0E-12D));
     assertThat(highLower).isCloseTo(0.9925D, within(1.0E-12D));
-    assertThat(lowUpper - ImageSimilarityGate.NEAR_DUPLICATE_FLOOR)
+    assertThat(lowUpper - ImageSimilarityGate.BAND_REFERENCE_FLOOR)
         .isCloseTo(highLower - lowUpper, within(1.0E-12D));
 
     // 下限：恰等于 floor 归低档（闭区间），再低 1e-6 就是异图（无带）
@@ -309,7 +311,7 @@ class ImageSimilarityThresholdGateTest {
   }
 
   @Test
-  @DisplayName("缩放性：阈值改 0.9995（floor 仍 0.9887）后三等分边界随 Δ 移动，同一分数换档")
+  @DisplayName("缩放性：阈值改 0.9995（带基准仍 0.9887）后三等分边界随 Δ 移动，同一分数换档")
   void bandBoundariesScaleWithConfiguredThreshold() {
     double threshold = 0.9995D;
     assertThat(ImageSimilarityGate.effectiveFloor(threshold))
@@ -343,12 +345,14 @@ class ImageSimilarityThresholdGateTest {
                 candidate("high", 0.9935D),
                 candidate("mid", 0.9918D),
                 candidate("low", 0.9892D),
-                candidate("cross", 0.9886D)),
+                candidate("cross", 0.978D),
+                // near-dup-floor-lowering：0.9886 由「被过滤的异图」翻转为「准入并落 NEAR_LOW」（新准入区样本）
+                candidate("admitted-low", 0.9886D)),
             DEFAULT_THRESHOLD);
 
     assertThat(gated)
         .extracting(item -> item.hit().chunkId())
-        .containsExactly("same", "high", "mid", "low");
+        .containsExactly("same", "high", "mid", "low", "admitted-low");
     assertThat(gated.get(0).hit().metadata())
         .containsEntry(ImageSimilarityGate.TIER_METADATA_KEY, ImageSimilarityGate.TIER_SAME_IMAGE)
         .doesNotContainKey(ImageSimilarityGate.BAND_METADATA_KEY);
@@ -360,10 +364,14 @@ class ImageSimilarityThresholdGateTest {
         .containsEntry(ImageSimilarityGate.BAND_METADATA_KEY, ImageSimilarityGate.BAND_NEAR_MID);
     assertThat(gated.get(3).hit().metadata())
         .containsEntry(ImageSimilarityGate.BAND_METADATA_KEY, ImageSimilarityGate.BAND_NEAR_LOW);
+    assertThat(gated.get(4).hit().metadata())
+        .containsEntry(
+            ImageSimilarityGate.TIER_METADATA_KEY, ImageSimilarityGate.TIER_NEAR_DUPLICATE)
+        .containsEntry(ImageSimilarityGate.BAND_METADATA_KEY, ImageSimilarityGate.BAND_NEAR_LOW);
     // 召回期仍不改分（降权只发生在重排之后）
     assertThat(gated)
         .extracting(RetrievalCandidate::rerankScore)
-        .containsExactly(0.9999D, 0.9935D, 0.9918D, 0.9892D);
+        .containsExactly(0.9999D, 0.9935D, 0.9918D, 0.9892D, 0.9886D);
   }
 
   @Test
@@ -463,6 +471,98 @@ class ImageSimilarityThresholdGateTest {
 
     assertThat(result.sources()).extracting(SourceReference::chunkId).containsExactly("502");
     assertThat(result.sources().getFirst().relevanceScore()).isCloseTo(0.135D, within(1.0E-12D));
+  }
+
+  @Test
+  @DisplayName("near-dup-floor-lowering E1：准入下限 0.982 + 带基准冻结 + 内边界仍 0.9906/0.9925")
+  void productionFloorLoweredBandBasisFrozen() {
+    // 判据 E1（openspec/changes/near-dup-floor-lowering proposal §4，容差 1e-12，跑前写死跑后禁改）
+    assertThat(ImageSimilarityGate.NEAR_DUPLICATE_FLOOR).isEqualTo(0.982D);
+    assertThat(ImageSimilarityGate.BAND_REFERENCE_FLOOR).isEqualTo(0.9887D);
+    assertThat(ImageSimilarityGate.effectiveFloor(DEFAULT_THRESHOLD))
+        .isCloseTo(0.982D, within(1.0E-12D));
+    assertThat(ImageSimilarityGate.lowBandUpperBound(DEFAULT_THRESHOLD))
+        .isCloseTo(0.9906D, within(1.0E-12D));
+    assertThat(ImageSimilarityGate.highBandLowerBound(DEFAULT_THRESHOLD))
+        .isCloseTo(0.9925D, within(1.0E-12D));
+  }
+
+  @Test
+  @DisplayName("near-dup-floor-lowering E2：13 点 (tier, band, weight) 逐点表——新准入区全 NEAR_LOW/0.5")
+  void tierBandWeightTableMatchesLoweredFloor() {
+    // 判据 E2：0.9819 仍异图（0.982 闭区间下沿）、0.982–0.9887 全 NEAR_LOW/0.5、0.9906 起 MID、0.9925 起 HIGH、阈值点无带
+    Object[][] expected = {
+      {0.978D, ImageSimilarityGate.TIER_CROSS_IMAGE, null, null},
+      {0.9819D, ImageSimilarityGate.TIER_CROSS_IMAGE, null, null},
+      {0.982D, ImageSimilarityGate.TIER_NEAR_DUPLICATE, ImageSimilarityGate.BAND_NEAR_LOW, 0.5D},
+      {0.985D, ImageSimilarityGate.TIER_NEAR_DUPLICATE, ImageSimilarityGate.BAND_NEAR_LOW, 0.5D},
+      {0.988D, ImageSimilarityGate.TIER_NEAR_DUPLICATE, ImageSimilarityGate.BAND_NEAR_LOW, 0.5D},
+      {0.988699D, ImageSimilarityGate.TIER_NEAR_DUPLICATE, ImageSimilarityGate.BAND_NEAR_LOW, 0.5D},
+      {0.9887D, ImageSimilarityGate.TIER_NEAR_DUPLICATE, ImageSimilarityGate.BAND_NEAR_LOW, 0.5D},
+      {0.9906D, ImageSimilarityGate.TIER_NEAR_DUPLICATE, ImageSimilarityGate.BAND_NEAR_MID, 0.6D},
+      {0.9918D, ImageSimilarityGate.TIER_NEAR_DUPLICATE, ImageSimilarityGate.BAND_NEAR_MID, 0.6D},
+      {0.9925D, ImageSimilarityGate.TIER_NEAR_DUPLICATE, ImageSimilarityGate.BAND_NEAR_HIGH, 0.75D},
+      {0.9935D, ImageSimilarityGate.TIER_NEAR_DUPLICATE, ImageSimilarityGate.BAND_NEAR_HIGH, 0.75D},
+      {0.9943D, ImageSimilarityGate.TIER_NEAR_DUPLICATE, ImageSimilarityGate.BAND_NEAR_HIGH, 0.75D},
+      {0.9944D, ImageSimilarityGate.TIER_SAME_IMAGE, null, null}
+    };
+    for (Object[] row : expected) {
+      double cosine = (Double) row[0];
+      String tier = (String) row[1];
+      String band = (String) row[2];
+      Double weight = (Double) row[3];
+      assertThat(ImageSimilarityGate.tierOf(cosine, DEFAULT_THRESHOLD))
+          .as("tier: cosine=%s", cosine)
+          .isEqualTo(tier);
+      assertThat(ImageSimilarityGate.bandOf(cosine, DEFAULT_THRESHOLD))
+          .as("band: cosine=%s", cosine)
+          .isEqualTo(band);
+      if (weight != null) {
+        assertThat(ImageSimilarityGate.weightOfBand(band))
+            .as("weight: cosine=%s", cosine)
+            .isEqualTo(weight);
+      }
+    }
+  }
+
+  @Test
+  @DisplayName("near-dup-floor-lowering E3：改前期望表以字面量冻结——[0.9887, 0.9944) 逐点零回归")
+  void legacyBandExpectationsFrozenAsLiterals() {
+    // 改前期望表：字面量写死于本测试（禁活代码对照自证），取自改档前 master 242dd4d 的 bandOf 行为；
+    // 本测试保证「带内候选不被无声改档」（纯加性硬约束）。
+    assertThat(ImageSimilarityGate.bandOf(0.9887D, DEFAULT_THRESHOLD))
+        .isEqualTo(ImageSimilarityGate.BAND_NEAR_LOW);
+    assertThat(ImageSimilarityGate.bandOf(0.989D, DEFAULT_THRESHOLD))
+        .isEqualTo(ImageSimilarityGate.BAND_NEAR_LOW);
+    assertThat(ImageSimilarityGate.bandOf(0.9905D, DEFAULT_THRESHOLD))
+        .isEqualTo(ImageSimilarityGate.BAND_NEAR_LOW);
+    assertThat(ImageSimilarityGate.bandOf(0.9906D, DEFAULT_THRESHOLD))
+        .isEqualTo(ImageSimilarityGate.BAND_NEAR_MID);
+    assertThat(ImageSimilarityGate.bandOf(0.9918D, DEFAULT_THRESHOLD))
+        .isEqualTo(ImageSimilarityGate.BAND_NEAR_MID);
+    assertThat(ImageSimilarityGate.bandOf(0.9925D, DEFAULT_THRESHOLD))
+        .isEqualTo(ImageSimilarityGate.BAND_NEAR_HIGH);
+    assertThat(ImageSimilarityGate.bandOf(0.9935D, DEFAULT_THRESHOLD))
+        .isEqualTo(ImageSimilarityGate.BAND_NEAR_HIGH);
+    assertThat(ImageSimilarityGate.bandOf(0.9943D, DEFAULT_THRESHOLD))
+        .isEqualTo(ImageSimilarityGate.BAND_NEAR_HIGH);
+    assertThat(ImageSimilarityGate.bandOf(0.9944D, DEFAULT_THRESHOLD)).isNull();
+  }
+
+  @Test
+  @DisplayName("near-dup-floor-lowering E5：三档权重逐字不变 + W_max 仍 0.15")
+  void weightsAndDisplacementWindowUnchanged() {
+    // 判据 E5：权重与位移窗口不得随下探变动
+    assertThat(ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_HIGH).isEqualTo(0.75D);
+    assertThat(ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_MID).isEqualTo(0.6D);
+    assertThat(ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_LOW).isEqualTo(0.5D);
+    // W_max = imageRouteWeight×(1−w_low)×1.0：图像路融合权重
+    // 0.30（RetrievalConfigResolver.DEFAULT_IMAGE_ROUTE_WEIGHT
+    // 源码字面值，NearDupFusionImpactDecisionTest R1 实测）× 最低档降幅（1−0.5）× 重排归一化上界 1.0；
+    // 被放缩的是图像路 rerank 后分，值域 [0,1]。
+    double imageRouteWeight = 0.30D;
+    double wMax = imageRouteWeight * (1D - ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_LOW) * 1.0D;
+    assertThat(wMax).isEqualTo(0.15D);
   }
 
   // ---------------- helpers ----------------

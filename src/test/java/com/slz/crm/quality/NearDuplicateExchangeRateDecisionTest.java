@@ -134,6 +134,8 @@ class NearDuplicateExchangeRateDecisionTest {
     decision.set("criteria", stringNode(CRITERIA));
     decision.set("assumptions", stringNode(ASSUMPTIONS));
     decision.put("decisionOwner", "OWNER");
+    // decisionScope 是锚内冻结的历史串（逐字节校验，禁改）：0.9887 是锚生成时的测档（「锚测于 0.9887」口径），
+    // 生产下限已由 near-dup-floor-lowering 卡下探至 0.982；本串描述的是该卡当时的事实，改串即破锚字节等值。
     decision.put(
         "decisionScope",
         "本卡不改任何生产常量（threshold=0.9944 / NEAR_DUPLICATE_FLOOR=0.9887 / 权重 0.75|0.6|0.5 逐字不动）、"
@@ -203,7 +205,8 @@ class NearDuplicateExchangeRateDecisionTest {
   private static ObjectNode productionNode() {
     ObjectNode node = MAPPER.createObjectNode();
     node.put("threshold", ImageSimilarityGate.DEFAULT_THRESHOLD);
-    node.put("nearDuplicateFloor", ImageSimilarityGate.NEAR_DUPLICATE_FLOOR);
+    // 锚内 nearDuplicateFloor 记录的是测档 0.9887（冻结带基准），非生产现值 0.982
+    node.put("nearDuplicateFloor", ImageSimilarityGate.BAND_REFERENCE_FLOOR);
     node.put("weightHigh", ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_HIGH);
     node.put("weightMid", ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_MID);
     node.put("weightLow", ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_LOW);

@@ -1,0 +1,46 @@
+{
+  "signoffVersion": "NEAR-DUP-FLOOR-SIGNOFF-1.0",
+  "card": "near-dup-floor-lowering",
+  "signedFloor": 0.982,
+  "previousFloor": 0.9887,
+  "bandReferenceFloor": 0.9887,
+  "bandBasisFrozen": true,
+  "evidenceAnchorsFrozen": true,
+  "signedOn": "2026-10-24",
+  "decisionOwner": "OWNER",
+  "evidenceAnchors": {
+    "image-threshold-calibration-v2.json": "82d24204fba8029673d18ea5685964cf4134d2c43e3da5746986881bf35bdc65",
+    "near-dup-fusion-impact-v1.json": "43c54ba63346488817b6c4c15348c6141c853619c5c9594d203cfd38db8e03f4",
+    "near-dup-exchange-rate-v1.json": "62e43dfb46d79be9f460c6febbefe3827f06da4c94b550e0ed7c01fa57f2e36d",
+    "image-near-dup-truth-v1.json": "d84838c2c2ed31e0c4cf0a5692958bdfc82f2652a2680d326f27b7745896d9a0",
+    "near-dup-displacement-evidence-v1.json": "5444719a9ff67ee696cb01533eb624821ba09530a5b87069a9c8fb62b0c9ad9b",
+    "image-variant-cross-matrix-v1.json": "3adde4ec96ed8b88815713fad1c25d2ac278156d7ad5caf07ba1f07073ff319b"
+  },
+  "cost": {
+    "recallAtK": 0.666667,
+    "sameDocSuppression": 0.03,
+    "deltaR": 0.083333,
+    "deltaS_same": 0.01,
+    "extraSuppressedSameDoc": 1,
+    "exchangeRate": 8.333333
+  },
+  "rejectedTiers": [
+    {
+      "floor": 0.9887,
+      "reason": "维持现状：放弃 ΔR 0.083333 的同源变体召回增量"
+    },
+    {
+      "floor": 0.98,
+      "reason": "ΔR/ΔS_same=4.583333 效率低于 0.982 档（8.333333），且多压 2 张同文档图（vs 1 张）"
+    },
+    {
+      "floor": 0.90,
+      "reason": "多压 6 张同文档图（降权面约为 0.982 档 6 倍），须观测到真实位移后再议"
+    }
+  ],
+  "frozenDecisions": {
+    "D1": "生产准入下限（0.982）与三档带内基准（0.9887）拆分为两个常量；内边界由 bandReferenceFloor 推导，不随准入下限缩放",
+    "D2": "变更对 [0.9887, 0.9944) 纯加性：内边界逐字保持 0.9906/0.9925，新准入区 [0.982, 0.9887) 全落 NEAR_LOW/0.5",
+    "D3": "六份证据锚零改动（测于 0.9887 的历史事实，不重生成）；证据侧与守卫比对一律用冻结基准，禁引生产常量"
+  }
+}

@@ -177,7 +177,11 @@ class ImageNearDuplicateCalibrationAnchorTest {
   @DisplayName("⑥落带与判定树自洽：双视图计数闭合、阈值口径、候选下限、六支结论")
   void viewsAndJudgementsAreConsistent() {
     JsonNode production = anchor.path("productionView");
-    assertEquals(0.9887D, production.path("floor").asDouble(), 0D, "生产视图 floor 必须仍取闸门常量");
+    assertEquals(
+        0.9887D,
+        production.path("floor").asDouble(),
+        0D,
+        "本锚测于改档前 0.9887（历史事实，值不变），生产下限现已下探至 0.982，本锚不重生成");
     assertEquals(0.9944D, production.path("threshold").asDouble(), 0D, "生产视图 threshold 必须仍取闸门常量");
 
     JsonNode anchorView = anchor.path("anchorView");

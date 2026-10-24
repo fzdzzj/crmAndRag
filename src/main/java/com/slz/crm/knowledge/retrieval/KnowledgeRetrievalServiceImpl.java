@@ -404,9 +404,9 @@ public class KnowledgeRetrievalServiceImpl implements KnowledgeRetrievalPort {
    * 集合的旧单空间行为，但阈值不随回退放宽（见下）。
    *
    * <p>阈值（image-retrieval-threshold-gate 任务 2.2）：<b>不复用文本 {@code minScore}</b>，改用 {@code
-   * rag.retrieval.image-similarity-threshold}（默认 0.9944）。向量库按「近似同图下限」{@link
-   * ImageSimilarityGate#effectiveFloor(double)}（0.9887）检索，再由 {@link ImageSimilarityGate#gate}
-   * 三档分档：同图 正常召回 / 近似同图召回并打降权标记（重排后降权，见主链调用点） / 异图（&lt; 下限）过滤。
+   * rag.retrieval.image-similarity-threshold}（默认 0.9944）。向量库按「生产准入下限」{@link
+   * ImageSimilarityGate#NEAR_DUPLICATE_FLOOR}（0.982）检索，再由 {@link ImageSimilarityGate#gate} 三档分档：同图
+   * 正常召回 / 近似同图召回并打降权标记（重排后降权，见主链调用点） / 异图（&lt; 下限）过滤。
    *
    * <p>失败语义：图像路是增强路，任何失败（集合不可达、查询向量维度与 image 集合不符——例如命中缓存里升级前的文本降维向量）一律降级为
    * 空图片候选，文本检索与最终答案不受影响；绝不因图片路失败而拒绝整次检索。
