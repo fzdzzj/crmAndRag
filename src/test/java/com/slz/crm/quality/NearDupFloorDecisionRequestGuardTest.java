@@ -77,7 +77,10 @@ class NearDupFloorDecisionRequestGuardTest {
     while (matcher.find()) {
       citations.put(matcher.group(1), matcher.group(2));
     }
-    assertEquals(4, citations.size(), "决策请求必须引用 4 份锚（数据源 + 三口径），实测: " + citations.keySet());
+    assertEquals(
+        6,
+        citations.size(),
+        "决策请求必须引用 6 份锚（数据源 + 三口径 + near-dup-missing-evidence 两份证据锚），实测: " + citations.keySet());
     for (Map.Entry<String, String> citation : citations.entrySet()) {
       Path file = Path.of("docs", "rag-quality", citation.getKey());
       assertTrue(Files.exists(file), "引用的锚不存在: " + file);
@@ -96,6 +99,36 @@ class NearDupFloorDecisionRequestGuardTest {
           anchor.path("decisionOwner").asText(),
           "口径锚 decisionOwner 必须是 OWNER: " + caliber);
     }
+  }
+
+  @Test
+  @DisplayName(
+      "D1 扩展：§4 引用的两份 near-dup-missing-evidence 证据锚必须存在、真跑实测（externalCalls>0）且 decisionOwner=OWNER")
+  void evidenceAnchorsReferencedAndMeasured() throws Exception {
+    for (String evidenceAnchor :
+        List.of("near-dup-displacement-evidence-v1.json", "image-variant-cross-matrix-v1.json")) {
+      Path file = Path.of("docs", "rag-quality", evidenceAnchor);
+      assertTrue(Files.exists(file), "§4 引用的证据锚不存在: " + file);
+      JsonNode anchor = MAPPER.readTree(Files.readAllBytes(file));
+      assertTrue(
+          anchor.path("externalCalls").asInt(-1) > 0,
+          "证据锚必须真跑实测（externalCalls>0，写 0 即假绿）: " + evidenceAnchor);
+      assertEquals(
+          "OWNER",
+          anchor.path("decisionOwner").asText(),
+          "证据锚 decisionOwner 必须是 OWNER: " + evidenceAnchor);
+      assertTrue(citations().containsKey(evidenceAnchor), "证据锚必须被 §4 引用: " + evidenceAnchor);
+    }
+  }
+
+  /** 文档里按引用格式抓到的锚（{@code 文件名 → sha256}；D1 主断言的副产品，供扩展断言复用）。 */
+  private Map<String, String> citations() {
+    Map<String, String> citations = new LinkedHashMap<>();
+    Matcher matcher = CITATION.matcher(request);
+    while (matcher.find()) {
+      citations.put(matcher.group(1), matcher.group(2));
+    }
+    return citations;
   }
 
   @Test
