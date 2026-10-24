@@ -1,0 +1,308 @@
+{
+  "card" : "near-dup-ingest-cooccurrence",
+  "stage" : "S0-GATE-PROBE",
+  "decisionVersion" : "NEAR-DUP-INGEST-GATE-PROBE-1.0",
+  "decisionOwner" : "OWNER",
+  "criteria" : {
+    "R0" : "合成 PDF 可行性（零外呼先做）：PDFBox 造 PDF → 生产 PdfImageExtractor 抠图，图数与像素尺寸逐一对上；不通过即停",
+    "R1" : "gatePassRate ≥ 4/6 ⇒ gateVerdict=PROCEED-S1；< 4/6 ⇒ gateVerdict=STOP-GATE-REJECTION（停手上报，不进 S1）。闸门拒图连带丢图像向量（proposal §3.2）是被测现象，禁修顺序"
+  },
+  "sourceAnchors" : {
+    "calibrationAnchor" : "docs/rag-quality/image-threshold-calibration-v2.json",
+    "calibrationAnchorSha256" : "82d24204fba8029673d18ea5685964cf4134d2c43e3da5746986881bf35bdc65"
+  },
+  "constants" : {
+    "minCompactChars" : 40,
+    "unclearHanRatioLimit" : 0.4,
+    "hardMaxImagesPerDocument" : 20,
+    "gateImplNote" : "闸门实现 = 生产 VisionIngestSupport.passesQualityGate（src/main 只读）；failReason 为测试侧影子分类（同阈值），写锚时逐图断言影子结论与生产闸门一致",
+    "s0CallCap" : 18,
+    "cumulativeCallCap" : 162,
+    "meteringNote" : "embedding token 不可得时显式 null（端点限制，docs/token-metering.md §1），禁按字符数估算；VISION token 由 TokenUsageRecorder 真实计量点落账",
+    "visionModel" : "qwen-vl-plus"
+  },
+  "runtime" : {
+    "visionModel" : "qwen3-vl-plus",
+    "excludedFromReplay" : [ "visionModel" ],
+    "overrideReason" : "生产默认 qwen-vl-plus 在本 key 返回 model_not_found，写锚运行覆盖为 qwen3-vl-plus（灰卡同款覆盖）"
+  },
+  "baselineHead" : "cdf3382",
+  "selectionRule" : "crop-04 与 scale-070 各取带内第一对且变体过生产提取器下限 64px（锚 pairs 序；不合规实例顺延，无合规带内实例时回落语料生成序第一个合规变体）；crop-12 无带内对，取语料生成序第一个 base 不与已选 base 重合且过下限的 crop-12 变体及其 base（保证 3 base 互不相同）。6 图互不相同，顺序=[crop-04 base, crop-04 variant, scale-070 base, scale-070 variant, crop-12 base, crop-12 variant]",
+  "images" : [ {
+    "assetKey" : "nist-sp800-101r1-p1-b1",
+    "kind" : null,
+    "role" : "base",
+    "baseKey" : "nist-sp800-101r1-p1-b1",
+    "width" : 490,
+    "height" : 225,
+    "gatePass" : true,
+    "failReason" : null,
+    "vlmPromptTokens" : 335,
+    "vlmCompletionTokens" : 24,
+    "vlmTotalTokens" : 359,
+    "vlmOutputChars" : 101,
+    "vlmMetrics" : {
+      "compactChars" : 83,
+      "unclearMarkCount" : 0,
+      "hanCount" : 0
+    },
+    "vlmOutputHead" : "```markdown\nNIST  \nNational Institute of  \nStandards and Technology  \nU.S. Department of Commerce\n```",
+    "visionErrorMessage" : null,
+    "description" : "```markdown\nNIST  \nNational Institute of  \nStandards and Technology  \nU.S. Department of Commerce\n```",
+    "chunkId" : "9700"
+  }, {
+    "assetKey" : "nist-sp800-101r1-p1-b1@crop-04",
+    "kind" : "crop-04",
+    "role" : "variant",
+    "baseKey" : "nist-sp800-101r1-p1-b1",
+    "width" : 450,
+    "height" : 207,
+    "gatePass" : true,
+    "failReason" : null,
+    "vlmPromptTokens" : 314,
+    "vlmCompletionTokens" : 24,
+    "vlmTotalTokens" : 338,
+    "vlmOutputChars" : 101,
+    "vlmMetrics" : {
+      "compactChars" : 83,
+      "unclearMarkCount" : 0,
+      "hanCount" : 0
+    },
+    "vlmOutputHead" : "```markdown\nNIST  \nNational Institute of  \nStandards and Technology  \nU.S. Department of Commerce\n```",
+    "visionErrorMessage" : null,
+    "description" : "```markdown\nNIST  \nNational Institute of  \nStandards and Technology  \nU.S. Department of Commerce\n```",
+    "chunkId" : "9701"
+  }, {
+    "assetKey" : "nist-sp800-101r1-p16-b2",
+    "kind" : null,
+    "role" : "base",
+    "baseKey" : "nist-sp800-101r1-p16-b2",
+    "width" : 923,
+    "height" : 453,
+    "gatePass" : true,
+    "failReason" : null,
+    "vlmPromptTokens" : 636,
+    "vlmCompletionTokens" : 165,
+    "vlmTotalTokens" : 801,
+    "vlmOutputChars" : 284,
+    "vlmMetrics" : {
+      "compactChars" : 248,
+      "unclearMarkCount" : 0,
+      "hanCount" : 91
+    },
+    "vlmOutputHead" : "```markdown\n- **1st Generation**（红色虚线框内）：\n  - 蓝色圆角矩形框，内含文字：`NOR`\n\n- **2nd Generation**（橙色虚线框内，居中）：\n  - 橙色背景区域，内含一个蓝色圆角矩形框，内含文字：`RAM`\n\n- **3rd Generation**（黄色虚线框…",
+    "visionErrorMessage" : null,
+    "description" : "```markdown\n- **1st Generation**（红色虚线框内）：\n  - 蓝色圆角矩形框，内含文字：`NOR`\n\n- **2nd Generation**（橙色虚线框内，居中）：\n  - 橙色背景区域，内含一个蓝色圆角矩形框，内含文字：`RAM`\n\n- **3rd Generation**（黄色虚线框内）：\n  - 蓝色圆角矩形框，内含文字：`NAND`\n\n- 外层整体由棕色虚线框包围。\n- 底部中央标注：`2nd Generation`\n- 左下角标注：`1st Generation`\n- 右下角标注：`3rd Generation`\n```",
+    "chunkId" : "9702"
+  }, {
+    "assetKey" : "nist-sp800-101r1-p16-b2@scale-070",
+    "kind" : "scale-070",
+    "role" : "variant",
+    "baseKey" : "nist-sp800-101r1-p16-b2",
+    "width" : 646,
+    "height" : 317,
+    "gatePass" : true,
+    "failReason" : null,
+    "vlmPromptTokens" : 430,
+    "vlmCompletionTokens" : 157,
+    "vlmTotalTokens" : 587,
+    "vlmOutputChars" : 272,
+    "vlmMetrics" : {
+      "compactChars" : 232,
+      "unclearMarkCount" : 0,
+      "hanCount" : 96
+    },
+    "vlmOutputHead" : "```markdown\n- **外层虚线框（棕色虚线）**：标注为 `2nd Generation`\n- **左侧区域（粉色背景，红色虚线边框）**：\n  - 内部蓝色圆角矩形：`NOR`\n  - 下方文字：`1st Generation`\n- **中间区域（橙色背景，红色虚线边框）**：\n  - 内部蓝色圆角矩形：`…",
+    "visionErrorMessage" : null,
+    "description" : "```markdown\n- **外层虚线框（棕色虚线）**：标注为 `2nd Generation`\n- **左侧区域（粉色背景，红色虚线边框）**：\n  - 内部蓝色圆角矩形：`NOR`\n  - 下方文字：`1st Generation`\n- **中间区域（橙色背景，红色虚线边框）**：\n  - 内部蓝色圆角矩形：`RAM`\n  - 该区域位于 `2nd Generation` 标注范围内\n- **右侧区域（黄色背景，红色虚线边框）**：\n  - 内部蓝色圆角矩形：`NAND`\n  - 下方文字：`3rd Generation`\n```",
+    "chunkId" : "9703"
+  }, {
+    "assetKey" : "nist-sp800-101r1-p18-b3",
+    "kind" : null,
+    "role" : "base",
+    "baseKey" : "nist-sp800-101r1-p18-b3",
+    "width" : 323,
+    "height" : 99,
+    "gatePass" : true,
+    "failReason" : null,
+    "vlmPromptTokens" : 305,
+    "vlmCompletionTokens" : 160,
+    "vlmTotalTokens" : 465,
+    "vlmOutputChars" : 254,
+    "vlmMetrics" : {
+      "compactChars" : 220,
+      "unclearMarkCount" : 0,
+      "hanCount" : 130
+    },
+    "vlmOutputHead" : "```markdown\nMini SIM (2FF)  \nMicro SIM (3FF)  \nNano SIM (4FF)  \n\n（图中右侧为SIM卡尺寸示意图，含三个标注线指向卡体不同位置，对应文字如下：）  \n- 左侧标注线指向卡体左上角金属触点区域，旁注：`12345A`  \n- 中间标注线指向卡体左侧边缘，旁注…",
+    "visionErrorMessage" : null,
+    "description" : "```markdown\nMini SIM (2FF)  \nMicro SIM (3FF)  \nNano SIM (4FF)  \n\n（图中右侧为SIM卡尺寸示意图，含三个标注线指向卡体不同位置，对应文字如下：）  \n- 左侧标注线指向卡体左上角金属触点区域，旁注：`12345A`  \n- 中间标注线指向卡体左侧边缘，旁注：`6789`  \n- 右侧标注线指向卡体右下角金属触点区域，无文字标注  \n\n（卡体内部可见金属触点图案，呈矩形排列；卡体轮廓为标准SIM卡外形，带切角；整体置于浅蓝色背景框内）\n```",
+    "chunkId" : "9704"
+  }, {
+    "assetKey" : "nist-sp800-101r1-p18-b3@crop-12",
+    "kind" : "crop-12",
+    "role" : "variant",
+    "baseKey" : "nist-sp800-101r1-p18-b3",
+    "width" : 245,
+    "height" : 75,
+    "gatePass" : true,
+    "failReason" : null,
+    "vlmPromptTokens" : 305,
+    "vlmCompletionTokens" : 31,
+    "vlmTotalTokens" : 336,
+    "vlmOutputChars" : 57,
+    "vlmMetrics" : {
+      "compactChars" : 45,
+      "unclearMarkCount" : 0,
+      "hanCount" : 4
+    },
+    "vlmOutputHead" : "```\nSIM (2FF)\nro SIM (3FF)\nro SIM (4FF)\n\n1345A\n(截图不清)\n```",
+    "visionErrorMessage" : null,
+    "description" : "```\nSIM (2FF)\nro SIM (3FF)\nro SIM (4FF)\n\n1345A\n(截图不清)\n```",
+    "chunkId" : "9705"
+  } ],
+  "gatePassCount" : 6,
+  "gatePassRate" : 1.0,
+  "gateVerdict" : "PROCEED-S1",
+  "gateVerdictReason" : "R1：gatePassRate=6/6 ≥ 4/6，允许进入 S1",
+  "externalCalls" : 18,
+  "callBreakdown" : {
+    "visionCalls" : 6,
+    "embedImageCalls" : 6,
+    "embedCalls" : 6,
+    "embeddingCallCount" : 12,
+    "visionCallCount" : 6,
+    "semantics" : "三计数由 BudgetedTrackingProvider 在真调用点累加（vision=VLM 描述、embedImage=视觉编码、embed=文本编码），非公式推导；闸门拒图只耗 1 次 vision 外呼（下游两路不发生），embedImage/embedCalls 应等于 gatePassCount（写锚模式已断言）"
+  },
+  "embeddingTokenUnavailableNote" : "文本/视觉 embedding 端点不回流 usage（token-metering §1），相关 token 记 null",
+  "corpusMaterial" : {
+    "images" : [ {
+      "assetKey" : "nist-sp800-101r1-p1-b1",
+      "kind" : null,
+      "role" : "base",
+      "baseKey" : "nist-sp800-101r1-p1-b1",
+      "width" : 490,
+      "height" : 225,
+      "gatePass" : true,
+      "vlmPromptTokens" : 335,
+      "vlmCompletionTokens" : 24,
+      "vlmTotalTokens" : 359,
+      "vlmMetrics" : {
+        "compactChars" : 83,
+        "unclearMarkCount" : 0,
+        "hanCount" : 0
+      },
+      "vlmOutputHead" : "```markdown\nNIST  \nNational Institute of  \nStandards and Technology  \nU.S. Department of Commerce\n```",
+      "visionErrorMessage" : null,
+      "description" : "```markdown\nNIST  \nNational Institute of  \nStandards and Technology  \nU.S. Department of Commerce\n```",
+      "chunkId" : "9700",
+      "vlmOutputChars" : 101
+    }, {
+      "assetKey" : "nist-sp800-101r1-p1-b1@crop-04",
+      "kind" : "crop-04",
+      "role" : "variant",
+      "baseKey" : "nist-sp800-101r1-p1-b1",
+      "width" : 450,
+      "height" : 207,
+      "gatePass" : true,
+      "vlmPromptTokens" : 314,
+      "vlmCompletionTokens" : 24,
+      "vlmTotalTokens" : 338,
+      "vlmMetrics" : {
+        "compactChars" : 83,
+        "unclearMarkCount" : 0,
+        "hanCount" : 0
+      },
+      "vlmOutputHead" : "```markdown\nNIST  \nNational Institute of  \nStandards and Technology  \nU.S. Department of Commerce\n```",
+      "visionErrorMessage" : null,
+      "description" : "```markdown\nNIST  \nNational Institute of  \nStandards and Technology  \nU.S. Department of Commerce\n```",
+      "chunkId" : "9701",
+      "vlmOutputChars" : 101
+    }, {
+      "assetKey" : "nist-sp800-101r1-p16-b2",
+      "kind" : null,
+      "role" : "base",
+      "baseKey" : "nist-sp800-101r1-p16-b2",
+      "width" : 923,
+      "height" : 453,
+      "gatePass" : true,
+      "vlmPromptTokens" : 636,
+      "vlmCompletionTokens" : 165,
+      "vlmTotalTokens" : 801,
+      "vlmMetrics" : {
+        "compactChars" : 248,
+        "unclearMarkCount" : 0,
+        "hanCount" : 91
+      },
+      "vlmOutputHead" : "```markdown\n- **1st Generation**（红色虚线框内）：\n  - 蓝色圆角矩形框，内含文字：`NOR`\n\n- **2nd Generation**（橙色虚线框内，居中）：\n  - 橙色背景区域，内含一个蓝色圆角矩形框，内含文字：`RAM`\n\n- **3rd Generation**（黄色虚线框…",
+      "visionErrorMessage" : null,
+      "description" : "```markdown\n- **1st Generation**（红色虚线框内）：\n  - 蓝色圆角矩形框，内含文字：`NOR`\n\n- **2nd Generation**（橙色虚线框内，居中）：\n  - 橙色背景区域，内含一个蓝色圆角矩形框，内含文字：`RAM`\n\n- **3rd Generation**（黄色虚线框内）：\n  - 蓝色圆角矩形框，内含文字：`NAND`\n\n- 外层整体由棕色虚线框包围。\n- 底部中央标注：`2nd Generation`\n- 左下角标注：`1st Generation`\n- 右下角标注：`3rd Generation`\n```",
+      "chunkId" : "9702",
+      "vlmOutputChars" : 284
+    }, {
+      "assetKey" : "nist-sp800-101r1-p16-b2@scale-070",
+      "kind" : "scale-070",
+      "role" : "variant",
+      "baseKey" : "nist-sp800-101r1-p16-b2",
+      "width" : 646,
+      "height" : 317,
+      "gatePass" : true,
+      "vlmPromptTokens" : 430,
+      "vlmCompletionTokens" : 157,
+      "vlmTotalTokens" : 587,
+      "vlmMetrics" : {
+        "compactChars" : 232,
+        "unclearMarkCount" : 0,
+        "hanCount" : 96
+      },
+      "vlmOutputHead" : "```markdown\n- **外层虚线框（棕色虚线）**：标注为 `2nd Generation`\n- **左侧区域（粉色背景，红色虚线边框）**：\n  - 内部蓝色圆角矩形：`NOR`\n  - 下方文字：`1st Generation`\n- **中间区域（橙色背景，红色虚线边框）**：\n  - 内部蓝色圆角矩形：`…",
+      "visionErrorMessage" : null,
+      "description" : "```markdown\n- **外层虚线框（棕色虚线）**：标注为 `2nd Generation`\n- **左侧区域（粉色背景，红色虚线边框）**：\n  - 内部蓝色圆角矩形：`NOR`\n  - 下方文字：`1st Generation`\n- **中间区域（橙色背景，红色虚线边框）**：\n  - 内部蓝色圆角矩形：`RAM`\n  - 该区域位于 `2nd Generation` 标注范围内\n- **右侧区域（黄色背景，红色虚线边框）**：\n  - 内部蓝色圆角矩形：`NAND`\n  - 下方文字：`3rd Generation`\n```",
+      "chunkId" : "9703",
+      "vlmOutputChars" : 272
+    }, {
+      "assetKey" : "nist-sp800-101r1-p18-b3",
+      "kind" : null,
+      "role" : "base",
+      "baseKey" : "nist-sp800-101r1-p18-b3",
+      "width" : 323,
+      "height" : 99,
+      "gatePass" : true,
+      "vlmPromptTokens" : 305,
+      "vlmCompletionTokens" : 160,
+      "vlmTotalTokens" : 465,
+      "vlmMetrics" : {
+        "compactChars" : 220,
+        "unclearMarkCount" : 0,
+        "hanCount" : 130
+      },
+      "vlmOutputHead" : "```markdown\nMini SIM (2FF)  \nMicro SIM (3FF)  \nNano SIM (4FF)  \n\n（图中右侧为SIM卡尺寸示意图，含三个标注线指向卡体不同位置，对应文字如下：）  \n- 左侧标注线指向卡体左上角金属触点区域，旁注：`12345A`  \n- 中间标注线指向卡体左侧边缘，旁注…",
+      "visionErrorMessage" : null,
+      "description" : "```markdown\nMini SIM (2FF)  \nMicro SIM (3FF)  \nNano SIM (4FF)  \n\n（图中右侧为SIM卡尺寸示意图，含三个标注线指向卡体不同位置，对应文字如下：）  \n- 左侧标注线指向卡体左上角金属触点区域，旁注：`12345A`  \n- 中间标注线指向卡体左侧边缘，旁注：`6789`  \n- 右侧标注线指向卡体右下角金属触点区域，无文字标注  \n\n（卡体内部可见金属触点图案，呈矩形排列；卡体轮廓为标准SIM卡外形，带切角；整体置于浅蓝色背景框内）\n```",
+      "chunkId" : "9704",
+      "vlmOutputChars" : 254
+    }, {
+      "assetKey" : "nist-sp800-101r1-p18-b3@crop-12",
+      "kind" : "crop-12",
+      "role" : "variant",
+      "baseKey" : "nist-sp800-101r1-p18-b3",
+      "width" : 245,
+      "height" : 75,
+      "gatePass" : true,
+      "vlmPromptTokens" : 305,
+      "vlmCompletionTokens" : 31,
+      "vlmTotalTokens" : 336,
+      "vlmMetrics" : {
+        "compactChars" : 45,
+        "unclearMarkCount" : 0,
+        "hanCount" : 4
+      },
+      "vlmOutputHead" : "```\nSIM (2FF)\nro SIM (3FF)\nro SIM (4FF)\n\n1345A\n(截图不清)\n```",
+      "visionErrorMessage" : null,
+      "description" : "```\nSIM (2FF)\nro SIM (3FF)\nro SIM (4FF)\n\n1345A\n(截图不清)\n```",
+      "chunkId" : "9705",
+      "vlmOutputChars" : 57
+    } ]
+  },
+  "byteIdentityBasis" : "锚内 corpusMaterial.images 冻结逐图证据（闸门结论/token/影子指标/描述文本）；默认复跑重新生成语料与合成 PDF、重过生产提取器（R0 复验），从冻结子集重算 failReason/gatePassRate/gateVerdict/externalCalls 后逐字节比对（比对前整体剔除顶层 runtime 块——活值投影不参与字节恒等）；复跑不构造 ModelProvider，零外呼由结构保证"
+}
