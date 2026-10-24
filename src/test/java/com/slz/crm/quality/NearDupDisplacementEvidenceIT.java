@@ -118,8 +118,17 @@ class NearDupDisplacementEvidenceIT {
   private static final Path CALIBRATION_ANCHOR =
       Path.of("docs", "rag-quality", "image-threshold-calibration-v2.json");
 
+  /**
+   * 序列化显式锁 LF：INDENT_OUTPUT 的默认对象缩进器用系统行尾（Windows 落 \r\n），而 .gitattributes 对 *.json 强制 eol=lf， 锚的字节
+   * SHA 会在 CI checkout 后漂移、默认复跑逐字节比对必红——只换对象缩进器的行尾为 LF，数组缩进器保持 Jackson 默认（FixedSpace 行内标量数组）。
+   */
   private static final ObjectMapper MAPPER =
-      new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+      new ObjectMapper()
+          .enable(SerializationFeature.INDENT_OUTPUT)
+          .setDefaultPrettyPrinter(
+              new com.fasterxml.jackson.core.util.DefaultPrettyPrinter()
+                  .withObjectIndenter(
+                      new com.fasterxml.jackson.core.util.DefaultIndenter("  ", "\n")));
 
   /** compatible-mode 端点（与既有真跑 IT 相同装配）。 */
   private static final String COMPATIBLE_BASE_URL =

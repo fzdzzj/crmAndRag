@@ -100,8 +100,10 @@ RAG_IMAGE_CROSS_MATRIX_REAL=1 mvn -B -ntp -Dit.test=ImageVariantCrossMatrixIT -D
 
 **四项门禁**：① clean verify BUILD SUCCESS（surefire 2122/0/0 + failsafe 147/15）；② 基线 --update 后 check EXIT=0；③ openapi 一致 EXIT=0；④ 三守卫绿 + 变异自证留痕（G1 minDownwardGap、G2 maxVariantVsThird+proxyVerdict、签收页删引用行，均红→还原 SHA 一致→绿；另做 IT 级 p50 变异 → replay 逐字节红 → 还原绿）。
 
-**实测值**：G1 `queryCount=7`、共现 6/7、`minDownwardGap=0.00941087658500056` ≤ W_max 0.15 ⇒ `verdict=POSSIBLY-DISPLACED`、externalCalls=77、反事实 1479/2160（0.75/0.6/0.5 档 = 365/502/612）；G2 externalCalls=144、396 对对账 `maxAbsDeviation=0.0`（PASS，编码确定性实证）、variant↔第三图 2760 值 max=0.9973 带内 14 对 ⇒ `proxyVerdict=PROXY-UNDERSTATES`；两锚默认复跑逐字节一致、零外呼。锚 SHA：displacement `ee58f545…991b`、cross-matrix `340a9c86…1066`。
+**实测值**：G1 `queryCount=7`、共现 6/7、`minDownwardGap=0.00941087658500056` ≤ W_max 0.15 ⇒ `verdict=POSSIBLY-DISPLACED`、externalCalls=77、反事实 1479/2160（0.75/0.6/0.5 档 = 365/502/612）；G2 externalCalls=144、396 对对账 `maxAbsDeviation=0.0`（PASS，编码确定性实证）、variant↔第三图 2760 值 max=0.9973 带内 14 对 ⇒ `proxyVerdict=PROXY-UNDERSTATES`；两锚默认复跑逐字节一致、零外呼。锚 SHA：displacement `5444719a…ad9b`、cross-matrix `3adde4ec…319b`。
 
 **已声明的执行口径（4 条，判据零改动）**：① 写锚真跑走 failsafe-only 定向调用（test-compile failsafe:integration-test failsafe:verify）——首跑全量 verify 红于新守卫「锚存在」断言（surefire 先于 failsafe 写锚的时序），failsafe-only 是同一 IT 的最小执行，锚落盘后全量 verify 全绿；② 「默认模式复跑」= opt-in 无 write，从锚内冻结向量本地重放生产检索链、零外呼、序列化与磁盘锚逐字节比对（VLM 描述与跨次编码不可逐字节确定，M2 的 1e-3 容差本身排除跨次真跑逐字节一致；两锚均已复验）；③ G1 downwardGap 按 tasks 1.4「逐查询」口径计算（含 1 条非共现查询的 IMAGE↔IMAGE gap 入 withinWindow；proposal D2「共现查询」窄口径下 minDownwardGap 同值、verdict 不变，md §1 披露）；④ 视觉模型 `-Drag.pdf.image.vision-model=qwen3-vl-plus`（灰卡成本锚同款；生产默认 qwen-vl-plus 在该 key 返回 model_not_found）。
+
+**行尾修复（首次提交后补丁）**：Jackson INDENT_OUTPUT 默认对象缩进器在 Windows 落 \r\n，两锚首提交为 CRLF 工作树字节，而 .gitattributes 对 *.json 强制 eol=lf ⇒ CI checkout 后锚 SHA 漂移、引用与守卫必红。修复=两 IT 的 ObjectMapper 显式对象缩进器 DefaultIndenter("  ", "\n")（数组缩进器保持默认 FixedSpace，形态与默认打印机逐字节同构）+ 现锚 \r\n→\n 转换 + 全部引用 SHA 按 LF 字节重算（displacement=5444719a…9ad9b、cross-matrix=3adde4ec…319b），三守卫与两锚 replay 复验全绿。
 
 **未解决 / 待 Owner**：① 查询-相关性标注（签收页 §4 第 2 条）本卡范围外，维持缺口；② 7 条查询为存在性证据，跨查询分布须另立卡（先验证 72 例基准套件检索端口是否生产路）；③ 卡 G3 决策请求维持「待签收」，`POSSIBLY-DISPLACED + PROXY-UNDERSTATES` 供签收参考，本卡不给推荐档；④ 分支未合并未 push，等 A 档复核与合并授权。

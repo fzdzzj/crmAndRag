@@ -55,10 +55,10 @@
 
 ## 4. 仍缺什么（三条口径都不能回答的部分；2026-10-24 更新：第 1/3/4 条已由 near-dup-missing-evidence 真跑补测，指向新锚）
 
-1. **文本路 rerank 分数分布**（真实查询）——**已补（存在性/量级口径）**：真实混合查询一次调用实测 7 条，共现 6/7，`minDownwardGap=0.00941087658500056 ≤ W_max 0.15` ⇒ `POSSIBLY-DISPLACED`，窗口内共现查询 4 条（`INVISIBLE-IN-ROUTE-ONLY` 的 missingEvidence 第 1 条就此定案：跨路位移在本语料上可能且已逼近发生）。证据锚 docs/rag-quality/near-dup-displacement-evidence-v1.json（sha256:ee58f5452d33ee3393d1dcb238f87c7a18df8184f01589f58073069eb0cd991b）。仍缺：跨查询**分布**——7 条是存在性证据，禁外推，要分布须另立卡并先验证 72 例基准套件的检索端口是否为生产路；
+1. **文本路 rerank 分数分布**（真实查询）——**已补（存在性/量级口径）**：真实混合查询一次调用实测 7 条，共现 6/7，`minDownwardGap=0.00941087658500056 ≤ W_max 0.15` ⇒ `POSSIBLY-DISPLACED`，窗口内共现查询 4 条（`INVISIBLE-IN-ROUTE-ONLY` 的 missingEvidence 第 1 条就此定案：跨路位移在本语料上可能且已逼近发生）。证据锚 docs/rag-quality/near-dup-displacement-evidence-v1.json（sha256:5444719a9ff67ee696cb01533eb624821ba09530a5b87069a9c8fb62b0c9ad9b）。仍缺：跨查询**分布**——7 条是存在性证据，禁外推，要分布须另立卡并先验证 72 例基准套件的检索端口是否为生产路；
 2. **查询-相关性标注**——A1「同文档 ⇒ 可能相关」仍是假设；给 same-class 对打「同查询下是否应召回」标签后，`S_same` 才从有害量上界变成实测伤害（上一卡锚 §6.2 的操作单要点）；
-3. **真实查询的共现观测**——**已补**：A2 的共现面从「观测位点不存在」变为「已实测」——同一次调用（text 与 imageVector 同参）同时产出 IMAGE 与非 IMAGE 来源，6/7 共现、4 条共现查询的图像候选与竞争者分差落在降权窗口内（最小 0.0094）。证据锚同上（sha256:ee58f5452d33ee3393d1dcb238f87c7a18df8184f01589f58073069eb0cd991b）；
-4. **变体↔第三图视觉余弦**——**已补且判为低估**：144 图单编码全矩阵、与定标锚 396 对逐对对账零偏差（`maxAbsDeviation=0.0`），带内变体↔第三图对实测 14 对（max 0.9973）⇒ `PROXY-UNDERSTATES`——口径二 R4 与口径三负例的 base 对代理**低估**带内竞争者（R4 进入带竞争者观测应从 2 条至少扩到 16 条）。证据锚 docs/rag-quality/image-variant-cross-matrix-v1.json（sha256:340a9c861fd3c67d0793bcec909592461d398cf6184f573923ab5e3349301066）。
+3. **真实查询的共现观测**——**已补**：A2 的共现面从「观测位点不存在」变为「已实测」——同一次调用（text 与 imageVector 同参）同时产出 IMAGE 与非 IMAGE 来源，6/7 共现、4 条共现查询的图像候选与竞争者分差落在降权窗口内（最小 0.0094）。证据锚同上（sha256:5444719a9ff67ee696cb01533eb624821ba09530a5b87069a9c8fb62b0c9ad9b）；
+4. **变体↔第三图视觉余弦**——**已补且判为低估**：144 图单编码全矩阵、与定标锚 396 对逐对对账零偏差（`maxAbsDeviation=0.0`），带内变体↔第三图对实测 14 对（max 0.9973）⇒ `PROXY-UNDERSTATES`——口径二 R4 与口径三负例的 base 对代理**低估**带内竞争者（R4 进入带竞争者观测应从 2 条至少扩到 16 条）。证据锚 docs/rag-quality/image-variant-cross-matrix-v1.json（sha256:3adde4ec96ed8b88815713fad1c25d2ac278156d7ad5caf07ba1f07073ff319b）。
 
 ## 5. 候选与代价对照（每格都来自上方两表对应行，无新数字）
 

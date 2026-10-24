@@ -1,7 +1,7 @@
 # 近重复位移证据 v1（near-dup-missing-evidence · G1 真跑 + G3 收口）
 
 > **性质：存在性/量级证据，不是分布。** 7 条真实混合查询（3 份登记真实 PDF 的 7 个生产切片），落锚
-> docs/rag-quality/near-dup-displacement-evidence-v1.json（sha256:ee58f5452d33ee3393d1dcb238f87c7a18df8184f01589f58073069eb0cd991b）。
+> docs/rag-quality/near-dup-displacement-evidence-v1.json（sha256:5444719a9ff67ee696cb01533eb624821ba09530a5b87069a9c8fb62b0c9ad9b）。
 > 真跑 opt-in：`RAG_NEAR_DUP_DISPLACEMENT_REAL=1` + `DASHSCOPE_API_KEY`（visionModel=qwen3-vl-plus、text-embedding-v3、multimodal-embedding-v1）；
 > 写锚 `-Dnear.dup.displacement.write=true`；默认复跑（opt-in 无 write）从锚内冻结向量本地重放生产检索链，零外呼，序列化与磁盘锚**逐字节一致**（复跑已验证）。
 > 逐条判据 D1–D5 / M1–M4 原文落锚 `criteria`；守卫 `NearDupDisplacementEvidenceGuardTest`（SHA 实算 + verdict 越界 + externalCalls=0 + W_max 自洽 + 判别函数禁 route）。
@@ -53,9 +53,9 @@
 
 | # | missingEvidence（fusion 锚原文） | 状态 | 依据 |
 | --- | --- | --- | --- |
-| ① | 真实查询的文本路 rerank 分数分布——判定融合分差 ≤ bound 的竞争者是否存在 | **已补（存在性/量级口径）** | 本锚 `queries[].sources[].relevanceScore`（融合后分实测）+ `minDownwardGap=0.0094` + `verdict=POSSIBLY-DISPLACED`；sha256 ee58f545…991b。边界：7 条查询的存在性证据，**不是**分布——分布须另立卡（72 例基准套件检索端口是否生产路未验） |
+| ① | 真实查询的文本路 rerank 分数分布——判定融合分差 ≤ bound 的竞争者是否存在 | **已补（存在性/量级口径）** | 本锚 `queries[].sources[].relevanceScore`（融合后分实测）+ `minDownwardGap=0.0094` + `verdict=POSSIBLY-DISPLACED`；sha256 5444719a…ad9b。边界：7 条查询的存在性证据，**不是**分布——分布须另立卡（72 例基准套件检索端口是否生产路未验） |
 | ② | 真实查询的图像候选与文本候选共现观测（A2 共现面） | **已补** | 同锚 `cooccurrenceQueryCount=6/queryCount=7`、`withinWindow` 4 条共现查询落窗口；共现观测位点从「不存在」变为「已实测」 |
-| ③ | 变体↔第三图视觉余弦——R4 竞争者以 base 对为代理，未经验证 | **已补（代理判为低估）** | docs/rag-quality/image-variant-cross-matrix-v1.json（sha256 340a9c86…1066）：144 图单编码全矩阵，`maxAbsDeviation=0.0`（对账 PASS），`proxyVerdict=PROXY-UNDERSTATES`——存在 14 对带内变体↔第三图对（max=0.9973），base 对代理**低估**带内竞争者，R4 的进入带样本数偏少 |
+| ③ | 变体↔第三图视觉余弦——R4 竞争者以 base 对为代理，未经验证 | **已补（代理判为低估）** | docs/rag-quality/image-variant-cross-matrix-v1.json（sha256 3adde4ec…319b）：144 图单编码全矩阵，`maxAbsDeviation=0.0`（对账 PASS），`proxyVerdict=PROXY-UNDERSTATES`——存在 14 对带内变体↔第三图对（max=0.9973），base 对代理**低估**带内竞争者，R4 的进入带样本数偏少 |
 
 三项均「已补」，无「仍有界」、无「仍缺」。第 2 条查询-相关性标注（签收页 §4 第 2 条）不在本卡范围，维持原状。
 

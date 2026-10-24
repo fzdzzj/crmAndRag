@@ -42,7 +42,7 @@
 - [x] 1.8 守卫 `NearDupDisplacementEvidenceGuardTest`：源锚 SHA 漂移即红、`verdict` 越界即红、`externalCalls=0` 即红（真跑不可能 0）、`W_max` 与 `0.30×(1−0.5)` 不自洽即红、判别函数**引用了 `route`** 即红、`queryCount` 缺失即红
       2026-10-24 实测：8 测试全绿（四锚 SHA 实算 / verdict 三值+互锁 / externalCalls>0+W_max 精确 0.15 / isImageSource 源码方法体禁 route 断言 / queryCount 与逐条口径重算）
 - [x] 1.9 守卫自证：手工把锚里 `minDownwardGap` 改小到窗口内 → 守卫红；还原 → 绿（留痕）
-      2026-10-24 实测：0.00941087658500056→0.05 ⇒ 红（minDownwardGap 与查询级 gap 重算不符 expected 0.0094… was 0.05）→ 还原后 sha256 前 16 位 ee58f5452d33ee33 与原锚一致 ⇒ 绿
+      2026-10-24 实测：0.00941087658500056→0.05 ⇒ 红（minDownwardGap 与查询级 gap 重算不符 expected 0.0094… was 0.05）→ 还原后 sha256 前 16 位 5444719a9ff67ee6 与原锚一致 ⇒ 绿
 - [x] 1.10 md 分两节：**实测（D2/D3）** 与 **反事实重建（D4）**，不得并表；正文写死「7 条量级查询 = 存在性证据，禁外推」
       2026-10-24：near-dup-displacement-evidence-v1.md §1 实测 / §2 反事实分节；§0 头部与 §4 边界写死存在性/量级口径；锚 scopeNote 同句
 - [x] 1.11 硬边界自证：`git diff --stat -- src/main/java` 空输出；四份上游锚 `git status` 无 M 项
@@ -68,7 +68,7 @@
 - [x] 2.7 守卫 `ImageVariantCrossMatrixGuardTest`：矩阵对称性、对角元素与 `selfCosines` 一致、`proxyVerdict` 三选一、`maxAbsDeviation` 与「是否停组」自洽、外呼次数 = 144 或如实更大（不许小于图数）
       2026-10-24 实测：4 测试全绿（对称逐元素精确 / 对角=selfCosines / 396 对对账重算同值+PASS 互锁 / proxyVerdict 互锁+外呼=图数+四锚 SHA+decisionOwner）
 - [x] 2.8 守卫自证：手工把 `maxVariantVsThird` 改到 ≥0.9887 而 `proxyVerdict` 仍写 `SUFFICIENT` → 守卫红；还原 → 绿
-      2026-10-24 实测：max→0.99+proxyVerdict→SUFFICIENT ⇒ 红（maxVariantVsThird 重算不符 expected 0.99729… was 0.99）→ 还原 sha256 前 16 位 340a9c861fd3c67d ⇒ 绿；另做 IT 级变异（p50→0.3 ⇒ replay 逐字节红）→ 还原绿
+      2026-10-24 实测：max→0.99+proxyVerdict→SUFFICIENT ⇒ 红（maxVariantVsThird 重算不符 expected 0.99729… was 0.99）→ 还原 sha256 前 16 位 3adde4ec96ed8b88 ⇒ 绿；另做 IT 级变异（p50→0.3 ⇒ replay 逐字节红）→ 还原绿
 
 ## 3. G3 · 证据收口（零外呼）
 
@@ -76,7 +76,7 @@
 `docs/rag-quality/near-dup-displacement-evidence-v1.md`（与 G1 同文件，G3 负责其「三项收口」章节）、`docs/rag-quality/near-dup-floor-decision-request-v1.md`（**仅 §4**）、`src/test/java/com/slz/crm/quality/NearDupFloorDecisionRequestGuardTest.java`
 
 - [x] 3.1 新页内逐条对应三项 `missingEvidence`，每项三态之一：`已补（锚字段 + SHA）` / `仍有界（写边界）` / `仍缺（原因 + 所需数据）`（R1）
-      2026-10-24：near-dup-displacement-evidence-v1.md §3 三态表——①已补（minDownwardGap/verdict，sha ee58f545…）②已补（cooccurrenceQueryCount=6/7）③已补（PROXY-UNDERSTATES，sha 340a9c86…）；无仍有界、无仍缺
+      2026-10-24：near-dup-displacement-evidence-v1.md §3 三态表——①已补（minDownwardGap/verdict，sha 5444719a…）②已补（cooccurrenceQueryCount=6/7）③已补（PROXY-UNDERSTATES，sha 3adde4ec…）；无仍有界、无仍缺
 - [x] 3.2 更新签收页 §4 三条，指向新锚 SHA；**§1–§3 / §5 逐字不动**（R2）
       2026-10-24：§4 第 1/3/4 条改写为已补并引用两新锚（sha256 全量 64 位），第 2 条（查询-相关性标注）原样保留
 - [x] 3.3 自证：`git diff -- docs/rag-quality/near-dup-floor-decision-request-v1.md` 只出现 §4 行段，§1–§3/§5 零变动（R2）

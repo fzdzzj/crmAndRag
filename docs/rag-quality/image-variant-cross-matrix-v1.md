@@ -1,7 +1,7 @@
 # 变体↔第三图全矩阵 v1（near-dup-missing-evidence · G2 真跑）
 
 > **性质：代理有效性判定（存在性），不是生产检索分布。** 落锚
-> docs/rag-quality/image-variant-cross-matrix-v1.json（sha256:340a9c861fd3c67d0793bcec909592461d398cf6184f573923ab5e3349301066）。
+> docs/rag-quality/image-variant-cross-matrix-v1.json（sha256:3adde4ec96ed8b88815713fad1c25d2ac278156d7ad5caf07ba1f07073ff319b）。
 > 真跑 opt-in：`RAG_IMAGE_CROSS_MATRIX_REAL=1` + `DASHSCOPE_API_KEY`（multimodal-embedding-v1）；写锚 `-Dimage.cross.matrix.write=true`；
 > 默认复跑（opt-in 无 write）从锚内冻结的 144 条向量本地重算矩阵与全部分位，零外呼，序列化与磁盘锚**逐字节一致**（复跑已验证）。
 > 语料 = `NearDuplicateCorpus.generate()`（确定性，未改生成逻辑、未新增语料：24 base + 120 variant，逐文档 8/4/12，skips=0）。
