@@ -35,7 +35,7 @@ final class NearDuplicateBandAnalyzer {
   /** v2 锚版本号（与 v1 的 {@code IMAGE-THRESHOLD-CALIBRATION-1.0} 并列，互不覆盖）。 */
   static final String CALIBRATION_VERSION = "IMAGE-NEAR-DUPLICATE-CALIBRATION-2.0";
 
-  /** 生产视图名（生产现值：floor 0.9887 / threshold 0.9944）。 */
+  /** 生产视图名（准入下限 0.982 / 阈值 0.9944；三档内边界仍由冻结基准 0.9887 推导）。 */
   static final String PRODUCTION_VIEW = "productionView";
 
   /** 锚视图名（floor = 实测异图上限、threshold = 其与同图下限的中点）。 */

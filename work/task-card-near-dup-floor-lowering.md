@@ -98,3 +98,9 @@ bash scripts/tests/spotbugs-exclude-staleness-check.sh   # EXIT=0
 
 六项：① 改动/新增文件路径与行数 ② 五项门禁结果（含 failsafe 统计行）③ E1/E3 实测值 + 六份锚 SHA 复算是否全等 ④ 停步项与原因（若有）⑤ 未解决项 ⑥ 待 Owner 决策项。
 细节（表格、逐条证据、日志、代码片段）一律留在文件里，**不进回报**。
+
+## 9. fix1 记录（2026-10-24，修订单执行子 agent）
+
+- A 档复核 REJECT 收窄 5 处失真：4 处注释（`NearDuplicateBandAnalyzer.java:38`、`NearDuplicateExchangeRateAnalyzer.java:37/:218`、`ProductionGrayRealRunIT.java:364`）把 0.9887 说成生产现值/生产下限，已改「历史测档/冻结基准」口径；+ tasks.md §0 第 6 行 63 位 SHA 系主 Agent 转录笔误，已按 64 位真值更正（实测 `sha256sum` = `3adde4ec…7ba1f07073ff319b` = 签收页 §4 引用）。
+- 五门禁全绿：`clean verify` BUILD SUCCESS（surefire/failsafe 统计与上轮逐字一致，Docker 29.6.2 真跑）；baseline / openapi / pmd-baseline / spotbugs-staleness EXIT=0。
+- 一笔提交于本分支（sha 见回报；卡面写入先于提交，无法自嵌）；仅注释/文档行变更，行为面 diff 为 0。

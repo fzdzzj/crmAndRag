@@ -14,7 +14,7 @@
 | `docs/rag-quality/near-dup-exchange-rate-v1.json` | `62e43dfb46d79be9f460c6febbefe3827f06da4c94b550e0ed7c01fa57f2e36d` |
 | `docs/rag-quality/image-near-dup-truth-v1.json` | `d84838c2c2ed31e0c4cf0a5692958bdfc82f2652a2680d326f27b7745896d9a0` |
 | `docs/rag-quality/near-dup-displacement-evidence-v1.json` | `5444719a9ff67ee696cb01533eb624821ba09530a5b87069a9c8fb62b0c9ad9b` |
-| `docs/rag-quality/image-variant-cross-matrix-v1.json` | `3adde4ec96ed8b88815713fad1c25d2ac278156d7ad5caf07a1f07073ff319b` |
+| `docs/rag-quality/image-variant-cross-matrix-v1.json` | `3adde4ec96ed8b88815713fad1c25d2ac278156d7ad5caf07ba1f07073ff319b` |
 
 签收页改动前基线：`docs/rag-quality/near-dup-floor-decision-request-v1.md` = `d94116b033286efa1fc5a26fcde9b1b66869063f46b442cc78329befab64d759`。
 
@@ -52,7 +52,7 @@
 - [x] 14. `docs/dynamic-config-keys.md` 三处（`:94-95`、`:101`、`:105`）更新：下限值、`< 0.982` 过滤、段边界「以 0.9887 为基准 + `NEAR_LOW` 下沿随准入下限延伸」
       :93-101（耦合段改 0.982 + BAND_REFERENCE_FLOOR 冻结 0.9887；段边界段改 bandReferenceFloor 推导 + NEAR_LOW 下沿延伸；ProductionGrayRealRunIT 注改 0.982）、:105（表格行 `[0.982, 阈值)`、`< 0.982 = 异图过滤`、段边界「以 0.9887（冻结基准）…不随准入下限 0.982 移动」）。
 - [x] 15. 全仓 grep `0.9887`：确认剩余出现全部属于「证据口径 / 历史档位 / 锚值」三类，无一处仍是「生产下限现值」的说法；贴出分类清单
-      `grep -rn '0\.9887' src/main docs/dynamic-config-keys.md`：仅 ImageSimilarityGate :22/:44/:47/:198-199（带基准定义与锚值引用）+ Registry :546 + 文档 :94/:97/:106（全部为「冻结带基准/锚值」类）✓；`src/test` 26 文件均为证据侧（锚字段值/判据原文/冻结字面量/守卫对锚比对），改档后已无任何测试把 `NEAR_DUPLICATE_FLOOR` 当证据基线引用（活引用面 5 处守卫/4 处决策测试引用全部换 `BAND_REFERENCE_FLOOR`，见 §C）。
+      `grep -rn '0\.9887' src/main docs/dynamic-config-keys.md`：仅 ImageSimilarityGate :22/:44/:47/:198-199（带基准定义与锚值引用）+ Registry :546 + 文档 :94/:97/:106（全部为「冻结带基准/锚值」类）✓；`src/test` 侧首轮执行漏判 4 处注释仍把 0.9887 写成生产现值/生产下限（`NearDuplicateBandAnalyzer.java:38`、`NearDuplicateExchangeRateAnalyzer.java:37/:218`、`ProductionGrayRealRunIT.java:364`），A 档复核判 REJECT，fix1（本笔提交）已全部改为「历史测档/冻结基准」口径；其余 src/test 出现仍均为证据侧（锚字段值/判据原文/冻结字面量/守卫对锚比对），改档后已无任何测试把 `NEAR_DUPLICATE_FLOOR` 当证据基线引用（活引用面 5 处守卫/4 处决策测试引用全部换 `BAND_REFERENCE_FLOOR`，见 §C）；另 §0 第 6 行 63 位系主 Agent 转录笔误，fix1 已按 64 位真值更正（见 §0 与 A1）。
 
 ## C · 证据侧冻结与双公式收口（D3 · E4）
 
