@@ -3,7 +3,7 @@
   "s1Status" : "NOT-RUN",
   "authorizedBy" : "OWNER",
   "decidedOn" : "2026-10-25",
-  "notRunReason" : "S1 首轮真跑 124 次外呼（298s）后红于 ingest 对账恒等式（同 base 变体 VLM 描述逐字相同 ⇒ 描述缓存命中零边际 embed），锚未落盘、JVM 内数据丢失；重跑需 ~120 次外呼，必然突破 162 累计硬帽 ⇒ Owner 2026-10-25 裁定 A′：S1 未授权，收窄为 S0-only，S1 装置拆除，骨架留 d7abc37 供后续卡取回",
+  "notRunReason" : "S1 首轮真跑 124 次外呼（298s）后红于 ingest 对账恒等式（过闸图形 41 vs 文本 embed 实计 36，成因未定位，见 F3），锚未落盘、JVM 内数据丢失；重跑需 ~120 次外呼，必然突破 162 累计硬帽 ⇒ Owner 2026-10-25 裁定 A′：S1 未授权，收窄为 S0-only，S1 装置拆除，骨架留 d7abc37 供后续卡取回",
   "callLedger" : {
     "vision" : 47,
     "embedImage" : 41,
@@ -15,7 +15,7 @@
   },
   "partialFindings" : [ {
     "id" : "F1",
-    "finding" : "48 图选集中恰 1 张 doe-p1-b2@scale-070（218×58，短边 58 < 64）被生产提取器丢弃 → 实提取 47（vision 实计 47，缺的 1 张即它）",
+    "finding" : "48 图选集中恰 1 张 doe-p1-b2@scale-070（218×58，短边 58 < 64）被生产提取器丢弃 → 实提取 47（vision 实计 47；缺的这 1 张推定为它——选集内唯一已知低于 64px 提取下限者，逐图丢弃日志未留存）",
     "evidence" : "work/_nds1-write1.log:72（vision 47 ≠ 选集 48）+ task card §10 实测新发现①"
   }, {
     "id" : "F2",
