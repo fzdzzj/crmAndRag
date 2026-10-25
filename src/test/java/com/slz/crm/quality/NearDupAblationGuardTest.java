@@ -127,18 +127,37 @@ class NearDupAblationGuardTest {
         anchor.path("downWeightedCount").asInt(-1) > 0 || !anyImageScoreChange,
         "存在 IMAGE 分数变化就必须发生过降权事件");
 
-    boolean trigger = anyImageScoreChange || anyImageRankChange || anySetUnequal;
+    boolean rankOrSetTrigger = anyImageRankChange || anySetUnequal;
     switch (verdict) {
-      case "RANK-CHANGE" -> assertTrue(trigger, "RANK-CHANGE 必须有 IMAGE 分数/名次变化或集合不等（重算全否）");
+      case "RANK-CHANGE" ->
+          assertTrue(rankOrSetTrigger, "RANK-CHANGE 必须有名次变化或集合不等（fix1 修订：分数面不作判定面，重算全否）");
       case "NO-RANK-CHANGE" -> {
-        assertFalse(trigger, "NO-RANK-CHANGE 不得有任何 IMAGE 分数/名次变化或集合不等");
+        assertFalse(rankOrSetTrigger, "NO-RANK-CHANGE 不得有任何名次变化或集合不等");
+        JsonNode scoreFace = anchor.path("scoreFace");
+        assertTrue(scoreFace.isObject(), "NO-RANK-CHANGE 必须带 scoreFace 数据面（fix1 修订）");
         assertEquals(
-            0.0D,
-            anchor.path("maxImageScoreDelta").asDouble(),
-            "NO-RANK-CHANGE 必须 maxImageScoreDelta==0");
+            anyImageScoreChange,
+            scoreFace.path("changed").asBoolean(),
+            "scoreFace.changed 与逐候选表重算不符（手改即红）");
+        assertEquals(
+            maxImageScoreDelta,
+            scoreFace.path("maxImageScoreDelta").asDouble(),
+            "scoreFace.maxImageScoreDelta 与逐候选表重算不符（手改即红）");
+        assertEquals(
+            imageDeltaSum,
+            scoreFace.path("imageDeltaSum").asDouble(),
+            "scoreFace.imageDeltaSum 与逐候选表重算不符（手改即红）");
+        assertEquals(
+            anchor.path("downWeightedCount").asInt(-1),
+            scoreFace.path("downWeightedCount").asInt(-2),
+            "scoreFace.downWeightedCount 必须等于降权事件数");
         assertTrue(
             anchor.path("nonExtrapolationNote").asText().contains("不可外推"),
             "NO-RANK-CHANGE 必须显式声明不可外推为「生产无位移」");
+        assertTrue(
+            anchor.path("windowCheck").path("entries").size()
+                >= anchor.path("downWeightedCount").asInt(-1),
+            "NO-RANK-CHANGE 必须附窗口算术（fix1 修订：名次不变须由窗口算术解释）");
       }
       default ->
           assertFalse(

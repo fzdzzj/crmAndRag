@@ -10,7 +10,7 @@
     "R3" : "隔离：B 跑 downWeightNearDuplicates 恰调用 1 次且返回恒等（逐条 Double.compare==0）；A 跑返回带 BAND_WEIGHT_METADATA_KEY；两跑非 IMAGE 来源融合分逐条相等",
     "R4" : "逐查询 chunkIdSetEqual + 逐候选 (sourceType, tier, band, fusedA, fusedB, rankA, rankB)；另落 imageCandidateCount/downWeightedCount/maxImageScoreDelta/maxTextScoreDelta；rank 从 1 起（融合分降序）",
     "R5" : "分母实测：childRows=冻结锚重建的图片切片行+文本块行（逐条 chunkId）；embedInvocations=重放链真实到达 provider 的 embed 请求实计（按未命中计）；禁任何 ×常数推导与融合分÷w 反解",
-    "R6" : "verdict 三选一机械推导：RANK-CHANGE（任一 IMAGE 候选分数或名次变化，或集合不等）/ NO-RANK-CHANGE（maxImageScoreDelta==0 且集合相等，必附窗口算术+不可外推声明）/ INCONCLUSIVE（附缺哪条证据）"
+    "R6" : "verdict 三选一机械推导（fix1 修订：判定面 = 名次面 + 集合面，分数面单列 scoreFace）——RANK-CHANGE（任一名次变化或集合不等）/ NO-RANK-CHANGE（名次面与集合面均无变化，必附窗口算术 + scoreFace + 不可外推声明）/ INCONCLUSIVE（附缺哪条证据）"
   },
   "sourceAnchors" : {
     "displacementEvidenceAnchor" : "docs/rag-quality/near-dup-displacement-evidence-v1.json",
@@ -62,8 +62,8 @@
   },
   "denominators" : {
     "childRows" : 50,
-    "childRowsBasis" : "实测 = 冻结锚重建的 imageRecords（图片切片行）7 + textRecords（文本块行）43，逐条 chunkId 列出；禁任何 ×常数推导",
-    "childRowChunkIds" : [ "9400", "9401", "9402", "9415", "9416", "9417", "9430", "9400", "9401", "9402", "9403", "9404", "9405", "9406", "9407", "9408", "9409", "9410", "9411", "9412", "9413", "9414", "9415", "9416", "9417", "9418", "9419", "9420", "9421", "9422", "9423", "9424", "9425", "9426", "9427", "9428", "9429", "9430", "9431", "9432", "9433", "9434", "9435", "9436", "9437", "9438", "9439", "9440", "9441", "9442" ],
+    "childRowsBasis" : "实测 = 冻结锚重建的 imageRecords（图片切片行）7 + textRecords（文本块行）43，逐条列出；禁任何 ×常数推导；fix1：条目带存储面前缀（IMAGE: / TEXT:）——图片切片行与其描述文本行共用同一 chunkId，不加前缀则两个面无法从清单里数出来",
+    "childRowChunkIds" : [ "IMAGE:9400", "IMAGE:9401", "IMAGE:9402", "IMAGE:9415", "IMAGE:9416", "IMAGE:9417", "IMAGE:9430", "TEXT:9400", "TEXT:9401", "TEXT:9402", "TEXT:9403", "TEXT:9404", "TEXT:9405", "TEXT:9406", "TEXT:9407", "TEXT:9408", "TEXT:9409", "TEXT:9410", "TEXT:9411", "TEXT:9412", "TEXT:9413", "TEXT:9414", "TEXT:9415", "TEXT:9416", "TEXT:9417", "TEXT:9418", "TEXT:9419", "TEXT:9420", "TEXT:9421", "TEXT:9422", "TEXT:9423", "TEXT:9424", "TEXT:9425", "TEXT:9426", "TEXT:9427", "TEXT:9428", "TEXT:9429", "TEXT:9430", "TEXT:9431", "TEXT:9432", "TEXT:9433", "TEXT:9434", "TEXT:9435", "TEXT:9436", "TEXT:9437", "TEXT:9438", "TEXT:9439", "TEXT:9440", "TEXT:9441", "TEXT:9442" ],
     "embedInvocations" : 11,
     "embedInvocationsBasis" : "A 跑重放链真实到达 provider 的 embed 请求实计（EmbeddingService 无缓存，每次到达即一次未命中请求，真跑时即一次外呼调用点）；B 跑实测同值（两跑相等已断言）；摄取侧嵌入在写锚时已发生，重放由锚 embedCache 供给，不计入",
     "childRowsVsEmbedInvocationsReason" : "两数口径不同所以不等：childRows 是语料子块行面（摄取侧），embedInvocations 是单轮重放检索链查询侧嵌入请求；两数均为实测，无推导"
@@ -496,8 +496,16 @@
   "maxImageScoreDelta" : 0.05999999999999994,
   "maxTextScoreDelta" : 0.0,
   "imageDeltaSum" : 0.11999999999999988,
-  "verdict" : "RANK-CHANGE",
-  "verdictReason" : "R6 机械推导：存在 IMAGE 候选融合分变化（anyImageScoreChange=true）或名次变化（anyImageRankChange=false）或集合不等（allChunkIdSetsEqual=true）；maxImageScoreDelta=0.05999999999999994 maxTextScoreDelta=0.0",
+  "scoreFace" : {
+    "note" : "分数面 = 各 IMAGE 候选降权前后的融合分位移。w<1 时必然发生，故只作数据面、不作 verdict 判定面（fix1 修订：原 R6 把「分数或名次」并成一档，导致任何带近重复的输入都必然判 RANK-CHANGE，判定没有鉴别力）",
+    "changed" : true,
+    "maxImageScoreDelta" : 0.05999999999999994,
+    "imageDeltaSum" : 0.11999999999999988,
+    "imageCandidateCount" : 23,
+    "downWeightedCount" : 2
+  },
+  "verdict" : "NO-RANK-CHANGE",
+  "verdictReason" : "R6（fix1 修订）机械推导：名次面（anyImageRankChange=false）与集合面（全查询 chunkIdSetEqual=true）均无变化；分数面位移单列于 scoreFace（maxImageScoreDelta=0.05999999999999994 imageDeltaSum=0.11999999999999988）——降权在 w<1 时必然改分，故分数面不作判定面；窗口算术见 windowCheck（逐条被降权候选 gap vs 0.30×(1−w)）；不可外推为「生产无位移」——结论只对本冻结语料与本装配成立",
   "windowCheck" : {
     "note" : "逐条被降权候选的窗口算术：gap = 该候选 fusedB（未降权跑融合分）− 同查询下位竞争者最大融合分；window = 0.30×(1−w)（imageRouteWeight × (1 − w)），w 取 A 跑出参 BAND_WEIGHT_METADATA_KEY 实测值；NO-RANK-CHANGE 必附本节；RANK-CHANGE 时本节仍为实测上下文，verdict 由 R6 机械推导，不受本节影响",
     "entries" : [ {

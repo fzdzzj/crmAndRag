@@ -63,3 +63,13 @@
 - **D2** 若静态 mock 在本仓实测不可用（报错/不生效），**停手上报**，改用「`src/main` 抽一个包可见布尔重载」的最小 seam 方案（须附等价性单测），不得自行降级成代数反解。
 - **D3** 复用既有冻结语料，**不下载新资产、不复用卡 26 的 48 图选集**。
 - **D4** 本卡不产出阈值主张；`R=94.17%`/`0.90` 议题仍归 Owner。
+
+## §8 判据修订记（fix1，2026-10-25，主 agent 代笔）
+
+- **修订对象**：R6 的 verdict 判定面。原文「有任何 IMAGE 候选**分数或**名次变化 ⇒ `RANK-CHANGE`」。
+- **缺陷**：降权只要发生（`w<1`），融合分必变 ⇒ 该 verdict 对任何带近重复的输入都成立，**判定面没有鉴别力**——它分不出「降权把结果重排了」与「只是等比缩了分」。卡 27 的教训是「没测到」写成「测到没有」，本例是「必然为真」写成「判定结果」，同一种病。
+- **修订后**：判定面 = **名次面 + 集合面**；`RANK-CHANGE`（有名次变化或集合不等）/ `NO-RANK-CHANGE`（两者均无变化）/ `INCONCLUSIVE`（附缺哪条证据）。分数面位移改单列锚内 `scoreFace{changed, maxImageScoreDelta, imageDeltaSum, imageCandidateCount, downWeightedCount}`，只作数据面。
+- **`NO-RANK-CHANGE` 附加义务**：必附 `windowCheck`（逐条被降权候选 `gap` vs `0.30×(1−w)`）+ `nonExtrapolationNote`；守卫逐条校验。
+- **另修**：`denominators.childRowChunkIds` 条目加存储面前缀（`IMAGE:` / `TEXT:`）——图片切片行与其描述文本行共用同一 `chunkId`，不加前缀则 50 无法从清单里数出来。
+- **测量值零变动**：`childRows=50`、`embedInvocations=11`、`maxImageScoreDelta=0.06`、`imageDeltaSum=0.12`、`downWeightedCount=2`、逐候选 `fusedA/fusedB/rankA/rankB` 全部原样；只改**推导源**并重生成锚（成品不手改）。
+- **执行方式**：主 agent 代笔（Owner 2026-10-25 授权「代笔 fix1 + M1 + M2 全链」）。原执行端与复核均按原 R6 忠实执行，缺陷在判据文本，不在实现。

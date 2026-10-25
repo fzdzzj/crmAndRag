@@ -1993,24 +1993,30 @@ class NearDupDisplacementEvidenceIT {
     if (!positiveControl.flipped()) {
       verdict = "INCONCLUSIVE";
       verdictReason = "R1 正对照未翻转（装置无鉴别力），本锚任何「无位移/有位移」结论都不可采信；缺的证据：装置鉴别力证明";
-    } else if (anyImageScoreChange || anyImageRankChange || !allChunkIdSetsEqual) {
+    } else if (anyImageRankChange || !allChunkIdSetsEqual) {
       verdict = "RANK-CHANGE";
       verdictReason =
-          "R6 机械推导：存在 IMAGE 候选融合分变化（anyImageScoreChange="
-              + anyImageScoreChange
-              + "）或名次变化（anyImageRankChange="
+          "R6（fix1 修订）机械推导：名次面或集合面发生变化——anyImageRankChange="
               + anyImageRankChange
-              + "）或集合不等（allChunkIdSetsEqual="
+              + " allChunkIdSetsEqual="
               + allChunkIdSetsEqual
-              + "）；maxImageScoreDelta="
+              + "；分数面位移另见 scoreFace（maxImageScoreDelta="
               + maxImageScoreDelta
-              + " maxTextScoreDelta="
-              + maxTextScoreDelta;
+              + "），分数面不作判定面";
     } else {
-      assertEquals(0.0D, maxImageScoreDelta, "NO-RANK-CHANGE 分支必须 maxImageScoreDelta==0（机械自洽）");
+      assertEquals(
+          anyImageScoreChange,
+          maxImageScoreDelta > 0D,
+          "scoreFace 自洽：anyImageScoreChange 必须等价于 maxImageScoreDelta>0（机械推导，禁手写）");
       verdict = "NO-RANK-CHANGE";
       verdictReason =
-          "R6 机械推导：maxImageScoreDelta==0 且全部查询 chunkIdSetEqual；窗口算术见 windowCheck（逐条被降权候选 gap vs 0.30×(1−w)）；"
+          "R6（fix1 修订）机械推导：名次面（anyImageRankChange=false）与集合面（全查询 chunkIdSetEqual=true）均无变化；"
+              + "分数面位移单列于 scoreFace（maxImageScoreDelta="
+              + maxImageScoreDelta
+              + " imageDeltaSum="
+              + imageDeltaSum
+              + "）——降权在 w<1 时必然改分，故分数面不作判定面；"
+              + "窗口算术见 windowCheck（逐条被降权候选 gap vs 0.30×(1−w)）；"
               + "不可外推为「生产无位移」——结论只对本冻结语料与本装配成立";
     }
     return new AblationResults(
@@ -2066,8 +2072,10 @@ class NearDupDisplacementEvidenceIT {
             + "embedInvocations=重放链真实到达 provider 的 embed 请求实计（按未命中计）；禁任何 ×常数推导与融合分÷w 反解");
     criteria.put(
         "R6",
-        "verdict 三选一机械推导：RANK-CHANGE（任一 IMAGE 候选分数或名次变化，或集合不等）/ "
-            + "NO-RANK-CHANGE（maxImageScoreDelta==0 且集合相等，必附窗口算术+不可外推声明）/ INCONCLUSIVE（附缺哪条证据）");
+        "verdict 三选一机械推导（fix1 修订：判定面 = 名次面 + 集合面，分数面单列 scoreFace）——"
+            + "RANK-CHANGE（任一名次变化或集合不等）/ "
+            + "NO-RANK-CHANGE（名次面与集合面均无变化，必附窗口算术 + scoreFace + 不可外推声明）/ "
+            + "INCONCLUSIVE（附缺哪条证据）");
 
     ObjectNode sourceAnchors = root.putObject("sourceAnchors");
     putAnchorSha(
@@ -2149,13 +2157,15 @@ class NearDupDisplacementEvidenceIT {
             + material.imageRecords().size()
             + " + textRecords（文本块行）"
             + material.textRecords().size()
-            + "，逐条 chunkId 列出；禁任何 ×常数推导");
+            + "，逐条列出；禁任何 ×常数推导；"
+            + "fix1：条目带存储面前缀（IMAGE: / TEXT:）——图片切片行与其描述文本行共用同一 chunkId，"
+            + "不加前缀则两个面无法从清单里数出来");
     ArrayNode childRowIds = denominators.putArray("childRowChunkIds");
     for (StoredRecord record : material.imageRecords()) {
-      childRowIds.add(record.chunkId());
+      childRowIds.add("IMAGE:" + record.chunkId());
     }
     for (StoredRecord record : material.textRecords()) {
-      childRowIds.add(record.chunkId());
+      childRowIds.add("TEXT:" + record.chunkId());
     }
     denominators.put("embedInvocations", passA.embedInvocations());
     denominators.put(
@@ -2176,6 +2186,18 @@ class NearDupDisplacementEvidenceIT {
     root.put("maxImageScoreDelta", results.maxImageScoreDelta());
     root.put("maxTextScoreDelta", results.maxTextScoreDelta());
     root.put("imageDeltaSum", results.imageDeltaSum());
+
+    ObjectNode scoreFace = root.putObject("scoreFace");
+    scoreFace.put(
+        "note",
+        "分数面 = 各 IMAGE 候选降权前后的融合分位移。w<1 时必然发生，故只作数据面、不作 verdict 判定面（fix1 修订："
+            + "原 R6 把「分数或名次」并成一档，导致任何带近重复的输入都必然判 RANK-CHANGE，判定没有鉴别力）");
+    scoreFace.put("changed", results.anyImageScoreChange());
+    scoreFace.put("maxImageScoreDelta", results.maxImageScoreDelta());
+    scoreFace.put("imageDeltaSum", results.imageDeltaSum());
+    scoreFace.put("imageCandidateCount", results.imageCandidateCount());
+    scoreFace.put("downWeightedCount", results.downWeightedCount());
+
     root.put("verdict", results.verdict());
     root.put("verdictReason", results.verdictReason());
 
