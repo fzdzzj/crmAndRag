@@ -1,0 +1,393 @@
+{
+  "card" : "eval-port-route-reconciliation",
+  "baseCommit" : "d812ed1",
+  "suiteVersion" : "6.0",
+  "caseCount" : 72,
+  "evalKbId" : 99001,
+  "externalCalls" : 0,
+  "zeroExternalCallBasis" : "全程唯一 ModelProvider 是本类确定性桩 EvalStubProvider（streamChat/vision 即抛、embed 为本地哈希向量），未构造真实 provider、未读任何 key（ModelProviderProperties 实测无 apiKey）、未跑 RAG_BENCHMARK_REAL=1；检索链各环节用生产类直构（InMemoryVectorStore/RrfFusion/Bm25Scorer/DefaultWeightedReranker），无网络出口",
+  "srcMainDiff" : "ZERO",
+  "srcMainDiffBasis" : "本卡写集只含 src/test 两个新测试与 docs/rag-quality 两个新锚；src/main 零字节变动（验收时以 git diff master -- src/main 复核，守卫只认本声明位）",
+  "probe" : {
+    "caseId" : "T-01",
+    "query" : "销售合同审批流程是怎样的",
+    "routes" : [
+      {
+        "routeQuery" : "销售合同审批流程是怎样的",
+        "vectorCandidates" : 20,
+        "sparseCandidates" : 20
+      }
+    ],
+    "vectorRouteHits" : 20,
+    "fusedCandidates" : 24
+  },
+  "legs" : [
+    {
+      "name" : "装配腿",
+      "production" : "KnowledgeRetrievalServiceImpl + DefaultWeightedReranker + RrfFusion + Bm25Scorer（生产类直构）",
+      "stubOrApprox" : "无（本腿无替身）",
+      "sourceRefs" : [
+        "RagBenchmarkPipelineFactory.java:50-51",
+        "RagBenchmarkPipelineFactory.java:53-55",
+        "RagBenchmarkPipelineFactory.java:65-75"
+      ],
+      "classification" : "PRODUCTION",
+      "deviationPoints" : [ ],
+      "affectedConclusions" : [
+        "同一装配下的回归位移判定（recall@5/mrr 相对基线下限）"
+      ]
+    },
+    {
+      "name" : "输入腿",
+      "production" : "生产应接真实 ModelProvider 嵌入 + Qdrant 持久向量库",
+      "stubOrApprox" : "DeterministicEmbedding 伪向量 + DeterministicModelProvider 恒等回话 + InMemoryVectorStore 内存库",
+      "sourceRefs" : [
+        "RagQualityRegressionTest.java:278-283",
+        "RagQualityRegressionTest.java:593-654",
+        "RagQualityRegressionTest.java:660-700"
+      ],
+      "classification" : "STUB",
+      "deviationPoints" : [
+        "向量 = 确定性哈希伪向量：只承载词面（1/2-gram），其余弦分布与真嵌入不可比（RagQualityRegressionTest :587-591 自述）",
+        "对话 = 恒等回传最后一条用户消息（查询改写码路照跑但无模型抖动）",
+        "存储 = 内存实现，无持久化、无 Qdrant 检索语义"
+      ],
+      "affectedConclusions" : [
+        "recall@5/mrr 绝对值不可外推为生产语义召回质量",
+        "伪向量余弦分布不可当真嵌入分数分布（污染清单 P5）"
+      ]
+    },
+    {
+      "name" : "稀疏腿",
+      "production" : "SparseRecallService（生产：MySQL FULLTEXT(ngram) + 授权 JOIN + 软删过滤）",
+      "stubOrApprox" : "SparseBenchmarkRecallService：字符 bigram 重叠近似、无授权 JOIN、无软删",
+      "sourceRefs" : [
+        "SparseBenchmarkRecallService.java:21-22",
+        "SparseBenchmarkRecallService.java:24-31",
+        "SparseBenchmarkRecallService.java:33-63"
+      ],
+      "classification" : "APPROXIMATION",
+      "deviationPoints" : [
+        "bigram 重叠分 ≠ 生产 MATCH...AGAINST(ngram) 相关度",
+        "无授权 JOIN（:29 super(null) 不触 DB）",
+        "无软删过滤"
+      ],
+      "affectedConclusions" : [
+        "稀疏路命中与否与绝对分不可外推（污染清单 P4）"
+      ]
+    },
+    {
+      "name" : "度量腿",
+      "production" : "DefaultWeightedReranker（生产类：normalizeScores min-max 后按 0.6/0.4 加权）",
+      "stubOrApprox" : "无替身，但语义为集合内相对量（R2 平移实验实证）",
+      "sourceRefs" : [
+        "DefaultWeightedReranker.java:24",
+        "DefaultWeightedReranker.java:36-42",
+        "DefaultWeightedReranker.java:58-74"
+      ],
+      "classification" : "SET-RELATIVE",
+      "deviationPoints" : [
+        "min-max 集合内归一：分数只反映集合内相对位置，不含绝对信息（R2 实验锚 translationExperiment）"
+      ],
+      "affectedConclusions" : [
+        "跨查询/跨语料分数比较无意义（污染清单 P2/P3）"
+      ]
+    },
+    {
+      "name" : "语料面",
+      "production" : "生产应接生产库真实文档语料",
+      "stubOrApprox" : "15 份固定 fixture 文档（src/test/resources/rag-quality/fixtures/）",
+      "sourceRefs" : [
+        "RagBenchmarkDataPreparer.java:154-174"
+      ],
+      "classification" : "TEST-FIXTURE",
+      "deviationPoints" : [
+        "语料为测试侧固定 fixture，非生产库数据"
+      ],
+      "affectedConclusions" : [
+        "生产语料分布不可由此推断（污染清单 P6）"
+      ]
+    },
+    {
+      "name" : "归一化面",
+      "production" : "normalizeScores min-max（生产实现本体）",
+      "stubOrApprox" : "—（面不是替身，是生产实现的语义属性）",
+      "sourceRefs" : [
+        "DefaultWeightedReranker.java:41-42",
+        "DefaultWeightedReranker.java:58-74"
+      ],
+      "classification" : "SET-RELATIVE",
+      "deviationPoints" : [
+        "两次 normalizeScores 调用（向量腿 :41、BM25 腿 :42）均为集合内归一"
+      ],
+      "affectedConclusions" : [
+        "同度量腿：分数不可跨集合比较"
+      ]
+    }
+  ],
+  "translationExperiment" : {
+    "shift" : 100.0,
+    "scale" : 2.0,
+    "singleBoost" : 10.0,
+    "fpToleranceBound" : 1.0E-12,
+    "bitwiseEqualPlus100" : false,
+    "maxAbsDiffPlus100" : 2.8310687127941492E-14,
+    "bitwiseEqualTimes2" : true,
+    "maxAbsDiffTimes2" : 0.0,
+    "conclusion" : "SET-RELATIVE-INVARIANT",
+    "conclusionBasis" : "同一查询同一候选集跑三遍（原始/+100/×2）重跑生产 DefaultWeightedReranker：rerankScore 实测最大绝对差 +100=2.8310687127941492E-14、×2=0.0（逐位相等=false/true），且单点抬高对照名次 1→0 必升 ⇒ 实验测到的是 min-max 归一而非恒等函数 ⇒ 重排分是集合内相对量，跨查询/跨语料比较无意义",
+    "fpToleranceJustification" : "实测最大绝对差 +100=2.8310687127941492E-14、×2=0.0；容差上界 1e-12 的理由：hit.score 加 100 后落在本机 double 的 ULP≈1.42e-14（2^-52×2^6）格内，min-max 分子/分母各一次舍入、加权和再一次舍入，噪声量级 1e-14~1e-13，1e-12 为一个数量级裕度，非无据放宽（×2 为 2 的幂缩放，理想逐位不变）",
+    "stopCondition" : "若三遍 rerankScore 实测最大绝对差 > 1e-12 ⇒ 重排分含绝对信息，本卡必须改判 INCONCLUSIVE 并停手上报（测试断言超界即红，红即停手信号）",
+    "candidates" : [
+      {
+        "chunkId" : "sales-flow-0",
+        "hitScore" : 0.367698591440942,
+        "rerankOriginal" : 1.0,
+        "rerankPlus100" : 1.0,
+        "rerankTimes2" : 1.0
+      },
+      {
+        "chunkId" : "sales-flow-1",
+        "hitScore" : 0.3422444506492259,
+        "rerankOriginal" : 0.6093116832101387,
+        "rerankPlus100" : 0.6093116832101598,
+        "rerankTimes2" : 0.6093116832101387
+      },
+      {
+        "chunkId" : "payment-plan-1",
+        "hitScore" : 0.33509589182344285,
+        "rerankOriginal" : 0.7398823659850764,
+        "rerankPlus100" : 0.7398823659850743,
+        "rerankTimes2" : 0.7398823659850764
+      },
+      {
+        "chunkId" : "payment-plan-0",
+        "hitScore" : 0.3532302062934753,
+        "rerankOriginal" : 0.6182599160720886,
+        "rerankPlus100" : 0.6182599160720872,
+        "rerankTimes2" : 0.6182599160720886
+      },
+      {
+        "chunkId" : "customer-sop-4",
+        "hitScore" : 0.3333252964222265,
+        "rerankOriginal" : 0.5845124507005046,
+        "rerankPlus100" : 0.5845124507005177,
+        "rerankTimes2" : 0.5845124507005046
+      },
+      {
+        "chunkId" : "regional-policy-2",
+        "hitScore" : 0.32482501490876386,
+        "rerankOriginal" : 0.5540399542641776,
+        "rerankPlus100" : 0.5540399542641891,
+        "rerankTimes2" : 0.5540399542641776
+      },
+      {
+        "chunkId" : "sales-flow-3",
+        "hitScore" : 0.32801297592191364,
+        "rerankOriginal" : 0.5395218497198364,
+        "rerankPlus100" : 0.539521849719816,
+        "rerankTimes2" : 0.5395218497198364
+      },
+      {
+        "chunkId" : "payment-plan-2",
+        "hitScore" : 0.3371976695922943,
+        "rerankOriginal" : 0.553552226598081,
+        "rerankPlus100" : 0.553552226598097,
+        "rerankTimes2" : 0.553552226598081
+      },
+      {
+        "chunkId" : "pricing-1",
+        "hitScore" : 0.3222640920611661,
+        "rerankOriginal" : 0.5254827182367363,
+        "rerankPlus100" : 0.5254827182367173,
+        "rerankTimes2" : 0.5254827182367363
+      },
+      {
+        "chunkId" : "codes-0",
+        "hitScore" : 0.32859708442366825,
+        "rerankOriginal" : 0.5282341138041998,
+        "rerankPlus100" : 0.5282341138041808,
+        "rerankTimes2" : 0.5282341138041998
+      },
+      {
+        "chunkId" : "expense-1",
+        "hitScore" : 0.3127608806615477,
+        "rerankOriginal" : 0.5361698614147368,
+        "rerankPlus100" : 0.5361698614147171,
+        "rerankTimes2" : 0.5361698614147368
+      },
+      {
+        "chunkId" : "customer-sop-3",
+        "hitScore" : 0.294936666101775,
+        "rerankOriginal" : 0.43728871813928194,
+        "rerankPlus100" : 0.4372887181392807,
+        "rerankTimes2" : 0.43728871813928194
+      },
+      {
+        "chunkId" : "sales-flow-2",
+        "hitScore" : 0.30753904869707654,
+        "rerankOriginal" : 0.4555346960851615,
+        "rerankPlus100" : 0.45553469608516983,
+        "rerankTimes2" : 0.4555346960851615
+      },
+      {
+        "chunkId" : "pricing-3",
+        "hitScore" : 0.31653531428331727,
+        "rerankOriginal" : 0.47544853168030354,
+        "rerankPlus100" : 0.47544853168029,
+        "rerankTimes2" : 0.47544853168030354
+      },
+      {
+        "chunkId" : "customer-sop-1",
+        "hitScore" : 0.30987311608367185,
+        "rerankOriginal" : 0.4464781505013934,
+        "rerankPlus100" : 0.44647815050136735,
+        "rerankTimes2" : 0.4464781505013934
+      },
+      {
+        "chunkId" : "customer-sop-0",
+        "hitScore" : 0.29914020319413626,
+        "rerankOriginal" : 0.43451847180433295,
+        "rerankPlus100" : 0.43451847180434633,
+        "rerankTimes2" : 0.43451847180433295
+      },
+      {
+        "chunkId" : "trade-jargon-1",
+        "hitScore" : 0.3292953081334535,
+        "rerankOriginal" : 0.5026539879877243,
+        "rerankPlus100" : 0.5026539879877212,
+        "rerankTimes2" : 0.5026539879877243
+      },
+      {
+        "chunkId" : "customer-sop-2",
+        "hitScore" : 0.2727272727272727,
+        "rerankOriginal" : 0.36671342382826433,
+        "rerankPlus100" : 0.366713423828236,
+        "rerankTimes2" : 0.36671342382826433
+      },
+      {
+        "chunkId" : "sla-2",
+        "hitScore" : 0.3188403567639481,
+        "rerankOriginal" : 0.4422913911923784,
+        "rerankPlus100" : 0.4422913911923578,
+        "rerankTimes2" : 0.4422913911923784
+      },
+      {
+        "chunkId" : "expense-2",
+        "hitScore" : 0.3124581892310003,
+        "rerankOriginal" : 0.4359137574525674,
+        "rerankPlus100" : 0.43591375745254585,
+        "rerankTimes2" : 0.4359137574525674
+      },
+      {
+        "chunkId" : "customer-sop-5",
+        "hitScore" : 0.18181818181818182,
+        "rerankOriginal" : 0.06650710403310488,
+        "rerankPlus100" : 0.06650710403310488,
+        "rerankTimes2" : 0.06650710403310488
+      },
+      {
+        "chunkId" : "pricing-2",
+        "hitScore" : 0.18181818181818182,
+        "rerankOriginal" : 0.04162738941030193,
+        "rerankPlus100" : 0.04162738941030193,
+        "rerankTimes2" : 0.04162738941030193
+      },
+      {
+        "chunkId" : "sla-arch-0",
+        "hitScore" : 0.30390262471605095,
+        "rerankOriginal" : 0.3940741570743358,
+        "rerankPlus100" : 0.39407415707431215,
+        "rerankTimes2" : 0.3940741570743358
+      },
+      {
+        "chunkId" : "regional-policy-1",
+        "hitScore" : 0.18181818181818182,
+        "rerankOriginal" : 0.0474680430797067,
+        "rerankPlus100" : 0.0474680430797067,
+        "rerankTimes2" : 0.0474680430797067
+      }
+    ],
+    "singlePointControl" : {
+      "boostedChunkId" : "payment-plan-1",
+      "rankBefore" : 1,
+      "rankAfter" : 0,
+      "rankImproved" : true
+    }
+  },
+  "verdict" : "PARTIAL-OFF-PRODUCTION",
+  "verdictReason" : "非 PRODUCTION 腿（机械推导）：输入腿=STUB、稀疏腿=APPROXIMATION、度量腿=SET-RELATIVE、语料面=TEST-FIXTURE、归一化面=SET-RELATIVE；逐腿偏差点见 legs[].deviationPoints，被污染结论见 nonSupportable[]",
+  "supportable" : [
+    {
+      "conclusion" : "同一装配下的回归位移判定（recall@5/mrr 相对基线 0.95 下限）",
+      "evidenceRefs" : [
+        "R1-装配腿",
+        "R1-度量腿"
+      ]
+    },
+    {
+      "conclusion" : "同一查询内候选间排序与相对分差比较",
+      "evidenceRefs" : [
+        "R2"
+      ]
+    },
+    {
+      "conclusion" : "管线排序环节（融合/重排/topK）在该伪向量词面空间内的回归敏感性",
+      "evidenceRefs" : [
+        "R1-输入腿",
+        "R1-装配腿"
+      ]
+    }
+  ],
+  "nonSupportable" : [
+    {
+      "conclusion" : "recall@5/mrr 绝对值当作生产语义召回质量外推",
+      "evidenceRefs" : [
+        "R1-输入腿",
+        "R1-稀疏腿"
+      ]
+    },
+    {
+      "conclusion" : "从本套件取「文本路真分数分布」（储备 3 原案）：重排分是集合内相对量，绝对值信息在归一化中已丢失",
+      "evidenceRefs" : [
+        "R2",
+        "R1-度量腿"
+      ]
+    },
+    {
+      "conclusion" : "跨查询/跨语料分数比较与分位",
+      "evidenceRefs" : [
+        "R2"
+      ]
+    },
+    {
+      "conclusion" : "稀疏路命中与否及 MATCH...AGAINST 相关度绝对值",
+      "evidenceRefs" : [
+        "R1-稀疏腿"
+      ]
+    },
+    {
+      "conclusion" : "伪向量余弦分布当作真嵌入分数分布（确定性哈希向量只承载词面，与真嵌入不可比）",
+      "evidenceRefs" : [
+        "R1-输入腿"
+      ]
+    },
+    {
+      "conclusion" : "生产语料分布",
+      "evidenceRefs" : [
+        "R1-语料面"
+      ]
+    }
+  ],
+  "sparseApproximationDeclaration" : "稀疏腿是字符 bigram 重叠近似（SparseBenchmarkRecallService :33-63 override recall、:29 super(null) 不触 DB），不是生产 MySQL FULLTEXT(ngram)：近似 ngram 评分、无授权 JOIN、无软删（:21-22 自述「本类只在基准测试用」）。本锚任何位置不得把稀疏腿表述为与生产稀疏路可互换或同口径的部件",
+  "criteria" : {
+    "R0" : "零外呼 + src/main 零 diff：只跑现有 surefire 装配与纯 JVM 直构，禁读 key、禁真 provider、禁 *REAL* opt-in",
+    "R1" : "逐腿对账：四条腿+两个面逐条落 (腿名, 生产件, 替身或近似, 文件:行号, 受影响结论)，每条口径判断必须落到可 grep 的类名/行号",
+    "R2" : "平移不变性实验：同候选集 +100/×2 重跑生产重排器断言 rerankScore 不变；不成立 ⇒ 改判",
+    "R3" : "稀疏腿近似不得被当成等价：bigram vs FULLTEXT(ngram) 差异声明 + 被污染结论清单落锚",
+    "R4" : "verdict 三选一：PRODUCTION-PATH / PARTIAL-OFF-PRODUCTION（逐腿偏差点）/ INCONCLUSIVE（缺哪条）",
+    "R5" : "可支持/不可支持结论清单逐条落锚，每条挂 R1/R2 证据编号",
+    "R6" : "只判不改：既有断言/基线锚/套件用例数零变动，不生成新基线"
+  },
+  "decisionOwner" : "OWNER"
+}
