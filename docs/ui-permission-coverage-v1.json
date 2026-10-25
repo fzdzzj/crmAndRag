@@ -1,0 +1,794 @@
+{
+  "schema": "ui-permission-coverage-v1",
+  "verdict": "COVERAGE-CLOSED",
+  "counts": {
+    "used": 56,
+    "usedSites": 64,
+    "allowOnlySites": 1,
+    "registered": 57,
+    "contract": 279,
+    "contractSecured": 259,
+    "contractOpen": 20,
+    "vueFilesScanned": 104
+  },
+  "diffs": {
+    "usedMinusRegistered": [],
+    "registeredMinusContract": [],
+    "registeredMinusUsed": [
+      "DELETE /contract"
+    ]
+  },
+  "dynamicBindingWhitelist": [],
+  "dynamicBindingsResolved": [
+    {
+      "file": "src/components/finance/FinanceTable.vue",
+      "line": 153,
+      "expression": "type === 'invoice' ? 'POST /invoice/info' : 'POST /payment/record'",
+      "keys": [
+        "POST /invoice/info",
+        "POST /payment/record"
+      ]
+    },
+    {
+      "file": "src/components/finance/FinanceTable.vue",
+      "line": 164,
+      "expression": "type === 'invoice' ? 'GET /invoice/info/{id}' : 'GET /payment/record/{id}'",
+      "keys": [
+        "GET /invoice/info/{id}",
+        "GET /payment/record/{id}"
+      ]
+    },
+    {
+      "file": "src/components/finance/FinanceTable.vue",
+      "line": 174,
+      "expression": "type === 'invoice' ? 'PUT /invoice/info' : 'PUT /payment/record'",
+      "keys": [
+        "PUT /invoice/info",
+        "PUT /payment/record"
+      ]
+    },
+    {
+      "file": "src/components/finance/FinanceTable.vue",
+      "line": 184,
+      "expression": "type === 'invoice' ? 'DELETE /invoice/info' : 'DELETE /payment/record'",
+      "keys": [
+        "DELETE /invoice/info",
+        "DELETE /payment/record"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/contacts.page.vue",
+      "line": 25,
+      "expression": "'DELETE /contact/logical/batch'",
+      "keys": [
+        "DELETE /contact/logical/batch"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/contacts.page.vue",
+      "line": 36,
+      "expression": "'PUT /contact/recover'",
+      "keys": [
+        "PUT /contact/recover"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/contacts.page.vue",
+      "line": 46,
+      "expression": "'DELETE /contact'",
+      "keys": [
+        "DELETE /contact"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/contacts.page.vue",
+      "line": 58,
+      "expression": "'GET /contact/excel'",
+      "keys": [
+        "GET /contact/excel"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/contacts.page.vue",
+      "line": 74,
+      "expression": "'POST /contact'",
+      "keys": [
+        "POST /contact"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/contacts.page.vue",
+      "line": 102,
+      "expression": "'GET /contact/search'",
+      "keys": [
+        "GET /contact/search"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/contacts.page.vue",
+      "line": 110,
+      "expression": "'PUT /contact'",
+      "keys": [
+        "PUT /contact"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/contacts.page.vue",
+      "line": 119,
+      "expression": "'DELETE /contact/logical/batch'",
+      "keys": [
+        "DELETE /contact/logical/batch"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/contacts.page.vue",
+      "line": 129,
+      "expression": "'PUT /contact/recover'",
+      "keys": [
+        "PUT /contact/recover"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/contacts.page.vue",
+      "line": 137,
+      "expression": "'DELETE /contact'",
+      "keys": [
+        "DELETE /contact"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/list.page.vue",
+      "line": 50,
+      "expression": "'POST /customer/churn/warning/scan'",
+      "keys": [
+        "POST /customer/churn/warning/scan"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/list.page.vue",
+      "line": 76,
+      "expression": "'POST /company'",
+      "keys": [
+        "POST /company"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/list.page.vue",
+      "line": 85,
+      "expression": "'GET /company/custom'",
+      "keys": [
+        "GET /company/custom"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/list.page.vue",
+      "line": 92,
+      "expression": "'PUT /company'",
+      "keys": [
+        "PUT /company"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/list.page.vue",
+      "line": 99,
+      "expression": "'DELETE /company'",
+      "keys": [
+        "DELETE /company"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/list.page.vue",
+      "line": 106,
+      "expression": "'POST /company/pool/release/{id}'",
+      "keys": [
+        "POST /company/pool/release/{id}"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/list.page.vue",
+      "line": 115,
+      "expression": "'PUT /company/recover'",
+      "keys": [
+        "PUT /company/recover"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/list.page.vue",
+      "line": 155,
+      "expression": "'GET /company/custom'",
+      "keys": [
+        "GET /company/custom"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/list.page.vue",
+      "line": 160,
+      "expression": "'PUT /company'",
+      "keys": [
+        "PUT /company"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/list.page.vue",
+      "line": 165,
+      "expression": "'DELETE /company'",
+      "keys": [
+        "DELETE /company"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/list.page.vue",
+      "line": 170,
+      "expression": "'POST /company/pool/release/{id}'",
+      "keys": [
+        "POST /company/pool/release/{id}"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/list.page.vue",
+      "line": 214,
+      "expression": "'GET /company/custom'",
+      "keys": [
+        "GET /company/custom"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/list.page.vue",
+      "line": 219,
+      "expression": "'PUT /company'",
+      "keys": [
+        "PUT /company"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/list.page.vue",
+      "line": 224,
+      "expression": "'DELETE /company'",
+      "keys": [
+        "DELETE /company"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/list.page.vue",
+      "line": 229,
+      "expression": "'POST /company/pool/release/{id}'",
+      "keys": [
+        "POST /company/pool/release/{id}"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/pool.page.vue",
+      "line": 25,
+      "expression": "'POST /company/pool/recycle/trigger'",
+      "keys": [
+        "POST /company/pool/recycle/trigger"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/pool.page.vue",
+      "line": 28,
+      "expression": "'GET /company/pool'",
+      "keys": [
+        "GET /company/pool"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/pool.page.vue",
+      "line": 37,
+      "expression": "'POST /company/pool/claim/{id}'",
+      "keys": [
+        "POST /company/pool/claim/{id}"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/client/pool.page.vue",
+      "line": 42,
+      "expression": "'POST /company/pool/assign'",
+      "keys": [
+        "POST /company/pool/assign"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/contact/activity.page.vue",
+      "line": 36,
+      "expression": "'POST /business/activity'",
+      "keys": [
+        "POST /business/activity"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/contact/activity.page.vue",
+      "line": 44,
+      "expression": "'GET /business/activity/{id}'",
+      "keys": [
+        "GET /business/activity/{id}"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/contact/activity.page.vue",
+      "line": 51,
+      "expression": "'PUT /business/activity'",
+      "keys": [
+        "PUT /business/activity"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/contact/activity.page.vue",
+      "line": 58,
+      "expression": "'POST /business/activity/{id}/attachments'",
+      "keys": [
+        "POST /business/activity/{id}/attachments"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/contact/activity.page.vue",
+      "line": 65,
+      "expression": "'DELETE /business/activity'",
+      "keys": [
+        "DELETE /business/activity"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/contact/task.page.vue",
+      "line": 31,
+      "expression": "'POST /contactTask/create'",
+      "keys": [
+        "POST /contactTask/create"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/contact/task.page.vue",
+      "line": 41,
+      "expression": "'GET /contactTask/{id}'",
+      "keys": [
+        "GET /contactTask/{id}"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/contact/task.page.vue",
+      "line": 48,
+      "expression": "'PUT /contactTask/update'",
+      "keys": [
+        "PUT /contactTask/update"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/contact/task.page.vue",
+      "line": 55,
+      "expression": "'DELETE /contactTask/{id}'",
+      "keys": [
+        "DELETE /contactTask/{id}"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/privilege/role.page.vue",
+      "line": 33,
+      "expression": "'POST /role/add'",
+      "keys": [
+        "POST /role/add"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/privilege/role.page.vue",
+      "line": 41,
+      "expression": "'GET /role/list'",
+      "keys": [
+        "GET /role/list"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/privilege/role.page.vue",
+      "line": 49,
+      "expression": "'POST /permission/addORDeletePermissionsToRole'",
+      "keys": [
+        "POST /permission/addORDeletePermissionsToRole"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/privilege/role.page.vue",
+      "line": 57,
+      "expression": "'DELETE /role'",
+      "keys": [
+        "DELETE /role"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/privilege/user.page.vue",
+      "line": 33,
+      "expression": "'POST /user/add'",
+      "keys": [
+        "POST /user/add"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/privilege/user.page.vue",
+      "line": 47,
+      "expression": "'POST /user/find'",
+      "keys": [
+        "POST /user/find"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/privilege/user.page.vue",
+      "line": 55,
+      "expression": "'POST /user/update'",
+      "keys": [
+        "POST /user/update"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/privilege/user.page.vue",
+      "line": 63,
+      "expression": "'POST /user/handover/execute'",
+      "keys": [
+        "POST /user/handover/execute"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/sale/contract.page.vue",
+      "line": 33,
+      "expression": "'POST /contract/warning/trigger'",
+      "keys": [
+        "POST /contract/warning/trigger"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/sale/contract.page.vue",
+      "line": 43,
+      "expression": "'POST /contract'",
+      "keys": [
+        "POST /contract"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/sale/contract.page.vue",
+      "line": 54,
+      "expression": "'GET /contract/{id}'",
+      "keys": [
+        "GET /contract/{id}"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/sale/contract.page.vue",
+      "line": 62,
+      "expression": "'PUT /contract'",
+      "keys": [
+        "PUT /contract"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/sale/lead.page.vue",
+      "line": 50,
+      "expression": "'POST /sales/lead'",
+      "keys": [
+        "POST /sales/lead"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/sale/lead.page.vue",
+      "line": 66,
+      "expression": "'GET /sales/lead/{id}'",
+      "keys": [
+        "GET /sales/lead/{id}"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/sale/lead.page.vue",
+      "line": 74,
+      "expression": "'PUT /sales/lead'",
+      "keys": [
+        "PUT /sales/lead"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/sale/lead.page.vue",
+      "line": 84,
+      "expression": "'PUT /sales/lead'",
+      "keys": [
+        "PUT /sales/lead"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/sale/lead.page.vue",
+      "line": 94,
+      "expression": "'POST /sales/lead/convert'",
+      "keys": [
+        "POST /sales/lead/convert"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/sale/lead.page.vue",
+      "line": 102,
+      "expression": "'DELETE /sales/lead/{id}'",
+      "keys": [
+        "DELETE /sales/lead/{id}"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/sale/list.page.vue",
+      "line": 27,
+      "expression": "'POST /sales'",
+      "keys": [
+        "POST /sales"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/sale/list.page.vue",
+      "line": 46,
+      "expression": "'PUT /sales'",
+      "keys": [
+        "PUT /sales"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/sale/list.page.vue",
+      "line": 54,
+      "expression": "'POST /sales/stage/approval'",
+      "keys": [
+        "POST /sales/stage/approval"
+      ]
+    },
+    {
+      "file": "src/pages/(dashboard)/sale/list.page.vue",
+      "line": 68,
+      "expression": "'DELETE /sales/{id}'",
+      "keys": [
+        "DELETE /sales/{id}"
+      ]
+    }
+  ],
+  "zombieCandidates": [
+    {
+      "key": "DELETE /contract",
+      "value": "sales:SALES_UPDATE_CONTRACT",
+      "note": "模板使用面 0 站点：contract.page.vue 只有建/查/改/预警触发入口，无删除按钮；登记保留，删除另卡定夺。"
+    }
+  ],
+  "used": {
+    "DELETE /business/activity": [
+      "src/pages/(dashboard)/contact/activity.page.vue:65"
+    ],
+    "DELETE /company": [
+      "src/pages/(dashboard)/client/list.page.vue:165",
+      "src/pages/(dashboard)/client/list.page.vue:224",
+      "src/pages/(dashboard)/client/list.page.vue:99"
+    ],
+    "DELETE /contact": [
+      "src/pages/(dashboard)/client/contacts.page.vue:137",
+      "src/pages/(dashboard)/client/contacts.page.vue:46"
+    ],
+    "DELETE /contact/logical/batch": [
+      "src/pages/(dashboard)/client/contacts.page.vue:119",
+      "src/pages/(dashboard)/client/contacts.page.vue:25"
+    ],
+    "DELETE /contactTask/{id}": [
+      "src/pages/(dashboard)/contact/task.page.vue:55"
+    ],
+    "DELETE /invoice/info": [
+      "src/components/finance/FinanceTable.vue:184"
+    ],
+    "DELETE /payment/record": [
+      "src/components/finance/FinanceTable.vue:184"
+    ],
+    "DELETE /role": [
+      "src/pages/(dashboard)/privilege/role.page.vue:57"
+    ],
+    "DELETE /sales/lead/{id}": [
+      "src/pages/(dashboard)/sale/lead.page.vue:102"
+    ],
+    "DELETE /sales/{id}": [
+      "src/pages/(dashboard)/sale/list.page.vue:68"
+    ],
+    "GET /business/activity/{id}": [
+      "src/pages/(dashboard)/contact/activity.page.vue:44"
+    ],
+    "GET /company/custom": [
+      "src/pages/(dashboard)/client/list.page.vue:155",
+      "src/pages/(dashboard)/client/list.page.vue:214",
+      "src/pages/(dashboard)/client/list.page.vue:85"
+    ],
+    "GET /company/pool": [
+      "src/pages/(dashboard)/client/pool.page.vue:28"
+    ],
+    "GET /contact/excel": [
+      "src/pages/(dashboard)/client/contacts.page.vue:58"
+    ],
+    "GET /contact/search": [
+      "src/pages/(dashboard)/client/contacts.page.vue:102"
+    ],
+    "GET /contactTask/{id}": [
+      "src/pages/(dashboard)/contact/task.page.vue:41"
+    ],
+    "GET /contract/{id}": [
+      "src/pages/(dashboard)/sale/contract.page.vue:54"
+    ],
+    "GET /invoice/info/{id}": [
+      "src/components/finance/FinanceTable.vue:164"
+    ],
+    "GET /payment/record/{id}": [
+      "src/components/finance/FinanceTable.vue:164"
+    ],
+    "GET /role/list": [
+      "src/pages/(dashboard)/privilege/role.page.vue:41"
+    ],
+    "GET /sales/lead/{id}": [
+      "src/pages/(dashboard)/sale/lead.page.vue:66"
+    ],
+    "POST /business/activity": [
+      "src/pages/(dashboard)/contact/activity.page.vue:36"
+    ],
+    "POST /business/activity/{id}/attachments": [
+      "src/pages/(dashboard)/contact/activity.page.vue:58"
+    ],
+    "POST /company": [
+      "src/pages/(dashboard)/client/list.page.vue:76"
+    ],
+    "POST /company/pool/assign": [
+      "src/pages/(dashboard)/client/pool.page.vue:42"
+    ],
+    "POST /company/pool/claim/{id}": [
+      "src/pages/(dashboard)/client/pool.page.vue:37"
+    ],
+    "POST /company/pool/recycle/trigger": [
+      "src/pages/(dashboard)/client/pool.page.vue:25"
+    ],
+    "POST /company/pool/release/{id}": [
+      "src/pages/(dashboard)/client/list.page.vue:106",
+      "src/pages/(dashboard)/client/list.page.vue:170",
+      "src/pages/(dashboard)/client/list.page.vue:229"
+    ],
+    "POST /contact": [
+      "src/pages/(dashboard)/client/contacts.page.vue:74"
+    ],
+    "POST /contactTask/create": [
+      "src/pages/(dashboard)/contact/task.page.vue:31"
+    ],
+    "POST /contract": [
+      "src/pages/(dashboard)/sale/contract.page.vue:43"
+    ],
+    "POST /contract/warning/trigger": [
+      "src/pages/(dashboard)/sale/contract.page.vue:33"
+    ],
+    "POST /customer/churn/warning/scan": [
+      "src/pages/(dashboard)/client/list.page.vue:50"
+    ],
+    "POST /invoice/info": [
+      "src/components/finance/FinanceTable.vue:153"
+    ],
+    "POST /payment/record": [
+      "src/components/finance/FinanceTable.vue:153"
+    ],
+    "POST /permission/addORDeletePermissionsToRole": [
+      "src/pages/(dashboard)/privilege/role.page.vue:49"
+    ],
+    "POST /role/add": [
+      "src/pages/(dashboard)/privilege/role.page.vue:33"
+    ],
+    "POST /sales": [
+      "src/pages/(dashboard)/sale/list.page.vue:27"
+    ],
+    "POST /sales/lead": [
+      "src/pages/(dashboard)/sale/lead.page.vue:50"
+    ],
+    "POST /sales/lead/convert": [
+      "src/pages/(dashboard)/sale/lead.page.vue:94"
+    ],
+    "POST /sales/stage/approval": [
+      "src/pages/(dashboard)/sale/list.page.vue:54"
+    ],
+    "POST /user/add": [
+      "src/pages/(dashboard)/privilege/user.page.vue:33"
+    ],
+    "POST /user/find": [
+      "src/pages/(dashboard)/privilege/user.page.vue:47"
+    ],
+    "POST /user/handover/execute": [
+      "src/pages/(dashboard)/privilege/user.page.vue:63"
+    ],
+    "POST /user/update": [
+      "src/pages/(dashboard)/privilege/user.page.vue:55"
+    ],
+    "PUT /business/activity": [
+      "src/pages/(dashboard)/contact/activity.page.vue:51"
+    ],
+    "PUT /company": [
+      "src/pages/(dashboard)/client/list.page.vue:160",
+      "src/pages/(dashboard)/client/list.page.vue:219",
+      "src/pages/(dashboard)/client/list.page.vue:92"
+    ],
+    "PUT /company/recover": [
+      "src/pages/(dashboard)/client/list.page.vue:115"
+    ],
+    "PUT /contact": [
+      "src/pages/(dashboard)/client/contacts.page.vue:110"
+    ],
+    "PUT /contact/recover": [
+      "src/pages/(dashboard)/client/contacts.page.vue:129",
+      "src/pages/(dashboard)/client/contacts.page.vue:36"
+    ],
+    "PUT /contactTask/update": [
+      "src/pages/(dashboard)/contact/task.page.vue:48"
+    ],
+    "PUT /contract": [
+      "src/pages/(dashboard)/sale/contract.page.vue:62"
+    ],
+    "PUT /invoice/info": [
+      "src/components/finance/FinanceTable.vue:174"
+    ],
+    "PUT /payment/record": [
+      "src/components/finance/FinanceTable.vue:174"
+    ],
+    "PUT /sales": [
+      "src/pages/(dashboard)/sale/list.page.vue:46"
+    ],
+    "PUT /sales/lead": [
+      "src/pages/(dashboard)/sale/lead.page.vue:74",
+      "src/pages/(dashboard)/sale/lead.page.vue:84"
+    ]
+  },
+  "registered": {
+    "DELETE /business/activity": "sales:SALES_DELETE_BUSINESS_ACTIVITY",
+    "DELETE /company": "customer:CUSTOMER_DELETE_CUSTOMER_COMPANY",
+    "DELETE /contact": "customer:CUSTOMER_DELETE_CONTACT",
+    "DELETE /contact/logical/batch": "customer:CUSTOMER_DELETE_CONTACT",
+    "DELETE /contactTask/{id}": "task:TASK_DELETE_TASK",
+    "DELETE /contract": "sales:SALES_UPDATE_CONTRACT",
+    "DELETE /invoice/info": "finance:FINANCE_DELETE_INVOICE",
+    "DELETE /payment/record": "finance:FINANCE_DELETE_PAYMENT",
+    "DELETE /role": "system:SYSTEM_MANAGE_ROLE",
+    "DELETE /sales/{id}": "sales:SALES_DELETE_SALE_OPPORTUNITY",
+    "DELETE /sales/lead/{id}": "customer:CUSTOMER_DELETE_CUSTOMER_COMPANY",
+    "GET /business/activity/{id}": "sales:SALES_VIEW_BUSINESS_ACTIVITY",
+    "GET /company/custom": "customer:CUSTOMER_QUERY_COMPANY",
+    "GET /company/pool": "customer:CUSTOMER_QUERY_COMPANY",
+    "GET /contact/excel": "customer:CUSTOMER_EXPORT_CONTACT",
+    "GET /contact/search": "customer:CUSTOMER_QUERY_CONTACT",
+    "GET /contactTask/{id}": "task:TASK_VIEW_TASK",
+    "GET /contract/{id}": "sales:SALES_VIEW_CONTRACT",
+    "GET /invoice/info/{id}": "finance:FINANCE_VIEW_INVOICE",
+    "GET /payment/record/{id}": "finance:FINANCE_VIEW_PAYMENT",
+    "GET /role/list": "system:SYSTEM_VIEW_ROLE",
+    "GET /sales/lead/{id}": "customer:CUSTOMER_VIEW_COMPANY",
+    "POST /business/activity": "sales:SALES_CREATE_BUSINESS_ACTIVITY",
+    "POST /business/activity/{id}/attachments": "sales:SALES_UPDATE_BUSINESS_ACTIVITY",
+    "POST /company": "customer:CUSTOMER_ADD_COMPANY",
+    "POST /company/pool/assign": "customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY",
+    "POST /company/pool/claim/{id}": "customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY",
+    "POST /company/pool/recycle/trigger": "customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY",
+    "POST /company/pool/release/{id}": "customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY",
+    "POST /contact": "customer:CUSTOMER_ADD_CONTACT",
+    "POST /contactTask/create": "task:TASK_CREATE_TASK",
+    "POST /contract": "sales:SALES_CREATE_CONTRACT",
+    "POST /contract/warning/trigger": "sales:SALES_UPDATE_CONTRACT",
+    "POST /customer/churn/warning/scan": "customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY",
+    "POST /invoice/info": "finance:FINANCE_RECORD_INVOICE",
+    "POST /payment/record": "finance:FINANCE_RECORD_PAYMENT",
+    "POST /permission/addORDeletePermissionsToRole": "system:SYSTEM_ASSIGN_PERMISSION",
+    "POST /role/add": "system:SYSTEM_MANAGE_ROLE",
+    "POST /sales": "sales:SALES_CREATE_SALE_OPPORTUNITY",
+    "POST /sales/lead": "customer:CUSTOMER_ADD_COMPANY",
+    "POST /sales/lead/convert": "customer:CUSTOMER_ADD_COMPANY",
+    "POST /sales/stage/approval": "sales:SALES_PROGRESS_SALE_OPPORTUNITY_STAGE",
+    "POST /user/add": "system:SYSTEM_CREATE_USER",
+    "POST /user/find": "system:SYSTEM_VIEW_USER",
+    "POST /user/handover/execute": "system:SYSTEM_UPDATE_USER",
+    "POST /user/update": "system:SYSTEM_UPDATE_USER",
+    "PUT /business/activity": "sales:SALES_UPDATE_BUSINESS_ACTIVITY",
+    "PUT /company": "customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY",
+    "PUT /company/recover": "customer:CUSTOMER_RECOVER_CUSTOMER_COMPANY",
+    "PUT /contact": "customer:CUSTOMER_UPDATE_CONTACT",
+    "PUT /contact/recover": "customer:CUSTOMER_RECOVER_CONTACT",
+    "PUT /contactTask/update": "task:TASK_UPDATE_TASK",
+    "PUT /contract": "sales:SALES_UPDATE_CONTRACT",
+    "PUT /invoice/info": "finance:FINANCE_EDIT_INVOICE",
+    "PUT /payment/record": "finance:FINANCE_EDIT_PAYMENT",
+    "PUT /sales": "sales:SALES_UPDATE_SALE_OPPORTUNITY",
+    "PUT /sales/lead": "customer:CUSTOMER_UPDATE_CUSTOMER_COMPANY"
+  },
+  "contractDigest": {
+    "sha256": "10bfccbaa8fd7402119fb1813f0df762394bc8ca685cd44a99b84336bf69e156",
+    "count": 279,
+    "secured": 259,
+    "open": 20
+  }
+}
