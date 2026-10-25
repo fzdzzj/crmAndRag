@@ -13,9 +13,11 @@
 
 编译期护栏守住了「登记得对不对」，**没有守住「该登的登了没有」**。这就是储备 6 的全部含义。
 
-### 腿 B：板子指向的存量文件，有两个已经不在
+### 腿 B：板子指向的存量文件，两个在观察树而不在权威树
 
-板 §3 第 7 条列的文档存量里，`work/_online-exam-backlog.md` 与 `work/_paa-candidates-pool-v2.md` **实测都不存在**（2026-10-25 实测 `Test-Path` = false）。板子是给下一位读者用的，指向不存在的文件比不写更糟。
+板 §3 第 7 条列的文档存量里，`work/_online-exam-backlog.md`（6592 B）与 `work/_paa-candidates-pool-v2.md`（70691 B）**在权威树 `Test-Path` = false，在观察树 `D:\code\crmAndRag\work\` 实存且未跟踪**（2026-10-25 双树实测）。板子是给下一位读者用的，**不标明「观察树 work/」限定**就会让读者在权威树里空手而归——这比不写更糟。
+
+> **勘误（立项侦察之误，M1 前订正）**：本条初稿只测了权威树，据此写成「实测都不存在」；执行阶段双树复测推翻该结论（锚 md:17-20、task-card §7 已按实测记录）。判据 R0–R5 与决策 D1–D4 不受影响。
 
 ## §2 侦察已得事实（行号实测于 `2d77460`，执行者只需复核）
 
@@ -24,7 +26,7 @@
 - **使用面**：`permissionOfEndpoint` 全仓**唯一生产调用点** = `components/common/Permission.vue:29`（`props.endpoint`）⇒ **使用面 = 模板里 `<Permission endpoint="…">` 的字面量集合**（含 `:endpoint` 动态绑定，须单独处置）。
 - **运行期语义**：`lookupPermission`（`:18`）/ `permissionOfEndpoint`（`:34`）；未登记 fail-closed + 每键 `console.warn` 一次，既有测试 `endpointPermission.test.ts:15-22` 已覆盖。
 - **门禁通道**：CI `frontend-quality` job 的表名即「Frontend Test / Lint / Type-check / Build Budget」，`ci.yml:246` 注释列明后续步骤含 **Vitest**，`frontend/package.json` 有 `"test": "vitest run"` ⇒ **新增 vitest 用例即进门禁，无需改 CI YAML**。
-- **存量面**：板 §3 第 7 条共 3 项，实测 2 项文件不存在（`_online-exam-backlog.md`、`_paa-candidates-pool-v2.md`），1 项是 `docs/permission-matrix-audit.md`（历史快照，**遵裁决不改写**）。
+- **存量面**：板 §3 第 7 条共 3 项——2 项 work 文件（`_online-exam-backlog.md`、`_paa-candidates-pool-v2.md`）**权威树不在、观察树实存未跟踪**（见 §1 腿 B 勘误），1 项是 `docs/permission-matrix-audit.md`（历史快照，**遵裁决不改写**）。
 
 ## §3 判据（R0–R5，执行与复核均以此为准）
 
@@ -59,3 +61,9 @@
 
 - 储备 6 的原话是「前端小表随站点增长维护」——本卡把它从「人肉记得加」变成**门禁**（不登就红），这是唯一可持续的形态。
 - 储备 7 的原话是「文档类存量」——本卡只做**核对与订正**，不做内容重写；`docs/permission-matrix-audit.md` 永久维持历史快照身份。
+
+## §8 判据修订记（M1 前代笔，2026-10-25）
+
+- **R4 的 `GAPS-FIXED` 分支不可达**：验收用例按「复算时的三个差集」机械推导 verdict，若本卡曾有缺口并补齐，补齐后 `used∖registered` 恒回空 ⇒ 只会写出 `COVERAGE-CLOSED`。本卡表零改动、未触发，属**我的口径缺陷**，留记录不改生成器（要同时定「补齐了什么」的落盘形态，另卡处理）。
+- **§1 腿 B 与 §2 存量面 已勘误**：初稿「两文件实测都不存在」只对权威树成立，详见 §1 勘误段。
+- 以上两条**不动** R0–R5、D1–D4 的判据语义，也不动任何测量值：锚 `docs/ui-permission-coverage-v1.json`（sha256 前 8 位 `01f8ef36`）与 `.md` 本卡零改动。

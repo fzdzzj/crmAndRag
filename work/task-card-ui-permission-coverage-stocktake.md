@@ -69,7 +69,8 @@
 
 ### 三集合实测（门禁自身输出；逐条清单在锚 JSON `used`/`registered`/`contractDigest` 全量在档）
 
-- `used` = **56** distinct（64 个 `<Permission endpoint>` 站点 + 1 个 `:allow` 逃生口 `sale/list.page.vue:37`；扫描 .vue 104 个，排除 `src/api/axios` 生成物）
+- `used` = **56** distinct（门控站点 64 处 + 1 个 `:allow` 逃生口 `sale/list.page.vue:37`；扫描 .vue 104 个，排除 `src/api/axios` 生成物）
+  - **口径（M1 前订正）**：这 64 处**全部是 `:endpoint` 动态绑定字面量**（`<Permission :endpoint="'X'">`），静态 `endpoint="X"` 写法全仓 **0 处**——解析器两形态都覆盖，勿把「64 个站点」读成模板里有 64 个静态属性。
 - `registered` = **57**（`Object.keys(UI)` 运行期 import 实测，非源码 grep）
 - `contract` = **279**（SECURED 259 + OPEN 20；文本解析 `endpointPermission.gen.ts`，条目行数 279 = 解析数，格式漂移即 throw）
 - `used∖registered` = **∅**（fail-closed 缺口为零）
@@ -78,7 +79,7 @@
 
 ### 动态绑定与白名单
 
-- `FinanceTable.vue` 4 处三元 `:endpoint`（标签行 153/164/174/184）：双分支均为端点字面量，8 键全计入 used（锚 `dynamicBindingsResolved` 逐条在档）。
+- `FinanceTable.vue` 4 处三元 `:endpoint`（**标签起始行** 153/164/174/184；`:endpoint` 属性本身落在 154/165/175/185——锚统一记标签起始行，内部同口径自洽）：双分支均为端点字面量，8 键全计入 used（锚 `dynamicBindingsResolved` 逐条在档）。
 - **白名单 0 条**：无不可解析动态绑定；亦无既无 `endpoint` 又无 `allow` 的 `<Permission>`（解析器完整性守卫绿，`<PermissionGroup` 假阳性已被 `\b` 边界排除）。
 
 ### verdict：`COVERAGE-CLOSED`
