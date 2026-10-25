@@ -1,6 +1,7 @@
 package com.slz.crm.quality;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -22,7 +23,10 @@ import com.slz.crm.knowledge.embedding.EmbeddingService;
 import com.slz.crm.knowledge.entity.DocumentVectorChunkEntity;
 import com.slz.crm.knowledge.entity.UploadedFileEntity;
 import com.slz.crm.knowledge.retrieval.Bm25Scorer;
+import com.slz.crm.knowledge.retrieval.ImageSimilarityGate;
 import com.slz.crm.knowledge.retrieval.KnowledgeRetrievalServiceImpl;
+import com.slz.crm.knowledge.retrieval.NearDupAblationPositiveControlTest;
+import com.slz.crm.knowledge.retrieval.RetrievalCandidate;
 import com.slz.crm.knowledge.retrieval.RetrievalQueryRewriteService;
 import com.slz.crm.knowledge.retrieval.SourceReferenceFactory;
 import com.slz.crm.knowledge.vector.ImageVectorStore;
@@ -48,16 +52,21 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.AdditionalAnswers;
 import org.mockito.ArgumentMatchers;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
+import org.mockito.stubbing.Answer;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -877,8 +886,63 @@ class NearDupDisplacementEvidenceIT {
     assertTrue(Files.exists(ANCHOR_PATH), "锚不存在：默认复跑必须先有写锚产物（跳过≠复跑）: " + ANCHOR_PATH);
     String stored = Files.readString(ANCHOR_PATH, StandardCharsets.UTF_8);
     JsonNode root = MAPPER.readTree(stored);
-    JsonNode material = root.path("corpusMaterial");
+    ReplayMaterial material = parseAnchorMaterial(root);
 
+    // 零外呼自证：桩 provider 对 embedImage/vision 一律抛错；embed 只从锚缓存取
+    StubEmbeddingProvider stub = new StubEmbeddingProvider(material.embedCache());
+    KnowledgeRetrievalServiceImpl service =
+        assembleReplayService(stub, material.imageRecords(), material.textRecords());
+
+    // 逐查询重放检索链（输入向量全部来自锚）
+    List<QueryEvidence> evidences =
+        replayAnchorQueries(root.path("queries"), material.queryVectors(), service);
+    assertEquals(root.path("queries").size(), evidences.size(), "复跑查询数必须与锚一致");
+    assertEquals(
+        0, stub.embedImageCalls + stub.visionCalls, "默认复跑必须零外呼（embedImage/vision 桩被触发即失败）");
+
+    // 重算全部判据字段（与写锚同一实现）并逐值断言
+    CorpusBuild build =
+        new CorpusBuild(
+            List.of(),
+            List.copyOf(material.imageRecords()),
+            List.copyOf(material.textRecords()),
+            List.of());
+    AnchorInputs inputs =
+        new AnchorInputs(
+            build,
+            evidences,
+            root.path("callBreakdown").path("visionCalls").asInt(),
+            root.path("callBreakdown").path("embedImageCalls").asInt(),
+            root.path("callBreakdown").path("embedCalls").asInt(),
+            material.embedCache(),
+            root.path("callBreakdown").path("visionModel").asText(),
+            root.path("callBreakdown").path("textEmbeddingModel").asText(),
+            root.path("callBreakdown").path("imageEmbeddingModel").asText());
+    ComputedResults recomputed = computeResults(evidences, inputs);
+    ObjectNode rebuilt = buildAnchor(inputs, recomputed);
+    String rebuiltJson = MAPPER.writeValueAsString(rebuilt);
+    assertEquals(stored, rebuiltJson, "默认复跑序列化与磁盘锚不一致（锚被手改或重放算术漂移）——逐字节比对失败");
+    System.out.println(
+        "[near-dup-displacement] 默认复跑逐字节一致（queryCount="
+            + recomputed.queryCount()
+            + " verdict="
+            + recomputed.verdict()
+            + " 零外呼）");
+  }
+
+  /**
+   * 锚 corpusMaterial 四件的解析产物（replay 与卡 28 消融 A/B 共用同一套重建； 卡 28 纯搬运自 {@code
+   * replayAndVerifyByteIdentity}，语义与断言不变）。
+   */
+  private record ReplayMaterial(
+      List<StoredRecord> imageRecords,
+      List<StoredRecord> textRecords,
+      Map<Integer, float[]> queryVectors,
+      Map<String, float[]> embedCache) {}
+
+  /** 解析锚 corpusMaterial 四件（卡 28 纯搬运：重建段原样移入，断言原样保留）。 */
+  private ReplayMaterial parseAnchorMaterial(JsonNode root) {
+    JsonNode material = root.path("corpusMaterial");
     List<StoredRecord> imageRecords = new ArrayList<>();
     for (JsonNode node : material.path("imageRecords")) {
       imageRecords.add(StoredRecord.fromJson(node));
@@ -897,10 +961,16 @@ class NearDupDisplacementEvidenceIT {
     }
     assertTrue(imageRecords.size() > 0, "锚缺 imageRecords");
     assertTrue(textRecords.size() > 0, "锚缺 textRecords");
+    return new ReplayMaterial(imageRecords, textRecords, queryVectors, embedCache);
+  }
 
-    // 零外呼自证：桩 provider 对 embedImage/vision 一律抛错；embed 只从锚缓存取
-    StubEmbeddingProvider stub = new StubEmbeddingProvider(embedCache);
-    EmbeddingService embeddingService = new EmbeddingService(stub, properties("replay-no-key"));
+  /**
+   * 重放装配：两集合重建 + 生产检索服务装配（卡 28 纯搬运：装配段原样移入）。 provider 由调用方给定——replay 传锚缓存桩， 消融 A/B 传 embed
+   * 计数桩（两跑各自全新装配，互不共享可变状态）。
+   */
+  private KnowledgeRetrievalServiceImpl assembleReplayService(
+      ModelProvider provider, List<StoredRecord> imageRecords, List<StoredRecord> textRecords) {
+    EmbeddingService embeddingService = new EmbeddingService(provider, properties("replay-no-key"));
 
     InMemoryVectorStore textStore = new InMemoryVectorStore();
     for (StoredRecord record : textRecords) {
@@ -926,18 +996,24 @@ class NearDupDisplacementEvidenceIT {
             authorization,
             embeddingService,
             textStore,
-            new RetrievalQueryRewriteService(stub, configProvider),
+            new RetrievalQueryRewriteService(provider, configProvider),
             new Bm25Scorer(),
             configProvider);
     ReflectionTestUtils.setField(service, "imageVectorStore", imageStore);
+    return service;
+  }
 
-    // 逐查询重放检索链（输入向量全部来自锚）
+  /** 逐查询重放检索链（卡 28 纯搬运：循环体原样移入，输入向量全部来自锚，断言原样保留）。 */
+  private List<QueryEvidence> replayAnchorQueries(
+      JsonNode queriesNode,
+      Map<Integer, float[]> queryVectors,
+      KnowledgeRetrievalServiceImpl service) {
     List<QueryEvidence> evidences = new ArrayList<>();
     UserContextHolder.set(
         new UserContext(
             EVAL_USER_ID, 5L, 101L, DataScopeLevel.ALL, "near-dup-displacement-evidence"));
     try {
-      for (JsonNode storedQuery : root.path("queries")) {
+      for (JsonNode storedQuery : queriesNode) {
         int index = storedQuery.path("queryIndex").asInt();
         float[] queryVector = queryVectors.get(index);
         assertNotNull(queryVector, "锚缺 queryIndex=" + index + " 的查询向量");
@@ -967,34 +1043,7 @@ class NearDupDisplacementEvidenceIT {
     } finally {
       UserContextHolder.clear();
     }
-    assertEquals(root.path("queries").size(), evidences.size(), "复跑查询数必须与锚一致");
-    assertEquals(
-        0, stub.embedImageCalls + stub.visionCalls, "默认复跑必须零外呼（embedImage/vision 桩被触发即失败）");
-
-    // 重算全部判据字段（与写锚同一实现）并逐值断言
-    CorpusBuild build =
-        new CorpusBuild(List.of(), List.copyOf(imageRecords), List.copyOf(textRecords), List.of());
-    AnchorInputs inputs =
-        new AnchorInputs(
-            build,
-            evidences,
-            root.path("callBreakdown").path("visionCalls").asInt(),
-            root.path("callBreakdown").path("embedImageCalls").asInt(),
-            root.path("callBreakdown").path("embedCalls").asInt(),
-            embedCache,
-            root.path("callBreakdown").path("visionModel").asText(),
-            root.path("callBreakdown").path("textEmbeddingModel").asText(),
-            root.path("callBreakdown").path("imageEmbeddingModel").asText());
-    ComputedResults recomputed = computeResults(evidences, inputs);
-    ObjectNode rebuilt = buildAnchor(inputs, recomputed);
-    String rebuiltJson = MAPPER.writeValueAsString(rebuilt);
-    assertEquals(stored, rebuiltJson, "默认复跑序列化与磁盘锚不一致（锚被手改或重放算术漂移）——逐字节比对失败");
-    System.out.println(
-        "[near-dup-displacement] 默认复跑逐字节一致（queryCount="
-            + recomputed.queryCount()
-            + " verdict="
-            + recomputed.verdict()
-            + " 零外呼）");
+    return evidences;
   }
 
   // ==================== 装配与辅助 ====================
@@ -1493,5 +1542,726 @@ class NearDupDisplacementEvidenceIT {
     private static String prefix(String text) {
       return text.length() <= 60 ? text : text.substring(0, 60) + "…";
     }
+  }
+
+  // ==================== 卡 28 消融 A/B（near-dup-ablation-redesign 纯增；零外呼、无 opt-in 门：skipped 不得 +1）
+  // ====================
+
+  /** 消融锚落盘路径（本卡写集内唯一新增 JSON 产物）。 */
+  static final Path ABLATION_ANCHOR_PATH =
+      Path.of("docs", "rag-quality", "near-dup-ablation-v1.json");
+
+  /** 消融锚写入门控属性（冻结）。 */
+  static final String ABLATION_WRITE_PROP = "near.dup.ablation.write";
+
+  /** 本卡起点基线（master @ 1884e31）。 */
+  private static final String ABLATION_BASELINE_HEAD = "1884e31928f2eabf07e6afb0d9c74092268dd4b4";
+
+  /**
+   * 卡 28 消融 A/B（判据 R0–R6）：冻结向量零外呼重放生产检索链， A 跑 = 生产降权（真实方法 + 旁路观测）， B 跑 = {@code mockStatic} 只把
+   * {@code downWeightNearDuplicates} 替换为恒等；逐查询逐候选对比落锚 {@code near-dup-ablation-v1.json}（write 模式
+   * {@code -Dnear.dup.ablation.write=true}，默认模式逐字节复算）。
+   */
+  @Test
+  @DisplayName("卡 28 消融 A/B：冻结向量零外呼重放，A=生产降权（真实方法+旁路观测），B=mockStatic 恒等替换，逐候选对比落锚")
+  void runNearDupAblationAtoBOnFrozenCorpus() throws Exception {
+    assertTrue(Files.exists(ANCHOR_PATH), "位移锚缺失（消融复跑的冻结语料来源）: " + ANCHOR_PATH);
+    JsonNode root = MAPPER.readTree(Files.readAllBytes(ANCHOR_PATH));
+    ReplayMaterial material = parseAnchorMaterial(root);
+    NearDupAblationPositiveControlTest.PositiveControlOutcome positiveControl =
+        NearDupAblationPositiveControlTest.runPositiveControl();
+
+    // A 跑（生产降权）先完整落快照，再进 B 跑（恒等替换）——静态 mock 进程级，两跑严禁交叉（坑 2）
+    AblationPass passA = runAblationPass(root.path("queries"), material, false);
+    AblationPass passB = runAblationPass(root.path("queries"), material, true);
+    assertEquals(
+        passA.embedInvocations(),
+        passB.embedInvocations(),
+        "两跑 embed 请求数必须相等（消融只许替换 downWeightNearDuplicates 一个方法，其余面零变化）");
+
+    AblationResults results =
+        computeAblationResults(root.path("queries").size(), positiveControl, passA, passB);
+    ObjectNode ablationRoot = buildAblationAnchor(material, positiveControl, passA, passB, results);
+    String json = MAPPER.writeValueAsString(ablationRoot);
+    assertFalse(json.contains("\r"), "消融锚 JSON 必须纯 LF（DefaultIndenter 已锁行尾，检出 CR 即装配漂移）");
+    if ("true".equalsIgnoreCase(System.getProperty(ABLATION_WRITE_PROP))) {
+      Files.createDirectories(ABLATION_ANCHOR_PATH.toAbsolutePath().getParent());
+      Files.writeString(ABLATION_ANCHOR_PATH, json, StandardCharsets.UTF_8);
+      System.out.println(
+          "[near-dup-ablation] 锚已落盘: "
+              + ABLATION_ANCHOR_PATH.toAbsolutePath()
+              + " verdict="
+              + results.verdict());
+    } else {
+      assertTrue(
+          Files.exists(ABLATION_ANCHOR_PATH),
+          "消融锚不存在：默认复跑必须先有写锚产物（-D" + ABLATION_WRITE_PROP + "=true）: " + ABLATION_ANCHOR_PATH);
+      String storedAblation = Files.readString(ABLATION_ANCHOR_PATH, StandardCharsets.UTF_8);
+      assertEquals(storedAblation, json, "消融锚默认复跑逐字节比对失败（锚被手改或重放算术漂移）");
+      System.out.println(
+          "[near-dup-ablation] 默认复跑逐字节一致（verdict="
+              + results.verdict()
+              + " maxImageScoreDelta="
+              + results.maxImageScoreDelta()
+              + " 零外呼）");
+    }
+  }
+
+  /** 单次消融跑产物：逐查询 sources 证据 + 降权调用捕获（入参/返回）+ embed 请求实计。 */
+  private record AblationPass(
+      List<QueryEvidence> evidences,
+      Map<Integer, List<RetrievalCandidate>> downWeightInputs,
+      Map<Integer, List<RetrievalCandidate>> downWeightReturns,
+      int embedInvocations,
+      boolean identityStub) {}
+
+  /**
+   * 单次消融跑（冻结锚材料全新装配两集合与生产检索链，两跑互不共享可变状态——坑 4）。
+   *
+   * <ul>
+   *   <li><b>A 跑（identityStub=false）</b>：生产降权。{@code mockStatic(CALLS_REAL_METHODS)}
+   *       打开（其余静态方法全部走真实实现）， 仅对 {@code downWeightNearDuplicates} 做「捕获入参 → callRealMethod（真实生产方法）→
+   *       捕获返回」旁路观测——行为与生产一致， 返回即生产降权产物（带 {@code BAND_WEIGHT_METADATA_KEY}）。
+   *   <li><b>B 跑（identityStub=true）</b>：恒等替换。同一框架下仅把该方法替换为「原样返回入参」，其余静态方法仍走真实实现—— 消融面唯一差异点。
+   * </ul>
+   *
+   * <p>逐查询独立 mockStatic 作用域并在关闭前 verify 恰调用 1 次；embed 经计数桩实测（每次到达 provider 即一次未命中请求）。
+   */
+  private AblationPass runAblationPass(
+      JsonNode queriesNode, ReplayMaterial material, boolean identityStub) {
+    java.util.concurrent.atomic.AtomicInteger embedInvocations =
+        new java.util.concurrent.atomic.AtomicInteger();
+    ModelProvider provider =
+        embedCountingProvider(new StubEmbeddingProvider(material.embedCache()), embedInvocations);
+    KnowledgeRetrievalServiceImpl service =
+        assembleReplayService(provider, material.imageRecords(), material.textRecords());
+    Map<Integer, List<RetrievalCandidate>> inputs = new LinkedHashMap<>();
+    Map<Integer, List<RetrievalCandidate>> returns = new LinkedHashMap<>();
+    List<QueryEvidence> evidences = new ArrayList<>();
+    UserContextHolder.set(
+        new UserContext(
+            EVAL_USER_ID, 5L, 101L, DataScopeLevel.ALL, "near-dup-displacement-evidence"));
+    try {
+      for (JsonNode storedQuery : queriesNode) {
+        int index = storedQuery.path("queryIndex").asInt();
+        float[] queryVector = material.queryVectors().get(index);
+        assertNotNull(queryVector, "锚缺 queryIndex=" + index + " 的查询向量");
+        List<RetrievalCandidate> capturedInput = new ArrayList<>();
+        List<RetrievalCandidate> capturedReturn = new ArrayList<>();
+        KnowledgeRetrievalPort.RetrievalResult result;
+        try (MockedStatic<ImageSimilarityGate> gate =
+            Mockito.mockStatic(ImageSimilarityGate.class, Mockito.CALLS_REAL_METHODS)) {
+          gate.when(() -> ImageSimilarityGate.downWeightNearDuplicates(ArgumentMatchers.any()))
+              .thenAnswer(
+                  invocation -> {
+                    List<RetrievalCandidate> input = invocation.getArgument(0);
+                    capturedInput.addAll(input);
+                    if (identityStub) {
+                      List<RetrievalCandidate> identity = List.copyOf(input);
+                      capturedReturn.addAll(identity);
+                      return identity;
+                    }
+                    Object real = invocation.callRealMethod();
+                    capturedReturn.addAll(castCandidates(real));
+                    return real;
+                  });
+          result =
+              service.retrieve(
+                  new KnowledgeRetrievalPort.RetrievalQuery(
+                      storedQuery.path("queryText").asText(),
+                      EVAL_USER_ID,
+                      List.of(EVAL_KB_ID),
+                      TOP_K,
+                      queryVector,
+                      null));
+          gate.verify(
+              () -> ImageSimilarityGate.downWeightNearDuplicates(ArgumentMatchers.any()),
+              Mockito.times(1));
+        }
+        inputs.put(index, List.copyOf(capturedInput));
+        returns.put(index, List.copyOf(capturedReturn));
+        evidences.add(
+            new QueryEvidence(
+                index,
+                new SliceRow(
+                    storedQuery.path("assetKey").asText(),
+                    "",
+                    Long.parseLong(storedQuery.path("chunkId").asText()),
+                    storedQuery.path("queryText").asText(),
+                    null,
+                    null,
+                    storedQuery.path("pageNo").asInt()),
+                result.sources() == null ? List.of() : result.sources(),
+                queryVector));
+      }
+    } finally {
+      UserContextHolder.clear();
+    }
+    return new AblationPass(
+        List.copyOf(evidences), inputs, returns, embedInvocations.get(), identityStub);
+  }
+
+  /** 消融判据产物（R4/R5/R6 机械推导；write 与默认复跑共用同一实现，保证口径一致）。 */
+  private record AblationResults(
+      int queryCount,
+      List<ObjectNode> queryNodes,
+      List<ObjectNode> candidateNodes,
+      List<ObjectNode> windowNodes,
+      int imageCandidateCount,
+      int downWeightedCount,
+      double maxImageScoreDelta,
+      double maxTextScoreDelta,
+      double imageDeltaSum,
+      boolean allChunkIdSetsEqual,
+      boolean anyImageScoreChange,
+      boolean anyImageRankChange,
+      String verdict,
+      String verdictReason) {}
+
+  private AblationResults computeAblationResults(
+      int queryCount,
+      NearDupAblationPositiveControlTest.PositiveControlOutcome positiveControl,
+      AblationPass passA,
+      AblationPass passB) {
+    assertEquals(
+        queryCount,
+        passA.downWeightInputs().size(),
+        "A 跑降权捕获次数必须等于查询数（每查询恰 1 次，Mockito verify 已逐查询断言）");
+    assertEquals(
+        queryCount,
+        passB.downWeightInputs().size(),
+        "B 跑降权捕获次数必须等于查询数（每查询恰 1 次，Mockito verify 已逐查询断言）");
+    // 输入恒等（R3/坑 4 的结构证明）：两跑进入 downWeightNearDuplicates 的生产入参必须逐条字节相等
+    assertEquals(
+        passA.downWeightInputs().keySet(), passB.downWeightInputs().keySet(), "两跑降权调用覆盖的查询集必须一致");
+    for (Map.Entry<Integer, List<RetrievalCandidate>> entry : passA.downWeightInputs().entrySet()) {
+      List<RetrievalCandidate> inputA = entry.getValue();
+      List<RetrievalCandidate> inputB = passB.downWeightInputs().get(entry.getKey());
+      assertEquals(inputA.size(), inputB.size(), "queryIndex=" + entry.getKey() + " 两跑降权入参长度必须一致");
+      for (int index = 0; index < inputA.size(); index++) {
+        assertEquals(
+            inputA.get(index).fusionKey(),
+            inputB.get(index).fusionKey(),
+            "queryIndex=" + entry.getKey() + " 第 " + index + " 条两跑入参候选不一致（重放非确定性）");
+        assertEquals(
+            0,
+            Double.compare(inputA.get(index).rerankScore(), inputB.get(index).rerankScore()),
+            "queryIndex=" + entry.getKey() + " 第 " + index + " 条两跑入参分数不一致（重放非确定性）");
+      }
+    }
+    // B 跑恒等回执（坑 3）：返回列表与入参逐条 Double.compare == 0，不是「没抛异常」
+    for (Map.Entry<Integer, List<RetrievalCandidate>> entry : passB.downWeightInputs().entrySet()) {
+      List<RetrievalCandidate> input = entry.getValue();
+      List<RetrievalCandidate> returned = passB.downWeightReturns().get(entry.getKey());
+      assertEquals(
+          input.size(), returned.size(), "queryIndex=" + entry.getKey() + " B 跑恒等返回长度必须与入参一致");
+      for (int index = 0; index < input.size(); index++) {
+        assertEquals(
+            0,
+            Double.compare(input.get(index).rerankScore(), returned.get(index).rerankScore()),
+            "queryIndex=" + entry.getKey() + " 第 " + index + " 条 B 跑恒等返回分数被改动（坑 3）");
+      }
+    }
+
+    // tier/band/降权标记建图（来自真实生产入参与 A 跑真实出参；tier/band 是逐查询属性——
+    // 同一切片对不同查询的 cos 不同 ⇒ 档位可不同，禁跨查询合并）
+    Map<Integer, Map<String, String>> tierByKeyByQuery = new LinkedHashMap<>();
+    Map<Integer, Map<String, String>> bandByKeyByQuery = new LinkedHashMap<>();
+    Map<Integer, Map<String, Double>> weightByKeyByQuery = new LinkedHashMap<>();
+    for (Map.Entry<Integer, List<RetrievalCandidate>> entry : passA.downWeightInputs().entrySet()) {
+      Map<String, String> tiers = new LinkedHashMap<>();
+      Map<String, String> bands = new LinkedHashMap<>();
+      Map<String, Double> weights = new LinkedHashMap<>();
+      for (RetrievalCandidate candidate : entry.getValue()) {
+        String key = sourceKeyOf(candidate.hit());
+        Map<String, Object> metadata = candidate.hit().metadata();
+        tiers.putIfAbsent(key, stringOf(metadata.get(ImageSimilarityGate.TIER_METADATA_KEY)));
+        bands.putIfAbsent(key, stringOf(metadata.get(ImageSimilarityGate.BAND_METADATA_KEY)));
+      }
+      for (RetrievalCandidate candidate : passA.downWeightReturns().get(entry.getKey())) {
+        Map<String, Object> metadata = candidate.hit().metadata();
+        if (metadata != null
+            && metadata.containsKey(ImageSimilarityGate.BAND_WEIGHT_METADATA_KEY)) {
+          weights.put(
+              sourceKeyOf(candidate.hit()),
+              ((Number) metadata.get(ImageSimilarityGate.BAND_WEIGHT_METADATA_KEY)).doubleValue());
+        }
+      }
+      weightByKeyByQuery.put(entry.getKey(), weights);
+      tierByKeyByQuery.put(entry.getKey(), tiers);
+      bandByKeyByQuery.put(entry.getKey(), bands);
+    }
+    int downWeightedCount = 0;
+    for (Map<String, Double> weights : weightByKeyByQuery.values()) {
+      downWeightedCount += weights.size();
+    }
+
+    // 逐查询逐候选表（R4）
+    List<ObjectNode> queryNodes = new ArrayList<>();
+    List<ObjectNode> candidateNodes = new ArrayList<>();
+    Map<Integer, Map<String, Double>> fusedAByKeyByQuery = new LinkedHashMap<>();
+    Map<Integer, Map<String, Double>> fusedBByKeyByQuery = new LinkedHashMap<>();
+    int imageCandidateCount = 0;
+    boolean allChunkIdSetsEqual = true;
+    boolean anyImageScoreChange = false;
+    boolean anyImageRankChange = false;
+    double maxImageScoreDelta = 0.0D;
+    double maxTextScoreDelta = 0.0D;
+    double imageDeltaSum = 0.0D;
+    for (QueryEvidence evidenceA : passA.evidences()) {
+      QueryEvidence evidenceB = evidenceByIndex(passB.evidences(), evidenceA.index());
+      List<SourceRef> sourcesA = toRefs(evidenceA);
+      List<SourceRef> sourcesB = toRefs(evidenceB);
+      List<String> orderedA = sourcesA.stream().map(SourceRef::chunkId).toList();
+      List<String> orderedB = sourcesB.stream().map(SourceRef::chunkId).toList();
+      Set<String> idsA = new LinkedHashSet<>(orderedA);
+      Set<String> idsB = new LinkedHashSet<>(orderedB);
+      boolean chunkIdSetEqual = idsA.equals(idsB);
+      allChunkIdSetsEqual &= chunkIdSetEqual;
+      List<String> unionKeys = new ArrayList<>(orderedA);
+      for (String chunkId : orderedB) {
+        if (idsA.add(chunkId)) {
+          unionKeys.add(chunkId);
+        }
+      }
+      Map<String, Double> fusedAByKey = new LinkedHashMap<>();
+      Map<String, Double> fusedBByKey = new LinkedHashMap<>();
+      int imageCount = 0;
+      for (String chunkId : unionKeys) {
+        SourceRef fromA = sourceByKey(sourcesA, chunkId);
+        SourceRef fromB = sourceByKey(sourcesB, chunkId);
+        String sourceType = fromA != null ? fromA.sourceType() : fromB.sourceType();
+        boolean image = ImageSliceMetadata.SOURCE_TYPE_IMAGE.equals(sourceType);
+        if (image) {
+          imageCount++;
+        }
+        Double fusedA = fromA == null ? null : fromA.relevanceScore();
+        Double fusedB = fromB == null ? null : fromB.relevanceScore();
+        Integer rankA = fromA == null ? null : sourcesA.indexOf(fromA) + 1;
+        Integer rankB = fromB == null ? null : sourcesB.indexOf(fromB) + 1;
+        if (fusedA != null) {
+          fusedAByKey.put(chunkId, fusedA);
+        }
+        if (fusedB != null) {
+          fusedBByKey.put(chunkId, fusedB);
+        }
+        if (image) {
+          if (fusedA != null && fusedB != null) {
+            double delta = Math.abs(fusedA - fusedB);
+            if (delta > maxImageScoreDelta) {
+              maxImageScoreDelta = delta;
+            }
+            imageDeltaSum += delta;
+            if (Double.compare(fusedA, fusedB) != 0) {
+              anyImageScoreChange = true;
+            }
+          }
+          if (rankA != null && rankB != null && !rankA.equals(rankB)) {
+            anyImageRankChange = true;
+          }
+        } else if (fusedA != null && fusedB != null) {
+          assertEquals(
+              0,
+              Double.compare(fusedA, fusedB),
+              "非 IMAGE 来源融合分两跑不一致（装置污染，R3 隔离）: query=" + evidenceA.index() + " chunkId=" + chunkId);
+          double delta = Math.abs(fusedA - fusedB);
+          if (delta > maxTextScoreDelta) {
+            maxTextScoreDelta = delta;
+          }
+        }
+        ObjectNode node = MAPPER.createObjectNode();
+        node.put("queryIndex", evidenceA.index());
+        node.put("sourceType", sourceType);
+        node.put("chunkId", chunkId);
+        String tier = tierByKeyByQuery.get(evidenceA.index()).get(chunkId);
+        String band = bandByKeyByQuery.get(evidenceA.index()).get(chunkId);
+        if (tier != null) {
+          node.put("tier", tier);
+        } else {
+          node.putNull("tier");
+        }
+        if (band != null) {
+          node.put("band", band);
+        } else {
+          node.putNull("band");
+        }
+        node.put("downWeighted", weightByKeyByQuery.get(evidenceA.index()).containsKey(chunkId));
+        if (fusedA != null) {
+          node.put("fusedA", fusedA);
+        } else {
+          node.putNull("fusedA");
+        }
+        if (fusedB != null) {
+          node.put("fusedB", fusedB);
+        } else {
+          node.putNull("fusedB");
+        }
+        if (rankA != null) {
+          node.put("rankA", rankA);
+        } else {
+          node.putNull("rankA");
+        }
+        if (rankB != null) {
+          node.put("rankB", rankB);
+        } else {
+          node.putNull("rankB");
+        }
+        candidateNodes.add(node);
+      }
+      fusedAByKeyByQuery.put(evidenceA.index(), fusedAByKey);
+      fusedBByKeyByQuery.put(evidenceA.index(), fusedBByKey);
+      imageCandidateCount += imageCount;
+      ObjectNode queryNode = MAPPER.createObjectNode();
+      queryNode.put("queryIndex", evidenceA.index());
+      queryNode.put("assetKey", evidenceA.row().assetKey());
+      queryNode.put("chunkIdSetEqual", chunkIdSetEqual);
+      queryNode.put("imageCandidateCount", imageCount);
+      queryNodes.add(queryNode);
+    }
+
+    // 窗口算术（R6）：逐条降权事件的 gap vs 0.30×(1−w)，w 取 A 跑出参实测标记值
+    List<ObjectNode> windowNodes = new ArrayList<>();
+    for (Map.Entry<Integer, List<RetrievalCandidate>> entry : passA.downWeightInputs().entrySet()) {
+      int queryIndex = entry.getKey();
+      Map<String, Double> weights = weightByKeyByQuery.get(queryIndex);
+      Map<String, String> bands = bandByKeyByQuery.get(queryIndex);
+      Map<String, Double> fusedAByKey = fusedAByKeyByQuery.get(queryIndex);
+      Map<String, Double> fusedBByKey = fusedBByKeyByQuery.get(queryIndex);
+      for (RetrievalCandidate candidate : entry.getValue()) {
+        String chunkId = sourceKeyOf(candidate.hit());
+        Double weight = weights.get(chunkId);
+        if (weight == null) {
+          continue;
+        }
+        ObjectNode node = MAPPER.createObjectNode();
+        node.put("queryIndex", queryIndex);
+        node.put("chunkId", chunkId);
+        String band = bands.get(chunkId);
+        if (band != null) {
+          node.put("band", band);
+        } else {
+          node.putNull("band");
+        }
+        node.put("weight", weight);
+        node.put("window", IMAGE_ROUTE_WEIGHT * (1D - weight));
+        Double fusedB = fusedBByKey.get(chunkId);
+        if (fusedB == null) {
+          node.putNull("fusedA");
+          node.putNull("fusedB");
+          node.putNull("delta");
+          node.putNull("strongestCompetitorBelowFusedB");
+          node.putNull("gap");
+          node.put("gapExceedsWindow", false);
+          node.put("note", "该被降权候选未入本查询 topK，最终结果面无融合分可测（禁融合分÷w 反解）；" + "其降权不可能改变任何已返回候选的相对顺序");
+        } else {
+          Double strongestBelow = null;
+          for (Map.Entry<String, Double> competitor : fusedBByKey.entrySet()) {
+            if (!competitor.getKey().equals(chunkId)
+                && competitor.getValue() < fusedB
+                && (strongestBelow == null || competitor.getValue() > strongestBelow)) {
+              strongestBelow = competitor.getValue();
+            }
+          }
+          Double fusedA = fusedAByKey.get(chunkId);
+          if (fusedA == null) {
+            node.putNull("fusedA");
+            node.putNull("delta");
+          } else {
+            node.put("fusedA", fusedA);
+            node.put("delta", Math.abs(fusedA - fusedB));
+          }
+          node.put("fusedB", fusedB);
+          if (strongestBelow == null) {
+            node.putNull("strongestCompetitorBelowFusedB");
+            node.putNull("gap");
+            node.put("gapExceedsWindow", true);
+          } else {
+            node.put("strongestCompetitorBelowFusedB", strongestBelow);
+            node.put("gap", fusedB - strongestBelow);
+            node.put(
+                "gapExceedsWindow", fusedB - strongestBelow > IMAGE_ROUTE_WEIGHT * (1D - weight));
+          }
+        }
+        windowNodes.add(node);
+      }
+    }
+    assertEquals(downWeightedCount, windowNodes.size(), "窗口算术条目数必须等于降权事件数");
+
+    // verdict 三选一（R6 机械推导，禁自创第四种）
+    String verdict;
+    String verdictReason;
+    if (!positiveControl.flipped()) {
+      verdict = "INCONCLUSIVE";
+      verdictReason = "R1 正对照未翻转（装置无鉴别力），本锚任何「无位移/有位移」结论都不可采信；缺的证据：装置鉴别力证明";
+    } else if (anyImageScoreChange || anyImageRankChange || !allChunkIdSetsEqual) {
+      verdict = "RANK-CHANGE";
+      verdictReason =
+          "R6 机械推导：存在 IMAGE 候选融合分变化（anyImageScoreChange="
+              + anyImageScoreChange
+              + "）或名次变化（anyImageRankChange="
+              + anyImageRankChange
+              + "）或集合不等（allChunkIdSetsEqual="
+              + allChunkIdSetsEqual
+              + "）；maxImageScoreDelta="
+              + maxImageScoreDelta
+              + " maxTextScoreDelta="
+              + maxTextScoreDelta;
+    } else {
+      assertEquals(0.0D, maxImageScoreDelta, "NO-RANK-CHANGE 分支必须 maxImageScoreDelta==0（机械自洽）");
+      verdict = "NO-RANK-CHANGE";
+      verdictReason =
+          "R6 机械推导：maxImageScoreDelta==0 且全部查询 chunkIdSetEqual；窗口算术见 windowCheck（逐条被降权候选 gap vs 0.30×(1−w)）；"
+              + "不可外推为「生产无位移」——结论只对本冻结语料与本装配成立";
+    }
+    return new AblationResults(
+        queryCount,
+        queryNodes,
+        candidateNodes,
+        windowNodes,
+        imageCandidateCount,
+        downWeightedCount,
+        maxImageScoreDelta,
+        maxTextScoreDelta,
+        imageDeltaSum,
+        allChunkIdSetsEqual,
+        anyImageScoreChange,
+        anyImageRankChange,
+        verdict,
+        verdictReason);
+  }
+
+  /** 消融锚构建（write 与默认复跑共用；字段顺序即序列化顺序，逐字节复算的稳定面）。 */
+  private ObjectNode buildAblationAnchor(
+      ReplayMaterial material,
+      NearDupAblationPositiveControlTest.PositiveControlOutcome positiveControl,
+      AblationPass passA,
+      AblationPass passB,
+      AblationResults results) {
+    ObjectNode root = MAPPER.createObjectNode();
+    root.put("card", "near-dup-ablation-redesign");
+    root.put("group", "S0");
+    root.put("decisionVersion", "NEAR-DUP-ABLATION-1.0");
+    root.put("decisionOwner", "OWNER");
+
+    ObjectNode criteria = root.putObject("criteria");
+    criteria.put(
+        "R0",
+        "零外呼 + src/main 零 diff：只用冻结向量与桩，不读 DASHSCOPE_API_KEY、不构造真实 provider；"
+            + "B 跑只经 mockStatic 替换 downWeightNearDuplicates 一个方法，其余走真实实现（CALLS_REAL_METHODS）");
+    criteria.put(
+        "R1",
+        "正对照必翻转（鉴别力）：纯 JVM 直构三候选，A（降权）时该图像候选排后、B（不降权）排前，两次顺序相反；" + "不成立 ⇒ verdict=INCONCLUSIVE");
+    criteria.put("R2", "负对照：非 NEAR_DUPLICATE 档候选两跑融合分逐条相等");
+    criteria.put(
+        "R3",
+        "隔离：B 跑 downWeightNearDuplicates 恰调用 1 次且返回恒等（逐条 Double.compare==0）；"
+            + "A 跑返回带 BAND_WEIGHT_METADATA_KEY；两跑非 IMAGE 来源融合分逐条相等");
+    criteria.put(
+        "R4",
+        "逐查询 chunkIdSetEqual + 逐候选 (sourceType, tier, band, fusedA, fusedB, rankA, rankB)；"
+            + "另落 imageCandidateCount/downWeightedCount/maxImageScoreDelta/maxTextScoreDelta；rank 从 1 起（融合分降序）");
+    criteria.put(
+        "R5",
+        "分母实测：childRows=冻结锚重建的图片切片行+文本块行（逐条 chunkId）；"
+            + "embedInvocations=重放链真实到达 provider 的 embed 请求实计（按未命中计）；禁任何 ×常数推导与融合分÷w 反解");
+    criteria.put(
+        "R6",
+        "verdict 三选一机械推导：RANK-CHANGE（任一 IMAGE 候选分数或名次变化，或集合不等）/ "
+            + "NO-RANK-CHANGE（maxImageScoreDelta==0 且集合相等，必附窗口算术+不可外推声明）/ INCONCLUSIVE（附缺哪条证据）");
+
+    ObjectNode sourceAnchors = root.putObject("sourceAnchors");
+    putAnchorSha(
+        sourceAnchors, "displacementEvidenceAnchor", "near-dup-displacement-evidence-v1.json");
+    putAnchorSha(sourceAnchors, "fusionImpactAnchor", "near-dup-fusion-impact-v1.json");
+
+    root.put("baselineHead", ABLATION_BASELINE_HEAD);
+    root.put(
+        "zeroExternalCallBasis",
+        "未构造真实 provider：embed 只从锚 embedCache 取（未命中即抛），embedImage/vision/chat 触发即抛；"
+            + "A/B 两跑 embedImage/vision 计数恒 0（StubEmbeddingProvider 结构保证）；"
+            + "B 跑仅经 mockStatic 替换 downWeightNearDuplicates 一个方法");
+    root.put("externalCalls", 0);
+
+    ObjectNode constants = root.putObject("productionConstants");
+    constants.put("threshold", ImageSimilarityGate.DEFAULT_THRESHOLD);
+    constants.put("nearDuplicateFloor", ImageSimilarityGate.NEAR_DUPLICATE_FLOOR);
+    constants.put("bandReferenceFloor", ImageSimilarityGate.BAND_REFERENCE_FLOOR);
+    constants.put("weightHigh", ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_HIGH);
+    constants.put("weightMid", ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_MID);
+    constants.put("weightLow", ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_LOW);
+    constants.put("textRouteWeight", positiveControl.textRouteWeight());
+    constants.put("imageRouteWeight", positiveControl.imageRouteWeight());
+    constants.put(
+        "windowHigh", IMAGE_ROUTE_WEIGHT * (1D - ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_HIGH));
+    constants.put(
+        "windowMid", IMAGE_ROUTE_WEIGHT * (1D - ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_MID));
+    constants.put(
+        "windowLow", IMAGE_ROUTE_WEIGHT * (1D - ImageSimilarityGate.NEAR_DUPLICATE_WEIGHT_LOW));
+    constants.put(
+        "windowFormula",
+        "bound(w) = imageRouteWeight × (1 − w)（与 near-dup-fusion-impact-v1 bounds 同式）");
+
+    ObjectNode design = root.putObject("ablationDesign");
+    design.put(
+        "passA",
+        "生产降权：mockStatic(CALLS_REAL_METHODS) 打开，仅对 downWeightNearDuplicates 做"
+            + "「捕获入参→callRealMethod（真实生产方法）→捕获返回」旁路观测，行为与生产一致");
+    design.put("passB", "恒等替换：同一框架仅把该方法替换为原样返回入参，其余静态方法走真实实现；消融面唯一差异点");
+    design.put(
+        "rebuildBasis",
+        "两跑各自从冻结锚 corpusMaterial 全新装配两集合与服务（坑 4：不许把 A 的结果喂给 B）；"
+            + "逐查询独立 mockStatic 作用域并在关闭前 verify 恰 1 次");
+    design.put(
+        "downWeightCallSite",
+        "KnowledgeRetrievalServiceImpl#retrieveFromKnowledgeBases 唯一调用点（图像路重排之后、fuseRoutes 之前）");
+
+    ObjectNode positive = root.putObject("positiveControl");
+    positive.put("flipped", positiveControl.flipped());
+    positive.put("nearHighBand", positiveControl.nearHighBand());
+    positive.put("nearHighWeight", positiveControl.nearHighWeight());
+    positive.put("nearHighInputScore", positiveControl.nearHighInputScore());
+    positive.put("nonNearImageInputScore", positiveControl.nonNearImageInputScore());
+    positive.put("textInputScore", positiveControl.textInputScore());
+    positive.put("fusedNearHighWithDownWeight", positiveControl.fusedNearHighWithDownWeight());
+    positive.put(
+        "fusedNearHighWithoutDownWeight", positiveControl.fusedNearHighWithoutDownWeight());
+    positive.put(
+        "fusedNonNearImageWithDownWeight", positiveControl.fusedNonNearImageWithDownWeight());
+    positive.put(
+        "fusedNonNearImageWithoutDownWeight", positiveControl.fusedNonNearImageWithoutDownWeight());
+    positive.put("fusedTextWithDownWeight", positiveControl.fusedTextWithDownWeight());
+    positive.put("fusedTextWithoutDownWeight", positiveControl.fusedTextWithoutDownWeight());
+    positive.put("rankNearHighWithDownWeight", positiveControl.rankNearHighWithDownWeight());
+    positive.put("rankNearHighWithoutDownWeight", positiveControl.rankNearHighWithoutDownWeight());
+    positive.put(
+        "rankNonNearImageWithDownWeight", positiveControl.rankNonNearImageWithDownWeight());
+    positive.put(
+        "rankNonNearImageWithoutDownWeight", positiveControl.rankNonNearImageWithoutDownWeight());
+    positive.put(
+        "source",
+        "NearDupAblationPositiveControlTest#runPositiveControl 同一实现（surefire 正对照与消融锚结论位共用）");
+
+    ObjectNode denominators = root.putObject("denominators");
+    denominators.put("childRows", material.imageRecords().size() + material.textRecords().size());
+    denominators.put(
+        "childRowsBasis",
+        "实测 = 冻结锚重建的 imageRecords（图片切片行）"
+            + material.imageRecords().size()
+            + " + textRecords（文本块行）"
+            + material.textRecords().size()
+            + "，逐条 chunkId 列出；禁任何 ×常数推导");
+    ArrayNode childRowIds = denominators.putArray("childRowChunkIds");
+    for (StoredRecord record : material.imageRecords()) {
+      childRowIds.add(record.chunkId());
+    }
+    for (StoredRecord record : material.textRecords()) {
+      childRowIds.add(record.chunkId());
+    }
+    denominators.put("embedInvocations", passA.embedInvocations());
+    denominators.put(
+        "embedInvocationsBasis",
+        "A 跑重放链真实到达 provider 的 embed 请求实计（EmbeddingService 无缓存，每次到达即一次未命中请求，真跑时即一次外呼调用点）；"
+            + "B 跑实测同值（两跑相等已断言）；摄取侧嵌入在写锚时已发生，重放由锚 embedCache 供给，不计入");
+    denominators.put(
+        "childRowsVsEmbedInvocationsReason",
+        "两数口径不同所以不等：childRows 是语料子块行面（摄取侧），embedInvocations 是单轮重放检索链查询侧嵌入请求；两数均为实测，无推导");
+
+    root.put("queryCount", results.queryCount());
+    ArrayNode queryArray = root.putArray("queries");
+    results.queryNodes().forEach(queryArray::add);
+    ArrayNode candidateArray = root.putArray("candidates");
+    results.candidateNodes().forEach(candidateArray::add);
+    root.put("imageCandidateCount", results.imageCandidateCount());
+    root.put("downWeightedCount", results.downWeightedCount());
+    root.put("maxImageScoreDelta", results.maxImageScoreDelta());
+    root.put("maxTextScoreDelta", results.maxTextScoreDelta());
+    root.put("imageDeltaSum", results.imageDeltaSum());
+    root.put("verdict", results.verdict());
+    root.put("verdictReason", results.verdictReason());
+
+    ObjectNode windowCheck = root.putObject("windowCheck");
+    windowCheck.put(
+        "note",
+        "逐条被降权候选的窗口算术：gap = 该候选 fusedB（未降权跑融合分）− 同查询下位竞争者最大融合分；"
+            + "window = 0.30×(1−w)（imageRouteWeight × (1 − w)），w 取 A 跑出参 BAND_WEIGHT_METADATA_KEY 实测值；"
+            + "NO-RANK-CHANGE 必附本节；RANK-CHANGE 时本节仍为实测上下文，verdict 由 R6 机械推导，不受本节影响");
+    ArrayNode windowArray = windowCheck.putArray("entries");
+    results.windowNodes().forEach(windowArray::add);
+
+    root.put(
+        "nonExtrapolationNote",
+        "本锚结论只对本冻结语料（3 份真实 PDF、7 条查询、TOP_K=5）与本装配成立，不可外推为「生产无位移」；"
+            + "要真分布须另立卡（S1 预注册见 proposal §6，本卡不执行）");
+
+    ObjectNode isolation = root.putObject("isolationEvidence");
+    isolation.put("downWeightCapturedCallsA", passA.downWeightInputs().size());
+    isolation.put("downWeightCapturedCallsB", passB.downWeightInputs().size());
+    isolation.put(
+        "bandWeightMarkerObservedOnAOutput",
+        "A 跑出参带 BAND_WEIGHT_METADATA_KEY 的条数=" + results.downWeightedCount());
+    isolation.put(
+        "nonImageFusedByteEqualAcrossRuns", "maxTextScoreDelta=" + results.maxTextScoreDelta());
+    isolation.put("inputIdentityVerified", "两跑降权入参逐条 fusionKey + 分数 Double.compare 相等（重放确定性结构证明）");
+    isolation.put(
+        "mockEvidence",
+        "静态 mock 实际生效证据：逐查询 verify(times(1))；A 出参被降权者分数=入参×w 且带 BAND_WEIGHT_METADATA_KEY；"
+            + "B 返回与入参逐条 Double.compare==0；非 IMAGE 来源两跑融合分逐条相等；embed 请求数两跑相等");
+    return root;
+  }
+
+  /**
+   * 消融专用 embed 计数桩：只统计真实到达 provider 的 embed 请求次数（embedInvocations 分母实测，按未命中计—— EmbeddingService
+   * 无缓存，每次到达即一次未命中请求）；其余方法原样转发给锚缓存桩（锚缓存未命中/embedImage/vision 触发即抛， 零外呼结构性保持）。
+   */
+  private static ModelProvider embedCountingProvider(
+      ModelProvider delegate, java.util.concurrent.atomic.AtomicInteger embedCounter) {
+    Answer<Object> forwarding = AdditionalAnswers.delegatesTo(delegate);
+    return Mockito.mock(
+        ModelProvider.class,
+        Mockito.withSettings()
+            .name("near-dup-ablation-embed-counter")
+            .defaultAnswer(
+                invocation -> {
+                  if ("embed".equals(invocation.getMethod().getName())) {
+                    embedCounter.incrementAndGet();
+                  }
+                  return forwarding.answer(invocation);
+                }));
+  }
+
+  /** callRealMethod 返回值还原为候选列表（静态 mock 旁路观测专用）。 */
+  @SuppressWarnings("unchecked")
+  private static List<RetrievalCandidate> castCandidates(Object value) {
+    return (List<RetrievalCandidate>) value;
+  }
+
+  /** 候选命中 → 最终 sources() 口径的 chunkId（单一真相 = SourceReferenceFactory.from 的判别）。 */
+  private static String sourceKeyOf(VectorSearchHit hit) {
+    return SourceReferenceFactory.from(hit, 0D).chunkId();
+  }
+
+  /** metadata 值转字符串（null 保持 null，tier/band 缺省语义）。 */
+  private static String stringOf(Object value) {
+    return value == null ? null : String.valueOf(value);
+  }
+
+  /** 按 queryIndex 取重放证据；缺即抛（装配错）。 */
+  private static QueryEvidence evidenceByIndex(List<QueryEvidence> evidences, int index) {
+    for (QueryEvidence evidence : evidences) {
+      if (evidence.index() == index) {
+        return evidence;
+      }
+    }
+    throw new IllegalStateException("缺 queryIndex=" + index + " 的重放证据");
+  }
+
+  /** 按 sources() 口径 chunkId 取单条来源引用；缺返回 null（另一跑也未含）。 */
+  private static SourceRef sourceByKey(List<SourceRef> sources, String chunkId) {
+    for (SourceRef source : sources) {
+      if (source.chunkId().equals(chunkId)) {
+        return source;
+      }
+    }
+    return null;
   }
 }
