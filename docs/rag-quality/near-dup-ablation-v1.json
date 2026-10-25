@@ -1,0 +1,546 @@
+{
+  "card" : "near-dup-ablation-redesign",
+  "group" : "S0",
+  "decisionVersion" : "NEAR-DUP-ABLATION-1.0",
+  "decisionOwner" : "OWNER",
+  "criteria" : {
+    "R0" : "零外呼 + src/main 零 diff：只用冻结向量与桩，不读 DASHSCOPE_API_KEY、不构造真实 provider；B 跑只经 mockStatic 替换 downWeightNearDuplicates 一个方法，其余走真实实现（CALLS_REAL_METHODS）",
+    "R1" : "正对照必翻转（鉴别力）：纯 JVM 直构三候选，A（降权）时该图像候选排后、B（不降权）排前，两次顺序相反；不成立 ⇒ verdict=INCONCLUSIVE",
+    "R2" : "负对照：非 NEAR_DUPLICATE 档候选两跑融合分逐条相等",
+    "R3" : "隔离：B 跑 downWeightNearDuplicates 恰调用 1 次且返回恒等（逐条 Double.compare==0）；A 跑返回带 BAND_WEIGHT_METADATA_KEY；两跑非 IMAGE 来源融合分逐条相等",
+    "R4" : "逐查询 chunkIdSetEqual + 逐候选 (sourceType, tier, band, fusedA, fusedB, rankA, rankB)；另落 imageCandidateCount/downWeightedCount/maxImageScoreDelta/maxTextScoreDelta；rank 从 1 起（融合分降序）",
+    "R5" : "分母实测：childRows=冻结锚重建的图片切片行+文本块行（逐条 chunkId）；embedInvocations=重放链真实到达 provider 的 embed 请求实计（按未命中计）；禁任何 ×常数推导与融合分÷w 反解",
+    "R6" : "verdict 三选一机械推导（fix1 修订：判定面 = 名次面 + 集合面，分数面单列 scoreFace）——RANK-CHANGE（任一名次变化或集合不等）/ NO-RANK-CHANGE（名次面与集合面均无变化，必附窗口算术 + scoreFace + 不可外推声明）/ INCONCLUSIVE（附缺哪条证据）"
+  },
+  "sourceAnchors" : {
+    "displacementEvidenceAnchor" : "docs/rag-quality/near-dup-displacement-evidence-v1.json",
+    "displacementEvidenceAnchorSha256" : "5444719a9ff67ee696cb01533eb624821ba09530a5b87069a9c8fb62b0c9ad9b",
+    "fusionImpactAnchor" : "docs/rag-quality/near-dup-fusion-impact-v1.json",
+    "fusionImpactAnchorSha256" : "43c54ba63346488817b6c4c15348c6141c853619c5c9594d203cfd38db8e03f4"
+  },
+  "baselineHead" : "1884e31928f2eabf07e6afb0d9c74092268dd4b4",
+  "zeroExternalCallBasis" : "未构造真实 provider：embed 只从锚 embedCache 取（未命中即抛），embedImage/vision/chat 触发即抛；A/B 两跑 embedImage/vision 计数恒 0（StubEmbeddingProvider 结构保证）；B 跑仅经 mockStatic 替换 downWeightNearDuplicates 一个方法",
+  "externalCalls" : 0,
+  "productionConstants" : {
+    "threshold" : 0.9944,
+    "nearDuplicateFloor" : 0.982,
+    "bandReferenceFloor" : 0.9887,
+    "weightHigh" : 0.75,
+    "weightMid" : 0.6,
+    "weightLow" : 0.5,
+    "textRouteWeight" : 0.7,
+    "imageRouteWeight" : 0.3,
+    "windowHigh" : 0.075,
+    "windowMid" : 0.12,
+    "windowLow" : 0.15,
+    "windowFormula" : "bound(w) = imageRouteWeight × (1 − w)（与 near-dup-fusion-impact-v1 bounds 同式）"
+  },
+  "ablationDesign" : {
+    "passA" : "生产降权：mockStatic(CALLS_REAL_METHODS) 打开，仅对 downWeightNearDuplicates 做「捕获入参→callRealMethod（真实生产方法）→捕获返回」旁路观测，行为与生产一致",
+    "passB" : "恒等替换：同一框架仅把该方法替换为原样返回入参，其余静态方法走真实实现；消融面唯一差异点",
+    "rebuildBasis" : "两跑各自从冻结锚 corpusMaterial 全新装配两集合与服务（坑 4：不许把 A 的结果喂给 B）；逐查询独立 mockStatic 作用域并在关闭前 verify 恰 1 次",
+    "downWeightCallSite" : "KnowledgeRetrievalServiceImpl#retrieveFromKnowledgeBases 唯一调用点（图像路重排之后、fuseRoutes 之前）"
+  },
+  "positiveControl" : {
+    "flipped" : true,
+    "nearHighBand" : "NEAR_HIGH",
+    "nearHighWeight" : 0.75,
+    "nearHighInputScore" : 1.0,
+    "nonNearImageInputScore" : 0.98,
+    "textInputScore" : 0.5,
+    "fusedNearHighWithDownWeight" : 0.22499999999999998,
+    "fusedNearHighWithoutDownWeight" : 0.3,
+    "fusedNonNearImageWithDownWeight" : 0.294,
+    "fusedNonNearImageWithoutDownWeight" : 0.294,
+    "fusedTextWithDownWeight" : 0.35,
+    "fusedTextWithoutDownWeight" : 0.35,
+    "rankNearHighWithDownWeight" : 3,
+    "rankNearHighWithoutDownWeight" : 2,
+    "rankNonNearImageWithDownWeight" : 2,
+    "rankNonNearImageWithoutDownWeight" : 3,
+    "source" : "NearDupAblationPositiveControlTest#runPositiveControl 同一实现（surefire 正对照与消融锚结论位共用）"
+  },
+  "denominators" : {
+    "childRows" : 50,
+    "childRowsBasis" : "实测 = 冻结锚重建的 imageRecords（图片切片行）7 + textRecords（文本块行）43，逐条列出；禁任何 ×常数推导；fix1：条目带存储面前缀（IMAGE: / TEXT:）——图片切片行与其描述文本行共用同一 chunkId，不加前缀则两个面无法从清单里数出来",
+    "childRowChunkIds" : [ "IMAGE:9400", "IMAGE:9401", "IMAGE:9402", "IMAGE:9415", "IMAGE:9416", "IMAGE:9417", "IMAGE:9430", "TEXT:9400", "TEXT:9401", "TEXT:9402", "TEXT:9403", "TEXT:9404", "TEXT:9405", "TEXT:9406", "TEXT:9407", "TEXT:9408", "TEXT:9409", "TEXT:9410", "TEXT:9411", "TEXT:9412", "TEXT:9413", "TEXT:9414", "TEXT:9415", "TEXT:9416", "TEXT:9417", "TEXT:9418", "TEXT:9419", "TEXT:9420", "TEXT:9421", "TEXT:9422", "TEXT:9423", "TEXT:9424", "TEXT:9425", "TEXT:9426", "TEXT:9427", "TEXT:9428", "TEXT:9429", "TEXT:9430", "TEXT:9431", "TEXT:9432", "TEXT:9433", "TEXT:9434", "TEXT:9435", "TEXT:9436", "TEXT:9437", "TEXT:9438", "TEXT:9439", "TEXT:9440", "TEXT:9441", "TEXT:9442" ],
+    "embedInvocations" : 11,
+    "embedInvocationsBasis" : "A 跑重放链真实到达 provider 的 embed 请求实计（EmbeddingService 无缓存，每次到达即一次未命中请求，真跑时即一次外呼调用点）；B 跑实测同值（两跑相等已断言）；摄取侧嵌入在写锚时已发生，重放由锚 embedCache 供给，不计入",
+    "childRowsVsEmbedInvocationsReason" : "两数口径不同所以不等：childRows 是语料子块行面（摄取侧），embedInvocations 是单轮重放检索链查询侧嵌入请求；两数均为实测，无推导"
+  },
+  "queryCount" : 7,
+  "queries" : [ {
+    "queryIndex" : 0,
+    "assetKey" : "nist-sp800-101r1",
+    "chunkIdSetEqual" : true,
+    "imageCandidateCount" : 2
+  }, {
+    "queryIndex" : 1,
+    "assetKey" : "nist-sp800-101r1",
+    "chunkIdSetEqual" : true,
+    "imageCandidateCount" : 5
+  }, {
+    "queryIndex" : 2,
+    "assetKey" : "nist-sp800-101r1",
+    "chunkIdSetEqual" : true,
+    "imageCandidateCount" : 4
+  }, {
+    "queryIndex" : 3,
+    "assetKey" : "nist-sp800-183",
+    "chunkIdSetEqual" : true,
+    "imageCandidateCount" : 2
+  }, {
+    "queryIndex" : 4,
+    "assetKey" : "nist-sp800-183",
+    "chunkIdSetEqual" : true,
+    "imageCandidateCount" : 4
+  }, {
+    "queryIndex" : 5,
+    "assetKey" : "nist-sp800-183",
+    "chunkIdSetEqual" : true,
+    "imageCandidateCount" : 3
+  }, {
+    "queryIndex" : 6,
+    "assetKey" : "doe-renewable-energy-framework",
+    "chunkIdSetEqual" : true,
+    "imageCandidateCount" : 3
+  } ],
+  "candidates" : [ {
+    "queryIndex" : 0,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9400",
+    "tier" : "SAME_IMAGE",
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 1.0,
+    "fusedB" : 1.0,
+    "rankA" : 1,
+    "rankB" : 1
+  }, {
+    "queryIndex" : 0,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9415",
+    "tier" : "NEAR_DUPLICATE",
+    "band" : "NEAR_LOW",
+    "downWeighted" : true,
+    "fusedA" : 0.76,
+    "fusedB" : 0.82,
+    "rankA" : 2,
+    "rankB" : 2
+  }, {
+    "queryIndex" : 0,
+    "sourceType" : "pdf",
+    "chunkId" : "9419",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.43440784229536655,
+    "fusedB" : 0.43440784229536655,
+    "rankA" : 3,
+    "rankB" : 3
+  }, {
+    "queryIndex" : 0,
+    "sourceType" : "pdf",
+    "chunkId" : "9404",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.4078702373586572,
+    "fusedB" : 0.4078702373586572,
+    "rankA" : 4,
+    "rankB" : 4
+  }, {
+    "queryIndex" : 0,
+    "sourceType" : "pdf",
+    "chunkId" : "9420",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.29081714574905876,
+    "fusedB" : 0.29081714574905876,
+    "rankA" : 5,
+    "rankB" : 5
+  }, {
+    "queryIndex" : 1,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9401",
+    "tier" : "SAME_IMAGE",
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 1.0,
+    "fusedB" : 1.0,
+    "rankA" : 1,
+    "rankB" : 1
+  }, {
+    "queryIndex" : 1,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9416",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.25998215846405776,
+    "fusedB" : 0.25998215846405776,
+    "rankA" : 2,
+    "rankB" : 2
+  }, {
+    "queryIndex" : 1,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9402",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.24622105103400688,
+    "fusedB" : 0.24622105103400688,
+    "rankA" : 3,
+    "rankB" : 3
+  }, {
+    "queryIndex" : 1,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9417",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.2249502958373197,
+    "fusedB" : 0.2249502958373197,
+    "rankA" : 4,
+    "rankB" : 4
+  }, {
+    "queryIndex" : 1,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9430",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.15552436311983703,
+    "fusedB" : 0.15552436311983703,
+    "rankA" : 5,
+    "rankB" : 5
+  }, {
+    "queryIndex" : 2,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9402",
+    "tier" : "SAME_IMAGE",
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 1.0,
+    "fusedB" : 1.0,
+    "rankA" : 1,
+    "rankB" : 1
+  }, {
+    "queryIndex" : 2,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9401",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.24848685634185572,
+    "fusedB" : 0.24848685634185572,
+    "rankA" : 2,
+    "rankB" : 2
+  }, {
+    "queryIndex" : 2,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9416",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.18101384767819684,
+    "fusedB" : 0.18101384767819684,
+    "rankA" : 3,
+    "rankB" : 3
+  }, {
+    "queryIndex" : 2,
+    "sourceType" : "pdf",
+    "chunkId" : "9410",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.17160297109319628,
+    "fusedB" : 0.17160297109319628,
+    "rankA" : 4,
+    "rankB" : 4
+  }, {
+    "queryIndex" : 2,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9417",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.1501347329713638,
+    "fusedB" : 0.1501347329713638,
+    "rankA" : 5,
+    "rankB" : 5
+  }, {
+    "queryIndex" : 3,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9415",
+    "tier" : "SAME_IMAGE",
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 1.0,
+    "fusedB" : 1.0,
+    "rankA" : 1,
+    "rankB" : 1
+  }, {
+    "queryIndex" : 3,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9400",
+    "tier" : "NEAR_DUPLICATE",
+    "band" : "NEAR_LOW",
+    "downWeighted" : true,
+    "fusedA" : 0.76,
+    "fusedB" : 0.82,
+    "rankA" : 2,
+    "rankB" : 2
+  }, {
+    "queryIndex" : 3,
+    "sourceType" : "pdf",
+    "chunkId" : "9419",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.43440784229536655,
+    "fusedB" : 0.43440784229536655,
+    "rankA" : 3,
+    "rankB" : 3
+  }, {
+    "queryIndex" : 3,
+    "sourceType" : "pdf",
+    "chunkId" : "9404",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.4078702373586572,
+    "fusedB" : 0.4078702373586572,
+    "rankA" : 4,
+    "rankB" : 4
+  }, {
+    "queryIndex" : 3,
+    "sourceType" : "pdf",
+    "chunkId" : "9420",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.29081714574905876,
+    "fusedB" : 0.29081714574905876,
+    "rankA" : 5,
+    "rankB" : 5
+  }, {
+    "queryIndex" : 4,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9416",
+    "tier" : "SAME_IMAGE",
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 1.0,
+    "fusedB" : 1.0,
+    "rankA" : 1,
+    "rankB" : 1
+  }, {
+    "queryIndex" : 4,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9417",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.5131913232073727,
+    "fusedB" : 0.5131913232073727,
+    "rankA" : 2,
+    "rankB" : 2
+  }, {
+    "queryIndex" : 4,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9401",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.24004325640834284,
+    "fusedB" : 0.24004325640834284,
+    "rankA" : 3,
+    "rankB" : 3
+  }, {
+    "queryIndex" : 4,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9402",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.149357967529106,
+    "fusedB" : 0.149357967529106,
+    "rankA" : 4,
+    "rankB" : 4
+  }, {
+    "queryIndex" : 4,
+    "sourceType" : "pdf",
+    "chunkId" : "9427",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.13954613046348074,
+    "fusedB" : 0.13954613046348074,
+    "rankA" : 5,
+    "rankB" : 5
+  }, {
+    "queryIndex" : 5,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9417",
+    "tier" : "SAME_IMAGE",
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 1.0,
+    "fusedB" : 1.0,
+    "rankA" : 1,
+    "rankB" : 1
+  }, {
+    "queryIndex" : 5,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9416",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.4992101295512589,
+    "fusedB" : 0.4992101295512589,
+    "rankA" : 2,
+    "rankB" : 2
+  }, {
+    "queryIndex" : 5,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9401",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.23369163553421415,
+    "fusedB" : 0.23369163553421415,
+    "rankA" : 3,
+    "rankB" : 3
+  }, {
+    "queryIndex" : 5,
+    "sourceType" : "pdf",
+    "chunkId" : "9427",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.18804070501287548,
+    "fusedB" : 0.18804070501287548,
+    "rankA" : 4,
+    "rankB" : 4
+  }, {
+    "queryIndex" : 5,
+    "sourceType" : "pdf",
+    "chunkId" : "9422",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.18629919895594121,
+    "fusedB" : 0.18629919895594121,
+    "rankA" : 5,
+    "rankB" : 5
+  }, {
+    "queryIndex" : 6,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9430",
+    "tier" : "SAME_IMAGE",
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 1.0,
+    "fusedB" : 1.0,
+    "rankA" : 1,
+    "rankB" : 1
+  }, {
+    "queryIndex" : 6,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9415",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.27440037283004476,
+    "fusedB" : 0.27440037283004476,
+    "rankA" : 2,
+    "rankB" : 2
+  }, {
+    "queryIndex" : 6,
+    "sourceType" : "IMAGE",
+    "chunkId" : "IMAGE:9400",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.27440037283004476,
+    "fusedB" : 0.27440037283004476,
+    "rankA" : 3,
+    "rankB" : 3
+  }, {
+    "queryIndex" : 6,
+    "sourceType" : "pdf",
+    "chunkId" : "9436",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.24248816396777437,
+    "fusedB" : 0.24248816396777437,
+    "rankA" : 4,
+    "rankB" : 4
+  }, {
+    "queryIndex" : 6,
+    "sourceType" : "pdf",
+    "chunkId" : "9432",
+    "tier" : null,
+    "band" : null,
+    "downWeighted" : false,
+    "fusedA" : 0.22815961198973345,
+    "fusedB" : 0.22815961198973345,
+    "rankA" : 5,
+    "rankB" : 5
+  } ],
+  "imageCandidateCount" : 23,
+  "downWeightedCount" : 2,
+  "maxImageScoreDelta" : 0.05999999999999994,
+  "maxTextScoreDelta" : 0.0,
+  "imageDeltaSum" : 0.11999999999999988,
+  "scoreFace" : {
+    "note" : "分数面 = 各 IMAGE 候选降权前后的融合分位移。w<1 时必然发生，故只作数据面、不作 verdict 判定面（fix1 修订：原 R6 把「分数或名次」并成一档，导致任何带近重复的输入都必然判 RANK-CHANGE，判定没有鉴别力）",
+    "changed" : true,
+    "maxImageScoreDelta" : 0.05999999999999994,
+    "imageDeltaSum" : 0.11999999999999988,
+    "imageCandidateCount" : 23,
+    "downWeightedCount" : 2
+  },
+  "verdict" : "NO-RANK-CHANGE",
+  "verdictReason" : "R6（fix1 修订）机械推导：名次面（anyImageRankChange=false）与集合面（全查询 chunkIdSetEqual=true）均无变化；分数面位移单列于 scoreFace（maxImageScoreDelta=0.05999999999999994 imageDeltaSum=0.11999999999999988）——降权在 w<1 时必然改分，故分数面不作判定面；窗口算术见 windowCheck（逐条被降权候选 gap vs 0.30×(1−w)）；不可外推为「生产无位移」——结论只对本冻结语料与本装配成立",
+  "windowCheck" : {
+    "note" : "逐条被降权候选的窗口算术：gap = 该候选 fusedB（未降权跑融合分）− 同查询下位竞争者最大融合分；window = 0.30×(1−w)（imageRouteWeight × (1 − w)），w 取 A 跑出参 BAND_WEIGHT_METADATA_KEY 实测值；NO-RANK-CHANGE 必附本节；RANK-CHANGE 时本节仍为实测上下文，verdict 由 R6 机械推导，不受本节影响",
+    "entries" : [ {
+      "queryIndex" : 0,
+      "chunkId" : "IMAGE:9415",
+      "band" : "NEAR_LOW",
+      "weight" : 0.5,
+      "window" : 0.15,
+      "fusedA" : 0.76,
+      "delta" : 0.05999999999999994,
+      "fusedB" : 0.82,
+      "strongestCompetitorBelowFusedB" : 0.43440784229536655,
+      "gap" : 0.3855921577046334,
+      "gapExceedsWindow" : true
+    }, {
+      "queryIndex" : 3,
+      "chunkId" : "IMAGE:9400",
+      "band" : "NEAR_LOW",
+      "weight" : 0.5,
+      "window" : 0.15,
+      "fusedA" : 0.76,
+      "delta" : 0.05999999999999994,
+      "fusedB" : 0.82,
+      "strongestCompetitorBelowFusedB" : 0.43440784229536655,
+      "gap" : 0.3855921577046334,
+      "gapExceedsWindow" : true
+    } ]
+  },
+  "nonExtrapolationNote" : "本锚结论只对本冻结语料（3 份真实 PDF、7 条查询、TOP_K=5）与本装配成立，不可外推为「生产无位移」；要真分布须另立卡（S1 预注册见 proposal §6，本卡不执行）",
+  "isolationEvidence" : {
+    "downWeightCapturedCallsA" : 7,
+    "downWeightCapturedCallsB" : 7,
+    "bandWeightMarkerObservedOnAOutput" : "A 跑出参带 BAND_WEIGHT_METADATA_KEY 的条数=2",
+    "nonImageFusedByteEqualAcrossRuns" : "maxTextScoreDelta=0.0",
+    "inputIdentityVerified" : "两跑降权入参逐条 fusionKey + 分数 Double.compare 相等（重放确定性结构证明）",
+    "mockEvidence" : "静态 mock 实际生效证据：逐查询 verify(times(1))；A 出参被降权者分数=入参×w 且带 BAND_WEIGHT_METADATA_KEY；B 返回与入参逐条 Double.compare==0；非 IMAGE 来源两跑融合分逐条相等；embed 请求数两跑相等"
+  }
+}
