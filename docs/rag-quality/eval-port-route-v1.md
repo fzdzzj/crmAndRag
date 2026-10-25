@@ -10,4 +10,3 @@
 - 结论: SET-RELATIVE-INVARIANT —— 本套件分数不得当「文本路真分数分布」用（储备 3 需改口径或另立真跑卡，由 Owner 裁定）
 - 被污染结论: recall@5/mrr 绝对值、跨语料分位、生产文本路分数分布、稀疏路命中绝对值、伪向量余弦分布、生产语料分布
 - 细节锚: docs/rag-quality/eval-port-route-v1.json（逐字节复算；行号实测于 d812ed1）
-
