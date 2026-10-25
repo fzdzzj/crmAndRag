@@ -8,15 +8,14 @@
 
 ## 1. 现状快照 (Current State Snapshot)
 
-- **当前主干版本**：`master` = **`574a58d`（M1 合并）+ `49dc3e7`（基线重锚）+ 本归档笔** = origin/master。分支 `feature/image-slice-ingest-chain-reconciliation` **永久保留**（基点 `cc3c6d5` → **2 笔**：`35845d1` 首轮 / `9d52a84` fix2 代笔）
-- **测试基线四元组**：`source-revision=574a58d`（**树净，非 `-dirty`**）+ Surefire **报告 347 / 用例 2150 / F0 / E0 / S0** + Failsafe **报告 47 / 用例 148 / F0 / E0 / S16** + **CI = Run 40132826343（6/6 jobs 绿）**。上一卡 345/2137/0 + 47/148/16 → 本卡 surefire **+2 报告 +13 用例**（探针 7 + 守卫 6），failsafe **三值全持平**（零新 IT，skipped 仍 16 = 卡 26 那个 opt-in 探针）
-- **本卡规模**：对 `cc3c6d5` **7 文件 / +1850 −0**（全新增、零删除）；merge 树 == 分支 tip 树 == **`c18fb04dc2f5552d27428fa586a58ef6c2f08d77`**
-- **本卡结论（一句话）**：**链路不丢图，但卡 26 那 5 个缺口定不了案。** 七链 `提取→describe→过闸→切片→子块行→embed 调用→image 向量暂存` 在 n1/n8 两档**相邻差值全 0**；同时把**五种静默丢弃语义**逐一钉成断言
-- **旁证：为什么「差 5」判不了**——① 缓存抑制机制**可复现**（R2：`{noCache=6, withCache=5, distinct=5, childRows=6}`，差值 1 == 6−5），但本锚 `r4` 自己推出的碰撞条件要求**文件名∧类目∧页码∧描述四输入全同**，而 S1 三份合成 PDF 文件名互异（`near-dup-ingest-cooc-p1/p2/p3.pdf`）且同文档内每页一图 ⇒ **S1 不可能碰撞**；② 41/36 出自一个**已不存在的断言版本**（中止日志文案在提交版 `:344`/`:350` 都不存在）⇒ 分母不可考
-- **五种静默丢弃（已钉成断言，全部 `LOG` 后继续、不抛）**：`PdfImageSliceIngestService:286` 未过闸门（单图）/ `:290` 描述调用失败（单图）/ `:310` 对象落盘失败（单图）/ `:138` `buildSlices` 内层文档级 catch（**整批**）/ `ImageSliceIngestSupport:132` 外层文档级 catch（**整批**，字母切片照常入库）。**文档级那两条比缓存抑制更贴合卡 26 的缺口形状，但同样未经 S1 语料取证**
-- **对消融的可操作结论（本卡最有用的一条）**：**分母一律用实测子块行数，不用推导值**——这条不依赖 S1 缺口定案
-- **责任划分（不粉饰）**：卡 27 首轮 `verdict=COUNTER-SUPPRESSED` 是我判据的缺陷——R2 判的是「机制能否复现」，R5 判的是「卡 26 缺口归因」，我没把二者分开，也没要求「用自己的 R4 条件回头自检 R5」；复核照此检查式走，必然得出错结论
-- **工作树拓扑**：观察树 `D:\code\crmAndRag`（logbook + `work/` 未跟踪，已 detach 同步 `49dc3e7`）；权威树 `D:\code\crmAndRag-merge-add-knowledge-admin-api`（分支 / 门禁 / 合并 / push 唯一法定树）
+- **当前主干版本**：`master` = **`5a527cc`（M1 合并）+ `79a5ecf`（基线重锚）+ 本归档笔** = origin/master。分支 `feature/near-dup-ablation-redesign` **永久保留**（基点 `1884e31` → **2 笔**：`df74e56` 首轮 / `cf22aed` fix1 代笔）
+- **测试基线四元组**：`source-revision=5a527cc`（**树净，非 `-dirty`**）+ Surefire **报告 349 / 用例 2159 / F0 / E0 / S0** + Failsafe **报告 47 / 用例 149 / F0 / E0 / S16** + **CI = Run 40174488144（6/6 jobs 绿）**。上一卡 347/2150/0 + 47/148/16 → 本卡 surefire **+2 报告 +9 用例**（正对照 4 + 守卫 5）、failsafe **+1 用例**（消融 A/B 真跑），skipped 仍 16
+- **本卡规模**：对 `1884e31` **8 文件 / +2153 −35**（35 行全是纯搬运抽取，非删除）；merge 树 == 分支 tip 树，树净
+- **本卡结论（一句话）**：**降权在真实语料上只改分、不改序。** 7 条真实查询 A/B：`downWeightedCount=2`（两张 NIST 封面互查）、`maxImageScoreDelta=0.06`、名次面与集合面**零变化** ⇒ `verdict=NO-RANK-CHANGE`；`gap=0.3856 ≫ window=0.30×(1−0.5)=0.15` ⇒ 名次不变是窗口算术的必然，不是巧合
+- **装置鉴别力（卡 26 缺的正是这件）**：纯 JVM 正对照真翻转——同一图像候选 A（降权）`0.225` rank 3、B（不降权）`0.3` rank 2；`mockStatic(CALLS_REAL_METHODS)` 只替换 `downWeightNearDuplicates` **一个方法**，A/B 各 7 次调用、B 返回恒等、非 IMAGE 来源融合分逐字节相等
+- **分母口径（本卡钉死）**：`childRows=50`（图片切片行 7 + 文本块行 43，清单逐条带 `IMAGE:`/`TEXT:` 前缀）+ `embedInvocations=11`（按未命中计）；**推导分母永久作废**（`3×N`、`融合分÷w` 反解）
+- **责任划分（不粉饰）**：首轮 `verdict=RANK-CHANGE` 是我 R6 的缺陷——「分数**或**名次」并成一档，而降权在 `w<1` 时**必然**改分 ⇒ 该 verdict 对任何带近重复的输入恒真，**判定没有鉴别力**；fix1 由我代笔：判定面改为名次面+集合面，分数面单列 `scoreFace`，测量值零变动
+- **工作树拓扑**：观察树 `D:\code\crmAndRag`（logbook + `work/` 未跟踪）；权威树 `D:\code\crmAndRag-merge-add-knowledge-admin-api`（分支 / 门禁 / 合并 / push 唯一法定树）
 
 ---
 
@@ -30,6 +29,7 @@
 6. **开关开启通道已工具化**：`image-vector-ingest-preflight.sh`（GO/NO-GO + 原因码），与观测面、回滚、热生效实证成套
 7. **图像路独立相似度硬闸门**（独立键 0.9944 + 三档 tier + 准入下限 0.982 + 带内基准 0.9887 冻结 + 重排后、融合前降权）
 8. 其余已闭环能力面（多模态真共享空间 / v6.0 主套件真跑 / PDF 图文评测 / 五路语义 hook / 公海 CAS / 写端点校验 / 向量运维收口 / 线索漏斗 V42 / 超管 token 视图等）沿用上一版，不再复述
+9. **近重复消融：S0 零外呼 A/B 已实测**（本卡）：正对照证明**装置有鉴别力**，冻结真实语料 7 查询 A/B 得 `verdict=NO-RANK-CHANGE`（分数位移 0.06、名次与集合零变化、gap ≫ 窗口）；锚 `near-dup-ablation-v1`（写模式 `-Dnear.dup.ablation.write=true`，默认逐字节复跑、零外呼、CI 真跑、failsafe 用例数 +1）；S1（非退化近重复语料，≤36 次外呼）**仅预注册未执行**
 
 ---
 
@@ -37,14 +37,14 @@
 
 - **在途待合入卡**：**0 张**；**已立卡待派发**：**0 张**；**待办池**：**0 条**
 - **长期储备（按优先级）**：
-  1. **消融重设计（卡 26/27 的合并后续）**：地基已清——链路逐链不丢、丢弃语义已知、分母改用**实测子块行数**。重设计要点：**不再用 48 图受控集**（退化变体必被 64px 下限与描述闸门丢弃），改为「只观测真能入库的近重复」；成本仍要单列授权
+  1. **S1 消融执行（本卡预注册，Owner 决）**：非退化近重复语料（原生分辨率重编码 / 轻度 JPEG / 整图微缩，短边仍 ≥64px），入库后**断言实测过闸数 == 预期数**，任何静默丢弃即红；成本算式 `6×3 + 6×2 = 30`，**报批 36 封顶**。触发条件已写进锚：本卡判 `NO-RANK-CHANGE` 且窗口算术显示真实语料**无窗内共现**（gap 0.3856 vs 窗口 0.15）
   2. **观测真实位移后再议 0.90（Owner 决）**：`0.90` 是 `R=94.17%` 膝盖点，但多压 6 张同文档图；再动 `NEAR_DUPLICATE_FLOOR` **必须新卡**
-  3. **文本路真分数分布**：口径四只给 7 条查询的**存在性证据**；要分布须先验 72 例基准套件的检索端口是否生产路（`SparseBenchmarkRecallService` 的存在使其可疑，未验）
+  3. **文本路真分数分布口径核验（零外呼可做）**：口径四只给 7 条查询的**存在性证据**；要分布须先验 72 例基准套件的检索端口是否生产路（`SparseBenchmarkRecallService` 的存在使其可疑，未验）
   4. **用户意图级相关性标注（唯一能消掉 A1/A2 的路）**：须真实查询 + 人标；**严禁**用 agent 生成标签充数
   5. **生产开关运行期打开（Owner 决，非代码）**：`rag.retrieval.image-vector-ingest.enabled` 默认 `false`；先跑 `bash scripts/rag-quality/image-vector-ingest-preflight.sh preflight --snapshot <四键快照>`
   6. **前端小表随站点增长维护**：`uiEndpointPermissions.ts` 手写 57 项，编译期受契约约束
   7. 文档类存量：全域权限清单（`docs/permission-matrix-audit.md` 属**历史快照，遵裁决不改写**）；在线考试子域 `work/_online-exam-backlog.md`；候选总账 `work/_paa-candidates-pool-v2.md`
-- **下批推荐**：储备 1（消融重设计）。**不要再为「卡 26 差 5」开取证卡**——那 5 个缺口的分母已不可考，继续追等于拿外呼唤一个不存在的确定性；要确定性就跑实测子块行数
+- **下批推荐**：储备 3（文本路真分数分布**口径核验**）——零外呼、能解掉「72 例套件到底跑不跑生产路」这个一直悬着的疑点；S1 消融要花 30 次外呼，**等 Owner 单独授权**，不要为了「有结论」而先花后证
 
 ---
 
@@ -70,7 +70,8 @@
 18. **上界须注明被放缩的量及其值域**
 19. **恒定值一改，先问「谁跟着它算」**：grep 出所有由它推导的公式与边界；把「准入面」与「计算基准」拆成两个常量让变更**纯加性**；证据侧一律冻结字面量
 20. **跨树跑命令，先问它落在哪棵树**：忘带 `workdir` 会落到观察树 detached 旧提交，「命令不可复现」全是自己造的假象；跨树命令必须显式 `workdir`，复核结论前先 `git rev-parse --short HEAD` 自证落点
-21. **判据之间要有适用性闭环（本卡新增）**：判据 A 判「机制能否复现」，判据 B 判「现象能否归因」，二者**不是同一件事**；凡在 B 里引用 A 的机制，必须用**本卡自己产出的前提条件**回头自检一次（本卡 `r4` 的条件当场否证了 `r5` 的归因）。另一条同源：**改「由测量值机械推导写入」的证据锚的结论，必须改推导源，不能改成品**——只改成品红的是复算测试，极易被误判成「锚被人手改坏」
+21. **判据之间要有适用性闭环（卡 27 新增）**：判据 A 判「机制能否复现」，判据 B 判「现象能否归因」，二者**不是同一件事**；凡在 B 里引用 A 的机制，必须用**本卡自己产出的前提条件**回头自检一次（卡 27 `r4` 的条件当场否证了 `r5` 的归因）。另一条同源：**改「由测量值机械推导写入」的证据锚的结论，必须改推导源，不能改成品**——只改成品红的是复算测试，极易被误判成「锚被人手改坏」
+22. **判定标签不得对输入恒真（本卡新增）**：verdict / 结论字段必须能取到相反值——把「分数必然变」与「顺序可能变」并进同一个标签，标签就退化成常真式，下游只会读到假位移。派生结论**只由判定面推导**，数据面单列字段（本卡 `scoreFace`）；写判据时先自问「什么输入会让它取反」，答不出就说明它不是判据
 
 ---
 
@@ -78,11 +79,12 @@
 
 - 接口与冻结契约：`spec/changes/add-crm-rag-fusion-platform/contracts-frozen.md`
 - 数据库迁移：`ls src/main/resources/db/migration`（实测最高 **V43**，下一可用 **V44**；最近两卡零迁移）
-- 历史裁决归档：`docs/archive/logbook-historical-202609-202610.md`；活动日志 `docs/main-agent-logbook.md`（**最新 §172**）
-- 历史任务卡：`work/archive/closed-cards/`；本卡卡面 `openspec/changes/archive/image-slice-ingest-chain-reconciliation/`
+- 历史裁决归档：`docs/archive/logbook-historical-202609-202610.md`；活动日志 `docs/main-agent-logbook.md`（**最新 §175**）
+- 历史任务卡：`work/archive/closed-cards/`；本卡卡面 `openspec/changes/archive/near-dup-ablation-redesign/`
 - 回归基线：`bash scripts/check-test-baseline.sh`（台账 `scripts/test-baseline.txt`，只经 `--update` 写）
 - **近重复图像六份锚**：`near-dup-exchange-rate-v1`（价目表）／`near-dup-fusion-impact-v1`（融合上界，`-Dnear.dup.fusion.write=true`）／`image-near-dup-truth-v1`（检索级真值，`-Dnear.dup.truth.write=true`）／`near-dup-displacement-evidence-v1`（位移实测，`-Dnear.dup.displacement.write=true`）／`image-variant-cross-matrix-v1`（代理有效性，`-Dimage.cross.matrix.write=true`）／`near-dup-floor-signoff-v1`（签收决议，守卫实算六锚 SHA）
-- **入库面三锚**：`near-dup-ingest-gate-probe-v1`（S0 闸门探针，冻结投影）／`near-dup-ingest-s1-not-run-v1`（S1 NOT-RUN 预注册，守卫断言 S1 锚**必须不存在**）／**`image-slice-ingest-chain-v1`（七链对账 + 五种丢弃语义 + 碰撞四因子，写模式 `-Dimage.slice.chain.anchor.write=true`，守卫 `ImageSliceIngestChainGuardTest`）**
+- **入库面三锚**：`near-dup-ingest-gate-probe-v1`（S0 闸门探针，冻结投影）／`near-dup-ingest-s1-not-run-v1`（S1 NOT-RUN 预注册，守卫断言 S1 锚**必须不存在**）／`image-slice-ingest-chain-v1`（七链对账 + 五种丢弃语义 + 碰撞四因子，写模式 `-Dimage.slice.chain.anchor.write=true`）
+- **消融锚（本卡）**：`near-dup-ablation-v1`（S0 A/B，写模式 `-Dnear.dup.ablation.write=true`，默认逐字节复跑 + 零外呼，守卫 `NearDupAblationGuardTest`，结论位 `verdict` 只由名次面+集合面推导、分数面单列 `scoreFace`）
 - **真跑 opt-in**：`RAG_BENCHMARK_REAL=1` / `RAG_VISION_EMBED_REAL=1` / `RAG_NEAR_DUP_DISPLACEMENT_REAL=1` / `RAG_IMAGE_CROSS_MATRIX_REAL=1` / `RAG_NEAR_DUP_INGEST_REAL=1`；**跳过 ≠ 通过**
 - 契约/体积门禁：`scripts/check-openapi-consistency.sh`、`frontend/bundle-budget.json`；计量与超管视图：`docs/token-metering.md`
 
