@@ -419,6 +419,13 @@ class NearDupOq1AttributionGuardTest {
     assertTrue(ALLOWED_VERDICTS.contains(verdict), "verdict 只能取三值之一，实测: " + verdict);
     assertFalse(anchor.path("verdictReason").asText().isBlank(), "必须附 verdictReason");
 
+    // 反向断言（复核 MINOR-2）：PROVEN 档不得出现「未证解释」，否则三档边界失守
+    String provenText = anchor.path("attribution").path("claimClass").path("PROVEN").toString();
+    for (String banned : java.util.List.of("末位", "min-max 把", "归 0 造成", "成因是")) {
+      assertFalse(
+          provenText.contains(banned), "PROVEN 档不得含未证解释（三档边界）：命中禁式「" + banned + "」⇒ " + provenText);
+    }
+
     if ("NEEDS-INSTRUMENTED-RUN".equals(verdict)) {
       JsonNode plan = anchor.path("instrumentedPlan");
       assertFalse(plan.isMissingNode(), "NEEDS-INSTRUMENTED-RUN 必须交付 instrumentedPlan（R6）");

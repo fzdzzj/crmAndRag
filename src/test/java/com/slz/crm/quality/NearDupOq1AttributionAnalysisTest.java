@@ -789,7 +789,9 @@ class NearDupOq1AttributionAnalysisTest {
     md.append("## 结论 2 · CONSISTENT-NOT-PROVEN：r = 0 的成因很可能是 min-max 把末位归 0\n");
     md.append("\n");
     md.append(
-        "- 源码上确有这条路径（末位 → 归一化 0.0），且 `r = 0.60 × normVec + 0.40 × normBm25` 要求两条分支同时为 0（两权重为正）⇒ 该候选必须是两条分支的末位。\n");
+        "- 源码上确有这条路径（末位 → 归一化 0.0），且 `r = 0.60 × normVec + 0.40 × normBm25` 要求两条分支同时为 0（两权重为正）⇒ **在 `max > 0` 且非退化列表的前提下**，该候选必须是两条分支的末位。\n");
+    md.append(
+        "- **退化分支必须一起读**：`normalizeScores` 在 `max ≤ 0` 时把**全体**归一化为 `0.0`，此时任何候选都 `r = 0`，与「末位」无关；`max == min` 时则全体为 `1.0`。锚 `attribution.consistencySummary.degenerate` 记的正是这类查询，本句**只在非退化查询上成立**。\n");
     md.append(
         String.format(
             Locale.ROOT,
@@ -817,7 +819,7 @@ class NearDupOq1AttributionAnalysisTest {
     md.append(
         "- 为什么不能再省：少 `imageRerankScore` 分不清「r = 0」与「r ≠ 0 但融合抵消」；少 `imageRankInRouteList` / `routeListSize` 分不清「末位归 0」与「列表退化」；少 `fusionImageContribution` 仍要反解 δ。\n");
     md.append(
-        "- **本方案未执行、不得据其声明结论**（D5）。细节锚：`docs/rag-quality/near-dup-oq1-attribution-v1.json`（默认按本次全量重算逐字节比对，剔除顶层 `runtime`）。\n");
+        "- **本方案未执行、不得据其声明结论**（D5）。细节锚：`docs/rag-quality/near-dup-oq1-attribution-v1.json`（默认按本次全量重算**规范化字节**比对：JSON 走树规范化、md 走真字节，均剔除顶层 `runtime`）。\n");
     String text = md.toString();
     assertTrue(!text.contains("\r"), "锚 md 必须纯 LF");
     assertFalse(text.endsWith("\n\n"), "锚 md 不得以空行结尾");
@@ -825,7 +827,7 @@ class NearDupOq1AttributionAnalysisTest {
     return text;
   }
 
-  // ==================== 读写锚（写模式 / 逐字节比对，剔除顶层 runtime） ====================
+  // ==================== 读写锚（写模式 / 语义比对：JSON 走规范化字节、md 走真字节，均剔除 runtime） ====================
 
   private static void writeOrCompareJson(Path path, ObjectNode node) throws Exception {
     byte[] expected = canonicalBytes(node);
@@ -841,8 +843,8 @@ class NearDupOq1AttributionAnalysisTest {
     assertArrayEquals(
         canonicalBytes(withoutRuntime(node)),
         canonicalBytes(withoutRuntime(onDisk)),
-        "锚与本次全量重算逐字节不一致（剔除顶层 runtime 后）：锚被改动或源码/链路漂移: " + path);
-    System.out.println("[near-dup-oq1] 默认复跑逐字节一致（剔除顶层 runtime）：" + path);
+        "锚与本次全量重算规范化字节不一致（JSON 树规范化后比较、剔除顶层 runtime）：锚被改动或源码/链路漂移: " + path);
+    System.out.println("[near-dup-oq1] 默认复跑规范化字节一致（JSON 树规范化，剔除顶层 runtime）：" + path);
   }
 
   private static void writeOrCompareBytes(Path path, byte[] expected) throws Exception {

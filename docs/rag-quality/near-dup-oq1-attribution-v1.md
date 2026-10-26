@@ -12,7 +12,8 @@
 
 ## 结论 2 · CONSISTENT-NOT-PROVEN：r = 0 的成因很可能是 min-max 把末位归 0
 
-- 源码上确有这条路径（末位 → 归一化 0.0），且 `r = 0.60 × normVec + 0.40 × normBm25` 要求两条分支同时为 0（两权重为正）⇒ 该候选必须是两条分支的末位。
+- 源码上确有这条路径（末位 → 归一化 0.0），且 `r = 0.60 × normVec + 0.40 × normBm25` 要求两条分支同时为 0（两权重为正）⇒ **在 `max > 0` 且非退化列表的前提下**，该候选必须是两条分支的末位。
+- **退化分支必须一起读**：`normalizeScores` 在 `max ≤ 0` 时把**全体**归一化为 `0.0`，此时任何候选都 `r = 0`，与「末位」无关；`max == min` 时则全体为 `1.0`。锚 `attribution.consistencySummary.degenerate` 记的正是这类查询，本句**只在非退化查询上成立**。
 - 一致性检查（6/6 无矛盾）：q0/q1/q2 里「反算 r 最大者」与「cos 最大者」是同一候选（`@crop-04`）；q3/q4/q5 只有 1 条被标记候选，检查退化为恒真（非退化 3 条 / 退化 3 条）。
 - 辅助观察（同样不升级）：4 条 `r = 0` 的候选在各自查询 cos 有值的行里均为 cos 最小；q0–q2 的 r 次序与 cos 次序完全一致（`@crop-04` > `@crop-02` > `@crop-06`）。
 - **这两句不是结论**：`cos` 只是图像向量相似度，`r` 是重排分；没有 `r`、`routeListSize` 就分不清「末位归 0」与「该候选只有 1 条 / 根本不在图像路」。
@@ -26,4 +27,4 @@
 - `verdict = NEEDS-INSTRUMENTED-RUN`：no-op 恒等式已证，但 OQ1 问的是「r 为什么是 0」，其因果不在锚内，故不取 `MECHANISM-CONFIRMED`。
 - 最小字段集（4 项）：`imageRerankScore` / `imageRankInRouteList` / `routeListSize` / `fusionImageContribution`；预算 6 摄取 × 3 + 6 查询 × 2 = **30 外呼**。
 - 为什么不能再省：少 `imageRerankScore` 分不清「r = 0」与「r ≠ 0 但融合抵消」；少 `imageRankInRouteList` / `routeListSize` 分不清「末位归 0」与「列表退化」；少 `fusionImageContribution` 仍要反解 δ。
-- **本方案未执行、不得据其声明结论**（D5）。细节锚：`docs/rag-quality/near-dup-oq1-attribution-v1.json`（默认按本次全量重算逐字节比对，剔除顶层 `runtime`）。
+- **本方案未执行、不得据其声明结论**（D5）。细节锚：`docs/rag-quality/near-dup-oq1-attribution-v1.json`（默认按本次全量重算**规范化字节**比对：JSON 走树规范化、md 走真字节，均剔除顶层 `runtime`）。
