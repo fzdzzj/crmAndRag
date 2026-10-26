@@ -1,0 +1,4979 @@
+{
+  "card" : "eval-port-production-parity",
+  "suiteVersion" : "6.0",
+  "caseCount" : 72,
+  "evalKbId" : 99001,
+  "zeroExternalCallBasis" : "本类唯一 ModelProvider 是确定性桩 EvalStubProvider（streamChat/vision 即抛、embed 为本地哈希向量）；真库侧只有 Testcontainers MySQL 与 Flyway，无任何模型网络出口；未读 key、未跑 RAG_BENCHMARK_REAL=1",
+  "srcMainDiff" : "ZERO",
+  "srcMainDiffBasis" : "本卡写集只含 src/test 三个新测试、docs/rag-quality 两个新锚与 openspec 的 tasks.md；src/main/pom.xml/.github 零字节变动",
+  "verdictPort" : "ERROR-BAR-PARTIAL-QUANTIFIED",
+  "verdictPortScope" : "误差条已量化到：① 稀疏腿（真 MySQL 8.0.36 ngram vs bigram 近似的逐查询差异表）；② 度量腿（raw/rank/margin 三项并列 + 生产归一化恒等式，容差 ≤1e-12）；③ 输入腿（真嵌入通道的调用台账 + 预算推导，执行状态见 binary 段）。仍未量化：语料腿（15 份固定 fixture，非生产库语料）——该腿的结论仍不可得",
+  "ciPortUnchanged" : "RagQualityRegressionTest 端口未改：默认 `mvn test` 的 surefire 契约是无 Docker（AGENTS.md 明写），把真 MySQL/真 ngram 塞进默认端口会让无 Docker 环境直接红（proposal D6）；本卡真装置只进独立测试类（Docker 不可用即 assumeTrue 跳过），回归端口一字不动、判据与基线下限零改动",
+  "externalCalls" : 149,
+  "defaultExternalCalls" : 0,
+  "legs" : [
+    {
+      "name" : "装配腿",
+      "current" : "KnowledgeRetrievalServiceImpl + DefaultWeightedReranker + RrfFusion + Bm25Scorer 生产类直构（本腿本就在生产路上）",
+      "disposition" : "本卡不动装配：只复用同一批生产类直构做三口径与差异表",
+      "aligned" : true,
+      "evidence" : "eval-port-route-v1 legs[装配腿] classification=PRODUCTION；本卡读法未改装配"
+    },
+    {
+      "name" : "稀疏腿",
+      "current" : "生产 SparseRecallService：MySQL FULLTEXT(ngram) + uploaded_file 授权 JOIN + is_deleted/chunk_role 过滤；CI 端口用的是测试子类 SparseBenchmarkRecallService（字符 bigram 重叠近似、无授权 JOIN、无软删）",
+      "disposition" : "本卡用生产同一条 fulltextSearch 在真 MySQL 8.0.36 上取真 ngram top-k，与 bigram 近似逐查询对照并落差异表；端口不替换（D6），近似不被认作对齐（D2）",
+      "aligned" : false,
+      "evidence" : "锚 sparseDifferential 逐查询登记集合重叠、名次位移、分数 min/p50/max；取候选走生产 SparseRecallService"
+    },
+    {
+      "name" : "度量腿",
+      "current" : "生产 DefaultWeightedReranker：向量/BM25 各自 min-max 归一后按 0.6/0.4 加权，端口只报归一化后的单个分",
+      "disposition" : "本卡改成三口径并列：rawFusedScore（归一化前融合分）+ rank（同集合名次）+ margin（与相邻候选差），归一化分只作对照",
+      "aligned" : false,
+      "evidence" : "锚 metricTriplets 逐用例三项齐备，并用生产 reranker 三次调用把归一化恒等式自证到 ≤1e-12"
+    },
+    {
+      "name" : "输入腿",
+      "current" : "生产应接真实 ModelProvider#embed（text-embedding-v3）；默认路径仍是确定性哈希伪向量（256 维）",
+      "disposition" : "本卡开一条显式 opt-in 的真嵌入通道：计数 + 预算硬帽（¥5 封顶），只跑一次；结果与伪向量基线对照后入锚",
+      "aligned" : false,
+      "evidence" : "锚 budget 段给出调用数 × token 估算 × 单价来源；锚 binary 段登记是否执行、调用台账与伪/真指标对照"
+    },
+    {
+      "name" : "语料面",
+      "current" : "生产应接生产库真实文档语料；实测用的是 15 份固定 fixture（src/test/resources/rag-quality/fixtures/）",
+      "disposition" : "本卡明确不碰语料（D5）：只用同一批 fixture 做端口误差量化",
+      "aligned" : false,
+      "evidence" : "eval-port-route-v1 legs[语料面] classification=TEST-FIXTURE；本卡 residualDeviation 显式声明该腿仍 off-production"
+    },
+    {
+      "name" : "归一化面",
+      "current" : "生产 normalizeScores min-max（集合内归一，不是替身，是生产实现的语义属性）",
+      "disposition" : "本卡不改生产归一化：只把归一化前的 raw 一并留下，并在锚内标注归一化分是集合内相对量",
+      "aligned" : false,
+      "evidence" : "锚 metricTriplets 的 vecNorm 由 raw 与集合 min/max 反算，与生产归一化输出对齐到 ≤1e-12"
+    }
+  ],
+  "sparseDifferential" : {
+    "index" : "document_vector_chunk.ft_chunk_text WITH PARSER ngram（V22 真迁移）",
+    "engine" : "mysql:8.0.36（Testcontainers，与生产同版本）",
+    "productionSql" : "DocumentVectorChunkMapper#fulltextSearch（同授权 JOIN、同 is_deleted/chunk_role 过滤）",
+    "topK" : 5,
+    "queries" : 72,
+    "totalRealHits" : 341,
+    "totalBigramHits" : 331,
+    "totalOverlap" : 247,
+    "namespaceMapping" : "真库 chunkId(Long) → <document_id 去 benchdoc- 前缀>-<chunk_index>，与基准向量库 chunkId 同命名空间",
+    "scoreScale" : "两侧分数都是各自口径的原始分，仅作分布对照，未做任何重标定",
+    "rows" : [
+      {
+        "caseId" : "T-01",
+        "realTopK" : [
+          "sales-flow-0",
+          "payment-plan-1",
+          "codes-0",
+          "expense-1",
+          "sales-flow-3"
+        ],
+        "bigramTopK" : [
+          "sales-flow-0",
+          "payment-plan-1",
+          "sales-flow-1",
+          "customer-sop-4",
+          "regional-policy-2"
+        ],
+        "overlap" : 2,
+        "maxRankShift" : 0,
+        "realScore" : {
+          "min" : 2.2149,
+          "p50" : 2.3249,
+          "max" : 13.5472
+        },
+        "bigramScore" : {
+          "min" : 0.3636,
+          "p50" : 0.3636,
+          "max" : 0.6364
+        }
+      },
+      {
+        "caseId" : "T-02",
+        "realTopK" : [
+          "payment-plan-0",
+          "payment-plan-1",
+          "customer-sop-0",
+          "customer-sop-2",
+          "customer-sop-4"
+        ],
+        "bigramTopK" : [
+          "payment-plan-0",
+          "payment-plan-1",
+          "sales-flow-0",
+          "sales-flow-1",
+          "codes-0"
+        ],
+        "overlap" : 2,
+        "maxRankShift" : 0,
+        "realScore" : {
+          "min" : 1.4545,
+          "p50" : 1.4545,
+          "max" : 27.8899
+        },
+        "bigramScore" : {
+          "min" : 0.1429,
+          "p50" : 0.1429,
+          "max" : 0.5714
+        }
+      },
+      {
+        "caseId" : "T-03",
+        "realTopK" : [
+          "sales-flow-2",
+          "codes-0",
+          "sales-flow-1",
+          "sales-flow-0",
+          "payment-plan-0"
+        ],
+        "bigramTopK" : [
+          "sales-flow-2",
+          "sales-flow-0",
+          "sales-flow-1",
+          "payment-plan-0",
+          "payment-plan-1"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 2,
+        "realScore" : {
+          "min" : 1.4763,
+          "p50" : 1.8818,
+          "max" : 7.562
+        },
+        "bigramScore" : {
+          "min" : 0.25,
+          "p50" : 0.25,
+          "max" : 0.5
+        }
+      },
+      {
+        "caseId" : "T-04",
+        "realTopK" : [
+          "sales-flow-3",
+          "payment-plan-0",
+          "codes-0",
+          "sales-flow-1",
+          "sales-flow-0"
+        ],
+        "bigramTopK" : [
+          "sales-flow-3",
+          "payment-plan-0",
+          "sales-flow-0",
+          "sales-flow-1",
+          "codes-0"
+        ],
+        "overlap" : 5,
+        "maxRankShift" : 2,
+        "realScore" : {
+          "min" : 1.5503,
+          "p50" : 2.4609,
+          "max" : 8.1203
+        },
+        "bigramScore" : {
+          "min" : 0.1818,
+          "p50" : 0.1818,
+          "max" : 0.4545
+        }
+      },
+      {
+        "caseId" : "T-05",
+        "realTopK" : [
+          "payment-plan-1",
+          "payment-plan-0",
+          "pricing-2",
+          "expense-2",
+          "customer-sop-0"
+        ],
+        "bigramTopK" : [
+          "payment-plan-1",
+          "sales-flow-0",
+          "sales-flow-1",
+          "payment-plan-0",
+          "arch-0"
+        ],
+        "overlap" : 2,
+        "maxRankShift" : 2,
+        "realScore" : {
+          "min" : 1.4545,
+          "p50" : 1.6352,
+          "max" : 10.0885
+        },
+        "bigramScore" : {
+          "min" : 0.1111,
+          "p50" : 0.1111,
+          "max" : 0.3333
+        }
+      },
+      {
+        "caseId" : "T-06",
+        "realTopK" : [
+          "sales-flow-0",
+          "customer-sop-0",
+          "sales-flow-3",
+          "sales-flow-1",
+          "codes-0"
+        ],
+        "bigramTopK" : [
+          "sales-flow-0",
+          "sales-flow-3",
+          "customer-sop-4",
+          "sales-flow-1",
+          "codes-2"
+        ],
+        "overlap" : 3,
+        "maxRankShift" : 1,
+        "realScore" : {
+          "min" : 2.0488,
+          "p50" : 2.5979,
+          "max" : 13.5922
+        },
+        "bigramScore" : {
+          "min" : 0.2222,
+          "p50" : 0.3333,
+          "max" : 0.5556
+        }
+      },
+      {
+        "caseId" : "T-07",
+        "realTopK" : [
+          "sales-flow-3",
+          "payment-plan-0",
+          "codes-0",
+          "sales-flow-1",
+          "sales-flow-0"
+        ],
+        "bigramTopK" : [
+          "sales-flow-3",
+          "payment-plan-0",
+          "sales-flow-0",
+          "sales-flow-1",
+          "codes-0"
+        ],
+        "overlap" : 5,
+        "maxRankShift" : 2,
+        "realScore" : {
+          "min" : 1.5503,
+          "p50" : 2.4609,
+          "max" : 8.1203
+        },
+        "bigramScore" : {
+          "min" : 0.1667,
+          "p50" : 0.1667,
+          "max" : 0.4167
+        }
+      },
+      {
+        "caseId" : "T-08",
+        "realTopK" : [
+          "payment-plan-0",
+          "payment-plan-1",
+          "customer-sop-0",
+          "customer-sop-2",
+          "customer-sop-4"
+        ],
+        "bigramTopK" : [
+          "payment-plan-0",
+          "payment-plan-1",
+          "sales-flow-0",
+          "sales-flow-1",
+          "codes-0"
+        ],
+        "overlap" : 2,
+        "maxRankShift" : 0,
+        "realScore" : {
+          "min" : 1.4545,
+          "p50" : 1.4545,
+          "max" : 30.973
+        },
+        "bigramScore" : {
+          "min" : 0.0833,
+          "p50" : 0.0833,
+          "max" : 0.4167
+        }
+      },
+      {
+        "caseId" : "T-09",
+        "realTopK" : [
+          "sales-flow-0",
+          "codes-1",
+          "customer-sop-3",
+          "codes-0",
+          "sla-arch-0"
+        ],
+        "bigramTopK" : [
+          "sales-flow-0",
+          "codes-0",
+          "customer-sop-3",
+          "sales-flow-1",
+          "sales-flow-2"
+        ],
+        "overlap" : 3,
+        "maxRankShift" : 2,
+        "realScore" : {
+          "min" : 1.3313,
+          "p50" : 2.3797,
+          "max" : 3.2737
+        },
+        "bigramScore" : {
+          "min" : 0.0909,
+          "p50" : 0.1818,
+          "max" : 0.1818
+        }
+      },
+      {
+        "caseId" : "T-10",
+        "realTopK" : [
+          "sales-flow-3",
+          "sales-flow-2",
+          "expense-1",
+          "codes-0",
+          "sales-flow-1"
+        ],
+        "bigramTopK" : [
+          "sales-flow-3",
+          "expense-1",
+          "sales-flow-1",
+          "sales-flow-2",
+          "customer-sop-4"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 2,
+        "realScore" : {
+          "min" : 2.3479,
+          "p50" : 4.8826,
+          "max" : 6.1874
+        },
+        "bigramScore" : {
+          "min" : 0.2,
+          "p50" : 0.2,
+          "max" : 0.2667
+        }
+      },
+      {
+        "caseId" : "T-11",
+        "realTopK" : [
+          "customer-sop-0",
+          "customer-sop-4",
+          "customer-sop-1",
+          "payment-plan-0",
+          "payment-plan-1"
+        ],
+        "bigramTopK" : [
+          "customer-sop-0",
+          "customer-sop-4",
+          "customer-sop-1",
+          "sales-flow-0",
+          "sales-flow-1"
+        ],
+        "overlap" : 3,
+        "maxRankShift" : 0,
+        "realScore" : {
+          "min" : 5.3756,
+          "p50" : 7.0093,
+          "max" : 17.0533
+        },
+        "bigramScore" : {
+          "min" : 0.2105,
+          "p50" : 0.3158,
+          "max" : 0.3684
+        }
+      },
+      {
+        "caseId" : "T-12",
+        "realTopK" : [
+          "sla-1",
+          "sla-2",
+          "sla-0",
+          "sla-arch-0",
+          "models-2"
+        ],
+        "bigramTopK" : [
+          "sla-1",
+          "sla-2",
+          "sla-arch-0",
+          "sla-0",
+          "models-1"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 1,
+        "realScore" : {
+          "min" : 3.9854,
+          "p50" : 12.3831,
+          "max" : 19.1211
+        },
+        "bigramScore" : {
+          "min" : 0.1818,
+          "p50" : 0.2727,
+          "max" : 0.2727
+        }
+      },
+      {
+        "caseId" : "T-13",
+        "realTopK" : [
+          "pricing-0",
+          "pricing-1",
+          "pricing-3",
+          "pricing-2",
+          "customer-sop-1"
+        ],
+        "bigramTopK" : [
+          "pricing-0",
+          "pricing-1",
+          "pricing-3",
+          "sales-flow-0",
+          "pricing-2"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 1,
+        "realScore" : {
+          "min" : 1.909,
+          "p50" : 11.7733,
+          "max" : 32.7363
+        },
+        "bigramScore" : {
+          "min" : 0.1765,
+          "p50" : 0.4706,
+          "max" : 0.6471
+        }
+      },
+      {
+        "caseId" : "T-14",
+        "realTopK" : [
+          "customer-sop-4",
+          "sales-flow-3",
+          "customer-sop-0",
+          "customer-sop-3",
+          "codes-0"
+        ],
+        "bigramTopK" : [
+          "customer-sop-4",
+          "sales-flow-0",
+          "customer-sop-1",
+          "pricing-2",
+          "sales-flow-3"
+        ],
+        "overlap" : 2,
+        "maxRankShift" : 3,
+        "realScore" : {
+          "min" : 3.7793,
+          "p50" : 3.9376,
+          "max" : 24.3602
+        },
+        "bigramScore" : {
+          "min" : 0.1667,
+          "p50" : 0.2222,
+          "max" : 0.5
+        }
+      },
+      {
+        "caseId" : "T-15",
+        "realTopK" : [
+          "sales-flow-1",
+          "customer-sop-3",
+          "regional-policy-1",
+          "pricing-1",
+          "sales-flow-2"
+        ],
+        "bigramTopK" : [
+          "customer-sop-3",
+          "sales-flow-1",
+          "pricing-1",
+          "sales-flow-0",
+          "sales-flow-2"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 1,
+        "realScore" : {
+          "min" : 4.9817,
+          "p50" : 6.2492,
+          "max" : 16.7581
+        },
+        "bigramScore" : {
+          "min" : 0.3333,
+          "p50" : 0.3889,
+          "max" : 0.5556
+        }
+      },
+      {
+        "caseId" : "T-16",
+        "realTopK" : [
+          "payment-plan-1",
+          "payment-plan-0",
+          "customer-sop-0",
+          "customer-sop-2",
+          "customer-sop-3"
+        ],
+        "bigramTopK" : [
+          "payment-plan-1",
+          "customer-sop-1",
+          "customer-sop-0",
+          "pricing-2",
+          "regional-policy-2"
+        ],
+        "overlap" : 2,
+        "maxRankShift" : 0,
+        "realScore" : {
+          "min" : 2.9603,
+          "p50" : 4.57,
+          "max" : 19.9448
+        },
+        "bigramScore" : {
+          "min" : 0.2222,
+          "p50" : 0.2222,
+          "max" : 0.6111
+        }
+      },
+      {
+        "caseId" : "T-17",
+        "realTopK" : [
+          "regional-policy-2",
+          "regional-policy-1",
+          "regional-policy-0",
+          "pricing-2",
+          "codes-1"
+        ],
+        "bigramTopK" : [
+          "regional-policy-1",
+          "regional-policy-2",
+          "regional-policy-0",
+          "sales-flow-3",
+          "sales-flow-2"
+        ],
+        "overlap" : 3,
+        "maxRankShift" : 1,
+        "realScore" : {
+          "min" : 3.6835,
+          "p50" : 14.2969,
+          "max" : 38.043
+        },
+        "bigramScore" : {
+          "min" : 0.1053,
+          "p50" : 0.2105,
+          "max" : 0.5263
+        }
+      },
+      {
+        "caseId" : "TB-01",
+        "realTopK" : [
+          "regional-policy-0",
+          "regional-policy-1",
+          "customer-sop-0",
+          "regional-policy-2",
+          "pricing-2"
+        ],
+        "bigramTopK" : [
+          "regional-q3-0",
+          "regional-q3-1",
+          "regional-q3-2",
+          "regional-q3-3",
+          "regional-policy-0"
+        ],
+        "overlap" : 1,
+        "maxRankShift" : 4,
+        "realScore" : {
+          "min" : 2.2441,
+          "p50" : 3.5384,
+          "max" : 6.2015
+        },
+        "bigramScore" : {
+          "min" : 0.4444,
+          "p50" : 0.4444,
+          "max" : 0.4444
+        }
+      },
+      {
+        "caseId" : "TB-02",
+        "realTopK" : [
+          "regional-policy-1",
+          "regional-policy-0",
+          "customer-sop-2",
+          "regional-q3-2",
+          "sla-arch-0"
+        ],
+        "bigramTopK" : [
+          "regional-q3-2",
+          "regional-policy-0",
+          "regional-policy-1",
+          "regional-q3-0",
+          "regional-q3-1"
+        ],
+        "overlap" : 3,
+        "maxRankShift" : 3,
+        "realScore" : {
+          "min" : 3.1135,
+          "p50" : 3.9964,
+          "max" : 8.9686
+        },
+        "bigramScore" : {
+          "min" : 0.3333,
+          "p50" : 0.4444,
+          "max" : 0.4444
+        }
+      },
+      {
+        "caseId" : "TB-03",
+        "realTopK" : [
+          "regional-policy-1",
+          "regional-policy-0",
+          "regional-q3-3",
+          "regional-q3-0",
+          "regional-q3-1"
+        ],
+        "bigramTopK" : [
+          "regional-q3-3",
+          "regional-q3-0",
+          "regional-q3-1",
+          "regional-q3-2",
+          "regional-policy-0"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 3,
+        "realScore" : {
+          "min" : 1.6357,
+          "p50" : 4.7188,
+          "max" : 8.7852
+        },
+        "bigramScore" : {
+          "min" : 0.2222,
+          "p50" : 0.2222,
+          "max" : 0.3333
+        }
+      },
+      {
+        "caseId" : "TB-04",
+        "realTopK" : [
+          "maint-0",
+          "maint-3",
+          "customer-sop-2",
+          "maint-2",
+          "pricing-0"
+        ],
+        "bigramTopK" : [
+          "maint-0",
+          "maint-3",
+          "models-0",
+          "maint-2",
+          "pricing-0"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 0,
+        "realScore" : {
+          "min" : 3.8993,
+          "p50" : 5.8797,
+          "max" : 6.7466
+        },
+        "bigramScore" : {
+          "min" : 0.2105,
+          "p50" : 0.2632,
+          "max" : 0.4211
+        }
+      },
+      {
+        "caseId" : "TB-05",
+        "realTopK" : [
+          "regional-policy-0",
+          "regional-policy-1",
+          "regional-q3-0",
+          "regional-q3-1",
+          "regional-q3-2"
+        ],
+        "bigramTopK" : [
+          "regional-q3-0",
+          "regional-q3-1",
+          "regional-q3-2",
+          "regional-q3-3",
+          "regional-policy-0"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 4,
+        "realScore" : {
+          "min" : 4.447,
+          "p50" : 5.564,
+          "max" : 17.5577
+        },
+        "bigramScore" : {
+          "min" : 0.2941,
+          "p50" : 0.2941,
+          "max" : 0.3529
+        }
+      },
+      {
+        "caseId" : "TB-06",
+        "realTopK" : [
+          "maint-2",
+          "maint-1",
+          "maint-0",
+          "maint-3",
+          "models-1"
+        ],
+        "bigramTopK" : [
+          "maint-2",
+          "maint-0",
+          "maint-1",
+          "maint-3",
+          "models-2"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 1,
+        "realScore" : {
+          "min" : 4.4144,
+          "p50" : 6.1299,
+          "max" : 10.8111
+        },
+        "bigramScore" : {
+          "min" : 0.25,
+          "p50" : 0.375,
+          "max" : 0.625
+        }
+      },
+      {
+        "caseId" : "TB-07",
+        "realTopK" : [
+          "sla-0",
+          "sla-1",
+          "sla-2",
+          "sla-arch-0",
+          "models-0"
+        ],
+        "bigramTopK" : [
+          "sla-0",
+          "sla-1",
+          "sla-2",
+          "models-0",
+          "models-1"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 1,
+        "realScore" : {
+          "min" : 1.4139,
+          "p50" : 8.9888,
+          "max" : 69.9139
+        },
+        "bigramScore" : {
+          "min" : 0.125,
+          "p50" : 0.3125,
+          "max" : 0.5625
+        }
+      },
+      {
+        "caseId" : "TB-08",
+        "realTopK" : [
+          "regional-policy-1",
+          "regional-q3-0",
+          "regional-policy-0",
+          "regional-q3-1",
+          "regional-q3-2"
+        ],
+        "bigramTopK" : [
+          "regional-q3-0",
+          "regional-q3-1",
+          "regional-q3-2",
+          "regional-q3-3",
+          "regional-policy-0"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 2,
+        "realScore" : {
+          "min" : 3.1947,
+          "p50" : 4.3488,
+          "max" : 6.7478
+        },
+        "bigramScore" : {
+          "min" : 0.25,
+          "p50" : 0.25,
+          "max" : 0.3
+        }
+      },
+      {
+        "caseId" : "TB-09",
+        "realTopK" : [
+          "pricing-1",
+          "pricing-0",
+          "pricing-2",
+          "pricing-3",
+          "arch-2"
+        ],
+        "bigramTopK" : [
+          "pricing-1",
+          "pricing-0",
+          "pricing-2",
+          "regional-policy-1",
+          "payment-plan-1"
+        ],
+        "overlap" : 3,
+        "maxRankShift" : 0,
+        "realScore" : {
+          "min" : 2.301,
+          "p50" : 6.56,
+          "max" : 21.0194
+        },
+        "bigramScore" : {
+          "min" : 0.1875,
+          "p50" : 0.3125,
+          "max" : 0.5625
+        }
+      },
+      {
+        "caseId" : "TB-10",
+        "realTopK" : [
+          "maint-0",
+          "maint-1",
+          "maint-2",
+          "maint-3",
+          "payment-plan-0"
+        ],
+        "bigramTopK" : [
+          "maint-0",
+          "maint-1",
+          "maint-2",
+          "maint-3",
+          "codes-1"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 0,
+        "realScore" : {
+          "min" : 3.5734,
+          "p50" : 4.0759,
+          "max" : 4.0759
+        },
+        "bigramScore" : {
+          "min" : 0.1333,
+          "p50" : 0.3333,
+          "max" : 0.3333
+        }
+      },
+      {
+        "caseId" : "TB-11",
+        "realTopK" : [
+          "regional-policy-0",
+          "regional-policy-1",
+          "regional-q3-0",
+          "regional-q3-1",
+          "regional-q3-2"
+        ],
+        "bigramTopK" : [
+          "regional-q3-0",
+          "regional-q3-1",
+          "regional-q3-2",
+          "regional-q3-3",
+          "regional-policy-0"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 4,
+        "realScore" : {
+          "min" : 3.1947,
+          "p50" : 3.1947,
+          "max" : 5.2882
+        },
+        "bigramScore" : {
+          "min" : 0.3,
+          "p50" : 0.4,
+          "max" : 0.4
+        }
+      },
+      {
+        "caseId" : "TB-12",
+        "realTopK" : [
+          "regional-policy-1",
+          "regional-policy-0",
+          "regional-q3-3",
+          "regional-q3-2",
+          "sla-arch-0"
+        ],
+        "bigramTopK" : [
+          "regional-q3-2",
+          "regional-q3-3",
+          "regional-policy-0",
+          "regional-policy-1",
+          "regional-q3-0"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 3,
+        "realScore" : {
+          "min" : 3.1135,
+          "p50" : 4.9443,
+          "max" : 11.0996
+        },
+        "bigramScore" : {
+          "min" : 0.2308,
+          "p50" : 0.3077,
+          "max" : 0.3077
+        }
+      },
+      {
+        "caseId" : "TB-13",
+        "realTopK" : [
+          "maint-3",
+          "customer-sop-2",
+          "maint-0",
+          "maint-2",
+          "models-0"
+        ],
+        "bigramTopK" : [
+          "maint-0",
+          "maint-3",
+          "models-0",
+          "maint-2",
+          "customer-sop-2"
+        ],
+        "overlap" : 5,
+        "maxRankShift" : 3,
+        "realScore" : {
+          "min" : 3.1812,
+          "p50" : 5.0839,
+          "max" : 7.0135
+        },
+        "bigramScore" : {
+          "min" : 0.1875,
+          "p50" : 0.3125,
+          "max" : 0.4375
+        }
+      },
+      {
+        "caseId" : "I-01",
+        "realTopK" : [
+          "arch-0",
+          "sla-arch-0",
+          "sales-flow-0",
+          "codes-1",
+          "codes-2"
+        ],
+        "bigramTopK" : [
+          "arch-0",
+          "sla-arch-0",
+          "codes-1",
+          "codes-2",
+          "sales-flow-0"
+        ],
+        "overlap" : 5,
+        "maxRankShift" : 2,
+        "realScore" : {
+          "min" : 2.0931,
+          "p50" : 3.0831,
+          "max" : 17.4814
+        },
+        "bigramScore" : {
+          "min" : 0.0909,
+          "p50" : 0.1818,
+          "max" : 0.5455
+        }
+      },
+      {
+        "caseId" : "I-02",
+        "realTopK" : [
+          "arch-1",
+          "arch-0",
+          "sla-arch-0",
+          "regional-policy-1",
+          "codes-2"
+        ],
+        "bigramTopK" : [
+          "arch-1",
+          "arch-0",
+          "sla-arch-0",
+          "codes-2",
+          "codes-3"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 1,
+        "realScore" : {
+          "min" : 1.6352,
+          "p50" : 4.2331,
+          "max" : 11.0718
+        },
+        "bigramScore" : {
+          "min" : 0.0909,
+          "p50" : 0.1818,
+          "max" : 0.2727
+        }
+      },
+      {
+        "caseId" : "I-03",
+        "realTopK" : [
+          "customer-sop-4",
+          "customer-sop-0",
+          "models-0",
+          "arch-0",
+          "sales-flow-1"
+        ],
+        "bigramTopK" : [
+          "customer-sop-4",
+          "customer-sop-0",
+          "sales-flow-1",
+          "arch-0",
+          "trade-jargon-2"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 2,
+        "realScore" : {
+          "min" : 3.8425,
+          "p50" : 4.136,
+          "max" : 21.8473
+        },
+        "bigramScore" : {
+          "min" : 0.1905,
+          "p50" : 0.2857,
+          "max" : 0.619
+        }
+      },
+      {
+        "caseId" : "I-04",
+        "realTopK" : [
+          "pricing-3",
+          "pricing-1",
+          "pricing-0",
+          "pricing-2",
+          "customer-sop-4"
+        ],
+        "bigramTopK" : [
+          "pricing-3",
+          "pricing-1",
+          "pricing-2",
+          "sales-flow-0",
+          "customer-sop-4"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 1,
+        "realScore" : {
+          "min" : 4.0458,
+          "p50" : 10.524,
+          "max" : 29.1496
+        },
+        "bigramScore" : {
+          "min" : 0.1333,
+          "p50" : 0.2,
+          "max" : 0.6667
+        }
+      },
+      {
+        "caseId" : "I-05",
+        "realTopK" : [
+          "sla-arch-0",
+          "sla-2",
+          "arch-0",
+          "arch-1",
+          "equipment-3"
+        ],
+        "bigramTopK" : [
+          "sla-arch-0",
+          "arch-0",
+          "sla-2",
+          "arch-1",
+          "customer-sop-1"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 1,
+        "realScore" : {
+          "min" : 3.541,
+          "p50" : 6.1049,
+          "max" : 19.4908
+        },
+        "bigramScore" : {
+          "min" : 0.125,
+          "p50" : 0.1875,
+          "max" : 0.5
+        }
+      },
+      {
+        "caseId" : "I-06",
+        "realTopK" : [
+          "maint-4",
+          "maint-3",
+          "customer-sop-4",
+          "pricing-3",
+          "maint-0"
+        ],
+        "bigramTopK" : [
+          "maint-4",
+          "maint-3",
+          "customer-sop-4",
+          "maint-0",
+          "codes-0"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 1,
+        "realScore" : {
+          "min" : 2.3774,
+          "p50" : 4.3045,
+          "max" : 12.0863
+        },
+        "bigramScore" : {
+          "min" : 0.1176,
+          "p50" : 0.1765,
+          "max" : 0.4706
+        }
+      },
+      {
+        "caseId" : "L-01",
+        "realTopK" : [
+          "models-0",
+          "models-1",
+          "models-2",
+          "customer-sop-2",
+          "maint-0"
+        ],
+        "bigramTopK" : [
+          "models-0",
+          "models-2",
+          "models-1",
+          "maint-0",
+          "maint-3"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 1,
+        "realScore" : {
+          "min" : 3.3347,
+          "p50" : 9.3595,
+          "max" : 18.2007
+        },
+        "bigramScore" : {
+          "min" : 0.3571,
+          "p50" : 0.3571,
+          "max" : 0.6429
+        }
+      },
+      {
+        "caseId" : "L-02",
+        "realTopK" : [
+          "models-1",
+          "models-2",
+          "models-0",
+          "maint-1",
+          "models-3"
+        ],
+        "bigramTopK" : [
+          "models-1",
+          "maint-1",
+          "models-0",
+          "models-2",
+          "models-3"
+        ],
+        "overlap" : 5,
+        "maxRankShift" : 2,
+        "realScore" : {
+          "min" : 3.8198,
+          "p50" : 6.7324,
+          "max" : 11.7951
+        },
+        "bigramScore" : {
+          "min" : 0.1538,
+          "p50" : 0.2308,
+          "max" : 0.4615
+        }
+      },
+      {
+        "caseId" : "L-03",
+        "realTopK" : [
+          "codes-0",
+          "codes-2",
+          "codes-1",
+          "customer-sop-1",
+          "regional-policy-0"
+        ],
+        "bigramTopK" : [
+          "codes-0",
+          "codes-1",
+          "customer-sop-1",
+          "regional-policy-1",
+          "regional-policy-2"
+        ],
+        "overlap" : 3,
+        "maxRankShift" : 1,
+        "realScore" : {
+          "min" : 5.0245,
+          "p50" : 7.2748,
+          "max" : 20.6461
+        },
+        "bigramScore" : {
+          "min" : 0.3,
+          "p50" : 0.3,
+          "max" : 0.7
+        }
+      },
+      {
+        "caseId" : "L-04",
+        "realTopK" : [
+          "codes-1",
+          "codes-2",
+          "payment-plan-0",
+          "codes-3",
+          "sales-flow-1"
+        ],
+        "bigramTopK" : [
+          "codes-2",
+          "codes-1",
+          "codes-3",
+          "payment-plan-0",
+          "sales-flow-1"
+        ],
+        "overlap" : 5,
+        "maxRankShift" : 1,
+        "realScore" : {
+          "min" : 1.117,
+          "p50" : 6.6565,
+          "max" : 19.1881
+        },
+        "bigramScore" : {
+          "min" : 0.0909,
+          "p50" : 0.2727,
+          "max" : 0.6364
+        }
+      },
+      {
+        "caseId" : "L-05",
+        "realTopK" : [
+          "models-2",
+          "models-3",
+          "maint-2",
+          "customer-sop-5",
+          "sla-1"
+        ],
+        "bigramTopK" : [
+          "models-2",
+          "maint-2",
+          "models-1",
+          "models-3",
+          "pricing-2"
+        ],
+        "overlap" : 3,
+        "maxRankShift" : 2,
+        "realScore" : {
+          "min" : 3.6362,
+          "p50" : 4.1933,
+          "max" : 10.2102
+        },
+        "bigramScore" : {
+          "min" : 0.1875,
+          "p50" : 0.25,
+          "max" : 0.5
+        }
+      },
+      {
+        "caseId" : "L-06",
+        "realTopK" : [
+          "codes-1",
+          "codes-0",
+          "codes-2",
+          "regional-policy-0",
+          "regional-policy-1"
+        ],
+        "bigramTopK" : [
+          "codes-1",
+          "codes-0",
+          "codes-2",
+          "regional-policy-2",
+          "models-0"
+        ],
+        "overlap" : 3,
+        "maxRankShift" : 0,
+        "realScore" : {
+          "min" : 2.9641,
+          "p50" : 8.9593,
+          "max" : 20.6027
+        },
+        "bigramScore" : {
+          "min" : 0.2,
+          "p50" : 0.2667,
+          "max" : 0.6667
+        }
+      },
+      {
+        "caseId" : "L-07",
+        "realTopK" : [
+          "regional-policy-0",
+          "regional-policy-2",
+          "regional-policy-1",
+          "codes-0",
+          "codes-1"
+        ],
+        "bigramTopK" : [
+          "regional-policy-2",
+          "regional-policy-1",
+          "regional-policy-0",
+          "codes-0",
+          "codes-1"
+        ],
+        "overlap" : 5,
+        "maxRankShift" : 2,
+        "realScore" : {
+          "min" : 3.1301,
+          "p50" : 7.8331,
+          "max" : 17.9163
+        },
+        "bigramScore" : {
+          "min" : 0.2222,
+          "p50" : 0.4444,
+          "max" : 0.5556
+        }
+      },
+      {
+        "caseId" : "L-08",
+        "realTopK" : [
+          "customer-sop-1",
+          "codes-0",
+          "customer-sop-0",
+          "regional-policy-0",
+          "models-0"
+        ],
+        "bigramTopK" : [
+          "customer-sop-1",
+          "codes-0",
+          "models-0",
+          "regional-policy-0",
+          "models-2"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 2,
+        "realScore" : {
+          "min" : 4.2519,
+          "p50" : 5.1916,
+          "max" : 23.6942
+        },
+        "bigramScore" : {
+          "min" : 0.3,
+          "p50" : 0.35,
+          "max" : 0.85
+        }
+      },
+      {
+        "caseId" : "L-09",
+        "realTopK" : [
+          "maint-0",
+          "models-0",
+          "maint-2",
+          "maint-1",
+          "models-1"
+        ],
+        "bigramTopK" : [
+          "maint-0",
+          "maint-2",
+          "maint-1",
+          "models-0",
+          "models-1"
+        ],
+        "overlap" : 5,
+        "maxRankShift" : 2,
+        "realScore" : {
+          "min" : 3.914,
+          "p50" : 6.0833,
+          "max" : 11.9134
+        },
+        "bigramScore" : {
+          "min" : 0.3,
+          "p50" : 0.45,
+          "max" : 0.6
+        }
+      },
+      {
+        "caseId" : "L-10",
+        "realTopK" : [
+          "pricing-2",
+          "regional-policy-2",
+          "pricing-3",
+          "regional-policy-0",
+          "sla-arch-0"
+        ],
+        "bigramTopK" : [
+          "pricing-2",
+          "pricing-3",
+          "codes-1",
+          "customer-sop-4",
+          "customer-sop-5"
+        ],
+        "overlap" : 2,
+        "maxRankShift" : 1,
+        "realScore" : {
+          "min" : 2.909,
+          "p50" : 5.3116,
+          "max" : 11.1603
+        },
+        "bigramScore" : {
+          "min" : 0.2222,
+          "p50" : 0.2222,
+          "max" : 0.5556
+        }
+      },
+      {
+        "caseId" : "L-11",
+        "realTopK" : [
+          "sla-2",
+          "sla-arch-0",
+          "sla-1",
+          "payment-plan-0",
+          "maint-3"
+        ],
+        "bigramTopK" : [
+          "sla-2",
+          "sla-1",
+          "sla-arch-0",
+          "sla-0",
+          "maint-3"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 1,
+        "realScore" : {
+          "min" : 1.3699,
+          "p50" : 5.1659,
+          "max" : 11.1613
+        },
+        "bigramScore" : {
+          "min" : 0.2222,
+          "p50" : 0.6667,
+          "max" : 0.7778
+        }
+      },
+      {
+        "caseId" : "L-12",
+        "realTopK" : [
+          "regional-policy-0",
+          "regional-policy-1",
+          "customer-sop-1",
+          "models-0",
+          "regional-policy-2"
+        ],
+        "bigramTopK" : [
+          "regional-policy-0",
+          "customer-sop-1",
+          "regional-policy-1",
+          "models-0",
+          "customer-sop-4"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 1,
+        "realScore" : {
+          "min" : 2.8852,
+          "p50" : 4.0017,
+          "max" : 22.4023
+        },
+        "bigramScore" : {
+          "min" : 0.3333,
+          "p50" : 0.4444,
+          "max" : 0.6667
+        }
+      },
+      {
+        "caseId" : "L-13",
+        "realTopK" : [
+          "customer-sop-5",
+          "customer-sop-0",
+          "pricing-2",
+          "trade-jargon-1",
+          "customer-sop-3"
+        ],
+        "bigramTopK" : [
+          "customer-sop-5",
+          "customer-sop-0",
+          "pricing-2",
+          "trade-jargon-1",
+          "models-0"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 0,
+        "realScore" : {
+          "min" : 1.6197,
+          "p50" : 4.1112,
+          "max" : 22.8478
+        },
+        "bigramScore" : {
+          "min" : 0.1538,
+          "p50" : 0.2308,
+          "max" : 0.6923
+        }
+      },
+      {
+        "caseId" : "L-14",
+        "realTopK" : [
+          "pricing-2",
+          "customer-sop-5",
+          "regional-policy-2",
+          "pricing-3",
+          "regional-policy-0"
+        ],
+        "bigramTopK" : [
+          "pricing-2",
+          "sales-flow-3",
+          "pricing-3",
+          "codes-1",
+          "customer-sop-5"
+        ],
+        "overlap" : 3,
+        "maxRankShift" : 3,
+        "realScore" : {
+          "min" : 5.1409,
+          "p50" : 6.9006,
+          "max" : 13.9303
+        },
+        "bigramScore" : {
+          "min" : 0.2,
+          "p50" : 0.3,
+          "max" : 0.5
+        }
+      },
+      {
+        "caseId" : "M-01",
+        "realTopK" : [
+          "trade-jargon-0",
+          "trade-jargon-1",
+          "trade-jargon-3",
+          "expense-1",
+          "expense-2"
+        ],
+        "bigramTopK" : [
+          "trade-jargon-0"
+        ],
+        "overlap" : 1,
+        "maxRankShift" : 0,
+        "realScore" : {
+          "min" : 1.3313,
+          "p50" : 1.3313,
+          "max" : 3.0831
+        },
+        "bigramScore" : {
+          "min" : 0.0357,
+          "p50" : 0.0357,
+          "max" : 0.0357
+        }
+      },
+      {
+        "caseId" : "M-02",
+        "realTopK" : [
+          "trade-jargon-2",
+          "trade-jargon-1",
+          "sales-flow-0",
+          "payment-plan-1",
+          "trade-jargon-0"
+        ],
+        "bigramTopK" : [
+          "sales-flow-0",
+          "payment-plan-1",
+          "payment-plan-2",
+          "trade-jargon-1",
+          "trade-jargon-2"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 4,
+        "realScore" : {
+          "min" : 2.1166,
+          "p50" : 2.1166,
+          "max" : 3.0831
+        },
+        "bigramScore" : {
+          "min" : 0.0455,
+          "p50" : 0.0455,
+          "max" : 0.0455
+        }
+      },
+      {
+        "caseId" : "M-03",
+        "realTopK" : [
+          "trade-jargon-2",
+          "trade-jargon-3",
+          "trade-jargon-0",
+          "payment-plan-0",
+          "expense-0"
+        ],
+        "bigramTopK" : [
+          "trade-jargon-2",
+          "trade-jargon-0",
+          "trade-jargon-3",
+          "payment-plan-0",
+          "payment-plan-1"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 1,
+        "realScore" : {
+          "min" : 1.9119,
+          "p50" : 4.6017,
+          "max" : 8.1488
+        },
+        "bigramScore" : {
+          "min" : 0.0455,
+          "p50" : 0.0909,
+          "max" : 0.1364
+        }
+      },
+      {
+        "caseId" : "M-04",
+        "realTopK" : [
+          "equipment-0",
+          "equipment-2",
+          "maint-3",
+          "expense-2",
+          "equipment-3"
+        ],
+        "bigramTopK" : [
+          "equipment-0",
+          "equipment-2",
+          "equipment-3",
+          "maint-3",
+          "maint-4"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 2,
+        "realScore" : {
+          "min" : 2.9665,
+          "p50" : 3.2704,
+          "max" : 16.3263
+        },
+        "bigramScore" : {
+          "min" : 0.0385,
+          "p50" : 0.0769,
+          "max" : 0.1154
+        }
+      },
+      {
+        "caseId" : "M-05",
+        "realTopK" : [
+          "equipment-1"
+        ],
+        "bigramTopK" : [ ],
+        "overlap" : 0,
+        "maxRankShift" : 0,
+        "realScore" : {
+          "min" : 3.0831,
+          "p50" : 3.0831,
+          "max" : 3.0831
+        },
+        "bigramScore" : {
+          "min" : 0.0,
+          "p50" : 0.0,
+          "max" : 0.0
+        }
+      },
+      {
+        "caseId" : "M-06",
+        "realTopK" : [
+          "sla-1",
+          "models-2",
+          "models-0",
+          "expense-2",
+          "pricing-1"
+        ],
+        "bigramTopK" : [
+          "arch-0",
+          "models-0",
+          "models-1",
+          "sla-1",
+          "equipment-1"
+        ],
+        "overlap" : 2,
+        "maxRankShift" : 3,
+        "realScore" : {
+          "min" : 2.2447,
+          "p50" : 2.4177,
+          "max" : 2.9558
+        },
+        "bigramScore" : {
+          "min" : 0.1111,
+          "p50" : 0.1111,
+          "max" : 0.1111
+        }
+      },
+      {
+        "caseId" : "M-07",
+        "realTopK" : [
+          "expense-1",
+          "expense-0",
+          "expense-2",
+          "expense-3",
+          "sales-flow-2"
+        ],
+        "bigramTopK" : [
+          "expense-2",
+          "expense-0",
+          "expense-1",
+          "expense-3",
+          "sales-flow-2"
+        ],
+        "overlap" : 5,
+        "maxRankShift" : 2,
+        "realScore" : {
+          "min" : 1.117,
+          "p50" : 13.7065,
+          "max" : 16.4677
+        },
+        "bigramScore" : {
+          "min" : 0.05,
+          "p50" : 0.1,
+          "max" : 0.15
+        }
+      },
+      {
+        "caseId" : "M-08",
+        "realTopK" : [
+          "models-3",
+          "customer-sop-0",
+          "customer-sop-1",
+          "customer-sop-3"
+        ],
+        "bigramTopK" : [ ],
+        "overlap" : 0,
+        "maxRankShift" : 0,
+        "realScore" : {
+          "min" : 1.3313,
+          "p50" : 1.3313,
+          "max" : 1.3313
+        },
+        "bigramScore" : {
+          "min" : 0.0,
+          "p50" : 0.0,
+          "max" : 0.0
+        }
+      },
+      {
+        "caseId" : "M-09",
+        "realTopK" : [
+          "expense-2",
+          "expense-1",
+          "expense-0",
+          "sales-flow-4",
+          "sales-flow-2"
+        ],
+        "bigramTopK" : [
+          "expense-0",
+          "expense-1",
+          "expense-2",
+          "sales-flow-2",
+          "sales-flow-4"
+        ],
+        "overlap" : 5,
+        "maxRankShift" : 2,
+        "realScore" : {
+          "min" : 3.0831,
+          "p50" : 6.9604,
+          "max" : 13.419
+        },
+        "bigramScore" : {
+          "min" : 0.05,
+          "p50" : 0.1,
+          "max" : 0.1
+        }
+      },
+      {
+        "caseId" : "MT-01",
+        "realTopK" : [
+          "sales-flow-0",
+          "payment-plan-1",
+          "expense-1",
+          "pricing-1",
+          "sales-flow-1"
+        ],
+        "bigramTopK" : [
+          "sales-flow-0",
+          "payment-plan-1",
+          "expense-1",
+          "sales-flow-1",
+          "customer-sop-2"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 1,
+        "realScore" : {
+          "min" : 0.7421,
+          "p50" : 2.222,
+          "max" : 2.5327
+        },
+        "bigramScore" : {
+          "min" : 0.1818,
+          "p50" : 0.2727,
+          "max" : 0.2727
+        }
+      },
+      {
+        "caseId" : "MT-02",
+        "realTopK" : [
+          "customer-sop-0",
+          "sales-flow-3",
+          "arch-1",
+          "sla-1",
+          "expense-1"
+        ],
+        "bigramTopK" : [
+          "sales-flow-3",
+          "arch-1",
+          "customer-sop-0",
+          "sla-1",
+          "expense-1"
+        ],
+        "overlap" : 5,
+        "maxRankShift" : 2,
+        "realScore" : {
+          "min" : 1.117,
+          "p50" : 1.117,
+          "max" : 3.0831
+        },
+        "bigramScore" : {
+          "min" : 0.1,
+          "p50" : 0.1,
+          "max" : 0.1
+        }
+      },
+      {
+        "caseId" : "MT-03",
+        "realTopK" : [
+          "models-2",
+          "models-1",
+          "models-0",
+          "models-3",
+          "equipment-1"
+        ],
+        "bigramTopK" : [
+          "models-0",
+          "models-1",
+          "models-2",
+          "models-3",
+          "maint-4"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 2,
+        "realScore" : {
+          "min" : 2.4885,
+          "p50" : 5.9806,
+          "max" : 7.3119
+        },
+        "bigramScore" : {
+          "min" : 0.1,
+          "p50" : 0.2,
+          "max" : 0.2
+        }
+      },
+      {
+        "caseId" : "MT-04",
+        "realTopK" : [
+          "sales-flow-2",
+          "payment-plan-0",
+          "expense-1",
+          "sales-flow-1",
+          "codes-1"
+        ],
+        "bigramTopK" : [
+          "sales-flow-2",
+          "expense-1",
+          "sales-flow-0",
+          "sales-flow-1",
+          "payment-plan-0"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 3,
+        "realScore" : {
+          "min" : 0.7436,
+          "p50" : 0.8823,
+          "max" : 3.113
+        },
+        "bigramScore" : {
+          "min" : 0.125,
+          "p50" : 0.125,
+          "max" : 0.25
+        }
+      },
+      {
+        "caseId" : "MT-05",
+        "realTopK" : [
+          "customer-sop-0",
+          "customer-sop-1",
+          "customer-sop-4",
+          "expense-0"
+        ],
+        "bigramTopK" : [
+          "customer-sop-0",
+          "customer-sop-1",
+          "customer-sop-4",
+          "expense-0"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 0,
+        "realScore" : {
+          "min" : 1.3313,
+          "p50" : 1.3313,
+          "max" : 8.8288
+        },
+        "bigramScore" : {
+          "min" : 0.125,
+          "p50" : 0.125,
+          "max" : 0.375
+        }
+      },
+      {
+        "caseId" : "TP-01",
+        "realTopK" : [
+          "pricing-0",
+          "pricing-1",
+          "pricing-2",
+          "regional-policy-2",
+          "pricing-3"
+        ],
+        "bigramTopK" : [
+          "pricing-2",
+          "pricing-0",
+          "pricing-1",
+          "regional-policy-2",
+          "customer-sop-2"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 2,
+        "realScore" : {
+          "min" : 7.6082,
+          "p50" : 21.1769,
+          "max" : 32.2581
+        },
+        "bigramScore" : {
+          "min" : 0.1538,
+          "p50" : 0.2308,
+          "max" : 0.4231
+        }
+      },
+      {
+        "caseId" : "TP-02",
+        "realTopK" : [
+          "regional-policy-0",
+          "regional-policy-1",
+          "models-0",
+          "customer-sop-1",
+          "regional-q3-0"
+        ],
+        "bigramTopK" : [
+          "regional-policy-0",
+          "regional-policy-1",
+          "models-0",
+          "regional-q3-0",
+          "customer-sop-1"
+        ],
+        "overlap" : 5,
+        "maxRankShift" : 1,
+        "realScore" : {
+          "min" : 1.4215,
+          "p50" : 3.0567,
+          "max" : 25.2575
+        },
+        "bigramScore" : {
+          "min" : 0.1333,
+          "p50" : 0.2,
+          "max" : 0.4
+        }
+      },
+      {
+        "caseId" : "TP-03",
+        "realTopK" : [
+          "sla-1",
+          "sla-0",
+          "sla-2",
+          "codes-1",
+          "sla-arch-0"
+        ],
+        "bigramTopK" : [
+          "sla-1",
+          "sla-0",
+          "sla-2",
+          "models-1",
+          "codes-0"
+        ],
+        "overlap" : 3,
+        "maxRankShift" : 0,
+        "realScore" : {
+          "min" : 2.6626,
+          "p50" : 8.2406,
+          "max" : 26.2587
+        },
+        "bigramScore" : {
+          "min" : 0.1,
+          "p50" : 0.2,
+          "max" : 0.4
+        }
+      },
+      {
+        "caseId" : "TP-04",
+        "realTopK" : [
+          "customer-sop-2",
+          "customer-sop-5",
+          "customer-sop-1",
+          "expense-3",
+          "codes-0"
+        ],
+        "bigramTopK" : [
+          "customer-sop-2",
+          "codes-0",
+          "payment-plan-2",
+          "codes-3",
+          "customer-sop-1"
+        ],
+        "overlap" : 3,
+        "maxRankShift" : 3,
+        "realScore" : {
+          "min" : 3.6334,
+          "p50" : 4.7048,
+          "max" : 15.8828
+        },
+        "bigramScore" : {
+          "min" : 0.1667,
+          "p50" : 0.1667,
+          "max" : 0.4444
+        }
+      },
+      {
+        "caseId" : "E-01",
+        "realTopK" : [
+          "customer-sop-2"
+        ],
+        "bigramTopK" : [ ],
+        "overlap" : 0,
+        "maxRankShift" : 0,
+        "realScore" : {
+          "min" : 3.0831,
+          "p50" : 3.0831,
+          "max" : 3.0831
+        },
+        "bigramScore" : {
+          "min" : 0.0,
+          "p50" : 0.0,
+          "max" : 0.0
+        }
+      },
+      {
+        "caseId" : "E-02",
+        "realTopK" : [
+          "expense-3"
+        ],
+        "bigramTopK" : [
+          "expense-3"
+        ],
+        "overlap" : 1,
+        "maxRankShift" : 0,
+        "realScore" : {
+          "min" : 3.0831,
+          "p50" : 3.0831,
+          "max" : 3.0831
+        },
+        "bigramScore" : {
+          "min" : 0.0833,
+          "p50" : 0.0833,
+          "max" : 0.0833
+        }
+      },
+      {
+        "caseId" : "E-03",
+        "realTopK" : [ ],
+        "bigramTopK" : [ ],
+        "overlap" : 0,
+        "maxRankShift" : 0,
+        "realScore" : {
+          "min" : 0.0,
+          "p50" : 0.0,
+          "max" : 0.0
+        },
+        "bigramScore" : {
+          "min" : 0.0,
+          "p50" : 0.0,
+          "max" : 0.0
+        }
+      },
+      {
+        "caseId" : "E-04",
+        "realTopK" : [
+          "pricing-0",
+          "regional-policy-0",
+          "regional-policy-2",
+          "sales-flow-4",
+          "models-0"
+        ],
+        "bigramTopK" : [
+          "pricing-0",
+          "regional-policy-2",
+          "sales-flow-4",
+          "models-0",
+          "models-1"
+        ],
+        "overlap" : 4,
+        "maxRankShift" : 1,
+        "realScore" : {
+          "min" : 1.8317,
+          "p50" : 4.3683,
+          "max" : 6.9923
+        },
+        "bigramScore" : {
+          "min" : 0.0769,
+          "p50" : 0.0769,
+          "max" : 0.1538
+        }
+      }
+    ]
+  },
+  "metricTriplets" : {
+    "topK" : 5,
+    "caseCount" : 72,
+    "applicableCases" : 70,
+    "identityTolerance" : 1.0E-12,
+    "identityBasis" : "portScore == wv·(raw-rawMin)/(rawMax-rawMin) + (zScore - wv)",
+    "identityDerivation" : "三次生产 DefaultWeightedReranker 调用拆开恒等式：V（文本清空）= wv·N(raw)；Z（分值恒等）= wv + wb·N(bm25)；W（恒等+清空）= wv；断言 port == V + Z - wv 且 V == wv·N(raw)",
+    "rawDefinition" : "RRF 融合后、进入 reranker 之前的 hit.score（归一化前融合分）",
+    "rankDefinition" : "同一候选集合内按 portScore 降序的名次（0 起）",
+    "marginDefinition" : "portScore 与相邻下一名候选之差；末位与集合外下一名（tailPortScore）之差",
+    "pseudoSuiteMetrics" : {
+      "caseCount" : 72,
+      "recallAt5" : 0.84375,
+      "mrr" : 0.7884259259259261
+    },
+    "cases" : [
+      {
+        "caseId" : "T-01",
+        "category" : "TEXT",
+        "fusedCount" : 24,
+        "rawMin" : 0.18181818181818182,
+        "rawMax" : 0.367698591440942,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.6093116832101387,
+        "candidates" : [
+          {
+            "chunkId" : "sales-flow-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.367698591440942,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.2601176340149236
+          },
+          {
+            "chunkId" : "payment-plan-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.33509589182344285,
+            "vecNorm" : 0.8246038962165751,
+            "zScore" : 0.8451200282551314,
+            "portScore" : 0.7398823659850764,
+            "margin" : 0.12162244991298776
+          },
+          {
+            "chunkId" : "payment-plan-0",
+            "rank" : 2,
+            "rawFusedScore" : 0.3532302062934753,
+            "vecNorm" : 0.9221629370366142,
+            "zScore" : 0.6649621538501201,
+            "portScore" : 0.6182599160720886,
+            "margin" : 0.0089482328619499
+          }
+        ]
+      },
+      {
+        "caseId" : "T-02",
+        "category" : "TEXT",
+        "fusedCount" : 27,
+        "rawMin" : 0.14285714285714285,
+        "rawMax" : 0.36876382421472775,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 5.551115123125783E-17,
+        "tailPortScore" : 0.3495086507831563,
+        "candidates" : [
+          {
+            "chunkId" : "payment-plan-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.36876382421472775,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.4601670799276496
+          },
+          {
+            "chunkId" : "payment-plan-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.3141343852237332,
+            "vecNorm" : 0.7581769664239267,
+            "zScore" : 0.6849267402179944,
+            "portScore" : 0.5398329200723504,
+            "margin" : 0.17981986594606858
+          },
+          {
+            "chunkId" : "sales-flow-0",
+            "rank" : 2,
+            "rawFusedScore" : 0.26550972311840293,
+            "vecNorm" : 0.5429347176638606,
+            "zScore" : 0.6342522235279654,
+            "portScore" : 0.3600130541262818,
+            "margin" : 0.010504403343125523
+          }
+        ]
+      },
+      {
+        "caseId" : "T-03",
+        "category" : "TEXT",
+        "fusedCount" : 27,
+        "rawMin" : 0.125,
+        "rawMax" : 0.3373447894730749,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.5646801889327872,
+        "candidates" : [
+          {
+            "chunkId" : "sales-flow-2",
+            "rank" : 0,
+            "rawFusedScore" : 0.3373447894730749,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.3363868308734328
+          },
+          {
+            "chunkId" : "codes-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.31791299022842506,
+            "vecNorm" : 0.908489399279026,
+            "zScore" : 0.7185195295591515,
+            "portScore" : 0.6636131691265672,
+            "margin" : 0.06181616858889705
+          },
+          {
+            "chunkId" : "sales-flow-1",
+            "rank" : 2,
+            "rawFusedScore" : 0.29267480454896516,
+            "vecNorm" : 0.7896346548697686,
+            "zScore" : 0.728016207615809,
+            "portScore" : 0.6017970005376702,
+            "margin" : 0.037116811604883004
+          }
+        ]
+      },
+      {
+        "caseId" : "T-04",
+        "category" : "TEXT",
+        "fusedCount" : 38,
+        "rawMin" : 0.09090909090909091,
+        "rawMax" : 0.3496451196338447,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.6487581897390541,
+        "candidates" : [
+          {
+            "chunkId" : "sales-flow-3",
+            "rank" : 0,
+            "rawFusedScore" : 0.3496451196338447,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.19247632997570097
+          },
+          {
+            "chunkId" : "payment-plan-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.32864502456758854,
+            "vecNorm" : 0.9188358298233128,
+            "zScore" : 0.8562221721303114,
+            "portScore" : 0.807523670024299,
+            "margin" : 0.14693306882904533
+          },
+          {
+            "chunkId" : "codes-0",
+            "rank" : 2,
+            "rawFusedScore" : 0.33187158985288995,
+            "vecNorm" : 0.9313063206985278,
+            "zScore" : 0.701806808776137,
+            "portScore" : 0.6605906011952537,
+            "margin" : 0.01183241145619962
+          }
+        ]
+      },
+      {
+        "caseId" : "T-05",
+        "category" : "TEXT",
+        "fusedCount" : 25,
+        "rawMin" : 0.1111111111111111,
+        "rawMax" : 0.31548812944168303,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.6670323938192644,
+        "candidates" : [
+          {
+            "chunkId" : "payment-plan-1",
+            "rank" : 0,
+            "rawFusedScore" : 0.307225976102914,
+            "vecNorm" : 0.9595739608775127,
+            "zScore" : 1.0,
+            "portScore" : 0.9757443765265076,
+            "margin" : 0.22747007588897994
+          },
+          {
+            "chunkId" : "payment-plan-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.31548812944168303,
+            "vecNorm" : 1.0,
+            "zScore" : 0.7482743006375276,
+            "portScore" : 0.7482743006375276,
+            "margin" : 0.07341985008746266
+          },
+          {
+            "chunkId" : "expense-2",
+            "rank" : 2,
+            "rawFusedScore" : 0.2959830054050421,
+            "vecNorm" : 0.9045630267240118,
+            "zScore" : 0.7321166345156579,
+            "portScore" : 0.674854450550065,
+            "margin" : 0.007822056730800608
+          }
+        ]
+      },
+      {
+        "caseId" : "T-06",
+        "category" : "TEXT",
+        "fusedCount" : 29,
+        "rawMin" : 0.1111111111111111,
+        "rawMax" : 0.3333333333333333,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.6168245521901166,
+        "candidates" : [
+          {
+            "chunkId" : "sales-flow-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.3166550084692367,
+            "vecNorm" : 0.9249475381115653,
+            "zScore" : 1.0,
+            "portScore" : 0.9549685228669391,
+            "margin" : 0.3143363659844902
+          },
+          {
+            "chunkId" : "sales-flow-3",
+            "rank" : 1,
+            "rawFusedScore" : 0.3051368892909021,
+            "vecNorm" : 0.8731160018090596,
+            "zScore" : 0.7167625557970132,
+            "portScore" : 0.6406321568824489,
+            "margin" : 0.022934721229571964
+          },
+          {
+            "chunkId" : "pricing-3",
+            "rank" : 2,
+            "rawFusedScore" : 0.3333333333333333,
+            "vecNorm" : 1.0,
+            "zScore" : 0.6176974356528769,
+            "portScore" : 0.6176974356528769,
+            "margin" : 8.728834627603765E-4
+          }
+        ]
+      },
+      {
+        "caseId" : "T-07",
+        "category" : "TEXT",
+        "fusedCount" : 38,
+        "rawMin" : 0.08333333333333333,
+        "rawMax" : 0.35588352841034887,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.6463606054941136,
+        "candidates" : [
+          {
+            "chunkId" : "sales-flow-3",
+            "rank" : 0,
+            "rawFusedScore" : 0.3358335137360299,
+            "vecNorm" : 0.9264355152317781,
+            "zScore" : 1.0,
+            "portScore" : 0.9558613091390669,
+            "margin" : 0.18834662086667242
+          },
+          {
+            "chunkId" : "payment-plan-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.3155593512054558,
+            "vecNorm" : 0.852048621012733,
+            "zScore" : 0.8562855156647546,
+            "portScore" : 0.7675146882723944,
+            "margin" : 0.06610126474148337
+          },
+          {
+            "chunkId" : "codes-0",
+            "rank" : 2,
+            "rawFusedScore" : 0.35588352841034887,
+            "vecNorm" : 1.0,
+            "zScore" : 0.7014134235309111,
+            "portScore" : 0.7014134235309111,
+            "margin" : 0.05505281803679751
+          }
+        ]
+      },
+      {
+        "caseId" : "T-08",
+        "category" : "TEXT",
+        "fusedCount" : 31,
+        "rawMin" : 0.08333333333333333,
+        "rawMax" : 0.35909240228949346,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.5316119021768929,
+        "candidates" : [
+          {
+            "chunkId" : "payment-plan-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.35909240228949346,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.3822380625798283
+          },
+          {
+            "chunkId" : "payment-plan-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.333111927965828,
+            "vecNorm" : 0.9057856032731392,
+            "zScore" : 0.6742905754562882,
+            "portScore" : 0.6177619374201717,
+            "margin" : 0.08126085285665396
+          },
+          {
+            "chunkId" : "codes-2",
+            "rank" : 2,
+            "rawFusedScore" : 0.31433706373790943,
+            "vecNorm" : 0.8377012994676916,
+            "zScore" : 0.6338803048829028,
+            "portScore" : 0.5365010845635177,
+            "margin" : 0.004889182386624835
+          }
+        ]
+      },
+      {
+        "caseId" : "T-09",
+        "category" : "TEXT",
+        "fusedCount" : 29,
+        "rawMin" : 0.09090909090909091,
+        "rawMax" : 0.36869024360410496,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 5.551115123125783E-17,
+        "tailPortScore" : 0.596361250632947,
+        "candidates" : [
+          {
+            "chunkId" : "customer-sop-3",
+            "rank" : 0,
+            "rawFusedScore" : 0.3045711830705121,
+            "vecNorm" : 0.7691741865439249,
+            "zScore" : 0.9148587512806394,
+            "portScore" : 0.7763632632069943,
+            "margin" : 0.07444964307585034
+          },
+          {
+            "chunkId" : "codes-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.2748265542518703,
+            "vecNorm" : 0.6620948237791677,
+            "zScore" : 0.9046567258636434,
+            "portScore" : 0.701913620131144,
+            "margin" : 0.06911306957731378
+          },
+          {
+            "chunkId" : "customer-sop-2",
+            "rank" : 2,
+            "rawFusedScore" : 0.36869024360410496,
+            "vecNorm" : 1.0,
+            "zScore" : 0.6328005505538302,
+            "portScore" : 0.6328005505538302,
+            "margin" : 0.03643929992088324
+          }
+        ]
+      },
+      {
+        "caseId" : "T-10",
+        "category" : "TEXT",
+        "fusedCount" : 29,
+        "rawMin" : 0.06666666666666667,
+        "rawMax" : 0.39107829446383835,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.7510729853223748,
+        "candidates" : [
+          {
+            "chunkId" : "sales-flow-3",
+            "rank" : 0,
+            "rawFusedScore" : 0.36010539859830903,
+            "vecNorm" : 0.904525938000921,
+            "zScore" : 1.0,
+            "portScore" : 0.9427155628005526,
+            "margin" : 0.0324434695675031
+          },
+          {
+            "chunkId" : "expense-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.3475531321455414,
+            "vecNorm" : 0.8658335318809544,
+            "zScore" : 0.9907719741044768,
+            "portScore" : 0.9102720932330495,
+            "margin" : 0.0429389362629129
+          },
+          {
+            "chunkId" : "sales-flow-2",
+            "rank" : 2,
+            "rawFusedScore" : 0.37024885082279885,
+            "vecNorm" : 0.9357931656689492,
+            "zScore" : 0.905857257568767,
+            "portScore" : 0.8673331569701366,
+            "margin" : 0.11626017164776181
+          }
+        ]
+      },
+      {
+        "caseId" : "T-11",
+        "category" : "TEXT",
+        "fusedCount" : 26,
+        "rawMin" : 0.05263157894736842,
+        "rawMax" : 0.44874854438337025,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.7431835291532851,
+        "candidates" : [
+          {
+            "chunkId" : "customer-sop-4",
+            "rank" : 0,
+            "rawFusedScore" : 0.44874854438337025,
+            "vecNorm" : 1.0,
+            "zScore" : 0.9921275439000813,
+            "portScore" : 0.9921275439000813,
+            "margin" : 0.026223322551967687
+          },
+          {
+            "chunkId" : "customer-sop-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.4262386837604321,
+            "vecNorm" : 0.9431737022468559,
+            "zScore" : 1.0,
+            "portScore" : 0.9659042213481136,
+            "margin" : 0.14027233079806212
+          },
+          {
+            "chunkId" : "customer-sop-1",
+            "rank" : 2,
+            "rawFusedScore" : 0.42562554496735056,
+            "vecNorm" : 0.9416258291523352,
+            "zScore" : 0.8606563930586504,
+            "portScore" : 0.8256318905500515,
+            "margin" : 0.08244836139676637
+          }
+        ]
+      },
+      {
+        "caseId" : "T-12",
+        "category" : "TEXT",
+        "fusedCount" : 41,
+        "rawMin" : 0.045454545454545456,
+        "rawMax" : 0.4637592681973894,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.8511766233998191,
+        "candidates" : [
+          {
+            "chunkId" : "sla-1",
+            "rank" : 0,
+            "rawFusedScore" : 0.4637592681973894,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.12023160025646207
+          },
+          {
+            "chunkId" : "sla-2",
+            "rank" : 1,
+            "rawFusedScore" : 0.4087927056133898,
+            "vecNorm" : 0.8685968395872243,
+            "zScore" : 0.9586102959912033,
+            "portScore" : 0.8797683997435379,
+            "margin" : 0.024528547178272353
+          },
+          {
+            "chunkId" : "sla-0",
+            "rank" : 2,
+            "rawFusedScore" : 0.4480252583208092,
+            "vecNorm" : 0.9623862485381194,
+            "zScore" : 0.8778081034423939,
+            "portScore" : 0.8552398525652656,
+            "margin" : 0.004063229165446436
+          }
+        ]
+      },
+      {
+        "caseId" : "T-13",
+        "category" : "TEXT",
+        "fusedCount" : 30,
+        "rawMin" : 0.058823529411764705,
+        "rawMax" : 0.4366041400656568,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 5.551115123125783E-17,
+        "tailPortScore" : 0.578931588294313,
+        "candidates" : [
+          {
+            "chunkId" : "pricing-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.42723378786082244,
+            "vecNorm" : 0.9751963125142515,
+            "zScore" : 1.0,
+            "portScore" : 0.985117787508551,
+            "margin" : 0.035811695452450554
+          },
+          {
+            "chunkId" : "pricing-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.4366041400656568,
+            "vecNorm" : 1.0,
+            "zScore" : 0.9493060920561004,
+            "portScore" : 0.9493060920561004,
+            "margin" : 0.27185018234432656
+          },
+          {
+            "chunkId" : "pricing-3",
+            "rank" : 2,
+            "rawFusedScore" : 0.33183490467843973,
+            "vecNorm" : 0.7226717506600608,
+            "zScore" : 0.8438528593157373,
+            "portScore" : 0.6774559097117738,
+            "margin" : 0.09852432141746081
+          }
+        ]
+      },
+      {
+        "caseId" : "T-14",
+        "category" : "TEXT",
+        "fusedCount" : 39,
+        "rawMin" : 0.1111111111111111,
+        "rawMax" : 0.4396746528419597,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.6307531784759352,
+        "candidates" : [
+          {
+            "chunkId" : "customer-sop-4",
+            "rank" : 0,
+            "rawFusedScore" : 0.4396746528419597,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.3580694512554331
+          },
+          {
+            "chunkId" : "sales-flow-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.4099845240939442,
+            "vecNorm" : 0.9096365695609132,
+            "zScore" : 0.696148607008019,
+            "portScore" : 0.6419305487445669,
+            "margin" : 0.003102779236834552
+          },
+          {
+            "chunkId" : "sales-flow-3",
+            "rank" : 2,
+            "rawFusedScore" : 0.4066337799437197,
+            "vecNorm" : 0.8994384077911288,
+            "zScore" : 0.699164724833055,
+            "portScore" : 0.6388277695077323,
+            "margin" : 0.008074591031797196
+          }
+        ]
+      },
+      {
+        "caseId" : "T-15",
+        "category" : "TEXT",
+        "fusedCount" : 42,
+        "rawMin" : 0.14285714285714285,
+        "rawMax" : 0.4843653860159145,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.6051587680943227,
+        "candidates" : [
+          {
+            "chunkId" : "customer-sop-3",
+            "rank" : 0,
+            "rawFusedScore" : 0.4843653860159145,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.12465023466207126
+          },
+          {
+            "chunkId" : "sales-flow-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.4385772398503338,
+            "vecNorm" : 0.8659237453770825,
+            "zScore" : 0.9557955181116793,
+            "portScore" : 0.8753497653379287,
+            "margin" : 0.252406842832258
+          },
+          {
+            "chunkId" : "pricing-1",
+            "rank" : 2,
+            "rawFusedScore" : 0.38503073334373006,
+            "vecNorm" : 0.709129560817065,
+            "zScore" : 0.7974651860154317,
+            "portScore" : 0.6229429225056707,
+            "margin" : 0.017784154411348063
+          }
+        ]
+      },
+      {
+        "caseId" : "T-16",
+        "category" : "TEXT",
+        "fusedCount" : 38,
+        "rawMin" : 0.08333333333333333,
+        "rawMax" : 0.43858037083261875,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.6165874254604066,
+        "candidates" : [
+          {
+            "chunkId" : "payment-plan-1",
+            "rank" : 0,
+            "rawFusedScore" : 0.43858037083261875,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.35043747668913383
+          },
+          {
+            "chunkId" : "customer-sop-4",
+            "rank" : 1,
+            "rawFusedScore" : 0.41492306995892414,
+            "vecNorm" : 0.9334060572602462,
+            "zScore" : 0.6895188889547185,
+            "portScore" : 0.6495625233108662,
+            "margin" : 0.02338781544949453
+          },
+          {
+            "chunkId" : "customer-sop-1",
+            "rank" : 2,
+            "rawFusedScore" : 0.40523752917238487,
+            "vecNorm" : 0.9061418164245748,
+            "zScore" : 0.6824896180066268,
+            "portScore" : 0.6261747078613716,
+            "margin" : 0.00958728240096507
+          }
+        ]
+      },
+      {
+        "caseId" : "T-17",
+        "category" : "TEXT",
+        "fusedCount" : 34,
+        "rawMin" : 0.05263157894736842,
+        "rawMax" : 0.4118966712152746,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.6280916635357969,
+        "candidates" : [
+          {
+            "chunkId" : "regional-policy-1",
+            "rank" : 0,
+            "rawFusedScore" : 0.4118966712152746,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.07062501055980741
+          },
+          {
+            "chunkId" : "regional-policy-2",
+            "rank" : 1,
+            "rawFusedScore" : 0.41098916801398677,
+            "vecNorm" : 0.9974740011740102,
+            "zScore" : 0.9308905887357866,
+            "portScore" : 0.9293749894401926,
+            "margin" : 0.23684380464848975
+          },
+          {
+            "chunkId" : "regional-policy-0",
+            "rank" : 2,
+            "rawFusedScore" : 0.36100537563878343,
+            "vecNorm" : 0.8583461163587215,
+            "zScore" : 0.77752351497647,
+            "portScore" : 0.6925311847917028,
+            "margin" : 0.06443952125590591
+          }
+        ]
+      },
+      {
+        "caseId" : "TB-01",
+        "category" : "TABLE",
+        "fusedCount" : 26,
+        "rawMin" : 0.1111111111111111,
+        "rawMax" : 0.3169974800592619,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.8965610801513173,
+        "candidates" : [
+          {
+            "chunkId" : "regional-policy-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.3169974800592619,
+            "vecNorm" : 1.0,
+            "zScore" : 0.9936842317285028,
+            "portScore" : 0.9936842317285028,
+            "margin" : 0.019354238464586615
+          },
+          {
+            "chunkId" : "regional-q3-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.30818897259631717,
+            "vecNorm" : 0.9572166554398605,
+            "zScore" : 1.0,
+            "portScore" : 0.9743299932639162,
+            "margin" : 0.037873345623664845
+          },
+          {
+            "chunkId" : "regional-q3-3",
+            "rank" : 2,
+            "rawFusedScore" : 0.29519296324569266,
+            "vecNorm" : 0.8940944127337522,
+            "zScore" : 1.0,
+            "portScore" : 0.9364566476402514,
+            "margin" : 0.03989556748893408
+          }
+        ]
+      },
+      {
+        "caseId" : "TB-02",
+        "category" : "TABLE",
+        "fusedCount" : 28,
+        "rawMin" : 0.1111111111111111,
+        "rawMax" : 0.35511409453492165,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.7021603140717833,
+        "candidates" : [
+          {
+            "chunkId" : "regional-q3-2",
+            "rank" : 0,
+            "rawFusedScore" : 0.35511409453492165,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.16874339356000323
+          },
+          {
+            "chunkId" : "regional-policy-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.30817942601396353,
+            "vecNorm" : 0.8076471530701043,
+            "zScore" : 0.9466683145979342,
+            "portScore" : 0.8312566064399968,
+            "margin" : 0.02754344736162395
+          },
+          {
+            "chunkId" : "regional-policy-0",
+            "rank" : 2,
+            "rawFusedScore" : 0.2988429695374571,
+            "vecNorm" : 0.7693834550386344,
+            "zScore" : 0.9420830860551923,
+            "portScore" : 0.8037131590783728,
+            "margin" : 0.10155284500658956
+          }
+        ]
+      },
+      {
+        "caseId" : "TB-03",
+        "category" : "TABLE",
+        "fusedCount" : 23,
+        "rawMin" : 0.1111111111111111,
+        "rawMax" : 0.32867105928400797,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.6030156903160082,
+        "candidates" : [
+          {
+            "chunkId" : "regional-q3-3",
+            "rank" : 0,
+            "rawFusedScore" : 0.288329393406847,
+            "vecNorm" : 0.8145721847428411,
+            "zScore" : 1.0,
+            "portScore" : 0.8887433108457047,
+            "margin" : 0.07744684850835881
+          },
+          {
+            "chunkId" : "regional-policy-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.32867105928400797,
+            "vecNorm" : 1.0,
+            "zScore" : 0.8112964623373459,
+            "portScore" : 0.8112964623373459,
+            "margin" : 0.03252853164600278
+          },
+          {
+            "chunkId" : "regional-policy-1",
+            "rank" : 2,
+            "rawFusedScore" : 0.31682408653614724,
+            "vecNorm" : 0.9455461685509972,
+            "zScore" : 0.8114402295607448,
+            "portScore" : 0.7787679306913431,
+            "margin" : 0.17575224037533488
+          }
+        ]
+      },
+      {
+        "caseId" : "TB-04",
+        "category" : "TABLE",
+        "fusedCount" : 27,
+        "rawMin" : 0.05263157894736842,
+        "rawMax" : 0.4453311073308373,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.7433536396363417,
+        "candidates" : [
+          {
+            "chunkId" : "maint-3",
+            "rank" : 0,
+            "rawFusedScore" : 0.4453311073308373,
+            "vecNorm" : 1.0,
+            "zScore" : 0.9736064923014094,
+            "portScore" : 0.9736064923014094,
+            "margin" : 0.01345559360296178
+          },
+          {
+            "chunkId" : "maint-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.41924990185146277,
+            "vecNorm" : 0.9335848311640793,
+            "zScore" : 1.0,
+            "portScore" : 0.9601508986984476,
+            "margin" : 0.21450257929858496
+          },
+          {
+            "chunkId" : "maint-2",
+            "rank" : 2,
+            "rawFusedScore" : 0.39925395962751176,
+            "vecNorm" : 0.8826656403357545,
+            "zScore" : 0.8160489351984099,
+            "portScore" : 0.7456483193998626,
+            "margin" : 0.002294679763520935
+          }
+        ]
+      },
+      {
+        "caseId" : "TB-05",
+        "category" : "TABLE",
+        "fusedCount" : 31,
+        "rawMin" : 0.058823529411764705,
+        "rawMax" : 0.3928596598541715,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.897061256608364,
+        "candidates" : [
+          {
+            "chunkId" : "regional-q3-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.3899568451135731,
+            "vecNorm" : 0.9913098779561546,
+            "zScore" : 1.0,
+            "portScore" : 0.9947859267736927,
+            "margin" : 0.08005298046574083
+          },
+          {
+            "chunkId" : "regional-q3-3",
+            "rank" : 1,
+            "rawFusedScore" : 0.38779199141513043,
+            "vecNorm" : 0.9848289811274927,
+            "zScore" : 0.9238355576314561,
+            "portScore" : 0.9147329463079519,
+            "margin" : 0.011035785630237438
+          },
+          {
+            "chunkId" : "regional-policy-0",
+            "rank" : 2,
+            "rawFusedScore" : 0.3838690133309971,
+            "vecNorm" : 0.9730848081874649,
+            "zScore" : 0.9198462757652355,
+            "portScore" : 0.9036971606777144,
+            "margin" : 0.00663590406935044
+          }
+        ]
+      },
+      {
+        "caseId" : "TB-06",
+        "category" : "TABLE",
+        "fusedCount" : 29,
+        "rawMin" : 0.0625,
+        "rawMax" : 0.4935226121282267,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.7111531744534741,
+        "candidates" : [
+          {
+            "chunkId" : "maint-2",
+            "rank" : 0,
+            "rawFusedScore" : 0.4935226121282267,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.20191813067335185
+          },
+          {
+            "chunkId" : "maint-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.4410616896748637,
+            "vecNorm" : 0.8782873079573928,
+            "zScore" : 0.8711094845522125,
+            "portScore" : 0.7980818693266482,
+            "margin" : 0.06852834373598882
+          },
+          {
+            "chunkId" : "maint-0",
+            "rank" : 2,
+            "rawFusedScore" : 0.42610503889347356,
+            "vecNorm" : 0.8435869225007231,
+            "zScore" : 0.8234013720902255,
+            "portScore" : 0.7295535255906593,
+            "margin" : 0.01840035113718519
+          }
+        ]
+      },
+      {
+        "caseId" : "TB-07",
+        "category" : "TABLE",
+        "fusedCount" : 24,
+        "rawMin" : 0.0625,
+        "rawMax" : 0.48311543277617397,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.48341199668690454,
+        "candidates" : [
+          {
+            "chunkId" : "sla-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.48311543277617397,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.1690841147472757
+          },
+          {
+            "chunkId" : "sla-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.43850897703192865,
+            "vecNorm" : 0.8939495504246461,
+            "zScore" : 0.8945461549979365,
+            "portScore" : 0.8309158852527243,
+            "margin" : 0.290092142633403
+          },
+          {
+            "chunkId" : "sla-2",
+            "rank" : 2,
+            "rawFusedScore" : 0.33819749843859603,
+            "vecNorm" : 0.6554621560576583,
+            "zScore" : 0.7475464489847262,
+            "portScore" : 0.5408237426193213,
+            "margin" : 0.05741174593241677
+          }
+        ]
+      },
+      {
+        "caseId" : "TB-08",
+        "category" : "TABLE",
+        "fusedCount" : 31,
+        "rawMin" : 0.05,
+        "rawMax" : 0.4353578205028365,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.7677666726234841,
+        "candidates" : [
+          {
+            "chunkId" : "regional-q3-1",
+            "rank" : 0,
+            "rawFusedScore" : 0.4353578205028365,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.03390080367983339
+          },
+          {
+            "chunkId" : "regional-q3-3",
+            "rank" : 1,
+            "rawFusedScore" : 0.41358458747057797,
+            "vecNorm" : 0.9434986605336111,
+            "zScore" : 1.0,
+            "portScore" : 0.9660991963201666,
+            "margin" : 0.038416581105125025
+          },
+          {
+            "chunkId" : "regional-q3-0",
+            "rank" : 2,
+            "rawFusedScore" : 0.38891103752750894,
+            "vecNorm" : 0.8794710253584027,
+            "zScore" : 1.0,
+            "portScore" : 0.9276826152150416,
+            "margin" : 0.1599159425915575
+          }
+        ]
+      },
+      {
+        "caseId" : "TB-09",
+        "category" : "TABLE",
+        "fusedCount" : 27,
+        "rawMin" : 0.125,
+        "rawMax" : 0.4563752156772639,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 5.551115123125783E-17,
+        "tailPortScore" : 0.569491709280159,
+        "candidates" : [
+          {
+            "chunkId" : "pricing-1",
+            "rank" : 0,
+            "rawFusedScore" : 0.4563752156772639,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.22606262617266937
+          },
+          {
+            "chunkId" : "pricing-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.4169668483056253,
+            "vecNorm" : 0.8810762980837421,
+            "zScore" : 0.8452915949770854,
+            "portScore" : 0.7739373738273306,
+            "margin" : 0.04404307649264538
+          },
+          {
+            "chunkId" : "pricing-2",
+            "rank" : 2,
+            "rawFusedScore" : 0.4004692584603223,
+            "vecNorm" : 0.8312910725605077,
+            "zScore" : 0.8311196537983806,
+            "portScore" : 0.7298942973346852,
+            "margin" : 0.16040258805452623
+          }
+        ]
+      },
+      {
+        "caseId" : "TB-10",
+        "category" : "TABLE",
+        "fusedCount" : 29,
+        "rawMin" : 0.06666666666666667,
+        "rawMax" : 0.3756995698321961,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.825617037635383,
+        "candidates" : [
+          {
+            "chunkId" : "maint-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.351052130759742,
+            "vecNorm" : 0.92024331771801,
+            "zScore" : 0.9961918657669159,
+            "portScore" : 0.948337856397722,
+            "margin" : 0.026849521994611325
+          },
+          {
+            "chunkId" : "maint-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.3372231545420729,
+            "vecNorm" : 0.875494114393658,
+            "zScore" : 0.9961918657669159,
+            "portScore" : 0.9214883344031106,
+            "margin" : 0.0037441124737774834
+          },
+          {
+            "chunkId" : "maint-2",
+            "rank" : 2,
+            "rawFusedScore" : 0.3333333333333333,
+            "vecNorm" : 0.8629070365488886,
+            "zScore" : 1.0,
+            "portScore" : 0.9177442219293331,
+            "margin" : 0.09212718429395017
+          }
+        ]
+      },
+      {
+        "caseId" : "TB-11",
+        "category" : "TABLE",
+        "fusedCount" : 27,
+        "rawMin" : 0.1,
+        "rawMax" : 0.3500424171471391,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 5.551115123125783E-17,
+        "tailPortScore" : 0.88067013645171,
+        "candidates" : [
+          {
+            "chunkId" : "regional-q3-3",
+            "rank" : 0,
+            "rawFusedScore" : 0.3500424171471391,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.01315981260447796
+          },
+          {
+            "chunkId" : "regional-q3-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.34455823155909393,
+            "vecNorm" : 0.9780669789925367,
+            "zScore" : 1.0,
+            "portScore" : 0.986840187395522,
+            "margin" : 0.08135457269487512
+          },
+          {
+            "chunkId" : "regional-q3-2",
+            "rank" : 2,
+            "rawFusedScore" : 0.3106547415547619,
+            "vecNorm" : 0.8424760245010782,
+            "zScore" : 1.0,
+            "portScore" : 0.9054856147006469,
+            "margin" : 0.02481547824893693
+          }
+        ]
+      },
+      {
+        "caseId" : "TB-12",
+        "category" : "TABLE",
+        "fusedCount" : 28,
+        "rawMin" : 0.07692307692307693,
+        "rawMax" : 0.3694810941175902,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.8295393151003159,
+        "candidates" : [
+          {
+            "chunkId" : "regional-q3-3",
+            "rank" : 0,
+            "rawFusedScore" : 0.3548128626577269,
+            "vecNorm" : 0.949862144949831,
+            "zScore" : 1.0,
+            "portScore" : 0.9699172869698987,
+            "margin" : 0.07787512938889385
+          },
+          {
+            "chunkId" : "regional-policy-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.3694810941175902,
+            "vecNorm" : 1.0,
+            "zScore" : 0.8920421575810048,
+            "portScore" : 0.8920421575810048,
+            "margin" : 0.051374636194875034
+          },
+          {
+            "chunkId" : "regional-policy-1",
+            "rank" : 2,
+            "rawFusedScore" : 0.3343955098011347,
+            "vecNorm" : 0.8800730718203899,
+            "zScore" : 0.9126236782938959,
+            "portScore" : 0.8406675213861298,
+            "margin" : 0.011128206285813902
+          }
+        ]
+      },
+      {
+        "caseId" : "TB-13",
+        "category" : "TABLE",
+        "fusedCount" : 29,
+        "rawMin" : 0.0625,
+        "rawMax" : 0.4576711765434035,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.6324967851170168,
+        "candidates" : [
+          {
+            "chunkId" : "maint-3",
+            "rank" : 0,
+            "rawFusedScore" : 0.4576711765434035,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.14905611899771054
+          },
+          {
+            "chunkId" : "maint-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.39975408136916313,
+            "vecNorm" : 0.8534379564804139,
+            "zScore" : 0.9388811071140412,
+            "portScore" : 0.8509438810022895,
+            "margin" : 0.1749413272333823
+          },
+          {
+            "chunkId" : "maint-2",
+            "rank" : 2,
+            "rawFusedScore" : 0.38586983473150505,
+            "vecNorm" : 0.8183031909362646,
+            "zScore" : 0.7850206392071484,
+            "portScore" : 0.6760025537689072,
+            "margin" : 0.043505768651890375
+          }
+        ]
+      },
+      {
+        "caseId" : "I-01",
+        "category" : "IMAGE",
+        "fusedCount" : 26,
+        "rawMin" : 0.09090909090909091,
+        "rawMax" : 0.2985923729911551,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.6,
+        "candidates" : [
+          {
+            "chunkId" : "arch-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.2672110839631142,
+            "vecNorm" : 0.8488983383089985,
+            "zScore" : 1.0,
+            "portScore" : 0.9093390029853992,
+            "margin" : 0.2472950465993271
+          },
+          {
+            "chunkId" : "sla-arch-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.2613076873941301,
+            "vecNorm" : 0.8204733417960319,
+            "zScore" : 0.7697599513084529,
+            "portScore" : 0.662043956386072,
+            "margin" : 0.04380031799130657
+          },
+          {
+            "chunkId" : "expense-3",
+            "rank" : 2,
+            "rawFusedScore" : 0.29614312606957877,
+            "vecNorm" : 0.9882068171447304,
+            "zScore" : 0.6253195481079272,
+            "portScore" : 0.6182436383947655,
+            "margin" : 0.018243638394765505
+          }
+        ]
+      },
+      {
+        "caseId" : "I-02",
+        "category" : "IMAGE",
+        "fusedCount" : 23,
+        "rawMin" : 0.09090909090909091,
+        "rawMax" : 0.3334302252211835,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 5.551115123125783E-17,
+        "tailPortScore" : 0.6,
+        "candidates" : [
+          {
+            "chunkId" : "arch-1",
+            "rank" : 0,
+            "rawFusedScore" : 0.2623295675534663,
+            "vecNorm" : 0.7068269622381856,
+            "zScore" : 1.0,
+            "portScore" : 0.8240961773429114,
+            "margin" : 0.13656677116246718
+          },
+          {
+            "chunkId" : "sla-arch-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.2746121072981169,
+            "vecNorm" : 0.7574721968462532,
+            "zScore" : 0.8330460880726923,
+            "portScore" : 0.6875294061804442,
+            "margin" : 0.07915961629747792
+          },
+          {
+            "chunkId" : "arch-0",
+            "rank" : 2,
+            "rawFusedScore" : 0.2580314857058475,
+            "vecNorm" : 0.6891044579302198,
+            "zScore" : 0.7949071151248345,
+            "portScore" : 0.6083697898829663,
+            "margin" : 0.008369789882966328
+          }
+        ]
+      },
+      {
+        "caseId" : "I-03",
+        "category" : "IMAGE",
+        "fusedCount" : 35,
+        "rawMin" : 0.09523809523809523,
+        "rawMax" : 0.4191556355178565,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.553032049306949,
+        "candidates" : [
+          {
+            "chunkId" : "customer-sop-4",
+            "rank" : 0,
+            "rawFusedScore" : 0.4191556355178565,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.06344589876190088
+          },
+          {
+            "chunkId" : "customer-sop-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.41052288296800793,
+            "vecNorm" : 0.973348919165067,
+            "zScore" : 0.9525447497390589,
+            "portScore" : 0.9365541012380991,
+            "margin" : 0.36430898402165646
+          },
+          {
+            "chunkId" : "expense-2",
+            "rank" : 2,
+            "rawFusedScore" : 0.38059078866550516,
+            "vecNorm" : 0.8809423941073286,
+            "zScore" : 0.6436796807520455,
+            "portScore" : 0.5722451172164427,
+            "margin" : 0.01921306790949362
+          }
+        ]
+      },
+      {
+        "caseId" : "I-04",
+        "category" : "IMAGE",
+        "fusedCount" : 30,
+        "rawMin" : 0.06666666666666667,
+        "rawMax" : 0.3986336678011874,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.5640308742821073,
+        "candidates" : [
+          {
+            "chunkId" : "pricing-3",
+            "rank" : 0,
+            "rawFusedScore" : 0.3986336678011874,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.285104498813326
+          },
+          {
+            "chunkId" : "pricing-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.3759528513285656,
+            "vecNorm" : 0.9316774968743624,
+            "zScore" : 0.7558890030620564,
+            "portScore" : 0.714895501186674,
+            "margin" : 0.13891885322718356
+          },
+          {
+            "chunkId" : "pricing-2",
+            "rank" : 2,
+            "rawFusedScore" : 0.3414089134078521,
+            "vecNorm" : 0.8276191482955666,
+            "zScore" : 0.6794051589821505,
+            "portScore" : 0.5759766479594904,
+            "margin" : 0.011945773677383142
+          }
+        ]
+      },
+      {
+        "caseId" : "I-05",
+        "category" : "IMAGE",
+        "fusedCount" : 31,
+        "rawMin" : 0.0625,
+        "rawMax" : 0.43532617827701103,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.5155071796596186,
+        "candidates" : [
+          {
+            "chunkId" : "sla-arch-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.43532617827701103,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.4104296772229229
+          },
+          {
+            "chunkId" : "arch-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.34567364767729714,
+            "vecNorm" : 0.7595326298865693,
+            "zScore" : 0.7338507448451355,
+            "portScore" : 0.5895703227770771,
+            "margin" : 0.05711857729226555
+          },
+          {
+            "chunkId" : "arch-1",
+            "rank" : 2,
+            "rawFusedScore" : 0.3475091264796634,
+            "vecNorm" : 0.7644557788211447,
+            "zScore" : 0.6737782781921248,
+            "portScore" : 0.5324517454848116,
+            "margin" : 0.016944565825192992
+          }
+        ]
+      },
+      {
+        "caseId" : "I-06",
+        "category" : "IMAGE",
+        "fusedCount" : 29,
+        "rawMin" : 0.058823529411764705,
+        "rawMax" : 0.4273821243651052,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.49225808704963603,
+        "candidates" : [
+          {
+            "chunkId" : "maint-4",
+            "rank" : 0,
+            "rawFusedScore" : 0.4273821243651052,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.36879567938403435
+          },
+          {
+            "chunkId" : "maint-3",
+            "rank" : 1,
+            "rawFusedScore" : 0.31773218244217477,
+            "vecNorm" : 0.7024897982997463,
+            "zScore" : 0.8097104416361178,
+            "portScore" : 0.6312043206159657,
+            "margin" : 0.11937841214052425
+          },
+          {
+            "chunkId" : "customer-sop-4",
+            "rank" : 2,
+            "rawFusedScore" : 0.3158676579415735,
+            "vecNorm" : 0.6974308347424392,
+            "zScore" : 0.6933674076299778,
+            "portScore" : 0.5118259084754414,
+            "margin" : 0.019567821425805376
+          }
+        ]
+      },
+      {
+        "caseId" : "L-01",
+        "category" : "LEXICAL",
+        "fusedCount" : 33,
+        "rawMin" : 0.07142857142857142,
+        "rawMax" : 0.42185097493035156,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.6630688751219035,
+        "candidates" : [
+          {
+            "chunkId" : "models-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.42185097493035156,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.08592863897903302
+          },
+          {
+            "chunkId" : "models-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.4211974782772235,
+            "vecNorm" : 0.9981351173709281,
+            "zScore" : 0.9151902905984102,
+            "portScore" : 0.914071361020967,
+            "margin" : 0.10824281529627866
+          },
+          {
+            "chunkId" : "models-2",
+            "rank" : 2,
+            "rawFusedScore" : 0.4074434724882766,
+            "vecNorm" : 0.9588853272561904,
+            "zScore" : 0.8304973493709741,
+            "portScore" : 0.8058285457246883,
+            "margin" : 0.14275967060278483
+          }
+        ]
+      },
+      {
+        "caseId" : "L-02",
+        "category" : "LEXICAL",
+        "fusedCount" : 29,
+        "rawMin" : 0.07692307692307693,
+        "rawMax" : 0.3652812864316085,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.7613059268243386,
+        "candidates" : [
+          {
+            "chunkId" : "models-1",
+            "rank" : 0,
+            "rawFusedScore" : 0.36453652747229603,
+            "vecNorm" : 0.9974172437795968,
+            "zScore" : 1.0,
+            "portScore" : 0.9984503462677581,
+            "margin" : 0.10767544660010797
+          },
+          {
+            "chunkId" : "maint-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.3652812864316085,
+            "vecNorm" : 1.0,
+            "zScore" : 0.8907748996676501,
+            "portScore" : 0.8907748996676501,
+            "margin" : 0.11531983738403995
+          },
+          {
+            "chunkId" : "models-0",
+            "rank" : 2,
+            "rawFusedScore" : 0.35040514107348564,
+            "vecNorm" : 0.9484108831738229,
+            "zScore" : 0.8064085323793164,
+            "portScore" : 0.7754550622836102,
+            "margin" : 0.014149135459271545
+          }
+        ]
+      },
+      {
+        "caseId" : "L-03",
+        "category" : "LEXICAL",
+        "fusedCount" : 29,
+        "rawMin" : 0.1,
+        "rawMax" : 0.50474141257121,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 5.551115123125783E-17,
+        "tailPortScore" : 0.5304297432892497,
+        "candidates" : [
+          {
+            "chunkId" : "codes-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.50474141257121,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.32176275591936665
+          },
+          {
+            "chunkId" : "codes-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.4578062322489805,
+            "vecNorm" : 0.8840366247079503,
+            "zScore" : 0.7478152692558632,
+            "portScore" : 0.6782372440806334,
+            "margin" : 0.08767405733173972
+          },
+          {
+            "chunkId" : "codes-2",
+            "rank" : 2,
+            "rawFusedScore" : 0.438866560932121,
+            "vecNorm" : 0.8372421264713084,
+            "zScore" : 0.6882179108661086,
+            "portScore" : 0.5905631867488936,
+            "margin" : 0.06013344345964389
+          }
+        ]
+      },
+      {
+        "caseId" : "L-04",
+        "category" : "LEXICAL",
+        "fusedCount" : 26,
+        "rawMin" : 0.09090909090909091,
+        "rawMax" : 0.3392018901027222,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.5931133067617593,
+        "candidates" : [
+          {
+            "chunkId" : "codes-1",
+            "rank" : 0,
+            "rawFusedScore" : 0.3392018901027222,
+            "vecNorm" : 1.0,
+            "zScore" : 0.9371068869229442,
+            "portScore" : 0.9371068869229442,
+            "margin" : 0.037040826179632114
+          },
+          {
+            "chunkId" : "codes-2",
+            "rank" : 1,
+            "rawFusedScore" : 0.2978470942485733,
+            "vecNorm" : 0.8334434345721868,
+            "zScore" : 1.0,
+            "portScore" : 0.9000660607433121,
+            "margin" : 0.24159559549431608
+          },
+          {
+            "chunkId" : "codes-3",
+            "rank" : 2,
+            "rawFusedScore" : 0.29149433913498557,
+            "vecNorm" : 0.8078576941309848,
+            "zScore" : 0.7737558487704052,
+            "portScore" : 0.658470465248996,
+            "margin" : 0.06535715848723667
+          }
+        ]
+      },
+      {
+        "caseId" : "L-05",
+        "category" : "LEXICAL",
+        "fusedCount" : 28,
+        "rawMin" : 0.0625,
+        "rawMax" : 0.4450132720611422,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.6221836559351818,
+        "candidates" : [
+          {
+            "chunkId" : "maint-2",
+            "rank" : 0,
+            "rawFusedScore" : 0.4450132720611422,
+            "vecNorm" : 1.0,
+            "zScore" : 0.9002625530711907,
+            "portScore" : 0.9002625530711907,
+            "margin" : 0.006239495415478968
+          },
+          {
+            "chunkId" : "models-2",
+            "rank" : 1,
+            "rawFusedScore" : 0.3774506270958944,
+            "vecNorm" : 0.8233717627595196,
+            "zScore" : 1.0,
+            "portScore" : 0.8940230576557118,
+            "margin" : 0.26800547621909887
+          },
+          {
+            "chunkId" : "models-1",
+            "rank" : 2,
+            "rawFusedScore" : 0.3746109810077716,
+            "vecNorm" : 0.815948109005438,
+            "zScore" : 0.73644871603335,
+            "portScore" : 0.6260175814366129,
+            "margin" : 0.0038339255014311346
+          }
+        ]
+      },
+      {
+        "caseId" : "L-06",
+        "category" : "LEXICAL",
+        "fusedCount" : 28,
+        "rawMin" : 0.06666666666666667,
+        "rawMax" : 0.4007472258425904,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.5669216495359051,
+        "candidates" : [
+          {
+            "chunkId" : "codes-1",
+            "rank" : 0,
+            "rawFusedScore" : 0.4007472258425904,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.1741149774648597
+          },
+          {
+            "chunkId" : "codes-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.39200794823452395,
+            "vecNorm" : 0.9738408076494375,
+            "zScore" : 0.8415805379454778,
+            "portScore" : 0.8258850225351403,
+            "margin" : 0.1806616645965481
+          },
+          {
+            "chunkId" : "codes-2",
+            "rank" : 2,
+            "rawFusedScore" : 0.3607157621750708,
+            "vecNorm" : 0.8801742197562611,
+            "zScore" : 0.7171188260848356,
+            "portScore" : 0.6452233579385922,
+            "margin" : 0.07830170840268713
+          }
+        ]
+      },
+      {
+        "caseId" : "L-07",
+        "category" : "LEXICAL",
+        "fusedCount" : 24,
+        "rawMin" : 0.1111111111111111,
+        "rawMax" : 0.4148601274459882,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.662809012909452,
+        "candidates" : [
+          {
+            "chunkId" : "regional-policy-2",
+            "rank" : 0,
+            "rawFusedScore" : 0.3987017133424558,
+            "vecNorm" : 0.9468034026957372,
+            "zScore" : 1.0,
+            "portScore" : 0.9680820416174423,
+            "margin" : 0.09869062992890143
+          },
+          {
+            "chunkId" : "regional-policy-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.4148601274459882,
+            "vecNorm" : 1.0,
+            "zScore" : 0.8693914116885408,
+            "portScore" : 0.8693914116885408,
+            "margin" : 0.0819964626514178
+          },
+          {
+            "chunkId" : "regional-policy-1",
+            "rank" : 2,
+            "rawFusedScore" : 0.3868540446939051,
+            "vecNorm" : 0.9077986059345556,
+            "zScore" : 0.8427157854763897,
+            "portScore" : 0.787394949037123,
+            "margin" : 0.124585936127671
+          }
+        ]
+      },
+      {
+        "caseId" : "L-08",
+        "category" : "LEXICAL",
+        "fusedCount" : 24,
+        "rawMin" : 0.2,
+        "rawMax" : 0.45944038935091264,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.6199382678990937,
+        "candidates" : [
+          {
+            "chunkId" : "customer-sop-1",
+            "rank" : 0,
+            "rawFusedScore" : 0.45944038935091264,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.3103322058634589
+          },
+          {
+            "chunkId" : "customer-sop-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.43305414109087337,
+            "vecNorm" : 0.8982955262823404,
+            "zScore" : 0.7506904783671369,
+            "portScore" : 0.6896677941365411,
+            "margin" : 0.04412737304461867
+          },
+          {
+            "chunkId" : "regional-policy-0",
+            "rank" : 2,
+            "rawFusedScore" : 0.44649732260447406,
+            "vecNorm" : 0.9501115968148964,
+            "zScore" : 0.6754734630029846,
+            "portScore" : 0.6455404210919224,
+            "margin" : 0.02560215319282877
+          }
+        ]
+      },
+      {
+        "caseId" : "L-09",
+        "category" : "LEXICAL",
+        "fusedCount" : 25,
+        "rawMin" : 0.1,
+        "rawMax" : 0.4572185449088989,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.7353642531308635,
+        "candidates" : [
+          {
+            "chunkId" : "maint-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.4572185449088989,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.1692116045167531
+          },
+          {
+            "chunkId" : "maint-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.42282857989106254,
+            "vecNorm" : 0.9037285003593336,
+            "zScore" : 0.8885512952676466,
+            "portScore" : 0.8307883954832469,
+            "margin" : 0.021271978830408544
+          },
+          {
+            "chunkId" : "maint-2",
+            "rank" : 2,
+            "rawFusedScore" : 0.40844107022853793,
+            "vecNorm" : 0.8634520089297137,
+            "zScore" : 0.89144521129501,
+            "portScore" : 0.8095164166528384,
+            "margin" : 0.07415216352197485
+          }
+        ]
+      },
+      {
+        "caseId" : "L-10",
+        "category" : "LEXICAL",
+        "fusedCount" : 27,
+        "rawMin" : 0.1111111111111111,
+        "rawMax" : 0.32033101581972606,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.6071959391381466,
+        "candidates" : [
+          {
+            "chunkId" : "pricing-2",
+            "rank" : 0,
+            "rawFusedScore" : 0.31554220099537367,
+            "vecNorm" : 0.9771110935595642,
+            "zScore" : 1.0,
+            "portScore" : 0.9862666561357385,
+            "margin" : 0.23264484595679613
+          },
+          {
+            "chunkId" : "regional-policy-2",
+            "rank" : 1,
+            "rawFusedScore" : 0.32033101581972606,
+            "vecNorm" : 1.0,
+            "zScore" : 0.7536218101789424,
+            "portScore" : 0.7536218101789424,
+            "margin" : 0.06805530492083056
+          },
+          {
+            "chunkId" : "pricing-3",
+            "rank" : 2,
+            "rawFusedScore" : 0.26339138825863045,
+            "vecNorm" : 0.7278479423819801,
+            "zScore" : 0.8488577398289238,
+            "portScore" : 0.6855665052581118,
+            "margin" : 0.07837056611996518
+          }
+        ]
+      },
+      {
+        "caseId" : "L-11",
+        "category" : "LEXICAL",
+        "fusedCount" : 27,
+        "rawMin" : 0.1111111111111111,
+        "rawMax" : 0.35913806329594145,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.5385832664222163,
+        "candidates" : [
+          {
+            "chunkId" : "sla-arch-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.35913806329594145,
+            "vecNorm" : 1.0,
+            "zScore" : 0.9642592856802648,
+            "portScore" : 0.9642592856802648,
+            "margin" : 0.031683107786796505
+          },
+          {
+            "chunkId" : "sla-2",
+            "rank" : 1,
+            "rawFusedScore" : 0.331266521459716,
+            "vecNorm" : 0.8876269631557805,
+            "zScore" : 1.0,
+            "portScore" : 0.9325761778934682,
+            "margin" : 0.24325915611811344
+          },
+          {
+            "chunkId" : "sla-1",
+            "rank" : 2,
+            "rawFusedScore" : 0.2772131847704809,
+            "vecNorm" : 0.6696936449696406,
+            "zScore" : 0.8875008347935704,
+            "portScore" : 0.6893170217753548,
+            "margin" : 0.1507337553531385
+          }
+        ]
+      },
+      {
+        "caseId" : "L-12",
+        "category" : "LEXICAL",
+        "fusedCount" : 30,
+        "rawMin" : 0.1111111111111111,
+        "rawMax" : 0.36081775579553166,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.557311464460388,
+        "candidates" : [
+          {
+            "chunkId" : "regional-policy-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.36081775579553166,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.31959950309974194
+          },
+          {
+            "chunkId" : "regional-policy-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.32359195094611043,
+            "vecNorm" : 0.8509218491303376,
+            "zScore" : 0.7698473874220555,
+            "portScore" : 0.6804004969002581,
+            "margin" : 0.05589874614072432
+          },
+          {
+            "chunkId" : "customer-sop-4",
+            "rank" : 2,
+            "rawFusedScore" : 0.3333333333333333,
+            "vecNorm" : 0.8899331553754479,
+            "zScore" : 0.690541857534265,
+            "portScore" : 0.6245017507595337,
+            "margin" : 0.0671902862991457
+          }
+        ]
+      },
+      {
+        "caseId" : "L-13",
+        "category" : "LEXICAL",
+        "fusedCount" : 30,
+        "rawMin" : 0.07692307692307693,
+        "rawMax" : 0.40164479912001066,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.580862272692965,
+        "candidates" : [
+          {
+            "chunkId" : "customer-sop-5",
+            "rank" : 0,
+            "rawFusedScore" : 0.40164479912001066,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.31649492317408234
+          },
+          {
+            "chunkId" : "customer-sop-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.34665645611716034,
+            "vecNorm" : 0.8306601029619398,
+            "zScore" : 0.7851090150487537,
+            "portScore" : 0.6835050768259177,
+            "margin" : 0.027648892463472352
+          },
+          {
+            "chunkId" : "trade-jargon-1",
+            "rank" : 2,
+            "rawFusedScore" : 0.37572682368826193,
+            "vecNorm" : 0.9201840417191731,
+            "zScore" : 0.7037457593309414,
+            "portScore" : 0.6558561843624453,
+            "margin" : 0.07499391166948033
+          }
+        ]
+      },
+      {
+        "caseId" : "L-14",
+        "category" : "LEXICAL",
+        "fusedCount" : 25,
+        "rawMin" : 0.1,
+        "rawMax" : 0.39271172818994726,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.5862927582384833,
+        "candidates" : [
+          {
+            "chunkId" : "pricing-2",
+            "rank" : 0,
+            "rawFusedScore" : 0.39271172818994726,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.2976931915986558
+          },
+          {
+            "chunkId" : "pricing-3",
+            "rank" : 1,
+            "rawFusedScore" : 0.3336763404156465,
+            "vecNorm" : 0.7983156051198897,
+            "zScore" : 0.8233174453294103,
+            "portScore" : 0.7023068084013442,
+            "margin" : 0.10192440647951939
+          },
+          {
+            "chunkId" : "regional-policy-2",
+            "rank" : 2,
+            "rawFusedScore" : 0.325303071622007,
+            "vecNorm" : 0.7697097516905873,
+            "zScore" : 0.7385565509074724,
+            "portScore" : 0.6003824019218248,
+            "margin" : 0.014089643683341535
+          }
+        ]
+      },
+      {
+        "caseId" : "M-01",
+        "category" : "MISMATCH",
+        "fusedCount" : 21,
+        "rawMin" : 0.03571428571428571,
+        "rawMax" : 0.4398957014299214,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.5848717861948001,
+        "candidates" : [
+          {
+            "chunkId" : "models-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.4398957014299214,
+            "vecNorm" : 1.0,
+            "zScore" : 0.6,
+            "portScore" : 0.6,
+            "margin" : 0.0027933752889528485
+          },
+          {
+            "chunkId" : "sales-flow-2",
+            "rank" : 1,
+            "rawFusedScore" : 0.43801398413173137,
+            "vecNorm" : 0.995344374518412,
+            "zScore" : 0.6,
+            "portScore" : 0.5972066247110471,
+            "margin" : 0.010010244462692608
+          },
+          {
+            "chunkId" : "customer-sop-0",
+            "rank" : 2,
+            "rawFusedScore" : 0.4312707261674135,
+            "vecNorm" : 0.9786606337472576,
+            "zScore" : 0.6,
+            "portScore" : 0.5871963802483545,
+            "margin" : 0.002324594053554452
+          }
+        ]
+      },
+      {
+        "caseId" : "M-02",
+        "category" : "MISMATCH",
+        "fusedCount" : 22,
+        "rawMin" : 0.045454545454545456,
+        "rawMax" : 0.4143108386010029,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.8137007941044884,
+        "candidates" : [
+          {
+            "chunkId" : "trade-jargon-2",
+            "rank" : 0,
+            "rawFusedScore" : 0.40140910285585724,
+            "vecNorm" : 0.9650223244530007,
+            "zScore" : 1.0,
+            "portScore" : 0.9790133946718005,
+            "margin" : 0.0731967773133615
+          },
+          {
+            "chunkId" : "payment-plan-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.39728304504430584,
+            "vecNorm" : 0.9538362395516022,
+            "zScore" : 0.9335148736274776,
+            "portScore" : 0.905816617358439,
+            "margin" : 0.03774127774468483
+          },
+          {
+            "chunkId" : "trade-jargon-1",
+            "rank" : 2,
+            "rawFusedScore" : 0.37211935989522554,
+            "vecNorm" : 0.8856154022861558,
+            "zScore" : 0.9367060982420607,
+            "portScore" : 0.8680753396137542,
+            "margin" : 0.05437454550926579
+          }
+        ]
+      },
+      {
+        "caseId" : "M-03",
+        "category" : "MISMATCH",
+        "fusedCount" : 23,
+        "rawMin" : 0.045454545454545456,
+        "rawMax" : 0.42091220341376434,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.6381848846951585,
+        "candidates" : [
+          {
+            "chunkId" : "trade-jargon-2",
+            "rank" : 0,
+            "rawFusedScore" : 0.41286748940669515,
+            "vecNorm" : 0.9785735785739574,
+            "zScore" : 1.0,
+            "portScore" : 0.9871441471443745,
+            "margin" : 0.13935359763877098
+          },
+          {
+            "chunkId" : "trade-jargon-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.39925918763276486,
+            "vecNorm" : 0.9423290074873066,
+            "zScore" : 0.8823931450132195,
+            "portScore" : 0.8477905495056035,
+            "margin" : 0.20955520230880298
+          },
+          {
+            "chunkId" : "payment-plan-0",
+            "rank" : 2,
+            "rawFusedScore" : 0.3804791488036062,
+            "vecNorm" : 0.892309948264393,
+            "zScore" : 0.7028493782381647,
+            "portScore" : 0.6382353471968005,
+            "margin" : 5.0462501641979074E-5
+          }
+        ]
+      },
+      {
+        "caseId" : "M-04",
+        "category" : "MISMATCH",
+        "fusedCount" : 24,
+        "rawMin" : 0.038461538461538464,
+        "rawMax" : 0.4744362234351939,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.639577150914962,
+        "candidates" : [
+          {
+            "chunkId" : "equipment-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.41937006102794755,
+            "vecNorm" : 0.8736941287988457,
+            "zScore" : 1.0,
+            "portScore" : 0.9242164772793074,
+            "margin" : 0.1708800659069134
+          },
+          {
+            "chunkId" : "equipment-2",
+            "rank" : 1,
+            "rawFusedScore" : 0.43175374581675324,
+            "vecNorm" : 0.9020987247894454,
+            "zScore" : 0.8120771764987268,
+            "portScore" : 0.753336411372394,
+            "margin" : 0.09354199622148585
+          },
+          {
+            "chunkId" : "equipment-1",
+            "rank" : 2,
+            "rawFusedScore" : 0.4744362234351939,
+            "vecNorm" : 1.0,
+            "zScore" : 0.6597944151509082,
+            "portScore" : 0.6597944151509082,
+            "margin" : 0.020217264235946164
+          }
+        ]
+      },
+      {
+        "caseId" : "M-05",
+        "category" : "MISMATCH",
+        "fusedCount" : 20,
+        "rawMin" : 0.3502423272166349,
+        "rawMax" : 0.4129231240505745,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.33512573269853024,
+        "candidates" : [
+          {
+            "chunkId" : "expense-2",
+            "rank" : 0,
+            "rawFusedScore" : 0.4129231240505745,
+            "vecNorm" : 1.0,
+            "zScore" : 0.6,
+            "portScore" : 0.6,
+            "margin" : 0.09173932691085163
+          },
+          {
+            "chunkId" : "pricing-3",
+            "rank" : 1,
+            "rawFusedScore" : 0.40333930053093875,
+            "vecNorm" : 0.8471011218152472,
+            "zScore" : 0.6,
+            "portScore" : 0.5082606730891484,
+            "margin" : 0.11133249592303063
+          },
+          {
+            "chunkId" : "trade-jargon-2",
+            "rank" : 2,
+            "rawFusedScore" : 0.39170861793432726,
+            "vecNorm" : 0.6615469619435296,
+            "zScore" : 0.6,
+            "portScore" : 0.3969281771661177,
+            "margin" : 0.06180244446758748
+          }
+        ]
+      },
+      {
+        "caseId" : "M-06",
+        "category" : "MISMATCH",
+        "fusedCount" : 29,
+        "rawMin" : 0.037037037037037035,
+        "rawMax" : 0.47212921517629947,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.8051256525792632,
+        "candidates" : [
+          {
+            "chunkId" : "sla-1",
+            "rank" : 0,
+            "rawFusedScore" : 0.44490553283257595,
+            "vecNorm" : 0.9374300809999625,
+            "zScore" : 0.966793519942125,
+            "portScore" : 0.9292515685421026,
+            "margin" : 0.013662099679204842
+          },
+          {
+            "chunkId" : "models-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.4109186120924097,
+            "vecNorm" : 0.8593157814381629,
+            "zScore" : 1.0,
+            "portScore" : 0.9155894688628977,
+            "margin" : 0.05063845614970297
+          },
+          {
+            "chunkId" : "equipment-1",
+            "rank" : 2,
+            "rawFusedScore" : 0.46446920123033786,
+            "vecNorm" : 0.9823945032091341,
+            "zScore" : 0.8755143107877142,
+            "portScore" : 0.8649510127131947,
+            "margin" : 0.05982536013393158
+          }
+        ]
+      },
+      {
+        "caseId" : "M-07",
+        "category" : "MISMATCH",
+        "fusedCount" : 23,
+        "rawMin" : 0.05,
+        "rawMax" : 0.3764698129639869,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.5734533738016887,
+        "candidates" : [
+          {
+            "chunkId" : "expense-1",
+            "rank" : 0,
+            "rawFusedScore" : 0.3764698129639869,
+            "vecNorm" : 1.0,
+            "zScore" : 0.9629152743966783,
+            "portScore" : 0.9629152743966783,
+            "margin" : 0.020059825228145978
+          },
+          {
+            "chunkId" : "expense-2",
+            "rank" : 1,
+            "rawFusedScore" : 0.34537652826088644,
+            "vecNorm" : 0.904759081947554,
+            "zScore" : 1.0,
+            "portScore" : 0.9428554491685324,
+            "margin" : 0.07997452135464878
+          },
+          {
+            "chunkId" : "expense-0",
+            "rank" : 2,
+            "rawFusedScore" : 0.32067975378783226,
+            "vecNorm" : 0.8291111246407676,
+            "zScore" : 0.9654142530294231,
+            "portScore" : 0.8628809278138836,
+            "margin" : 0.2894275540121949
+          }
+        ]
+      },
+      {
+        "caseId" : "M-08",
+        "category" : "MISMATCH",
+        "fusedCount" : 20,
+        "rawMin" : 0.33756112855711984,
+        "rawMax" : 0.4034788720745663,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.4259279989096138,
+        "candidates" : [
+          {
+            "chunkId" : "customer-sop-1",
+            "rank" : 0,
+            "rawFusedScore" : 0.4034788720745663,
+            "vecNorm" : 1.0,
+            "zScore" : 0.6,
+            "portScore" : 0.6,
+            "margin" : 0.07640003080163893
+          },
+          {
+            "chunkId" : "arch-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.39508534268272055,
+            "vecNorm" : 0.8726666153306019,
+            "zScore" : 0.6,
+            "portScore" : 0.523599969198361,
+            "margin" : 0.046815208545640974
+          },
+          {
+            "chunkId" : "expense-0",
+            "rank" : 2,
+            "rawFusedScore" : 0.38994208783334167,
+            "vecNorm" : 0.7946412677545335,
+            "zScore" : 0.6,
+            "portScore" : 0.4767847606527201,
+            "margin" : 0.05085676174310627
+          }
+        ]
+      },
+      {
+        "caseId" : "M-09",
+        "category" : "MISMATCH",
+        "fusedCount" : 31,
+        "rawMin" : 0.05,
+        "rawMax" : 0.4054888305050569,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.6,
+        "candidates" : [
+          {
+            "chunkId" : "expense-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.36787070238238734,
+            "vecNorm" : 0.8941791558704558,
+            "zScore" : 0.9404764828619623,
+            "portScore" : 0.8769839763842358,
+            "margin" : 0.04562104884285634
+          },
+          {
+            "chunkId" : "expense-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.34556159943578574,
+            "vecNorm" : 0.831423026754089,
+            "zScore" : 0.932509111488926,
+            "portScore" : 0.8313629275413794,
+            "margin" : 0.10379434866726167
+          },
+          {
+            "chunkId" : "sales-flow-2",
+            "rank" : 2,
+            "rawFusedScore" : 0.37948684996348164,
+            "vecNorm" : 0.9268557031605374,
+            "zScore" : 0.7714551569777953,
+            "portScore" : 0.7275685788741177,
+            "margin" : 0.12756857887411777
+          }
+        ]
+      },
+      {
+        "caseId" : "MT-01",
+        "category" : "TEXT",
+        "fusedCount" : 25,
+        "rawMin" : 0.09090909090909091,
+        "rawMax" : 0.34793961100978577,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.7163373262644462,
+        "candidates" : [
+          {
+            "chunkId" : "expense-1",
+            "rank" : 0,
+            "rawFusedScore" : 0.33616044948713864,
+            "vecNorm" : 0.9541721289828442,
+            "zScore" : 0.9721078172252966,
+            "portScore" : 0.944611094615003,
+            "margin" : 0.028206344203252964
+          },
+          {
+            "chunkId" : "payment-plan-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.31212872687709364,
+            "vecNorm" : 0.8606745840195835,
+            "zScore" : 1.0,
+            "portScore" : 0.9164047504117501,
+            "margin" : 0.002938089818569689
+          },
+          {
+            "chunkId" : "sales-flow-0",
+            "rank" : 2,
+            "rawFusedScore" : 0.3130715455621995,
+            "vecNorm" : 0.8643427036060689,
+            "zScore" : 0.994861038429539,
+            "portScore" : 0.9134666605931804,
+            "margin" : 0.19712933432873414
+          }
+        ]
+      },
+      {
+        "caseId" : "MT-02",
+        "category" : "TEXT",
+        "fusedCount" : 23,
+        "rawMin" : 0.1,
+        "rawMax" : 0.32498383208975395,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.5994605570989359,
+        "candidates" : [
+          {
+            "chunkId" : "expense-1",
+            "rank" : 0,
+            "rawFusedScore" : 0.2600810314101415,
+            "vecNorm" : 0.711522378844892,
+            "zScore" : 0.797825876423583,
+            "portScore" : 0.6247393037305183,
+            "margin" : 0.010137583702068853
+          },
+          {
+            "chunkId" : "expense-2",
+            "rank" : 1,
+            "rawFusedScore" : 0.25601519737933,
+            "vecNorm" : 0.6934507067916331,
+            "zScore" : 0.7985312959534696,
+            "portScore" : 0.6146017200284495,
+            "margin" : 0.014601720028449505
+          },
+          {
+            "chunkId" : "pricing-2",
+            "rank" : 2,
+            "rawFusedScore" : 0.32498383208975395,
+            "vecNorm" : 1.0,
+            "zScore" : 0.6,
+            "portScore" : 0.6,
+            "margin" : 5.394429010641133E-4
+          }
+        ]
+      },
+      {
+        "caseId" : "MT-03",
+        "category" : "LEXICAL",
+        "fusedCount" : 22,
+        "rawMin" : 0.1,
+        "rawMax" : 0.3210990454481859,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.8982644567888391,
+        "candidates" : [
+          {
+            "chunkId" : "models-1",
+            "rank" : 0,
+            "rawFusedScore" : 0.3063285145414726,
+            "vecNorm" : 0.9331949585002856,
+            "zScore" : 0.9754554816914347,
+            "portScore" : 0.9353724567916062,
+            "margin" : 0.0032784274123456303
+          },
+          {
+            "chunkId" : "models-2",
+            "rank" : 1,
+            "rawFusedScore" : 0.29607580330738914,
+            "vecNorm" : 0.8868233822987676,
+            "zScore" : 1.0,
+            "portScore" : 0.9320940293792606,
+            "margin" : 0.032474799575888946
+          },
+          {
+            "chunkId" : "models-0",
+            "rank" : 2,
+            "rawFusedScore" : 0.2946078036454017,
+            "vecNorm" : 0.8801838255380782,
+            "zScore" : 0.9715089344805248,
+            "portScore" : 0.8996192298033716,
+            "margin" : 0.0013547730145324621
+          }
+        ]
+      },
+      {
+        "caseId" : "MT-04",
+        "category" : "TEXT",
+        "fusedCount" : 30,
+        "rawMin" : 0.125,
+        "rawMax" : 0.27872444683544395,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.7043742929644323,
+        "candidates" : [
+          {
+            "chunkId" : "sales-flow-2",
+            "rank" : 0,
+            "rawFusedScore" : 0.27872444683544395,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.21377244985580424
+          },
+          {
+            "chunkId" : "models-3",
+            "rank" : 1,
+            "rawFusedScore" : 0.27752420615787793,
+            "vecNorm" : 0.9921922589264489,
+            "zScore" : 0.7909121947883264,
+            "portScore" : 0.7862275501441958,
+            "margin" : 0.062208377865304865
+          },
+          {
+            "chunkId" : "expense-1",
+            "rank" : 2,
+            "rawFusedScore" : 0.2419584347334158,
+            "vecNorm" : 0.7608317163672429,
+            "zScore" : 0.867520142458545,
+            "portScore" : 0.7240191722788909,
+            "margin" : 0.019644879314458574
+          }
+        ]
+      },
+      {
+        "caseId" : "MT-05",
+        "category" : "TEXT",
+        "fusedCount" : 21,
+        "rawMin" : 0.125,
+        "rawMax" : 0.2871269953181742,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 5.551115123125783E-17,
+        "tailPortScore" : 0.4871763966795139,
+        "candidates" : [
+          {
+            "chunkId" : "customer-sop-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.2871269953181742,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.49065905498155304
+          },
+          {
+            "chunkId" : "customer-sop-4",
+            "rank" : 1,
+            "rawFusedScore" : 0.24059770048691825,
+            "vecNorm" : 0.7130071106298972,
+            "zScore" : 0.6815366786405087,
+            "portScore" : 0.509340945018447,
+            "margin" : 0.00961511985919794
+          },
+          {
+            "chunkId" : "codes-3",
+            "rank" : 2,
+            "rawFusedScore" : 0.26003174419327385,
+            "vecNorm" : 0.832876375265415,
+            "zScore" : 0.6,
+            "portScore" : 0.499725825159249,
+            "margin" : 0.012549428479735114
+          }
+        ]
+      },
+      {
+        "caseId" : "TP-01",
+        "category" : "TEMPORAL",
+        "fusedCount" : 46,
+        "rawMin" : 0.07692307692307693,
+        "rawMax" : 0.5126912787141231,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.6331568285471751,
+        "candidates" : [
+          {
+            "chunkId" : "pricing-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.5126912787141231,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.07776257163384281
+          },
+          {
+            "chunkId" : "pricing-2",
+            "rank" : 1,
+            "rawFusedScore" : 0.47542335161502836,
+            "vecNorm" : 0.9144776352521358,
+            "zScore" : 0.9735508472148757,
+            "portScore" : 0.9222374283661572,
+            "margin" : 0.150085758414658
+          },
+          {
+            "chunkId" : "pricing-1",
+            "rank" : 2,
+            "rawFusedScore" : 0.46169314543916135,
+            "vecNorm" : 0.8829695855150631,
+            "zScore" : 0.8423699186424614,
+            "portScore" : 0.7721516699514992,
+            "margin" : 0.13899484140432405
+          }
+        ]
+      },
+      {
+        "caseId" : "TP-02",
+        "category" : "TEMPORAL",
+        "fusedCount" : 29,
+        "rawMin" : 0.06666666666666667,
+        "rawMax" : 0.37028157166684006,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.5399153359532172,
+        "candidates" : [
+          {
+            "chunkId" : "regional-policy-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.37028157166684006,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.30644639798493356
+          },
+          {
+            "chunkId" : "regional-policy-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.31476736868477917,
+            "vecNorm" : 0.8171558705853746,
+            "zScore" : 0.8032600796638416,
+            "portScore" : 0.6935536020150664,
+            "margin" : 0.14688497559565872
+          },
+          {
+            "chunkId" : "models-0",
+            "rank" : 2,
+            "rawFusedScore" : 0.2919688289538917,
+            "vecNorm" : 0.7420655527010321,
+            "zScore" : 0.7014292947987885,
+            "portScore" : 0.5466686264194077,
+            "margin" : 0.0067532904661905535
+          }
+        ]
+      },
+      {
+        "caseId" : "TP-03",
+        "category" : "TEMPORAL",
+        "fusedCount" : 35,
+        "rawMin" : 0.05,
+        "rawMax" : 0.43049311261877615,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.5703460545741191,
+        "candidates" : [
+          {
+            "chunkId" : "sla-1",
+            "rank" : 0,
+            "rawFusedScore" : 0.43049311261877615,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.33265374422412475
+          },
+          {
+            "chunkId" : "sla-2",
+            "rank" : 1,
+            "rawFusedScore" : 0.36896307781148496,
+            "vecNorm" : 0.8382887028261681,
+            "zScore" : 0.7643730340801744,
+            "portScore" : 0.6673462557758753,
+            "margin" : 0.09232648536993382
+          },
+          {
+            "chunkId" : "customer-sop-3",
+            "rank" : 2,
+            "rawFusedScore" : 0.3912161733524444,
+            "vecNorm" : 0.8967735867910858,
+            "zScore" : 0.63695561833129,
+            "portScore" : 0.5750197704059414,
+            "margin" : 0.0046737158318223004
+          }
+        ]
+      },
+      {
+        "caseId" : "TP-04",
+        "category" : "TEMPORAL",
+        "fusedCount" : 25,
+        "rawMin" : 0.1111111111111111,
+        "rawMax" : 0.47490883193218997,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.5890660542558933,
+        "candidates" : [
+          {
+            "chunkId" : "customer-sop-2",
+            "rank" : 0,
+            "rawFusedScore" : 0.47490883193218997,
+            "vecNorm" : 1.0,
+            "zScore" : 1.0,
+            "portScore" : 1.0,
+            "margin" : 0.3986788150459435
+          },
+          {
+            "chunkId" : "customer-sop-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.3983930917893148,
+            "vecNorm" : 0.7896750425753581,
+            "zScore" : 0.7275161594088417,
+            "portScore" : 0.6013211849540565,
+            "margin" : 0.009581491248247809
+          },
+          {
+            "chunkId" : "customer-sop-5",
+            "rank" : 2,
+            "rawFusedScore" : 0.373445232954712,
+            "vecNorm" : 0.7210988602444288,
+            "zScore" : 0.7590803775591515,
+            "portScore" : 0.5917396937058087,
+            "margin" : 0.002673639449915388
+          }
+        ]
+      },
+      {
+        "caseId" : "E-02",
+        "category" : "EDGE",
+        "fusedCount" : 20,
+        "rawMin" : 0.2658862058702572,
+        "rawMax" : 0.3444196777881324,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 2.7755575615628914E-17,
+        "tailPortScore" : 0.23727506590315212,
+        "candidates" : [
+          {
+            "chunkId" : "codes-1",
+            "rank" : 0,
+            "rawFusedScore" : 0.30827350672282006,
+            "vecNorm" : 0.5397354760641239,
+            "zScore" : 0.9102771924136813,
+            "portScore" : 0.6341184780521556,
+            "margin" : 0.03411847805215562
+          },
+          {
+            "chunkId" : "pricing-1",
+            "rank" : 1,
+            "rawFusedScore" : 0.3444196777881324,
+            "vecNorm" : 1.0,
+            "zScore" : 0.6,
+            "portScore" : 0.6,
+            "margin" : 0.14885591521365815
+          },
+          {
+            "chunkId" : "expense-3",
+            "rank" : 2,
+            "rawFusedScore" : 0.2725804101141465,
+            "vecNorm" : 0.08524014131056966,
+            "zScore" : 1.0,
+            "portScore" : 0.4511440847863418,
+            "margin" : 0.2138690188831897
+          }
+        ]
+      },
+      {
+        "caseId" : "E-04",
+        "category" : "EDGE",
+        "fusedCount" : 34,
+        "rawMin" : 0.07692307692307693,
+        "rawMax" : 0.3414052255921775,
+        "normalizedVectorWeight" : 0.6,
+        "identityMaxAbsDiff" : 1.1102230246251565E-16,
+        "tailPortScore" : 0.6085655244672556,
+        "candidates" : [
+          {
+            "chunkId" : "regional-policy-0",
+            "rank" : 0,
+            "rawFusedScore" : 0.3288616367526316,
+            "vecNorm" : 0.9525730227818154,
+            "zScore" : 0.7936241476932018,
+            "portScore" : 0.765167961362291,
+            "margin" : 0.06727528515724701
+          },
+          {
+            "chunkId" : "equipment-0",
+            "rank" : 1,
+            "rawFusedScore" : 0.3414052255921775,
+            "vecNorm" : 1.0,
+            "zScore" : 0.697892676205044,
+            "portScore" : 0.697892676205044,
+            "margin" : 0.04053830453050156
+          },
+          {
+            "chunkId" : "equipment-3",
+            "rank" : 2,
+            "rawFusedScore" : 0.3100858649904425,
+            "vecNorm" : 0.8815823269761796,
+            "zScore" : 0.7284049754888349,
+            "portScore" : 0.6573543716745425,
+            "margin" : 0.04878884720728682
+          }
+        ]
+      }
+    ],
+    "nonApplicable" : [
+      "E-01:EDGE-不走知识库检索（生产语义直接返回空）",
+      "E-03:EDGE-不走知识库检索（生产语义直接返回空）"
+    ]
+  },
+  "binary" : {
+    "executed" : true,
+    "status" : "EXECUTED",
+    "reason" : "显式 opt-in（RAG_BENCHMARK_REAL=1 + DASHSCOPE_API_KEY）下执行且仅执行一次：embed 走生产 ModelProvider#embed 外包的计数+硬帽层，chat/stream/vision 走确定性桩（零外呼）",
+    "ledger" : {
+      "plannedCalls" : 149,
+      "queryEmbedCalls" : 92,
+      "fixtureSliceCalls" : 57,
+      "actualCalls" : 149,
+      "actualTokens" : 16968,
+      "actualTokensBasis" : "provider 未回流文本 embedding usage（ModelProviderImpl#embed 注释实测）→ 按 1 token / 字符保守计，非伪造真值",
+      "elapsedMs" : 28944,
+      "costCny" : 0.008484,
+      "priceCnyPerMillionTokens" : 0.5,
+      "priceSource" : "https://help.aliyun.com/zh/model-studio/text-embedding-v3（华北2·北京「文本输入」0.5 元/百万 tokens，查价日 2026-10-27）",
+      "embeddingModel" : "text-embedding-v3"
+    },
+    "pseudoSuiteMetrics" : {
+      "caseCount" : 72,
+      "recallAt5" : 0.84375,
+      "mrr" : 0.7884259259259261
+    },
+    "realSuiteMetrics" : {
+      "caseCount" : 72,
+      "recallAt5" : 0.9351851851851851,
+      "mrr" : 0.8993055555555556
+    },
+    "deltaBasis" : "伪向量（256 维哈希）vs 真嵌入（text-embedding-v3）在同一 fixture 语料、同一装配下的 recall@5 / MRR 对照；语料仍为 fixture，不得外推（R7）"
+  },
+  "budget" : {
+    "capCny" : 5.0,
+    "priceCnyPerMillionTokens" : 0.5,
+    "priceSource" : "https://help.aliyun.com/zh/model-studio/text-embedding-v3（华北2·北京「文本输入」0.5 元/百万 tokens，查价日 2026-10-27）",
+    "embeddingModel" : "text-embedding-v3",
+    "plan" : {
+      "queryCases" : 72,
+      "queryCalls" : 72,
+      "queryEmbedCalls" : 92,
+      "queryEmbedBasis" : "72 查询经生产改写/拆路后每路一次 embed，干跑（本地伪向量，零外呼）实测得 queryEmbedCalls；静态下界是每查询 1 次",
+      "fixtureSliceCalls" : 57,
+      "plannedCalls" : 149,
+      "estimatedTokens" : 18034,
+      "tokenEstimateBasis" : "1 token / 字符（保守上界；block 头按每切片 +64 字符计入）",
+      "estimatedCostCny" : 0.009017,
+      "hardCheck" : "PASS：estimatedCostCny=0.009017 <= capCny=5.0",
+      "hardCheckTiming" : "第一次真实调用之前（生成器侧静态推导；重放侧再次断言后才调用）"
+    },
+    "estimatedCalls" : 149,
+    "actualCalls" : 149,
+    "capCalls" : 82621,
+    "monotone" : "estimatedCalls(149) <= actualCalls(见 binary.ledger) <= capCalls(82621)；且 actualCostCny <= capCny(5.0)"
+  },
+  "residualDeviation" : [
+    {
+      "leg" : "语料腿",
+      "status" : "STILL-OFF-PRODUCTION",
+      "whyStillOffProduction" : "语料仍是 15 份固定 fixture，非生产库真实文档；本卡明确不碰（D5）",
+      "excludedConclusions" : [
+        "生产语料分布",
+        "把本锚召回率或分数外推为生产库真实语料上的检索质量（eval-port-route-v1#nonSupportable）"
+      ],
+      "ref" : "docs/rag-quality/eval-port-route-v1.json（eval-port-route-v1#nonSupportable）"
+    },
+    {
+      "leg" : "输入腿",
+      "status" : "OPT-IN-ONLY",
+      "whyStillOffProduction" : "默认路径仍是确定性哈希伪向量；真嵌入只在显式 opt-in 下执行一次，执行状态见 binary 段",
+      "excludedConclusions" : [
+        "伪向量余弦分布当作真嵌入分数分布",
+        "未执行时伪/真嵌入的差"
+      ],
+      "ref" : "docs/rag-quality/eval-port-route-v1.json（eval-port-route-v1#nonSupportable）"
+    },
+    {
+      "leg" : "稀疏腿",
+      "status" : "QUANTIFIED-NOT-ALIGNED",
+      "whyStillOffProduction" : "真 ngram 差异已量化，但 CI 端口仍用 bigram 近似（D6）；本卡不认「近似=对齐」（D2）",
+      "excludedConclusions" : [
+        "把 bigram 近似当生产 FULLTEXT(ngram) 相关度",
+        "稀疏路绝对值跨卡比较"
+      ],
+      "ref" : "docs/rag-quality/eval-port-route-v1.json（eval-port-route-v1#nonSupportable）"
+    },
+    {
+      "leg" : "度量腿",
+      "status" : "REPORTED-TRIPLET",
+      "whyStillOffProduction" : "三项已并列，但归一化分仍是集合内相对量，跨查询/跨语料不可比",
+      "excludedConclusions" : [
+        "跨查询/跨语料分数比较与分位"
+      ],
+      "ref" : "docs/rag-quality/eval-port-route-v1.json（eval-port-route-v1#nonSupportable）"
+    },
+    {
+      "leg" : "归一化面",
+      "status" : "SET-RELATIVE",
+      "whyStillOffProduction" : "min-max 集合内归一不动；本卡只把归一化前值一并留下，不改口径",
+      "excludedConclusions" : [
+        "从本套件取「文本路真分数分布」"
+      ],
+      "ref" : "docs/rag-quality/eval-port-route-v1.json（eval-port-route-v1#nonSupportable）"
+    }
+  ],
+  "runtime" : {
+    "generatedBy" : "EvalPortParitySparseTest#anchorRebuildOrCompare",
+    "generatorWriteProperty" : "-Deval.port.parity.write=true",
+    "mysqlImage" : "mysql:8.0.36",
+    "migration" : "classpath:db/migration（真 Flyway 全量迁移，建出 V22 ngram 索引）",
+    "dockerRequired" : true,
+    "dockerAbsentBehavior" : "assumeTrue 跳过整类（CI 的 surefire 无 Docker 契约不变）",
+    "excludedFromByteCompare" : false
+  },
+  "numericHygiene" : {
+    "lineEnding" : "LF",
+    "trailingNewline" : true,
+    "jsonIndent" : "2 spaces",
+    "sparseScoreScale" : "round to 4 decimal places（MySQL 相关度，仅分布对照）",
+    "metricScale" : "raw IEEE-754 double（逐字节复算依赖确定性的内存管线）",
+    "identityTolerance" : 1.0E-12
+  },
+  "decisionOwner" : "OWNER"
+}
