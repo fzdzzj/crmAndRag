@@ -285,6 +285,14 @@ class EvalPortParityGuardTest {
     assertTrue(priceSource.contains("http"), "单价来源必须可复核（官方 URL）");
     long estimatedTokens = plan.path("estimatedTokens").asLong(-1);
     assertTrue(estimatedTokens > 0, "token 估算必须 > 0");
+    String tokenEstimateBasis = plan.path("tokenEstimateBasis").asText("");
+    assertTrue(!tokenEstimateBasis.isBlank(), "plan.tokenEstimateBasis 必须非空（估算口径必须落锚）");
+    assertTrue(
+        tokenEstimateBasis.contains("查询"),
+        "plan.tokenEstimateBasis 必须点名「查询」侧（防再退化回只算切片）: " + tokenEstimateBasis);
+    assertTrue(
+        tokenEstimateBasis.contains("切片"),
+        "plan.tokenEstimateBasis 必须点名「切片」侧（口径必须两侧并列）: " + tokenEstimateBasis);
     double estimatedCost = plan.path("estimatedCostCny").asDouble();
     assertEquals(
         estimatedTokens * price / 1_000_000d, estimatedCost, 1e-12d, "估算成本必须由 token 估算 × 单价机械推导");
@@ -299,6 +307,13 @@ class EvalPortParityGuardTest {
         budget.path("estimatedCalls").asLong(-1) <= (actualCalls == 0 ? plannedCalls : actualCalls),
         "估 <= 实测（未执行时退化为 估 <= 计划）");
     if (anchor.path("binary").path("executed").asBoolean(false)) {
+      long actualTokens = ledger.path("actualTokens").asLong(-1);
+      assertTrue(
+          estimatedTokens >= actualTokens,
+          "保守上界估算必须 ≥ 实测（否则飞行前闸门会低估）：estimatedTokens="
+              + estimatedTokens
+              + " < actualTokens="
+              + actualTokens);
       assertEquals(
           ledger.path("plannedCalls").asLong(-1), actualCalls, "真跑实测调用数必须等于计划（不得为多跑档位追加调用）");
       assertEquals(plannedCalls, actualCalls, "实测调用数必须等于预算推导的计划调用数（估 = 实测）");

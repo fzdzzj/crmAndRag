@@ -4898,7 +4898,7 @@
       "fixtureSliceCalls" : 57,
       "plannedCalls" : 149,
       "estimatedTokens" : 18034,
-      "tokenEstimateBasis" : "1 token / 字符（保守上界；block 头按每切片 +64 字符计入）",
+      "tokenEstimateBasis" : "1 token / 字符（保守上界：查询文本 + 切片文本 + 每切片 block 头 +64 字符）",
       "estimatedCostCny" : 0.009017,
       "hardCheck" : "PASS：estimatedCostCny=0.009017 <= capCny=5.0",
       "hardCheckTiming" : "第一次真实调用之前（生成器侧静态推导；重放侧再次断言后才调用）"

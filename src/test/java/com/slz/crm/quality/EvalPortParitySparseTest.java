@@ -794,7 +794,7 @@ class EvalPortParitySparseTest {
         (queryEmbedCalls > 0 ? queryEmbedCalls : RagBenchmarkSuite.standard().size())
             + preparation.chunks().size());
     plan.put("estimatedTokens", estimatedTokens);
-    plan.put("tokenEstimateBasis", "1 token / 字符（保守上界；block 头按每切片 +64 字符计入）");
+    plan.put("tokenEstimateBasis", EvalPortParityRealEmbeddingReplayTest.TOKEN_ESTIMATE_BASIS);
     plan.put("estimatedCostCny", estimatedCostCny);
     plan.put("hardCheck", "PASS：estimatedCostCny=" + estimatedCostCny + " <= capCny=" + CAP_CNY);
     plan.put("hardCheckTiming", "第一次真实调用之前（生成器侧静态推导；重放侧再次断言后才调用）");

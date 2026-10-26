@@ -90,6 +90,12 @@ class EvalPortParityRealEmbeddingReplayTest {
 
   private static final String EMBEDDING_MODEL = "text-embedding-v3";
 
+  /**
+   * 保守上界口径（与锚 {@code budget.plan.tokenEstimateBasis} 同一字符串、同源）：查询文本 + 切片文本 + 每切片 block 头 64 字符，按 1
+   * token / 字符计。两侧必须都计入——只算切片会让飞行前闸门的估算低于实测（fix1 修正的缺口）。
+   */
+  static final String TOKEN_ESTIMATE_BASIS = "1 token / 字符（保守上界：查询文本 + 切片文本 + 每切片 block 头 +64 字符）";
+
   private static final String COMPATIBLE_BASE_URL =
       "https://dashscope.aliyuncs.com/compatible-mode/v1";
 
@@ -109,6 +115,8 @@ class EvalPortParityRealEmbeddingReplayTest {
             + plan.plannedCalls()
             + " estimatedTokens="
             + plan.estimatedTokens()
+            + " estimateBasis="
+            + plan.estimateBasis()
             + " price="
             + PRICE_CNY_PER_MILLION_TOKENS
             + " 元/百万tokens（来源："
@@ -305,6 +313,10 @@ class EvalPortParityRealEmbeddingReplayTest {
     for (RagBenchmarkDataPreparer.BenchmarkChunk chunk : preparation.chunks()) {
       plannedChars += chunk.text().length() + 64L;
     }
+    // 查询文本同样是 embedding 输入：只算切片会低估实测（fix1），此处与锚 buildBudget 逐字同口径
+    for (RagBenchmarkCase benchmarkCase : RagBenchmarkSuite.standard()) {
+      plannedChars += benchmarkCase.question().length();
+    }
     long queryCalls = counter.calls();
     long sliceCalls = preparation.chunks().size();
     long plannedCalls = queryCalls + sliceCalls;
@@ -314,7 +326,13 @@ class EvalPortParityRealEmbeddingReplayTest {
     double averageCostPerCall = estimatedCostCny / plannedCalls;
     long capCalls = (long) Math.floor(CAP_CNY / averageCostPerCall);
     return new ReplayPlan(
-        queryCalls, sliceCalls, plannedCalls, estimatedTokens, estimatedCostCny, capCalls);
+        queryCalls,
+        sliceCalls,
+        plannedCalls,
+        estimatedTokens,
+        estimatedCostCny,
+        capCalls,
+        TOKEN_ESTIMATE_BASIS);
   }
 
   private static MetricPair readPseudoMetricsFromAnchor() throws Exception {
@@ -466,7 +484,8 @@ class EvalPortParityRealEmbeddingReplayTest {
       long plannedCalls,
       long estimatedTokens,
       double estimatedCostCny,
-      long capCalls) {}
+      long capCalls,
+      String estimateBasis) {}
 
   /**
    * 计数 + 硬帽层：{@code embed} 逐次计数，超计划或超预算立即抛错终止（不许先跑几条看看）；{@code chat/stream/vision} 走确定性桩，不产生任何外呼。
