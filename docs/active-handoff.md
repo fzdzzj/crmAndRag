@@ -8,13 +8,12 @@
 
 ## 1. 现状快照 (Current State Snapshot)
 
-- **当前主干版本**：`master` = **`91c8b1a`（M1 合并）+ `725e8b9`（基线重锚）+ 本归档笔** = origin/master。分支 `feature/near-dup-conditional-min-criterion` **永久保留**（基点 `7f630a4` → **3 笔**：`bb5889f` 首轮 / `2e09693` fix1 / `4e258d6` fix2）
-- **测试基线四元组**：`source-revision=91c8b1a`（**树净，非 `-dirty`**）+ Surefire **报告 362 / 用例 2199 / F0 / E0 / S0** + Failsafe **报告 49 / 用例 151 / F0 / E0 / S18** + **CI = Run 40357285028（6/6 jobs 绿）**。上一卡 360/2197/0 + 49/151/18 → 本卡 surefire **+2 报告 +2 用例**（`NearDupConditionalMinCriterionTest` 1 + Guard 1）、failsafe **三值不变**
-- **本卡规模**：对 `7f630a4` **6 文件 / +3818 −0**（2 测试类 + 2 锚 + 卡面 2 件）；merge 树 == 分支 tip 树，树净
-- **本卡结论（一句话）**：**判据是可满足的，前提是把它条件化。** 卡 35 卡住的「两分支同时末位」在本语料必然落空（bm25 在图像描述文本上全命中或零命中）；改成三分支后：全 0 支 `r=0 ⇔ normVec=0`、全 1 支 `r ≥ wb`（`r=0` 不可能）、原判据退化为非退化支的**特例**。`verdict=PROVEN-CONDITIONAL` 带 `applicabilityDomain`；`PROVEN`（无条件）档明写「可达但本语料未出现」
-- **本卡真正的副产物**：① **重锚清单**（9 张必需 / 6 张不受影响 / 1 张未判定；方式 + 是否花钱 + 依赖序，`executed=false`）② **外呼边界写清**：`221` 只算已判定 9 张，含未判定 1 张为 `239` ③ **0.90 决策输入齐了**：逐锚「是否冻了分类（字段路径 + 样例）」「能否零外呼重算（按是否冻 `cos`/向量）」
-- **两处「陈述与源锚不符」（我的账，都记全）**：① 复核报告称签收锚 sha「被多张引用」，实为**零张引用**、是签收锚自己 `evidenceAnchors` 记 6 张——我照抄进 fix1 指令，被执行者实测推翻（它对）② fix1 反过来写成 `signedDigests`（**该字段不存在**）「四张」，实为 `evidenceAnchors` **6 键 / 清单内 4 张** ⇒ fix2 改正并加反向断言（`orderRule` 不得含 `signedDigests`、必须含 `evidenceAnchors`；6 键 / 交集 4 / 4 张 order 更小，三条机器可验）
-- **工作树拓扑**：观察树 `D:\code\crmAndRag`（logbook + `work/` 未跟踪）；权威树 `D:\code\crmAndRag-merge-add-knowledge-admin-api`（分支 / 门禁 / 合并 / push 唯一法定树）。**坑**：`pnpm -C frontend test` 会重写 `frontend/typed-router.d.ts`（生成物 +32 行），跑完门禁须 `git checkout --` 复原，否则基线 `source-revision` 会挂 `-dirty`（本卡 M1 已再中一次）
+- **当前主干版本**：`master` = **`696a89c`（M1 合并）+ `f09e7aa`（基线重锚）+ 本归档笔** = origin/master。分支 `feature/eval-port-production-parity` **永久保留**（基点 `db6723e` → **2 笔**：`017254f` 首轮 / `7fe4fb6` fix1）
+- **测试基线四元组**：`source-revision=696a89c`（**树净，非 `-dirty`**）+ Surefire **报告 365 / 用例 2211 / F0 / E0 / S1** + Failsafe **报告 49 / 用例 151 / F0 / E0 / S18** + **CI = Run 40386288153（6/6 jobs 绿）**。上一卡 362/2199/0 + 49/151/18 → 本卡 surefire **+3 报告 +12 用例 +1 skip**（3 个新测试类；skip 是 opt-in 真跑那条 `assumeTrue`）、failsafe **三值不变**
+- **本卡结论（一句话）**：**评测端口的误差条交付了，但没有替换 CI 端口。** 稀疏腿在真 MySQL 8.0.36 + 真 Flyway + 生产同一条 `fulltextSearch`（`SparseRecallService:53`→`Mapper:92-117`）上对比 bigram 近似：72 例逐查询，真命中 **341** / 近似 **331** / 交集 **247**；度量腿 70 例 ×3 候选 = **210 行**三口径（`rawFusedScore`/`rank`/`margin`）恒等式最大差 **8.9e-16**；结论 `verdictPort=ERROR-BAR-PARTIAL-QUANTIFIED`。**不替换端口**是刻意的（D6：`mvn test` 契约无 Docker），语料腿仍是 15 份 fixture
+- **量化答案（唯一花钱换来的东西）**：同语料同装置**只换输入向量**（伪向量→真嵌入），`recall@5 0.84375 → 0.93519`（**+9.14pp**）、`mrr 0.78843 → 0.89931`（**+0.111**）⇒ **伪向量腿把套件分数系统性低估约 9pp**。成本 149 次调用 / ¥0.0085 / 28.9s，只跑一次
+- **两处写集缺陷（我的）**：① 写集漏了 `proposal.md`，而 tasks 第 13 条要求写 `§8` ② 写集漏了生成器 `EvalPortParitySparseTest`（锚由它重建，不改则写模式把旧文案覆盖回去）——执行者两次都按「任务优先」处理并主动报了偏差，处置正确 ⇒ 已立**板规 33**
+- **工作树拓扑**：观察树 `D:\code\crmAndRag`（logbook + `work/` 未跟踪）；权威树 `D:\code\crmAndRag-merge-add-knowledge-admin-api`（分支 / 门禁 / 合并 / push 唯一法定树）。**坑**：`pnpm -C frontend test` 会重写 `frontend/typed-router.d.ts`（生成物 +32 行），跑完门禁须 `git checkout --` 复原，否则基线 `source-revision` 会挂 `-dirty`
 
 ---
 
@@ -29,7 +28,7 @@
 7. **图像路独立相似度硬闸门**（独立键 0.9944 + 三档 tier + 准入下限 0.982 + 带内基准 0.9887 冻结 + 重排后、融合前降权）
 8. 其余已闭环能力面（多模态真共享空间 / v6.0 主套件真跑 / PDF 图文评测 / 五路语义 hook / 公海 CAS / 写端点校验 / 向量运维收口 / 线索漏斗 V42 / 超管 token 视图等）沿用上一版，不再复述
 9. **近重复消融：S0 零外呼 A/B 已实测**（卡 28）：正对照证明**装置有鉴别力**，冻结真实语料 7 查询 A/B 得 `verdict=NO-RANK-CHANGE`（分数位移 0.06、名次与集合零变化、gap ≫ 窗口）；锚 `near-dup-ablation-v1`（写模式 `-Dnear.dup.ablation.write=true`，默认逐字节复跑、零外呼、CI 真跑、failsafe 用例数 +1）
-10. **评测端口口径已对账**（卡 29）：72 例套件 `verdict=PARTIAL-OFF-PRODUCTION`——装配腿生产、输入腿伪向量、稀疏腿 bigram 近似、度量腿 min-max 集合内归一；平移不变性实测（`+100` 差 `2.83e-14`、`×2` 差 `0.0`、单点对照名次 `1→0`）⇒ **其分数不得当「文本路真分数分布」用**
+10. **评测端口：误差条已量化**（卡 29 对账 + 卡 37 量化）：卡 29 定 `PARTIAL-OFF-PRODUCTION`（6 腿：装配腿生产，其余 5 腿 9 偏差点）；卡 37 补误差——稀疏腿真 ngram vs bigram 逐查询（真 **341** / 近似 **331** / 交集 **247**）、度量三口径 210 行恒等式 ≤8.9e-16、真嵌入重放 149 次 ¥0.0085 ⇒ **`recall@5 +9.14pp` / `mrr +0.111`**；`verdictPort=ERROR-BAR-PARTIAL-QUANTIFIED`。**语料腿仍 fixture ⇒ 分数仍不得当生产分布用**
 11. **前端权限小表覆盖率已进门禁**（卡 30）：`endpointPermissionCoverage.test.ts` 断言 `used ⊆ registered`（模板 64 处动态站点 vs 小表 57 条），缺登记即红并打印端点 + 模板`行号`；三集合对账落锚 `ui-permission-coverage-v1`（写模式 `UI_PERMISSION_COVERAGE_UPDATE=1`），僵尸登记**只标注不删**
 12. **S1 窗内共现消融已真跑（卡 31，30 外呼）**：构造 2 base × 3 非退化变体（`jpeg-95`/`jpeg-85`/`scale-95`），逐图七链等式 **6/6 全过**（分母 = 实测子块行数，卡 27 `COUNTER-SUPPRESSED` 口径），A/B **复用同一批查询向量**（各嵌一遍会 42 次、直接超帽）；结果 6 变体全 `ABOVE`（`cos ≥ 0.997653`）⇒ **0 次降权** ⇒ `verdict` 字段 `NO-RANK-CHANGE` 是**恒真标签**，按 `proposal §8` 正确读法是 `INCONCLUSIVE`（缺带内样本）。锚 `near-dup-ingest-s1-v1`（写模式 `-Dnear.dup.ingest.s1.write=true`，守卫 `NearDupIngestS1GuardTest`）
 13. **带内入口已实测（卡 32，30 外呼）**：**纯几何裁切是唯一被实测撞进降权带的构造**——2 base × 3 边距里 4/6 带内（`cos 0.988904–0.993401`，`crop-04` 复现 S0 的 `0.9934`；带外 2 个照记：`SAME_IMAGE 0.994625` / 未召回）。`downWeightedCount=12` 后名次面与集合面仍零变化 ⇒ `NO-RANK-CHANGE`；`windowCheck` 12 条全录（4 条 `gap ≤ window` 未翻转 = 竞争者同步下沉）。锚 `near-dup-band-entry-v1`（写模式 `-Dnear.dup.band.entry.write=true`，守卫 `NearDupBandEntryGuardTest`；同锚 `legB` 承载零外呼档位填充表）
@@ -49,9 +48,9 @@
   1. ~~S1 消融 / 更强变形带内构造~~ / ~~窗口判据升级~~ / ~~`delta=0` 成因（OQ1）~~ **四项已由卡 32/33/34/35 全部收口**
   2. ~~另卡改 R2/R3~~ **已由卡 36 收口（判据条件化，未放宽）**：三分支 + `PROVEN-CONDITIONAL` 已把「单分支末位 + 另一分支退化并列」写进适用域内的条件式；`PROVEN`（无条件）仍标「可达但本语料未出现」，不许拿它冒充结论
   3. **0.90 / 档位拍板 —— 已拍板：维持 `0.982`（2026-10-26）**：裁决依据不是「0.90 太贵」，而是**收益指标与真实收益脱钩**——① 12/12 带内事件 `r=0`（卡 34/35 双证）⇒ 降权在本语料**从未测出任何位移**，迄今零证据表明它改善检索 ② `0.982` 正是 `near-dup-exchange-rate-v1` 按 E3/E4 算出的 `bestValueFloor`（无免费档，`R=0.666667 / S_same=0.03`），维持它不是停滞而是沿上次实测最优点 ③ 0.90 的收益只有自设指标 `R 0.667→0.942`，代价是 `S_same 0.03→0.08`（同文档多压 5 张）与第三图进带 `13→93/2760`，而**这些多压的是真重复还是真不同，本语料无标签可判**。**重锚清单已冻结在卡 36 锚内（9 张 / 221 或 239 外呼 / 依赖序现算），随时可启用**。翻案条件三条：人标证明近重复图挤占答案；出现 `r>0` 的带内事件；`R ≥ 0.90` 若是硬验收线（`spec/` 内未找到出处，需 Owner 指认）
-  4. **用户意图级相关性标注（唯一能消掉 A1/A2 的路）**：须真实查询 + 人标；**严禁**用 agent 生成标签充数
+  4. **用户意图级相关性标注（唯一还能推进的路，须你出人）**：卡 37 已把测量装置备好——真嵌入通道 + 149 调用级台账（¥0.0085/次）、「伪向量低估 9pp」已量化；人标回来即可直接判「近重复图 / 伪向量偏差是否真伤答案」。须真实查询 + 人标，**严禁** agent 代标
   5. **生产开关运行期打开（Owner 决，非代码）**：`rag.retrieval.image-vector-ingest.enabled` 默认 `false`；先跑 `bash scripts/rag-quality/image-vector-ingest-preflight.sh preflight --snapshot <四键快照>`
-- **下批推荐**：近重复线**六题全部收口 + `0.90` 已拍板「不降」⇒ 本线收口完毕**。若再要动这条线，唯一入口是**用户意图级相关性标注**（`spec` 与人标，非 token 可解；有了它才能判「多压的 5 张是同文档重复还是真不同」）。**不要**再开「只读就能自答」的卡；**不要**在没有人标的情况下再议门槛（既无收益测量也无损害测量，议不出结论）
+- **下批推荐**：近重复线七题（入口/判据/计数/归因/分解/条件化/门槛拍板）+ **评测端口误差条**全部收口 ⇒ **RAG 质量线没有「零成本自答」的题了**。再往下只有三条路：**花钱**（真语料卡）、**出人**（人标）、**运维**（`image-vector-ingest` 开关）。**不要**再开只读卡；**不要把 `+9.14pp` 读成「质量提升 9pp」**——它测的是**装置误差**，不是产品质量变化
 
 ---
 
@@ -89,6 +88,7 @@
 30. **分档结论必须被守卫反向钉住（卡 34 新增）**：把 `PROVEN` / `CONSISTENT-NOT-PROVEN` / `MISSING-EVIDENCE` 写进锚只是「声明分档」，不等于「分档守得住」——卡 34 把「末位」注入 `PROVEN` 后，守卫 7/7 仍绿，只有复算比对兜着。**凡分档结论，必须有一条反向断言：`PROVEN` 的文本里不许出现未证解释的关键词**（本卡禁式：`末位` / `min-max 把` / `归 0 造成` / `成因是`）。正向断言证明「我写了什么」，反向断言才证明「我没偷偷多写」
 31. **判据的可满足性要在写卡时自证一遍（卡 35 新增）**：卡 35 的 R3 要求「两分支同时非退化」，可 bm25 在图像描述文本上**必然**退化（全命中或零命中）⇒ **这条判据在本语料上不可满足**，执行者只能判 `UNDETERMINED`。写判据时先问一句：**「什么数据能让它取到这个值？本语料里有没有这样的数据？」** 若答案是「理论上有、本语料里没有」，那不是判据，是把 `UNDETERMINED` 写成了宿命；正确做法是**写条件化判据**（在 X 分支退化为全 0 时等价于单分支判据），并在卡里写明适用域
 32. **能被源锚证伪的陈述，落笔那一步就证一次（卡 36 新增）**：本卡两处翻车同源——复核报告说「签收锚 sha 被多张引用」，我照抄进指令；fix1 又把依据写成 `signedDigests`「四张」，而该字段**压根不存在**（实为 `evidenceAnchors` 6 键、清单内 4 张）。**凡是「某锚里有 X 字段 / 引用了 N 张 / 冻了 Y」这类下次 grep 就能推翻的话，先 grep 一次源锚再落笔**；能写成反向断言的（不含错误字段名、键数 = N、交集 = M）就写进守卫，别留在散文里当装饰
+33. **写集必须覆盖「任务动作的产物」与「卡面 + 生成器」（卡 37 新增）**：本卡写集漏两处——① tasks 第 13 条要求写 `proposal §8`，写集却没列 `proposal.md` ② 锚由 `EvalPortParitySparseTest` 重建，写集却没列生成器（不改它，写模式会把旧文案覆盖回去）。执行者两次都只能「要么违写集、要么违任务」。**写卡时把 tasks 的动作逐条反查写集**：动作要写哪个文件，那个文件就必须在写集里；卡面（proposal / tasks）与生成器同理
 
 ---
 
@@ -96,8 +96,8 @@
 
 - 接口与冻结契约：`spec/changes/add-crm-rag-fusion-platform/contracts-frozen.md`
 - 数据库迁移：`ls src/main/resources/db/migration`（实测最高 **V43**，下一可用 **V44**；最近四卡零迁移）
-- 历史裁决归档：`docs/archive/logbook-historical-202609-202610.md`；活动日志 `docs/main-agent-logbook.md`（**最新 §198**）
-- 历史任务卡：`work/archive/closed-cards/`；本卡卡面 `openspec/changes/archive/near-dup-conditional-min-criterion/`
+- 历史裁决归档：`docs/archive/logbook-historical-202609-202610.md`；活动日志 `docs/main-agent-logbook.md`（**最新 §200**）
+- 历史任务卡：`work/archive/closed-cards/`；本卡卡面 `openspec/changes/archive/eval-port-production-parity/`
 - 回归基线：`bash scripts/check-test-baseline.sh`（台账 `scripts/test-baseline.txt`，只经 `--update` 写）
 - **近重复图像六份锚**：`near-dup-exchange-rate-v1`／`near-dup-fusion-impact-v1`／`image-near-dup-truth-v1`／`near-dup-displacement-evidence-v1`／`image-variant-cross-matrix-v1`／`near-dup-floor-signoff-v1`（写模式见各自守卫）
 - **入库面三锚**：`near-dup-ingest-gate-probe-v1`（S0 闸门探针）／`near-dup-ingest-s1-not-run-v1`（卡 26 的 NOT-RUN 负结论，**历史不可改写**）／`image-slice-ingest-chain-v1`（七链对账 + 五种丢弃语义）
@@ -108,7 +108,7 @@
 - **OQ1 归因锚**：`docs/rag-quality/near-dup-oq1-attribution-v1.json`（12 条 `r` 反算 + 4 条 no-op 算式 + 三档 `claimClass`（`PROVEN` 3 / `CONSISTENT-NOT-PROVEN` 2 / `MISSING-EVIDENCE` 4）+ 一致性检查 6 查询 + `instrumentedPlan`（`executed=false`，30 外呼），写模式 `-Dnear.dup.oq1.attribution.write=true`，守卫 `NearDupOq1AttributionGuardTest`）
 - **r 分解锚（卡 35）**：`docs/rag-quality/near-dup-rerank-decomposition-v1.json`（权重 `0.6/0.4` + 30 行候选分解 + `r` 12/12 对账 + 桶 + `vectorNormalizationIndependence` 独立路径 + `floorOptions` 0.90 决策页，写模式 `-Dnear.dup.rerank.decomposition.write=true`，守卫 `NearDupRerankDecompositionGuardTest`；**`verdict=UNDETERMINED` 是「判据不可满足」不是「机制不存在」**）
 - **末位判据锚（本卡）**：`docs/rag-quality/near-dup-conditional-min-criterion-v1.json`（三分支判定式 + 12 事件条件复判 + 16 张影响清单 + 重锚清单 `executed=false`，写模式 `-Dnear.dup.conditional.min.write=true`，守卫 `NearDupConditionalMinCriterionGuardTest`；**`PROVEN-CONDITIONAL` 必须连 `applicabilityDomain` 读，`PROVEN` 档只是可达性说明**）
-- **评测端口 / 前端权限锚**：`eval-port-route-v1`（`-Deval.port.route.anchor.write=true`）／`docs/ui-permission-coverage-v1.json`（`UI_PERMISSION_COVERAGE_UPDATE=1`）
+- **评测端口 / 误差条 / 前端权限锚**：`eval-port-route-v1`（六腿偏差，`-Deval.port.route.anchor.write=true`）＋ `eval-port-parity-v1`（稀疏腿真 ngram 差异表 / 度量三口径 / 真嵌入台账「`+9.14pp`」，`-Deval.port.parity.write=true`，守卫 `EvalPortParityGuardTest`）／`docs/ui-permission-coverage-v1.json`（`UI_PERMISSION_COVERAGE_UPDATE=1`）；**语料腿仍 fixture，禁外推**
 - **真跑 opt-in**：`RAG_BENCHMARK_REAL=1` / `RAG_VISION_EMBED_REAL=1` / `RAG_NEAR_DUP_DISPLACEMENT_REAL=1` / `RAG_IMAGE_CROSS_MATRIX_REAL=1` / `RAG_NEAR_DUP_INGEST_REAL=1`；**跳过 ≠ 通过**
 - 契约/体积门禁：`scripts/check-openapi-consistency.sh`、`frontend/bundle-budget.json`；计量与超管视图：`docs/token-metering.md`
 
