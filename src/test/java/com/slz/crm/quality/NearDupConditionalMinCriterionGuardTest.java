@@ -12,9 +12,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,8 +26,11 @@ import org.junit.jupiter.api.Test;
  * 卡 36 守卫 · near-dup-conditional-min-criterion。
  *
  * <p>只读 {@code docs/rag-quality/near-dup-conditional-min-criterion-v1.json} 与同名 {@code
- * .md}，独立复算而不是转述： 上游四锚（卡 32/33/34/35）的 SHA 实算、三分支判定式逐查询重推、12 条事件的「所属分支 + 是否满足该分支充要条件」重判、 腿 B
+ * .md}，独立复算而不是转述： 上游五锚（卡 32/33/34/35 + 签收锚）的 SHA 实算、三分支判定式逐查询重推、12 条事件的「所属分支 + 是否满足该分支充要条件」重判、 腿 B
  * 清单的字段可指回与计数自洽、{@code executed = false}、md ≤ 40 行、纯 LF、无倾向措辞。
+ *
+ * <p><b>不信任锚自述</b>（F1）：腿 B 的 16 行必须能被守卫独立复核——逐行按 {@code path} 实算源锚 SHA、逐 {@code
+ * classificationFields[]} 把路径解析回源锚并比对 {@code sample}、{@code cosFrozen} 由守卫自己递归扫源锚得出，任一项与锚自述不符即红。
  *
  * <p>反向断言（板规 30）：无条件 {@code PROVEN} 档文本不得出现「末位」「两分支同时」；{@code PROVEN-CONDITIONAL} 必须有非空 {@code
  * applicabilityDomain}。
@@ -152,7 +158,7 @@ class NearDupConditionalMinCriterionGuardTest {
     }
     for (Path expected : UPSTREAM_PATHS) {
       assertTrue(
-          referenced.contains(expected.toString().replace('\\', '/')), "四张上游锚必须被引用: " + expected);
+          referenced.contains(expected.toString().replace('\\', '/')), "五张上游锚必须被引用: " + expected);
     }
   }
 
@@ -336,7 +342,7 @@ class NearDupConditionalMinCriterionGuardTest {
 
   // ==================== 腿 B ====================
 
-  private static void assertImpact(JsonNode impact) {
+  private static void assertImpact(JsonNode impact) throws Exception {
     assertFalse(impact.path("caliber").asText().isEmpty(), "必须写明 0.90 的口径");
     assertEquals(
         ImageSimilarityGate.NEAR_DUPLICATE_FLOOR,
@@ -361,6 +367,7 @@ class NearDupConditionalMinCriterionGuardTest {
     int no = 0;
     int undetermined = 0;
     int minCalls = 0;
+    int undeterminedCalls = 0;
     List<String> affected = new ArrayList<>();
     List<String> unaffected = new ArrayList<>();
     List<String> unresolved = new ArrayList<>();
@@ -396,6 +403,7 @@ class NearDupConditionalMinCriterionGuardTest {
       if (UNDETERMINED.equals(contradiction)) {
         assertTrue(
             "UNDETERMINED".equals(zeroCall) || "false".equals(zeroCall), "未判定项必须说明重算代价: " + name);
+        undeterminedCalls += Math.max(row.path("minExternalCallsIfNeeded").asInt(0), 0);
       }
       if (!"NOT-APPLICABLE".equals(zeroCall) && row.path("minExternalCallsIfNeeded").asInt() > 0) {
         minCalls += row.path("minExternalCallsIfNeeded").asInt();
@@ -423,17 +431,162 @@ class NearDupConditionalMinCriterionGuardTest {
     assertEquals(minCalls, summary.path("minExternalCallsTotal").asInt(), "最小外呼总量与逐行不一致");
     assertTrue(summary.path("fullRerunTotal").asInt() >= minCalls, "全量重跑上界不应小于最小值");
     assertEquals(
+        summary.path("fullRerunTotal").asInt(),
+        summary.path("fullRerunTotalAffected").asInt(),
+        "fullRerunTotalAffected 必须与 fullRerunTotal 同值（两者都只算已判定受影响的锚）");
+    assertEquals(
+        summary.path("fullRerunTotal").asInt() + undeterminedCalls,
+        summary.path("fullRerunTotalWithUnresolved").asInt(),
+        "含未判定项的全量重跑上界必须 = 已判定上界 + Σ(未判定行 minExternalCallsIfNeeded)");
+    String boundary = summary.path("fullRerunTotalBoundary").asText();
+    assertTrue(boundary.contains("221"), "边界说明必须写出 221（已判定 9 张）: " + boundary);
+    assertTrue(boundary.contains("239"), "边界说明必须写出 239（含未判定 1 张的 18）: " + boundary);
+    assertTrue(boundary.contains("18"), "边界说明必须写出未判定的 18 次外呼: " + boundary);
+    assertEquals(
         String.join(",", affected), summary.path("affected").asText(), "affected 清单与逐行不一致");
     assertEquals(
         String.join(",", unaffected), summary.path("unaffected").asText(), "unaffected 清单不一致");
     assertEquals(
         String.join(",", unresolved), summary.path("unresolved").asText(), "unresolved 清单不一致");
+    assertImpactProvenance(impact);
   }
 
-  private static void assertReanchorPlan(JsonNode plan, JsonNode impact) {
+  /** 腿 B 溯源（F1）：不信任锚自述——SHA 实算、字段路径实解析、cosFrozen 独立重算。 */
+  private static void assertImpactProvenance(JsonNode impact) throws Exception {
+    int checked = 0;
+    for (JsonNode row : impact.path("perAnchor")) {
+      String name = row.path("anchor").asText();
+      Path source = Path.of(row.path("path").asText());
+      assertTrue(Files.exists(source), "源锚不存在，无法实算 SHA（不得只信锚自述）: " + name + " -> " + source);
+      byte[] bytes = Files.readAllBytes(source);
+      assertEquals(sha256(bytes), row.path("sha256").asText(), "源锚 SHA 实算值与锚内自述不一致: " + name);
+      checked++;
+      JsonNode root = MAPPER.readTree(bytes);
+
+      assertEquals(
+          containsCosPayload(root),
+          row.path("cosFrozen").asBoolean(false),
+          "cosFrozen 与源锚实算不一致（只有 cos 数值字段或向量数组才算冻了 cos）: " + name);
+
+      for (JsonNode field : row.path("classificationFields")) {
+        String fieldPath = field.path("path").asText();
+        String sample = field.path("sample").asText();
+        List<JsonNode> resolved = resolvePath(root, fieldPath);
+        if (resolved.isEmpty()) {
+          assertEquals(
+              UNDETERMINED,
+              row.path("contradictionUnder090").asText(),
+              "分类字段路径解析不了就必须记 UNDETERMINED（不许静默放过）: " + name + " -> " + fieldPath);
+          continue;
+        }
+        boolean matched = false;
+        for (JsonNode value : resolved) {
+          if (sample.equals(sampleText(value))) {
+            matched = true;
+            break;
+          }
+        }
+        assertTrue(matched, "分类字段样例与源锚解析值不一致: " + name + " -> " + fieldPath + " 样例=" + sample);
+      }
+    }
+    assertEquals(16, checked, "溯源必须覆盖腿 B 全部 16 张既有锚");
+    System.out.println(
+        "[near-dup-conditional-min-criterion-guard] 溯源通过：16/16 SHA 实算 + 分类字段实解析 + cosFrozen 独立重算");
+  }
+
+  /** 把 {@code bandSides[2].rows[5].tier} / {@code dataCheck.rByEvent[*].band} 解析到源锚 JSON。 */
+  private static List<JsonNode> resolvePath(JsonNode root, String path) {
+    List<JsonNode> current = new ArrayList<>();
+    current.add(root);
+    for (String segment : path.split("\\.")) {
+      String field = segment;
+      String index = null;
+      int bracket = segment.indexOf('[');
+      if (bracket >= 0 && segment.endsWith("]")) {
+        field = segment.substring(0, bracket);
+        index = segment.substring(bracket + 1, segment.length() - 1).trim();
+      }
+      List<JsonNode> next = new ArrayList<>();
+      for (JsonNode node : current) {
+        JsonNode child = field.isEmpty() ? node : node.get(field);
+        if (child == null) {
+          continue;
+        }
+        if (index == null) {
+          next.add(child);
+          continue;
+        }
+        if (!child.isArray()) {
+          continue;
+        }
+        if ("*".equals(index)) {
+          for (JsonNode element : child) {
+            next.add(element);
+          }
+          continue;
+        }
+        try {
+          int position = Integer.parseInt(index);
+          if (position >= 0 && position < child.size()) {
+            next.add(child.get(position));
+          }
+        } catch (NumberFormatException ignored) {
+          // 下标不可解析 ⇒ 该路径解析失败，交由调用方按「必须记 UNDETERMINED」判定。
+        }
+      }
+      current = next;
+      if (current.isEmpty()) {
+        break;
+      }
+    }
+    return current;
+  }
+
+  private static String sampleText(JsonNode value) {
+    return value.isNull() ? "null" : value.asText();
+  }
+
+  /** 口径与生成器一致但代码独立：cos/cosine 数值字段，或名字含 cos 的数组（向量）即视为冻了 cos。 */
+  private static boolean containsCosPayload(JsonNode node) {
+    if (node.isArray()) {
+      for (JsonNode child : node) {
+        if (containsCosPayload(child)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    if (!node.isObject()) {
+      return false;
+    }
+    Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
+    while (fields.hasNext()) {
+      Map.Entry<String, JsonNode> field = fields.next();
+      String key = field.getKey();
+      JsonNode value = field.getValue();
+      if (("cos".equals(key) || "cosine".equals(key)) && value.isNumber()) {
+        return true;
+      }
+      if (value.isArray() && key.toLowerCase(Locale.ROOT).contains("cos")) {
+        return true;
+      }
+      if ((value.isObject() || value.isArray()) && containsCosPayload(value)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static void assertReanchorPlan(JsonNode plan, JsonNode impact) throws Exception {
     assertFalse(plan.path("executed").asBoolean(true), "executed 必须为 false（D5：本卡不执行重建）");
     assertFalse(plan.path("executedBasis").asText().isEmpty(), "必须说明为何未执行");
-    assertFalse(plan.path("orderRule").asText().isEmpty(), "必须说明依赖顺序规则");
+    String orderRule = plan.path("orderRule").asText();
+    assertFalse(orderRule.isEmpty(), "必须说明依赖顺序规则");
+    for (String token : List.of("被引用者先", "重写", "重签")) {
+      assertTrue(
+          orderRule.contains(token), "orderRule 必须写明分层规则，缺: " + token + "（原文: " + orderRule + "）");
+    }
+    assertOrderFollowsShaReferences(plan, impact);
     JsonNode summary = impact.path("summary");
     JsonNode ordered = plan.path("ordered");
     assertEquals(summary.path("contradictionYes").asInt(), ordered.size(), "重锚清单应等于受影响锚数");
@@ -475,6 +628,50 @@ class NearDupConditionalMinCriterionGuardTest {
         plan.path("unresolved").size(),
         plan.path("unresolvedCount").asInt(),
         "unresolvedCount 不一致");
+  }
+
+  /**
+   * 重锚顺序的依赖一致性（F2）：9 张 ordered 锚两两比对，若 A 的 sha256 十六进制串出现在 B 的文件字节中（B 引用了 A），则 A 必须先被重写，断言 {@code
+   * order(A) < order(B)}。
+   */
+  private static void assertOrderFollowsShaReferences(JsonNode plan, JsonNode impact)
+      throws Exception {
+    Map<String, Path> paths = new LinkedHashMap<>();
+    for (JsonNode row : impact.path("perAnchor")) {
+      paths.put(row.path("anchor").asText(), Path.of(row.path("path").asText()));
+    }
+    Map<String, Integer> order = new LinkedHashMap<>();
+    for (JsonNode entry : plan.path("ordered")) {
+      order.put(entry.path("anchor").asText(), entry.path("order").asInt());
+    }
+    assertEquals(9, order.size(), "重锚清单应含 9 张已判定受影响锚");
+    Map<String, String> sha = new LinkedHashMap<>();
+    Map<String, String> body = new LinkedHashMap<>();
+    for (String name : order.keySet()) {
+      Path path = paths.get(name);
+      assertTrue(path != null && Files.exists(path), "重锚清单里的锚必须能指回源锚文件: " + name);
+      byte[] bytes = Files.readAllBytes(path);
+      sha.put(name, sha256(bytes));
+      body.put(name, new String(bytes, StandardCharsets.UTF_8));
+    }
+    for (String cited : order.keySet()) {
+      for (String citing : order.keySet()) {
+        if (cited.equals(citing) || !body.get(citing).contains(sha.get(cited))) {
+          continue;
+        }
+        assertTrue(
+            order.get(cited) < order.get(citing),
+            "重锚顺序违反 sha256 引用："
+                + cited
+                + "(order "
+                + order.get(cited)
+                + ") 的 sha256 出现在 "
+                + citing
+                + "(order "
+                + order.get(citing)
+                + ") 的字节中，被引用者必须先重写");
+      }
+    }
   }
 
   private static void assertHygiene(JsonNode hygiene) {

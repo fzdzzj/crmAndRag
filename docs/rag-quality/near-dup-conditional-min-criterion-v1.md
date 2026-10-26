@@ -20,12 +20,12 @@
 ## 0.90 影响（NEAR_DUPLICATE_FLOOR 0.982 -> 0.90；BAND_REFERENCE_FLOOR 0.9887 冻结）
 
 - 自相矛盾 9/16；不受影响 6；未判定 1
-- 可零外呼重算 9/16；最小外呼估算总量 18（全量重跑上界 221）
+- 可零外呼重算 9/16；最小外呼估算总量 18（全量重跑上界 221；边界：221 只算已判定受影响的 9 张（144 + 77）；未判定 1 张（near-dup-ingest-gate-probe-v1）的 18 次外呼未计入，含之 239）
 - 判定式与逐锚字段路径见 impact.contradictionRule / impact.perAnchor
 
 ## 重锚清单（executed = false）
 
-- 顺序（被引用者先）：1. near-dup-floor-signoff-v1，2. near-dup-ingest-s1-v1，3. near-dup-band-entry-v1，4. near-dup-rerank-decomposition-v1，5. near-dup-exchange-rate-v1，6. image-variant-cross-matrix-v1，7. near-dup-displacement-evidence-v1，8. near-dup-fusion-impact-v1，9. near-dup-ablation-v1
+- 顺序（被引用者先）：1. near-dup-exchange-rate-v1，2. near-dup-fusion-impact-v1，3. image-variant-cross-matrix-v1，4. near-dup-displacement-evidence-v1，5. near-dup-floor-signoff-v1，6. near-dup-ablation-v1，7. near-dup-ingest-s1-v1，8. near-dup-band-entry-v1，9. near-dup-rerank-decomposition-v1
 - 方式：改写 operating-point 字面量并按签收流程重签（零外呼；逐项外呼与依据见 reanchorPlan.ordered）
 
 ## 边界

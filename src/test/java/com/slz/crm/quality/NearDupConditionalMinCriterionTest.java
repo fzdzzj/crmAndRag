@@ -32,8 +32,8 @@ import org.junit.jupiter.api.Test;
 /**
  * 卡 36 · near-dup-conditional-min-criterion（腿 A：把卡 35 撞死的「末位」判据改成条件化三分支；腿 B：0.90 的影响与重锚清单）。
  *
- * <p><b>零外呼</b>（R0）：输入是卡 32/33/34/35 四张冻结锚 + 生产纯函数 + 源码字面；不启动 Spring、不 instance provider、
- * 不调任何模型、不设任何 {@code *_REAL}、不跑检索。
+ * <p><b>零外呼</b>（R0）：输入是既有冻结锚（逐锚清单 16 张，其中 5 张另做上游 SHA 全校验）+ 生产纯函数 + 源码字面；不启动 Spring、不 instance
+ * provider、不调任何模型、不设任何 {@code *_REAL}、不跑检索。
  *
  * <p><b>腿 A</b>：把 {@code r = wv·normVec + wb·normBm25} 按 bm25 分支的状态拆成互斥穷尽的三支（全 0 / 全 1 / 非退化），
  * 逐支给出「{@code r = 0} 的充要条件」，再按「所属分支 + 该分支条件」逐条复判卡 35 锚的 12 条被标记事件。分支判定只用 {@code normBm25}
@@ -187,10 +187,6 @@ class NearDupConditionalMinCriterionTest {
             + " violations="
             + oracleViolations);
     ObjectNode summary = impactSummary(impact);
-    Map<String, String> shaByName = new LinkedHashMap<>();
-    for (Map.Entry<String, byte[]> entry : anchorBytes.entrySet()) {
-      shaByName.put(entry.getKey(), sha256(entry.getValue()));
-    }
 
     System.out.println(
         "[near-dup-conditional-min-criterion] verdict="
@@ -220,7 +216,7 @@ class NearDupConditionalMinCriterionTest {
             verdict,
             impact,
             summary,
-            shaByName,
+            anchorBytes,
             frozenRows.size(),
             oracleViolations);
     writeOrCompareJson(ANCHOR_JSON, anchor);
@@ -860,6 +856,7 @@ class NearDupConditionalMinCriterionTest {
     int zeroCallYes = 0;
     int zeroCallNo = 0;
     int minCalls = 0;
+    int unresolvedCalls = 0;
     List<String> affected = new ArrayList<>();
     List<String> unaffected = new ArrayList<>();
     List<String> unresolved = new ArrayList<>();
@@ -885,6 +882,9 @@ class NearDupConditionalMinCriterionTest {
       if (calls > 0) {
         minCalls += calls;
       }
+      if (UNDETERMINED.equals(contradiction)) {
+        unresolvedCalls += Math.max(calls, 0);
+      }
     }
     ObjectNode summary = MAPPER.createObjectNode();
     summary.put("total", perAnchor.size());
@@ -894,7 +894,23 @@ class NearDupConditionalMinCriterionTest {
     summary.put("zeroCallRecomputeYes", zeroCallYes);
     summary.put("zeroCallRecomputeNo", zeroCallNo);
     summary.put("minExternalCallsTotal", minCalls);
-    summary.put("fullRerunTotal", fullRerunTotal(perAnchor, affected));
+    int fullRerun = fullRerunTotal(perAnchor, affected);
+    summary.put("fullRerunTotal", fullRerun);
+    summary.put("fullRerunTotalAffected", fullRerun);
+    summary.put("fullRerunTotalWithUnresolved", fullRerun + unresolvedCalls);
+    summary.put(
+        "fullRerunTotalBoundary",
+        fullRerun
+            + " 只算已判定受影响的 "
+            + yes
+            + " 张（144 + 77）；未判定 "
+            + undetermined
+            + " 张（"
+            + join(unresolved)
+            + "）的 "
+            + unresolvedCalls
+            + " 次外呼未计入，含之 "
+            + (fullRerun + unresolvedCalls));
     summary.put(
         "minExternalCallsBasis",
         "逐锚 minExternalCallsIfNeeded：行级/字面量修复 0 外呼；需重跑者取该锚自记 externalCalls（无记录记 -1 = 无法给出量级）");
@@ -931,7 +947,7 @@ class NearDupConditionalMinCriterionTest {
       String verdict,
       ArrayNode impact,
       ObjectNode impactSummary,
-      Map<String, String> shaByName,
+      Map<String, byte[]> anchorBytes,
       int oracleChecked,
       int oracleViolations)
       throws Exception {
@@ -948,7 +964,7 @@ class NearDupConditionalMinCriterionTest {
     ObjectNode criteria = root.putObject("criteria");
     criteria.put(
         "R0",
-        "零外呼：输入是卡 32/33/34/35 四张冻结锚 + 生产纯函数 + 源码字面；不启动 Spring、不 instance provider、不设任何 *_REAL、不跑检索");
+        "零外呼：输入是既有冻结锚（逐锚清单 16 张；其中 5 张另做上游 SHA 全校验）+ 生产纯函数 + 源码字面；不启动 Spring、不 instance provider、不设任何 *_REAL、不跑检索");
     criteria.put("R1", "把末位判据写成三分支条件式（全 0 / 全 1 / 非退化），逐支给出 r = 0 的充要条件；三支互斥穷尽，判定只用 max/min 整值");
     criteria.put(
         "R2",
@@ -1128,7 +1144,7 @@ class NearDupConditionalMinCriterionTest {
     impactNode.set("perAnchor", impact);
     impactNode.set("summary", impactSummary);
 
-    buildReanchorPlan(root, impact, impactSummary, shaByName);
+    buildReanchorPlan(root, impact, impactSummary, anchorBytes);
 
     ObjectNode hygiene = root.putObject("numericHygiene");
     hygiene.put("tolerance", TOLERANCE);
@@ -1268,14 +1284,20 @@ class NearDupConditionalMinCriterionTest {
   }
 
   private static void buildReanchorPlan(
-      ObjectNode root, ArrayNode perAnchor, ObjectNode summary, Map<String, String> shaByName) {
+      ObjectNode root, ArrayNode perAnchor, ObjectNode summary, Map<String, byte[]> anchorBytes)
+      throws Exception {
     ObjectNode plan = root.putObject("reanchorPlan");
     plan.put("executed", false);
     plan.put("executedBasis", "本卡只读既有锚（零字节变动）；重锚属另卡且须 Owner 拍板，本卡不执行任何重建（D5）");
-    plan.put("orderRule", "依赖顺序按锚间 sha256 引用现算：被引用者先于引用者重锚；决策/签收锚最后，因为它签的是常量值");
+    plan.put(
+        "orderRule",
+        "分层两句：①序 = 按锚间 sha256 引用现算，被引用者先——凡是 A 的 sha256 十六进制串出现在 B 的字节里（B 引用了 A），A 就先重写；"
+            + "实测签收锚 near-dup-floor-signoff-v1 的 signedDigests 引用了 exchange-rate / cross-matrix / displacement / fusion-impact 四张"
+            + "（且无任何锚引用签收锚的 sha256），故其序由引用关系现算而非固定位置；"
+            + "②「重写」= 逐锚改 operating-point 字面量（零外呼）；「重签」= 全部改写完成后按签收流程出具最终记录");
     ArrayNode ordered = plan.putArray("ordered");
     List<String> affected = split(summary.path("affected").asText());
-    List<String> ordered2 = dependencyOrder(affected, shaByName);
+    List<String> ordered2 = dependencyOrder(affected, anchorBytes);
     int index = 0;
     for (String name : ordered2) {
       index++;
@@ -1340,19 +1362,28 @@ class NearDupConditionalMinCriterionTest {
     return method;
   }
 
-  private static List<String> dependencyOrder(List<String> names, Map<String, String> shaByName) {
+  private static List<String> dependencyOrder(List<String> names, Map<String, byte[]> anchorBytes)
+      throws Exception {
     Map<String, Set<String>> dependencies = new LinkedHashMap<>();
     for (String name : names) {
       dependencies.put(name, new LinkedHashSet<>());
     }
     for (String name : names) {
+      byte[] nameBytes = anchorBytes.get(name);
+      if (nameBytes == null) {
+        continue;
+      }
+      String body = new String(nameBytes, StandardCharsets.UTF_8);
       for (String other : names) {
         if (name.equals(other)) {
           continue;
         }
-        String sha = shaByName.get(other);
-        String body = shaByName.get(name);
-        if (sha != null && body != null && body.contains(sha)) {
+        byte[] otherBytes = anchorBytes.get(other);
+        if (otherBytes == null) {
+          continue;
+        }
+        String sha = sha256(otherBytes);
+        if (body.contains(sha)) {
           dependencies.get(name).add(other);
         }
       }
@@ -1464,6 +1495,8 @@ class NearDupConditionalMinCriterionTest {
             + summary.path("minExternalCallsTotal").asInt()
             + "（全量重跑上界 "
             + summary.path("fullRerunTotal").asInt()
+            + "；边界："
+            + summary.path("fullRerunTotalBoundary").asText()
             + "）");
     lines.add("- 判定式与逐锚字段路径见 impact.contradictionRule / impact.perAnchor");
     lines.add("");
@@ -1480,7 +1513,7 @@ class NearDupConditionalMinCriterionTest {
     lines.add("");
     lines.add("- 不改任何生产常量；src/main / pom.xml / .github 零 diff；既有锚零字节变动");
     lines.add("- 未判定项按 R8 记 UNDETERMINED，不猜；降不降由 Owner 决定，本清单不给倾向值");
-    return String.join("\n", lines);
+    return String.join("\n", lines) + "\n";
   }
 
   // ==================== 读写锚（写模式 / 逐字节复算） ====================

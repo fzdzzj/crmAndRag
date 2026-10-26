@@ -5,7 +5,7 @@
   "decisionOwner" : "OWNER",
   "scope" : "腿 A：把末位判据改成条件化三分支（bm25 全 0 / 全 1 / 非退化），逐条复判 12 条事件；腿 B：NEAR_DUPLICATE_FLOOR 降到 0.90 的影响清单与重锚清单（不执行、不给倾向值、不改任何常量）",
   "criteria" : {
-    "R0" : "零外呼：输入是卡 32/33/34/35 四张冻结锚 + 生产纯函数 + 源码字面；不启动 Spring、不 instance provider、不设任何 *_REAL、不跑检索",
+    "R0" : "零外呼：输入是既有冻结锚（逐锚清单 16 张；其中 5 张另做上游 SHA 全校验）+ 生产纯函数 + 源码字面；不启动 Spring、不 instance provider、不设任何 *_REAL、不跑检索",
     "R1" : "把末位判据写成三分支条件式（全 0 / 全 1 / 非退化），逐支给出 r = 0 的充要条件；三支互斥穷尽，判定只用 max/min 整值",
     "R2" : "判定词升级为四值：PROVEN-CONDITIONAL（适用域内已证）/ PROVEN（仅非退化分支，可达但本语料未出现）/ REFUTED / UNDETERMINED，四值各写可达路径",
     "R3" : "逐 12 条事件判「所属分支 + 是否满足该分支充要条件」，断言 4 条零位移全落 bm25 全 0 桶且 normVec = 0",
@@ -1009,6 +1009,9 @@
       "zeroCallRecomputeNo" : 0,
       "minExternalCallsTotal" : 18,
       "fullRerunTotal" : 221,
+      "fullRerunTotalAffected" : 221,
+      "fullRerunTotalWithUnresolved" : 239,
+      "fullRerunTotalBoundary" : "221 只算已判定受影响的 9 张（144 + 77）；未判定 1 张（near-dup-ingest-gate-probe-v1）的 18 次外呼未计入，含之 239",
       "minExternalCallsBasis" : "逐锚 minExternalCallsIfNeeded：行级/字面量修复 0 外呼；需重跑者取该锚自记 externalCalls（无记录记 -1 = 无法给出量级）",
       "affected" : "near-dup-floor-signoff-v1,near-dup-ingest-s1-v1,near-dup-band-entry-v1,near-dup-rerank-decomposition-v1,near-dup-exchange-rate-v1,image-variant-cross-matrix-v1,near-dup-displacement-evidence-v1,near-dup-fusion-impact-v1,near-dup-ablation-v1",
       "unaffected" : "near-dup-window-coupling-v1,near-dup-oq1-attribution-v1,image-near-dup-truth-v1,image-slice-ingest-chain-v1,eval-port-route-v1,ui-permission-coverage-v1",
@@ -1018,42 +1021,10 @@
   "reanchorPlan" : {
     "executed" : false,
     "executedBasis" : "本卡只读既有锚（零字节变动）；重锚属另卡且须 Owner 拍板，本卡不执行任何重建（D5）",
-    "orderRule" : "依赖顺序按锚间 sha256 引用现算：被引用者先于引用者重锚；决策/签收锚最后，因为它签的是常量值",
+    "orderRule" : "分层两句：①序 = 按锚间 sha256 引用现算，被引用者先——凡是 A 的 sha256 十六进制串出现在 B 的字节里（B 引用了 A），A 就先重写；实测签收锚 near-dup-floor-signoff-v1 的 signedDigests 引用了 exchange-rate / cross-matrix / displacement / fusion-impact 四张（且无任何锚引用签收锚的 sha256），故其序由引用关系现算而非固定位置；②「重写」= 逐锚改 operating-point 字面量（零外呼）；「重签」= 全部改写完成后按签收流程出具最终记录",
     "ordered" : [
       {
         "order" : 1,
-        "anchor" : "near-dup-floor-signoff-v1",
-        "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
-        "externalCalls" : 0,
-        "cause" : "OPERATING-FLOOR-LITERAL",
-        "basis" : "operating-point 字面量 signedFloor=0.982 与 0.90 口径不自洽（须改写并重签）"
-      },
-      {
-        "order" : 2,
-        "anchor" : "near-dup-ingest-s1-v1",
-        "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
-        "externalCalls" : 0,
-        "cause" : "OPERATING-FLOOR-LITERAL",
-        "basis" : "operating-point 字面量 constants.nearDuplicateFloor=0.982 与 0.90 口径不自洽（须改写并重签）"
-      },
-      {
-        "order" : 3,
-        "anchor" : "near-dup-band-entry-v1",
-        "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
-        "externalCalls" : 0,
-        "cause" : "OPERATING-FLOOR-LITERAL",
-        "basis" : "operating-point 字面量 constants.nearDuplicateFloor=0.982 与 0.90 口径不自洽（须改写并重签）"
-      },
-      {
-        "order" : 4,
-        "anchor" : "near-dup-rerank-decomposition-v1",
-        "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
-        "externalCalls" : 0,
-        "cause" : "OPERATING-FLOOR-LITERAL",
-        "basis" : "operating-point 字面量 floorOptions.currentProductionReference.floor=0.982 与 0.90 口径不自洽（须改写并重签）"
-      },
-      {
-        "order" : 5,
         "anchor" : "near-dup-exchange-rate-v1",
         "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
         "externalCalls" : 0,
@@ -1061,23 +1032,7 @@
         "basis" : "operating-point 字面量 productionConstants.nearDuplicateFloor=0.9887 与 0.90 口径不自洽（须改写并重签）"
       },
       {
-        "order" : 6,
-        "anchor" : "image-variant-cross-matrix-v1",
-        "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
-        "externalCalls" : 0,
-        "cause" : "OPERATING-FLOOR-LITERAL",
-        "basis" : "operating-point 字面量 productionConstants.nearDuplicateFloor=0.9887 与 0.90 口径不自洽（须改写并重签）"
-      },
-      {
-        "order" : 7,
-        "anchor" : "near-dup-displacement-evidence-v1",
-        "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
-        "externalCalls" : 0,
-        "cause" : "OPERATING-FLOOR-LITERAL",
-        "basis" : "operating-point 字面量 productionConstants.nearDuplicateFloor=0.9887 与 0.90 口径不自洽（须改写并重签）"
-      },
-      {
-        "order" : 8,
+        "order" : 2,
         "anchor" : "near-dup-fusion-impact-v1",
         "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
         "externalCalls" : 0,
@@ -1085,12 +1040,60 @@
         "basis" : "operating-point 字面量 productionConstants.nearDuplicateFloor=0.9887 与 0.90 口径不自洽（须改写并重签）"
       },
       {
-        "order" : 9,
+        "order" : 3,
+        "anchor" : "image-variant-cross-matrix-v1",
+        "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
+        "externalCalls" : 0,
+        "cause" : "OPERATING-FLOOR-LITERAL",
+        "basis" : "operating-point 字面量 productionConstants.nearDuplicateFloor=0.9887 与 0.90 口径不自洽（须改写并重签）"
+      },
+      {
+        "order" : 4,
+        "anchor" : "near-dup-displacement-evidence-v1",
+        "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
+        "externalCalls" : 0,
+        "cause" : "OPERATING-FLOOR-LITERAL",
+        "basis" : "operating-point 字面量 productionConstants.nearDuplicateFloor=0.9887 与 0.90 口径不自洽（须改写并重签）"
+      },
+      {
+        "order" : 5,
+        "anchor" : "near-dup-floor-signoff-v1",
+        "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
+        "externalCalls" : 0,
+        "cause" : "OPERATING-FLOOR-LITERAL",
+        "basis" : "operating-point 字面量 signedFloor=0.982 与 0.90 口径不自洽（须改写并重签）"
+      },
+      {
+        "order" : 6,
         "anchor" : "near-dup-ablation-v1",
         "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
         "externalCalls" : 0,
         "cause" : "OPERATING-FLOOR-LITERAL",
         "basis" : "operating-point 字面量 productionConstants.nearDuplicateFloor=0.982 与 0.90 口径不自洽（须改写并重签）"
+      },
+      {
+        "order" : 7,
+        "anchor" : "near-dup-ingest-s1-v1",
+        "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
+        "externalCalls" : 0,
+        "cause" : "OPERATING-FLOOR-LITERAL",
+        "basis" : "operating-point 字面量 constants.nearDuplicateFloor=0.982 与 0.90 口径不自洽（须改写并重签）"
+      },
+      {
+        "order" : 8,
+        "anchor" : "near-dup-band-entry-v1",
+        "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
+        "externalCalls" : 0,
+        "cause" : "OPERATING-FLOOR-LITERAL",
+        "basis" : "operating-point 字面量 constants.nearDuplicateFloor=0.982 与 0.90 口径不自洽（须改写并重签）"
+      },
+      {
+        "order" : 9,
+        "anchor" : "near-dup-rerank-decomposition-v1",
+        "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
+        "externalCalls" : 0,
+        "cause" : "OPERATING-FLOOR-LITERAL",
+        "basis" : "operating-point 字面量 floorOptions.currentProductionReference.floor=0.982 与 0.90 口径不自洽（须改写并重签）"
       }
     ],
     "unaffected" : [
