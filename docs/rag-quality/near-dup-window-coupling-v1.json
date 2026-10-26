@@ -6,8 +6,8 @@
   "upstreamAnchor" : "docs/rag-quality/near-dup-band-entry-v1.json",
   "criteria" : {
     "R0" : "零外呼：不设任何 *_REAL opt-in，不 instance 真 provider，不启动 Spring 上下文；输入只有卡32 冻结锚 + 本类算术",
-    "R1" : "精确判据（耦合）：δ_i := fusedB_i − fusedA_i；margin_A(e,r) := (fusedB_e − δ_e) − (fusedB_r − δ_r)；flipRisk := margin_A ≤ 0；竞争者按 fusedB 精确匹配、并列取 rankB 最小者；r 未降权或不在窗口事件内 ⇒ δ_r = 0",
-    "R2" : "保守性：δ_e ≤ window_e 且 δ_r ≥ 0 ⇒ gap > window_e ⇒ margin_A > 0（窗口是精确判据的保守特例）；两向逐条断言：正向 gapExceedsWindow ⇒ flipRisk=false，逆否 flipRisk ⇒ gap ≤ window",
+    "R1" : "精确判据（耦合）：δ_i := fusedB_i − fusedA_i；margin_A(e,r) := (fusedB_e − δ_e) − (fusedB_r − δ_r)；flipRisk := margin_A ≤ 1.0E-12（并列容差，按「可能翻转」计，与 formulas.flipRisk 同源同值，见 R5c）；竞争者按 fusedB 精确匹配、并列取 rankB 最小者；r 未降权或不在窗口事件内 ⇒ δ_r = 0；无下位竞争者 ⇒ gap / δ_r / margin_A 记 null（不造 0）、flipRisk = false",
+    "R2" : "保守性：δ_e ≤ window_e 且 δ_r ≥ 0 ⇒ gap > window_e ⇒ margin_A > 0（窗口是精确判据的保守特例）；两向逐条断言：正向 gap > window_e + 1.0E-12 ⇒ flipRisk = false（与实现同容差），逆否 flipRisk ⇒ gap ≤ window",
     "R3" : "假阳性刻画：gap ≤ window 且 flipRisk=false ⟺ δ_r > δ_e − gap；归因两桶 COMPETITOR-SYNKS / NO-DISPLACEMENT 互斥，实测 3 + 1",
     "R4" : "marked ≠ displaced：markedCount = 窗口事件条数（12）、displacedCount = delta > 0 条数（8）；判据触发量只能是 displacedCount；markedButNotDisplaced 逐条落身份与证据字段",
     "R5" : "判据可取反：三组构造对照（δ_e>0 且 δ_r=0 报翻转 / δ_r=δ_e 耦合托住 / margin_A=0 并列算风险），不读锚、不跑检索",
@@ -23,12 +23,13 @@
     "gap" : "gap := fusedB_该候选 − 同查询下位竞争者最大 fusedB（卡32 原字段，本卡只读不复算）"
   },
   "r2" : {
+    "tieEps" : 1.0E-12,
     "forwardChecked" : 8,
     "forwardHolds" : true,
     "contrapositiveChecked" : 0,
     "contrapositiveHolds" : true,
     "contrapositiveNote" : "真实数据上 flipRisk=true 的条数为 0 ⇒ 该向断言在锚上空真（VACUOUS）；非空可证性由 controls 里 (a)/(c) 两组构造提供（构造数据 flipRisk=true 且 gap ≤ windowUpperBound）",
-    "proofSketch" : "实测 δ_e ≤ window_e（位移不超过窗口上限），且 δ_r ≥ 0 ⇒ margin_A = gap − δ_e + δ_r ≥ gap − window_e > 0，故 gap > window_e ⇒ flipRisk = false：窗口判据 ⇒ 精确判据，反向不成立（充分不必要）"
+    "proofSketch" : "实测 δ_e ≤ window_e（位移不超过窗口上限），且 δ_r ≥ 0 ⇒ margin_A = gap − δ_e + δ_r ≥ gap − window_e > 0，故 gap > window_e ⇒ flipRisk = false：窗口判据 ⇒ 精确判据，反向不成立（充分不必要）；因判据含并列容差 1.0E-12，正向断言取 gap > window_e + TIE_EPS（与实现同容差，板规 28：文本与实现同源）"
   },
   "events" : [
     {

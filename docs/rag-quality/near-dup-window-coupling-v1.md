@@ -6,9 +6,9 @@
 ## 结论 1 · 窗口只能当上界速筛，精确判据是 margin_A
 
 - 现行窗口：`window = 0.30×(1−w)`，判法 `gap > window ⇒ 不可能翻转`；它默认下位竞争者不动。
-- 精确判据（耦合）：`δ_i = fusedB_i − fusedA_i`；`margin_A(e,r) = (fusedB_e − δ_e) − (fusedB_r − δ_r)`；`flipRisk = margin_A ≤ 0`。
-- 保序：`δ_e ≤ window_e` 且 `δ_r ≥ 0` ⇒ `gap > window_e ⇒ margin_A > 0`，即窗口判据是精确判据的保守特例（充分不必要）。
-- 实测：12 条事件 `flipRisk = true` 的 **0 条**（逆否在真实数据上空真，非空可证性由构造对照提供）；`gapExceedsWindow = true` 的 8 条全部 `flipRisk = false`（8/8 逐条）。
+- 精确判据（耦合）：`δ_i = fusedB_i − fusedA_i`；`margin_A(e,r) = (fusedB_e − δ_e) − (fusedB_r − δ_r)`；`flipRisk = margin_A ≤ 1e-12`（并列容差 `TIE_EPS`，按风险计）。
+- 保序：`δ_e ≤ window_e` 且 `δ_r ≥ 0` ⇒ `gap > window_e ⇒ margin_A > 0`；正向断言取 `gap > window_e + 1e-12 ⇒ flipRisk = false`（与实现同容差），即窗口判据是精确判据的保守特例（充分不必要）。
+- 实测：12 条事件 `flipRisk = true` 的 **0 条**（逆否在真实数据上空真，非空可证性由构造对照提供）；`gapExceedsWindow = true` 或 `gap > window + 1e-12` 的 8 条全部 `flipRisk = false`（8/8 逐条，其中 q3 `@crop-04` 无下位竞争者，故 `gap`/`δ_r`/`margin_A` 记 `null`、不造 0）。
 - `gap ≤ window` 的 4 条一条都没翻 ⇒ 窗口说「可能」不等于「会」。
 
 ## 结论 2 · marked ≠ displaced

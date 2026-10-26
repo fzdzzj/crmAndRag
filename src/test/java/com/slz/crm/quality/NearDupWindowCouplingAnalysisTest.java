@@ -32,8 +32,9 @@ import org.junit.jupiter.api.Test;
  * <ul>
  *   <li><b>腿 A（R1/R2）</b>：卡 32 的窗口判据 {@code gap > 0.30×(1−w) ⇒ 不可能翻转} 默认「下位竞争者不动」。本类改成精确耦合式 {@code
  *       margin_A(e,r) = (fusedB_e − δ_e) − (fusedB_r − δ_r)}，{@code flipRisk = margin_A ≤
- *       0}（并列按风险计）； 并证明窗口判据是该式的<b>保守特例</b>（充分不必要）：{@code gap > window ⇒ margin_A > 0} 恒成立，但 {@code
- *       gap ≤ window} 不等于会翻；
+ *       1e-12}（并列容差 = {@code TIE_EPS}，按风险计，见 R5c）； 并证明窗口判据是该式的<b>保守特例</b>（充分不必要）：{@code gap >
+ *       window ⇒ margin_A > 0} 恒成立 ——正向断言因此取 {@code gap > window + TIE_EPS ⇒ flipRisk =
+ *       false}（与实现同容差），但 {@code gap ≤ window} 不等于会翻；
  *   <li><b>腿 B（R4）</b>：把「事件发生次数」拆成 {@code markedCount}（被标记，12）与 {@code displacedCount}（分数真的动，8）。
  *       <b>判据的触发量只能是 {@code displacedCount}</b>；
  *   <li><b>R5</b>：判据必须能取反——三组构造对照（不读锚、不跑检索）覆盖「能报翻转 / 耦合托住 / 并列算风险」；
@@ -105,13 +106,14 @@ class NearDupWindowCouplingAnalysisTest {
         falsePositives.stream().filter(event -> "NO-DISPLACEMENT".equals(event.bucket())).count(),
         "NO-DISPLACEMENT 桶必须 1 条（事件本身 δ_e = 0）");
 
-    // R2 两向（逐条断言，禁抽样）
+    // R2 两向（逐条断言，禁抽样）；正向取与实现同容差的上界 gap > window + TIE_EPS
     int forwardChecked = 0;
     int contrapositiveChecked = 0;
     for (Event event : events) {
-      if (event.gapExceedsWindow()) {
+      if (event.gapExceedsWindow()
+          || (event.gap() != null && event.gap() > event.window() + TIE_EPS)) {
         forwardChecked++;
-        assertFalse(event.flipRisk(), "R2 正向失败：gap > window 却判可能翻转（窗口不是上界）: " + event);
+        assertFalse(event.flipRisk(), "R2 正向失败：gap > window + 1e-12 却判可能翻转（窗口不是上界）: " + event);
       }
       if (event.flipRisk()) {
         contrapositiveChecked++;
@@ -302,10 +304,14 @@ class NearDupWindowCouplingAnalysisTest {
         "R0", "零外呼：不设任何 *_REAL opt-in，不 instance 真 provider，不启动 Spring 上下文；输入只有卡32 冻结锚 + 本类算术");
     criteria.put(
         "R1",
-        "精确判据（耦合）：δ_i := fusedB_i − fusedA_i；margin_A(e,r) := (fusedB_e − δ_e) − (fusedB_r − δ_r)；flipRisk := margin_A ≤ 0；竞争者按 fusedB 精确匹配、并列取 rankB 最小者；r 未降权或不在窗口事件内 ⇒ δ_r = 0");
+        "精确判据（耦合）：δ_i := fusedB_i − fusedA_i；margin_A(e,r) := (fusedB_e − δ_e) − (fusedB_r − δ_r)；flipRisk := margin_A ≤ "
+            + TIE_EPS
+            + "（并列容差，按「可能翻转」计，与 formulas.flipRisk 同源同值，见 R5c）；竞争者按 fusedB 精确匹配、并列取 rankB 最小者；r 未降权或不在窗口事件内 ⇒ δ_r = 0；无下位竞争者 ⇒ gap / δ_r / margin_A 记 null（不造 0）、flipRisk = false");
     criteria.put(
         "R2",
-        "保守性：δ_e ≤ window_e 且 δ_r ≥ 0 ⇒ gap > window_e ⇒ margin_A > 0（窗口是精确判据的保守特例）；两向逐条断言：正向 gapExceedsWindow ⇒ flipRisk=false，逆否 flipRisk ⇒ gap ≤ window");
+        "保守性：δ_e ≤ window_e 且 δ_r ≥ 0 ⇒ gap > window_e ⇒ margin_A > 0（窗口是精确判据的保守特例）；两向逐条断言：正向 gap > window_e + "
+            + TIE_EPS
+            + " ⇒ flipRisk = false（与实现同容差），逆否 flipRisk ⇒ gap ≤ window");
     criteria.put(
         "R3",
         "假阳性刻画：gap ≤ window 且 flipRisk=false ⟺ δ_r > δ_e − gap；归因两桶 COMPETITOR-SYNKS / NO-DISPLACEMENT 互斥，实测 3 + 1");
@@ -334,10 +340,31 @@ class NearDupWindowCouplingAnalysisTest {
     formulas.put("gap", "gap := fusedB_该候选 − 同查询下位竞争者最大 fusedB（卡32 原字段，本卡只读不复算）");
 
     ObjectNode r2 = root.putObject("r2");
-    r2.put("forwardChecked", (int) events.stream().filter(Event::gapExceedsWindow).count());
-    r2.put("forwardHolds", true);
+    r2.put("tieEps", TIE_EPS);
+    r2.put(
+        "forwardChecked",
+        (int)
+            events.stream()
+                .filter(
+                    event ->
+                        event.gapExceedsWindow()
+                            || (event.gap() != null && event.gap() > event.window() + TIE_EPS))
+                .count());
+    r2.put(
+        "forwardHolds",
+        events.stream()
+            .allMatch(
+                event ->
+                    event.gap() == null
+                        || event.gap() <= event.window() + TIE_EPS
+                        || !event.flipRisk()));
     r2.put("contrapositiveChecked", (int) events.stream().filter(Event::flipRisk).count());
-    r2.put("contrapositiveHolds", true);
+    r2.put(
+        "contrapositiveHolds",
+        events.stream()
+            .allMatch(
+                event ->
+                    !event.flipRisk() || (event.gap() != null && event.gap() <= event.window())));
     r2.put(
         "contrapositiveNote",
         "真实数据上 flipRisk=true 的条数为 0 ⇒ 该向断言在锚上空真（VACUOUS）；非空可证性由 controls 里 (a)/(c) 两组构造提供"
@@ -345,7 +372,10 @@ class NearDupWindowCouplingAnalysisTest {
     r2.put(
         "proofSketch",
         "实测 δ_e ≤ window_e（位移不超过窗口上限），且 δ_r ≥ 0 ⇒ margin_A = gap − δ_e + δ_r ≥ gap − window_e > 0，"
-            + "故 gap > window_e ⇒ flipRisk = false：窗口判据 ⇒ 精确判据，反向不成立（充分不必要）");
+            + "故 gap > window_e ⇒ flipRisk = false：窗口判据 ⇒ 精确判据，反向不成立（充分不必要）；"
+            + "因判据含并列容差 "
+            + TIE_EPS
+            + "，正向断言取 gap > window_e + TIE_EPS（与实现同容差，板规 28：文本与实现同源）");
 
     ArrayNode eventsNode = root.putArray("events");
     for (Event event : events) {
@@ -594,11 +624,11 @@ class NearDupWindowCouplingAnalysisTest {
     md.append("\n");
     md.append("- 现行窗口：`window = 0.30×(1−w)`，判法 `gap > window ⇒ 不可能翻转`；它默认下位竞争者不动。\n");
     md.append(
-        "- 精确判据（耦合）：`δ_i = fusedB_i − fusedA_i`；`margin_A(e,r) = (fusedB_e − δ_e) − (fusedB_r − δ_r)`；`flipRisk = margin_A ≤ 0`。\n");
+        "- 精确判据（耦合）：`δ_i = fusedB_i − fusedA_i`；`margin_A(e,r) = (fusedB_e − δ_e) − (fusedB_r − δ_r)`；`flipRisk = margin_A ≤ 1e-12`（并列容差 `TIE_EPS`，按风险计）。\n");
     md.append(
-        "- 保序：`δ_e ≤ window_e` 且 `δ_r ≥ 0` ⇒ `gap > window_e ⇒ margin_A > 0`，即窗口判据是精确判据的保守特例（充分不必要）。\n");
+        "- 保序：`δ_e ≤ window_e` 且 `δ_r ≥ 0` ⇒ `gap > window_e ⇒ margin_A > 0`；正向断言取 `gap > window_e + 1e-12 ⇒ flipRisk = false`（与实现同容差），即窗口判据是精确判据的保守特例（充分不必要）。\n");
     md.append(
-        "- 实测：12 条事件 `flipRisk = true` 的 **0 条**（逆否在真实数据上空真，非空可证性由构造对照提供）；`gapExceedsWindow = true` 的 8 条全部 `flipRisk = false`（8/8 逐条）。\n");
+        "- 实测：12 条事件 `flipRisk = true` 的 **0 条**（逆否在真实数据上空真，非空可证性由构造对照提供）；`gapExceedsWindow = true` 或 `gap > window + 1e-12` 的 8 条全部 `flipRisk = false`（8/8 逐条，其中 q3 `@crop-04` 无下位竞争者，故 `gap`/`δ_r`/`margin_A` 记 `null`、不造 0）。\n");
     md.append("- `gap ≤ window` 的 4 条一条都没翻 ⇒ 窗口说「可能」不等于「会」。\n");
     md.append("\n");
     md.append("## 结论 2 · marked ≠ displaced\n");

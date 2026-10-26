@@ -148,15 +148,22 @@ class NearDupWindowCouplingGuardTest {
   @DisplayName("R2 · 窗口是精确判据的上界：正向 8 条逐条 + 逆否（真实数据空真、controls 非空覆盖）")
   void windowIsOnlyAnUpperBoundFilter() {
     JsonNode events = anchor.path("events");
+    double tieEps = anchor.path("r2").path("tieEps").asDouble();
+    assertEquals(1e-12d, tieEps, "锚 r2.tieEps 必须是 1e-12（与实现 TIE_EPS 同源）");
     int forwardChecked = 0;
     int contrapositiveChecked = 0;
     for (JsonNode event : events) {
       boolean flipRisk = event.path("flipRisk").asBoolean();
-      if (event.path("gapExceedsWindow").asBoolean()) {
+      JsonNode gapNode = event.path("gap");
+      boolean forwardBound =
+          event.path("gapExceedsWindow").asBoolean()
+              || (gapNode.isNumber()
+                  && gapNode.asDouble() > event.path("window").asDouble() + tieEps);
+      if (forwardBound) {
         forwardChecked++;
         assertFalse(
             flipRisk,
-            "R2 正向失败：gap > window 却判可能翻转（窗口不是上界，判据方向错误）："
+            "R2 正向失败：gap > window + 1e-12 却判可能翻转（窗口不是上界，判据方向错误）："
                 + event.path("queryIndex").asInt()
                 + " "
                 + event.path("variantKey").asText());
@@ -172,12 +179,20 @@ class NearDupWindowCouplingGuardTest {
                 + event.path("variantKey").asText());
       }
     }
-    assertEquals(8, forwardChecked, "卡32 锚 gapExceedsWindow=true 的必须 8 条");
+    assertEquals(8, forwardChecked, "卡32 锚 gap > window + 1e-12 的必须 8 条");
     assertEquals(
         0, contrapositiveChecked, "卡32 锚 flipRisk=true 的必须 0 条（空真已记锚 r2.contrapositiveNote）");
+    JsonNode r2 = anchor.path("r2");
+    assertEquals(
+        forwardChecked, r2.path("forwardChecked").asInt(), "锚 r2.forwardChecked 必须由实数推导，不得硬写");
+    assertTrue(r2.path("forwardHolds").asBoolean(), "锚 r2.forwardHolds 必须为 true（本守卫已独立重算一遍两向）");
+    assertTrue(r2.path("contrapositiveHolds").asBoolean(), "锚 r2.contrapositiveHolds 必须为 true");
+    String r1Text = anchor.path("criteria").path("R1").asText();
+    String flipRiskFormula = anchor.path("formulas").path("flipRisk").asText();
     assertTrue(
-        anchor.path("r2").path("contrapositiveHolds").asBoolean(),
-        "锚 r2.contrapositiveHolds 必须为 true");
+        r1Text.contains(String.valueOf(tieEps)) && flipRiskFormula.contains(String.valueOf(tieEps)),
+        "criteria.R1 与 formulas.flipRisk 必须写同一个并列容差（板规 28：文本与实现同源）：" + r1Text);
+    assertFalse(r1Text.contains("≤ 0；"), "criteria.R1 不得再残留无容差的 `≤ 0` 写法（MINOR-3 修复项）：" + r1Text);
 
     int controlsChecked = 0;
     for (JsonNode control : anchor.path("controls")) {
