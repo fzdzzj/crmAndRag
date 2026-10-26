@@ -1,6 +1,6 @@
 # 主 Agent 轮换交接活看板 (Active Main Agent Handoff)
 
-> **更新时间**：2026-10-26（near-dup-ingest-s1-window-cooccurrence：S1 窗内共现消融**真跑 30 外呼**——原问题未被触及，但换回一条关于档位入口的实测事实与两条新板规）
+> **更新时间**：2026-10-26（near-dup-band-entry-and-tier-fill：**降权第一次真的发生了**——几何裁切 4/6 撞进降权带、12 次降权，名次面仍零变化；零外呼盘出档位填充表 + 一条新板规）
 > **维护契约**：**本文件必须采用整体覆盖更新 (Rolling Overwrite)，严禁无限追加历史流水账**！
 > **适用对象**：**新打开主 Agent 对话窗口时第一必读入口**。读完即可立即进入指导工作状态。
 
@@ -8,14 +8,14 @@
 
 ## 1. 现状快照 (Current State Snapshot)
 
-- **当前主干版本**：`master` = **`adb16d5`（M1 合并）+ `3e3aa68`（基线重锚）+ 本归档笔** = origin/master。分支 `feature/near-dup-ingest-s1-window-cooccurrence` **永久保留**（基点 `20b3d18` → **2 笔**：`3eae484` 首轮 / `5c05de0` fix1 代笔）
-- **测试基线四元组**：`source-revision=adb16d5`（**树净，非 `-dirty`**）+ Surefire **报告 352 / 用例 2172 / F0 / E0 / S0** + Failsafe **报告 48 / 用例 150 / F0 / E0 / S17** + **CI = Run 40213813370（6/6 jobs 绿）**。上一卡 351/2167/0 + 47/149/16 → 本卡 surefire **+1 报告 +5 用例**（守卫五个 `@Test`）、failsafe **+1 报告 +1 用例 +1 skipped**（opt-in IT）
-- **本卡规模**：对 `20b3d18` **8 文件 / +4365 −0**（全新增）；merge 树 == 分支 tip 树，树净
-- **本卡结论（一句话）**：**S1 跑完了，但没答出原问题。** 6 变体（2 base × `jpeg-95`/`jpeg-85`/`scale-95`）对各自 base 的 `cos` 全在 **0.997653–0.999956**，全部落 `SAME_IMAGE` 档（≥0.9944）⇒ **0 次降权、`windowCheck` 空、名次面与集合面零变化**。「撞上了会怎样」在本构造参数域内**未被触及**（锚 MD 自带此限定，非事后辩解）
-- **本卡真正的副产物（供 0.90/档位议题）**：**`[0.982, 0.9944)` 的实际填充者是几何编辑，不是质量退化**——三种质量型变形（重压/微缩）全部 ≥0.997653 落 `SAME_IMAGE`，而 S0 探针里**几何型** `crop-04` 的 `cos = 0.9934` 恰在带内（`near-dup-ingest-gate-probe-v1.md:38`）。本卡不据此提阈值主张
-- **责任划分（不粉饰）**：**我的 D3 口径缺陷**——`downWeightedCount == 0` 时 `NO-RANK-CHANGE` 对**任何**落带外语料恒真，与卡 28 R6 同类病；正确取值应为 `INCONCLUSIVE`（缺带内样本）。锚不改（改只能重跑 30 次外呼或手改成品），以锚 MD 自带限定 + 锚内 `downWeightedCount=0`/`windowCheck.entries=0` 自证，并立板规 26 防复发。复核 MINOR① 采纳（`qwen3-vl-plus` 覆盖补记）、② **驳回**（guard 的 `≥` 是「含未入 topK 事件」的不同集合口径，其断言消息已写明）
-- **模型覆盖事实**：真跑用 `qwen3-vl-plus`；生产默认 `qwen-vl-plus` 在本 key 返回 `model_not_found`（卡 26 同现象）⇒ **生产若按默认模型发描述请求会直接失败**，属另卡
-- **工作树拓扑**：观察树 `D:\code\crmAndRag`（logbook + `work/` 未跟踪）；权威树 `D:\code\crmAndRag-merge-add-knowledge-admin-api`（分支 / 门禁 / 合并 / push 唯一法定树）
+- **当前主干版本**：`master` = **`d0b7a91`（M1 合并）+ `1845129`（基线重锚）+ 本归档笔** = origin/master。分支 `feature/near-dup-band-entry-and-tier-fill` **永久保留**（基点 `6cdfac6` → **3 笔**：`ce05406` 首轮 / `4dce0f0` fix1 代笔 / merge）
+- **测试基线四元组**：`source-revision=d0b7a91`（**树净，非 `-dirty`**）+ Surefire **报告 354 / 用例 2180 / F0 / E0 / S0** + Failsafe **报告 49 / 用例 151 / F0 / E0 / S18** + **CI = Run 40255714154（6/6 jobs 绿）**。上一卡 352/2172/0 + 48/150/17 → 本卡 surefire **+2 报告 +8 用例**（`NearDupBandEntryGuardTest` + `NearDupTierFillAnalysisTest`）、failsafe **+1 报告 +1 用例 +1 skipped**（opt-in IT）
+- **本卡规模**：对 `6cdfac6` **9 文件 / +4753 −0**（6 产物 + 3 卡面）；merge 树 == 分支 tip 树，树净
+- **本卡结论（一句话）**：**降权发生了，答案没变。** 2 base × 3 纯几何裁切（边距 `2%/4%/6%`）里 **4/6 落带内**（`crop-04` 复现 S0 探针 `0.9934`，边距单调性成立），`downWeightedCount=12 > 0`，名次面 `anyImageRankChange=false`、集合面 6 查询 `chunkIdSetEqual` 全 true ⇒ `verdict=NO-RANK-CHANGE`（**板规 26 的合规分支，不是恒真标签**）
+- **本卡真正的副产物**：① `windowCheck` 12 条里 **4 条 `gap ≤ window` 却未翻转**，真因是紧邻下位竞争者**同为被降权候选**——静态 `gap` 只能证「该事件的位次差」，**不能证明翻转不可能** ② 档位填充表（`own-base 120 对 + third-image 2760 对 × 5 编辑类型`）：`[0.982,0.9944)` 内 **22 对**、`≥0.9887` 恰 **14 对**；0.90 议题只列选项与代价（`own 70→113/120`、`third 13→93/2760`、多压 6 张同文档图），**不给推荐阈值**
+- **责任划分（不粉饰）**：复核 3 MINOR 里 2 项是**我的记录面笔误**（`embedInvocations` 写 12、锚是 `6==6`；`candidates` 写 36 行、锚是 **30** 行），fix1 `4dce0f0` 代笔，判据正文零改动；MINOR③ `qwen3-vl-plus` 覆盖已在锚 / 锚 MD / 任务卡三处留档，无需动作
+- **模型覆盖事实**：真跑用 `qwen3-vl-plus`；生产默认 `qwen-vl-plus` 在本 key 返回 `model_not_found`（卡 26/31 同现象）⇒ **生产若按默认模型发描述请求会直接失败**，属另卡
+- **工作树拓扑**：观察树 `D:\code\crmAndRag`（logbook + `work/` 未跟踪）；权威树 `D:\code\crmAndRag-merge-add-knowledge-admin-api`（分支 / 门禁 / 合并 / push 唯一法定树）。**新坑**：`pnpm -C frontend test` 会重写 `frontend/typed-router.d.ts`（生成物 +32 行），跑完门禁须 `git checkout --` 复原，否则基线的 `source-revision` 会挂 `-dirty`
 
 ---
 
@@ -33,19 +33,21 @@
 10. **评测端口口径已对账**（卡 29）：72 例套件 `verdict=PARTIAL-OFF-PRODUCTION`——装配腿生产、输入腿伪向量、稀疏腿 bigram 近似、度量腿 min-max 集合内归一；平移不变性实测（`+100` 差 `2.83e-14`、`×2` 差 `0.0`、单点对照名次 `1→0`）⇒ **其分数不得当「文本路真分数分布」用**
 11. **前端权限小表覆盖率已进门禁**（卡 30）：`endpointPermissionCoverage.test.ts` 断言 `used ⊆ registered`（模板 64 处动态站点 vs 小表 57 条），缺登记即红并打印端点 + 模板`行号`；三集合对账落锚 `ui-permission-coverage-v1`（写模式 `UI_PERMISSION_COVERAGE_UPDATE=1`），僵尸登记**只标注不删**
 12. **S1 窗内共现消融已真跑（卡 31，30 外呼）**：构造 2 base × 3 非退化变体（`jpeg-95`/`jpeg-85`/`scale-95`），逐图七链等式 **6/6 全过**（分母 = 实测子块行数，卡 27 `COUNTER-SUPPRESSED` 口径），A/B **复用同一批查询向量**（各嵌一遍会 42 次、直接超帽）；结果 6 变体全 `ABOVE`（`cos ≥ 0.997653`）⇒ **0 次降权** ⇒ `verdict` 字段 `NO-RANK-CHANGE` 是**恒真标签**，按 `proposal §8` 正确读法是 `INCONCLUSIVE`（缺带内样本）。锚 `near-dup-ingest-s1-v1`（写模式 `-Dnear.dup.ingest.s1.write=true`，守卫 `NearDupIngestS1GuardTest`）
+13. **带内入口已实测（卡 32，30 外呼）**：**纯几何裁切是唯一被实测撞进降权带的构造**——2 base × 3 边距里 4/6 带内（`cos 0.988904–0.993401`，`crop-04` 复现 S0 的 `0.9934`；带外 2 个照记：`SAME_IMAGE 0.994625` / 未召回）。`downWeightedCount=12` 后名次面与集合面仍零变化 ⇒ `NO-RANK-CHANGE`；`windowCheck` 12 条全录（4 条 `gap ≤ window` 未翻转 = 竞争者同步下沉）。锚 `near-dup-band-entry-v1`（写模式 `-Dnear.dup.band.entry.write=true`，守卫 `NearDupBandEntryGuardTest`；同锚 `legB` 承载零外呼档位填充表）
 
 ---
 
-## 3. 当前在途与候选队列（near-dup-ingest-s1-window-cooccurrence 闭环刷新）
+## 3. 当前在途与候选队列（near-dup-band-entry-and-tier-fill 闭环刷新）
 
 - **在途待合入卡**：**0 张**；**已立卡待派发**：**0 张**；**待办池**：**0 条**
 - **长期储备（按优先级）**：
-  1. ~~S1 消融执行~~ **已由卡 31 执行（构造失效面，关闭）**：30 外呼跑完，6 变体全落带外 ⇒ 原问题「撞上了会怎样」**未被触及**。要真答须**更强变形**（q70 / 更狠缩放 / 加噪），但风险明确：**会撞卡 26 的提取下限（短边 <64px）与描述质量闸门丢弃**，届时又回到「付了钱发现样本进不去」；若要做，**必须先做本地可选性预检**（尺寸/内容复杂度）、再小步试跑（≤6 次）确认能进带内，才谈 30 次。**须 Owner 单列授权，不许顺延本卡预算**
-  2. **0.90 / 档位再议（Owner 决，现多一条实测事实）**：`0.90` 是 `R=94.17%` 膝盖点，但多压 6 张同文档图；本轮新增事实——`[0.982,0.9944)` 的填充者是**几何编辑**（crop 0.9934）而非**质量退化**（≥0.997653），故「轻压/微缩」类业务场景大概率根本不进档，档位设计可按「内容平移」重估。动 `NEAR_DUPLICATE_FLOOR` **必须新卡**
-  3. **用户意图级相关性标注（唯一能消掉 A1/A2 的路）**：须真实查询 + 人标；**严禁**用 agent 生成标签充数
-  4. **生产开关运行期打开（Owner 决，非代码）**：`rag.retrieval.image-vector-ingest.enabled` 默认 `false`；先跑 `bash scripts/rag-quality/image-vector-ingest-preflight.sh preflight --snapshot <四键快照>`
-  5. ~~前端小表~~ / ~~文档类存量~~ **已由卡 30 双双结案（关闭）**：小表已门禁化；`docs/permission-matrix-audit.md` 维持历史快照；两 work 文件在观察树 `work/` 实存未跟踪（板已补限定）
-- **下批推荐**：**RAG 质量线的外呼题已跑到边界**——S1 已执行且证明「质量型退化进不了档」，再往下只有两条路：① 更强变形的带内构造（须新授权，风险已知）② 0.90/档位议题（现在有实测事实支撑，零外呼可做设计题）。**不要**再开一张「只读代码就能自答」的取证卡，也**不要**把卡 31 的 `NO-RANK-CHANGE` 当「降权无效」引用（它 `downWeightedCount=0`）
+  1. ~~S1 消融 / 更强变形带内构造~~ **已由卡 32 关闭（几何入口成立）**：裁切（纯几何）4/6 进带，不必再赌质量型变形——**剩余未答的是「位移」不是「入口」**
+  2. **窗口判据升级（Owner 决，零外呼设计题）**：卡 32 实测到 `4 条 gap ≤ window 却未翻转`的真因——**竞争者也同步下沉**。静态 `gap` 只是单事件位次差，证不了翻转不可能；要真判得在 `w=1` 口径下按**完整重排序列**比较，或用「降权前 topK vs 降权后 topK」成对比较。动判据 = 新卡
+  3. **0.90 / 档位再议（Owner 决，现有可复算填充表）**：`0.90` 是 `R=94.17%` 膝盖点，代价是多压 6 张同文档图；表在 `legB.tierFill`（10 行逐字段指回源锚）。动 `NEAR_DUPLICATE_FLOOR` **必须新卡**
+  4. **用户意图级相关性标注（唯一能消掉 A1/A2 的路）**：须真实查询 + 人标；**严禁**用 agent 生成标签充数
+  5. **生产开关运行期打开（Owner 决，非代码）**：`rag.retrieval.image-vector-ingest.enabled` 默认 `false`；先跑 `bash scripts/rag-quality/image-vector-ingest-preflight.sh preflight --snapshot <四键快照>`
+  6. ~~前端小表~~ / ~~文档类存量~~ **已由卡 30 双双结案（关闭）**：小表已门禁化；`docs/permission-matrix-audit.md` 维持历史快照
+- **下批推荐**：RAG 质量线的**入口题**与**档位盘点**都已做完，再往下真正剩 **①窗口判据口径（第 2 条）** 与 **②0.90 拍板（Owner）**。**不要**再开「只读代码就能自答」的取证卡；也**不要**把卡 32 的 `NO-RANK-CHANGE` 当「降权无效」引用（它 `dwc=12`，且成立域只有本构造语料，锚 MD 自带不可外推限定）
 
 ---
 
@@ -65,7 +67,7 @@
 12. **判据即合同**：判据两支可重叠、或出现本方向无意义的词，当场消歧并附可执行断言；事后消歧只能朝**更保守**方向
 13. **行尾即判据**：会做**逐字节比对**的锚/生成物，序列化必须钉死 LF（Jackson 默认缩进器走 `System.lineSeparator()`）
 14. **复核 PASS ≠ 可交付**：`clean verify` 必须在**重新物化后的合并树**上跑
-15. **环境陷阱**：中文 UTF-8 文件逐行计数用 `read`；中文 `sed/grep` pattern 进命令行易 127；bash 走 `D:\git\Git\bin\bash.exe -lc`；`Set-Content -Encoding utf8` 会写 BOM；GitHub 按 `needs` 完成才创建下游 job，闭包以 run 级 `conclusion` 为准；**`Get-Content -Raw` 在 PS5.1 按 GBK 解码 UTF-8 会让整篇乱码且不可逆**（卡 29 实证）；**`Get-Content` 的行数计数同样不可信**（卡 30：同一文件 `git diff --stat` 报 308 行、它数成 296）
+15. **环境陷阱**：中文 UTF-8 文件逐行计数用 `read`；中文 `sed/grep` pattern 进命令行易 127；bash 走 `D:\git\Git\bin\bash.exe -lc`；`Set-Content -Encoding utf8` 会写 BOM；GitHub 按 `needs` 完成才创建下游 job，闭包以 run 级 `conclusion` 为准；**`Get-Content -Raw` 在 PS5.1 按 GBK 解码 UTF-8 会让整篇乱码且不可逆**（卡 29 实证）；**`Get-Content` 的行数计数同样不可信**（卡 30：同一文件 `git diff --stat` 报 308 行、它数成 296）；**仓库根 `grep -rn` 会扫进 `node_modules`**（卡 32：一次吐 200KB 无关正则表，把上下文挤爆）⇒ 检索一律限定路径，或用尊重 `.gitignore` 的 ripgrep；**`pnpm -C frontend test` 会重写 `frontend/typed-router.d.ts`**（生成物，+32 行）⇒ 跑完前端测试先 `git checkout --` 复原，否则基线重锚会记 `-dirty`
 16. **锚字段比较容差须与断言同容差**
 17. **锚条目须可独立解读**：会被交叉引用的数组字段，每条自带判读所需的布尔/范围标志
 18. **上界须注明被放缩的量及其值域**
@@ -78,6 +80,7 @@
 25. **路径类断言必须双树实测（卡 30 新增）**：`Test-Path` 只在权威树跑就得出「文件不存在」，而文件就在观察树 `work/` 里。写「不存在」之前两棵树都测，并写明**在哪棵树成立**
 26. **判定标签必须与触发量联动（卡 31 新增）**：`NO-RANK-CHANGE` 在「降权发生 2 次、名次没动」（卡 28）与「降权一次没发生」（卡 31）两种情形下**同名**，信息量天差地别——后者对任何落带外语料**恒真**。凡「A 导致 B」型判据，必须同时落 **A 发生了多少次**；`A==0` 时结论只能是 `INCONCLUSIVE`，不是「无影响」。这是第 22 条的**补丁**：光要求「能取反」不够，还要要求「事件真发生过」
 27. **花钱的实验把 fail-fast 放在最贵调用之前（卡 31 新增）**：卡 26 是 **124 次**外呼之后才发现对账不符；卡 31 改成逐图入库后立即校验七链等式 + 硬帽 36，**最坏 3 次就能诊断**。预算不是上限数字，是「最早可诊断点」——写花钱卡时先问：第一笔钱花完，我能知道什么
+28. **记录面的数字要从锚里抄，不能推算（卡 32 新增）**：`补勾依据` 写 `embedInvocationsA=12`（锚是 **6**）是把「查询嵌入 12 次」与「每跑检索链 6 次」**两个计量面混写**；`candidates 36 行` 是拿 `6×6` 猜的（实为 **30**）。凡写数字必须指到锚内**同名**字段并抄其值——**推算出来的数字就是下一个 MINOR**，而且它污染的是下一位读者对整张表的信任
 
 ---
 
@@ -85,13 +88,14 @@
 
 - 接口与冻结契约：`spec/changes/add-crm-rag-fusion-platform/contracts-frozen.md`
 - 数据库迁移：`ls src/main/resources/db/migration`（实测最高 **V43**，下一可用 **V44**；最近四卡零迁移）
-- 历史裁决归档：`docs/archive/logbook-historical-202609-202610.md`；活动日志 `docs/main-agent-logbook.md`（**最新 §185**）
-- 历史任务卡：`work/archive/closed-cards/`；本卡卡面 `openspec/changes/archive/near-dup-ingest-s1-window-cooccurrence/`
+- 历史裁决归档：`docs/archive/logbook-historical-202609-202610.md`；活动日志 `docs/main-agent-logbook.md`（**最新 §188**）
+- 历史任务卡：`work/archive/closed-cards/`；本卡卡面 `openspec/changes/archive/near-dup-band-entry-and-tier-fill/`
 - 回归基线：`bash scripts/check-test-baseline.sh`（台账 `scripts/test-baseline.txt`，只经 `--update` 写）
 - **近重复图像六份锚**：`near-dup-exchange-rate-v1`／`near-dup-fusion-impact-v1`／`image-near-dup-truth-v1`／`near-dup-displacement-evidence-v1`／`image-variant-cross-matrix-v1`／`near-dup-floor-signoff-v1`（写模式见各自守卫）
 - **入库面三锚**：`near-dup-ingest-gate-probe-v1`（S0 闸门探针）／`near-dup-ingest-s1-not-run-v1`（卡 26 的 NOT-RUN 负结论，**历史不可改写**）／`image-slice-ingest-chain-v1`（七链对账 + 五种丢弃语义）
 - **消融锚**：`near-dup-ablation-v1`（S0 A/B，`-Dnear.dup.ablation.write=true`，`verdict` 只由名次面+集合面推导、分数面单列 `scoreFace`）
 - **S1 消融锚（本卡）**：`docs/rag-quality/near-dup-ingest-s1-v1.json`（30 外呼台账 + 6 变体 `bandSide` + 逐查询 A/B + `constructionFailure`，写模式 `-Dnear.dup.ingest.s1.write=true`，守卫 `NearDupIngestS1GuardTest`；**`verdict` 需与 `downWeightedCount=0` 连读**）
+- **带内入口锚（本卡）**：`docs/rag-quality/near-dup-band-entry-v1.json`（30 外呼台账 + 6 变体 `bandSide` + 逐查询 A/B + `windowCheck` 12 条 + 零外呼 `legB.tierFill`／`thresholdOptions`，写模式 `-Dnear.dup.band.entry.write=true`，守卫 `NearDupBandEntryGuardTest`；**`dwc=12`，`NO-RANK-CHANGE` 只对本构造语料成立**）
 - **评测端口锚**：`eval-port-route-v1`（`-Deval.port.route.anchor.write=true`，守卫 `EvalPortRouteGuardTest`）
 - **前端权限锚**：`docs/ui-permission-coverage-v1.json`（`UI_PERMISSION_COVERAGE_UPDATE=1`，守卫 `endpointPermissionCoverage.test.ts`）
 - **真跑 opt-in**：`RAG_BENCHMARK_REAL=1` / `RAG_VISION_EMBED_REAL=1` / `RAG_NEAR_DUP_DISPLACEMENT_REAL=1` / `RAG_IMAGE_CROSS_MATRIX_REAL=1` / `RAG_NEAR_DUP_INGEST_REAL=1`；**跳过 ≠ 通过**
