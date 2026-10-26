@@ -553,7 +553,7 @@ class NearDupRerankDecompositionTest {
         "r 分解复算：用锚内冻结 corpusMaterial 重建图像路候选集，按生产口径（生产 Bm25Scorer + 生产 DefaultWeightedReranker 的 min-max，本类不重写 min-max）复算 normVec / normBm25 / r，与卡 32 锚 candidates[].fusedB − fusedA 反算的 r 逐条比对（容差 1e-9）");
     criteria.put(
         "R2",
-        "两分支末位判定（分桶）：逐条给 (queryIndex, variantKey, normVec, normBm25, r, isVecMin, isBm25Min, bucket)；断言 r = 0 ⟺ (normVec = 0 ∧ normBm25 = 0)；退化分支（生产 min-max 三分支：max <= 0 或 max == min）里的 r = 0 只记 DEGENERATE-NOT-EVIDENCE");
+        "两分支末位判定（分桶）：逐条给 (queryIndex, variantKey, normVec, normBm25, r, normVecAtZero, normBm25AtZero, bucket)；断言 r = 0 ⟺ (normVec = 0 ∧ normBm25 = 0)；退化分支（生产 min-max 三分支：max <= 0 或 max == min）里的 r = 0 只记 DEGENERATE-NOT-EVIDENCE");
     criteria.put(
         "R3",
         "结论三值：PROVEN = 复算 12/12 一致 ∧ 4 条零位移事件两分支同时为最小值 ∧ 全部落在两分支皆非退化的查询；REFUTED = 复算一致但零位移事件不是两分支末位；UNDETERMINED = 复算与锚对不上，或零位移事件只落在退化分支（按 R2 不构成末位证据）——三值可达路径见 verdictReachability");
@@ -680,8 +680,8 @@ class NearDupRerankDecompositionTest {
         node.put("normVec", row.normVec());
         node.put("normBm25", row.normBm25());
         node.put("r", row.r());
-        node.put("isVecMin", row.normVec() == 0d);
-        node.put("isBm25Min", row.normBm25() == 0d);
+        node.put("normVecAtZero", row.normVec() == 0d);
+        node.put("normBm25AtZero", row.normBm25() == 0d);
         node.put("bucket", row.bucket());
       }
     }
@@ -716,8 +716,8 @@ class NearDupRerankDecompositionTest {
       node.put("normVec", row.normVec());
       node.put("normBm25", row.normBm25());
       node.put("r", row.r());
-      node.put("isVecMin", row.normVec() == 0d);
-      node.put("isBm25Min", row.normBm25() == 0d);
+      node.put("normVecAtZero", row.normVec() == 0d);
+      node.put("normBm25AtZero", row.normBm25() == 0d);
       node.put("bucket", row.bucket());
       node.put("marked", row.marked());
     }
@@ -725,12 +725,31 @@ class NearDupRerankDecompositionTest {
     ObjectNode equivalence = root.putObject("equivalence");
     equivalence.put("identity", "r = wv · normVec + wb · normBm25");
     equivalence.put("checked", routes.stream().mapToInt(route -> route.rows().size()).sum());
-    equivalence.put("violations", 0);
+    int identityViolations =
+        routes.stream()
+            .flatMap(route -> route.rows().stream())
+            .mapToInt(
+                row ->
+                    Math.abs(
+                                row.r()
+                                    - (weights.vector() * row.normVec()
+                                        + weights.bm25() * row.normBm25()))
+                            <= RECONCILE_TOLERANCE
+                        ? 0
+                        : 1)
+            .sum();
+    equivalence.put("violations", identityViolations);
     equivalence.put(
         "zeroEquivalence", "r = 0 ⟺ (normVec = 0 ∧ normBm25 = 0)，需 wv > 0 ∧ wb > 0（本卡实测两权重均为正）");
     equivalence.put(
         "zeroEquivalenceChecked", routes.stream().mapToInt(route -> route.rows().size()).sum());
-    equivalence.put("violationsZeroEquivalence", 0);
+    int zeroEquivalenceViolations =
+        routes.stream()
+            .flatMap(route -> route.rows().stream())
+            .filter(row -> (row.r() == 0d) != (row.normVec() == 0d && row.normBm25() == 0d))
+            .mapToInt(row -> 1)
+            .sum();
+    equivalence.put("violationsZeroEquivalence", zeroEquivalenceViolations);
 
     ObjectNode bucketSummary = root.putObject("bucketSummary");
     bucketSummary.put("total", routes.stream().mapToInt(route -> route.rows().size()).sum());
@@ -758,6 +777,48 @@ class NearDupRerankDecompositionTest {
 
     root.put("verdict", verdict);
     root.put("verdictReason", verdictReason(routes, reconciliation, verdict));
+    ObjectNode hygiene = root.putObject("numericHygiene");
+    hygiene.put(
+        "snapRule",
+        "snap(x)：|x| < 1e-12 归 0；|x − 1| < 1e-12 归 1；其余 clamp 到 [0, 1]。本语料实测取值均为精确 0 / 1 或 0.982582…，未见被归整掩蔽的样本");
+    hygiene.put("snapEps", 1e-12d);
+
+    // M4：不依赖 rerank 探针的独立路径——只用卡 32 锚的 cos 断「端值映射」
+    // （cos 最大者 normVec = 1、最小者 normVec = 0；max == min 的退化 route 无区分力，跳过并计数）
+    int endpointChecked = 0;
+    int endpointViolations = 0;
+    int endpointSkippedTied = 0;
+    for (QueryRoute route : routes) {
+      RouteRow maxRow = route.rows().isEmpty() ? null : route.rows().get(0);
+      RouteRow minRow = maxRow;
+      if (maxRow == null) {
+        continue;
+      }
+      for (RouteRow row : route.rows()) {
+        if (row.cos() > maxRow.cos()) {
+          maxRow = row;
+        }
+        if (row.cos() < minRow.cos()) {
+          minRow = row;
+        }
+      }
+      if (Math.abs(maxRow.cos() - minRow.cos()) < 1e-12d) {
+        endpointSkippedTied++;
+        continue;
+      }
+      endpointChecked++;
+      if (Math.abs(maxRow.normVec() - 1d) > 1e-9d || Math.abs(minRow.normVec()) > 1e-9d) {
+        endpointViolations++;
+      }
+    }
+    ObjectNode independence = root.putObject("vectorNormalizationIndependence");
+    independence.put(
+        "path", "只用卡 32 锚的 cos 断端值映射（cos 最大者 normVec = 1、最小者 normVec = 0），不依赖 rerank 探针输出");
+    independence.put("checked", endpointChecked);
+    independence.put("endpointViolations", endpointViolations);
+    independence.put("skippedTiedRoutes", endpointSkippedTied);
+    independence.put("note", "max == min 的退化 route 端值无区分力，故跳过并计数；本检查的独立性来自「输入是 cos 而非 rerank 探针」");
+
     root.put("structuralFinding", structuralFinding(routes, weights));
     root.put("verdictRule", verdictRule());
     ObjectNode reachability = root.putObject("verdictReachability");
@@ -801,10 +862,15 @@ class NearDupRerankDecompositionTest {
         "nonExtrapolationNote",
         "本卡只回答「r 为什么是 0」与本语料（6 查询 / 6 图 / 12 条被标记事件）的 floor 两栏对照；不外推到其它语料、其它 topK、其它权重配置");
 
-    ObjectNode runtime = root.putObject("runtime");
-    runtime.put("generatedBy", "NearDupRerankDecompositionTest");
-    runtime.put("javaVersion", System.getProperty("java.version"));
-    runtime.put("os", System.getProperty("os.name"));
+    ObjectNode runtimeBlock = root.putObject("runtime");
+    runtimeBlock.put("generatedBy", "NearDupRerankDecompositionTest");
+    runtimeBlock.put("javaVersion", System.getProperty("java.version"));
+    runtimeBlock.put("os", System.getProperty("os.name"));
+    runtimeBlock.put("externalCalls", 0);
+    runtimeBlock.put(
+        "externalCallsBasis",
+        "零外呼：输入只有卡 32/33/34 三锚 + 冻结 corpusMaterial，计算全走生产纯函数（InMemoryVectorStore / Bm25Scorer / DefaultWeightedReranker / normalizeScores），无 provider 调用点");
+    runtimeBlock.put("excludedFromReplay", true);
     return root;
   }
 
@@ -864,7 +930,10 @@ class NearDupRerankDecompositionTest {
     Set<String> zeroQueries = new LinkedHashSet<>();
     zeroRows(routes).forEach(row -> zeroQueries.add("q" + row.queryIndex()));
     return "r = 0 要求 wv·normVec + wb·normBm25 = 0，两权重皆正 ⇒ 必须 wb·normBm25 = 0。本语料 6 条查询的 bm25 分支全部退化："
-        + (allOne.isEmpty() ? "" : String.join("/", allOne) + " 全同 1.0（查询词命中全部图像描述文本 ⇒ max == min）")
+        + (allOne.isEmpty()
+            ? ""
+            : String.join("/", allOne)
+                + " 全同 1.0（实测直接成因：同 route 的候选 `text` 逐字节相同，长度归一化后同分 ⇒ max == min；这是本语料构造的性质，不是 BM25 饱和的普遍规律，query 实际只命中 `nist` 一个 token）")
         + (allOne.isEmpty() || allZero.isEmpty() ? "" : "；")
         + (allZero.isEmpty() ? "" : String.join("/", allZero) + " 全同 0.0（查询词零命中 ⇒ max <= 0）")
         + "。在 bm25 全 1.0 的查询里 r ≥ wb·1 = "
@@ -1086,7 +1155,7 @@ class NearDupRerankDecompositionTest {
             anchor.path("verdictCaliberNote").asText()));
     md.append("## 4 条零位移事件（δ = 0）\n");
     md.append(
-        "| q | variantKey | cos | normVec | normBm25 | r | isVecMin | isBm25Min | bucket |\n");
+        "| q | variantKey | cos | normVec | normBm25 | r | normVecAtZero | normBm25AtZero | bucket |\n");
     md.append("|---|---|---|---|---|---|---|---|---|\n");
     for (JsonNode event : anchor.path("zeroDisplacementEvents")) {
       md.append(
@@ -1099,8 +1168,8 @@ class NearDupRerankDecompositionTest {
               num(event.path("normVec").asDouble()),
               num(event.path("normBm25").asDouble()),
               num(event.path("r").asDouble()),
-              event.path("isVecMin").asBoolean(),
-              event.path("isBm25Min").asBoolean(),
+              event.path("normVecAtZero").asBoolean(),
+              event.path("normBm25AtZero").asBoolean(),
               event.path("bucket").asText()));
     }
     md.append("## R3 · 结论\n");

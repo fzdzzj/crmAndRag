@@ -241,9 +241,12 @@ class NearDupRerankDecompositionGuardTest {
           r == 0d,
           normVec == 0d && normBm25 == 0d,
           "r = 0 ⟺ 两分支归一值同时为 0 不成立: " + row.path("variantKey").asText());
-      assertEquals(normVec == 0d, row.path("isVecMin").asBoolean(), "isVecMin 必须等价于 normVec = 0");
       assertEquals(
-          normBm25 == 0d, row.path("isBm25Min").asBoolean(), "isBm25Min 必须等价于 normBm25 = 0");
+          normVec == 0d, row.path("normVecAtZero").asBoolean(), "normVecAtZero 必须等价于 normVec = 0");
+      assertEquals(
+          normBm25 == 0d,
+          row.path("normBm25AtZero").asBoolean(),
+          "normBm25AtZero 必须等价于 normBm25 = 0");
       assertEquals(
           "IMAGE:" + row.path("chunkId").asText(),
           row.path("sourceKey").asText(),
@@ -502,6 +505,21 @@ class NearDupRerankDecompositionGuardTest {
   private static void assertNoExternalCalls(JsonNode anchor) {
     JsonNode reconstruction = anchor.path("reconstruction");
     assertEquals(0, reconstruction.path("externalCalls").asInt(), "本卡必须零外呼（externalCalls = 0）");
+    assertEquals(
+        0,
+        anchor.path("runtime").path("externalCalls").asInt(),
+        "runtime.externalCalls 必须 0（与卡 33/34 上游惯例一致）");
+    assertTrue(
+        anchor.path("runtime").path("excludedFromReplay").asBoolean(),
+        "runtime.excludedFromReplay 必须 true");
+    assertEquals(
+        0,
+        anchor.path("vectorNormalizationIndependence").path("endpointViolations").asInt(),
+        "独立路径（cos 端值映射）必须 0 违规");
+    assertTrue(
+        anchor.path("vectorNormalizationIndependence").path("checked").asInt() > 0,
+        "独立路径必须至少检查 1 条 route");
+    assertFalse(anchor.path("numericHygiene").path("snapRule").asText().isBlank(), "必须在锚内记录数值归整规则");
     assertEquals(5, reconstruction.path("config").path("topK").asInt(), "topK 必须与卡 32 锚一致");
     assertEquals(
         0.9944d,
