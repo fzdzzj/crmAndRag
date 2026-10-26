@@ -1,6 +1,6 @@
 # 主 Agent 轮换交接活看板 (Active Main Agent Handoff)
 
-> **更新时间**：2026-10-26（near-dup-oq1-attribution：**OQ1 收口到「能证/不能证」的分界**——`δ=0 ⇔ r=0` 与「降权对图像贡献为 0 的候选是结构空操作」已证；成因 `min-max 末位` 只到相容未证，缺 4 个字段 + 一次 30 外呼埋点；零外呼 + 一条新板规）
+> **更新时间**：2026-10-26（near-dup-rerank-decomposition：**OQ1 定案为 `UNDETERMINED`，但理由可复算**——`r` 已在本地拆开（12/12，零外呼），卡住的是「bm25 分支 6/6 退化」；同卡交付 0.90 决策页）
 > **维护契约**：**本文件必须采用整体覆盖更新 (Rolling Overwrite)，严禁无限追加历史流水账**！
 > **适用对象**：**新打开主 Agent 对话窗口时第一必读入口**。读完即可立即进入指导工作状态。
 
@@ -8,14 +8,13 @@
 
 ## 1. 现状快照 (Current State Snapshot)
 
-- **当前主干版本**：`master` = **`f82276a`（M1 合并）+ `b342fb7`（基线重锚）+ 本归档笔** = origin/master。分支 `feature/near-dup-oq1-attribution` **永久保留**（基点 `9ec116d` → **3 笔**：`f9b637d` 首轮 / `626b904` fix1 代笔 / `39f214b` 卡面补入）
-- **测试基线四元组**：`source-revision=f82276a`（**树净，非 `-dirty`**）+ Surefire **报告 358 / 用例 2195 / F0 / E0 / S0** + Failsafe **报告 49 / 用例 151 / F0 / E0 / S18** + **CI = Run 40302793899（6/6 jobs 绿）**。上一卡 356/2187/0 + 49/151/18 → 本卡 surefire **+2 报告 +8 用例**（`NearDupOq1AttributionAnalysisTest` 1 + `NearDupOq1AttributionGuardTest` 7）、failsafe **三值不变**（零外呼、不新增 IT）
-- **本卡规模**：对 `9ec116d` **7 文件 / +2402 −0**（2 测试类 + 2 锚 + 2 卡面 + 任务卡）；merge 树 == 分支 tip 树，树净
-- **本卡结论（一句话）**：**能证的和证不了的分开了。** `δ = 0.30(1−w)r ⇒ δ=0 ⇔ r=0`（12/12 逐条）；`r=0` 的候选在融合里图像贡献为 0 ⇒ **降权对它是结构空操作**，与标记无关；4 条零位移事件 `r` 恰为 0 且 `tier=NEAR_DUPLICATE`、`downWeighted=true` 三者并存
-- **本卡真正的副产物**：① 成因 `DefaultWeightedReranker#normalizeScores` 的 **min-max 末位归 0** 路径确实存在（三分支），但锚里没有 per-route 分数 ⇒ 只到 **`CONSISTENT-NOT-PROVEN`**，`verdict=NEEDS-INSTRUMENTED-RUN` ② 一致性检查 6 查询全 `consistent`、`counterExamples=0`、`upgraded=false`，但 **`degenerate=3 / nonDegenerate=3`**——一半查询落在 `max≤0`/`max==min` 退化分支，「末位」那套只对另一半可谈
-- **缺什么（下一张的输入）**：`imageRerankScore` / `imageRankInRouteList` / `routeListSize` / `fusionImageContribution` 四项 + `rag.retrieval.rerank` 两个权重的**运行时取值**（推导里的 `0.60/0.40` 来自默认值，不是本次实测）。最小埋点方案已写为决策附件，`executed=false`，预算 30 外呼**另请授权**
-- **责任划分（不粉饰）**：复核 4 MINOR **全部采信**。最要害是 MINOR-2：三档边界此前只有「规范化字节比对」兜着——把「该候选是图像路的末位」注入 `PROVEN`，守卫 7/7 仍绿；fix1 加了反向断言并**实测注入即红**。另三条：md 漏 `max≤0` 退化分支、「逐字节」实为规范化字节、tasks 未勾（并更正 `MISSING-EVIDENCE` 实为 4 条，M4 是权重本身也属推断）
-- **模型覆盖事实**：不适用（本卡零外呼、不碰 data）；沿用卡 26/31/32 的 `qwen3-vl-plus` 生产默认不可用记录
+- **当前主干版本**：`master` = **`8beffaa`（M1 合并）+ `b19a9ff`（基线重锚）+ 本归档笔** = origin/master。分支 `feature/near-dup-rerank-decomposition` **永久保留**（基点 `e2d4adf` → **2 笔**：`dd693ac` 首轮 / `55b7dc3` fix1 代笔）
+- **测试基线四元组**：`source-revision=8beffaa`（**树净，非 `-dirty`**）+ Surefire **报告 360 / 用例 2197 / F0 / E0 / S0** + Failsafe **报告 49 / 用例 151 / F0 / E0 / S18** + **CI = Run 40334227114（6/6 jobs 绿）**。上一卡 358/2195/0 + 49/151/18 → 本卡 surefire **+2 报告 +2 用例**（`NearDupRerankDecompositionTest` 1 + Guard 1）、failsafe **三值不变**
+- **本卡规模**：对 `e2d4adf` **7 文件 / +3028 −0**（2 测试类 + 2 锚 + 2 卡面 + 任务卡）；merge 树 == 分支 tip 树，树净
+- **本卡结论（一句话）**：**`r` 拆开了，但判据（我写的）不成立。** `r = wv·normVec + wb·normBm25` 已在本地复算 12/12；`r=0` 的 4 条确实两分支归一值都为 0，可 **bm25 分支在 6/6 查询退化**，使「两分支同时末位」这个 R3 条件在本语料上**不可满足** ⇒ 判 `UNDETERMINED`（不是缺证据）
+- **本卡真正的副产物**：① **结构性预言被双向验证**：`r=0` 只在 bm25 全 0 的查询可能出现，`r ≥ wb=0.4` 是 bm25 全 1 查询的下界——实测 4 条 `r=0` 全在 q1/q3/q4/q5，q0/q2 最小 `r` 恰 `0.400000` ② **30 外呼省掉了**：卡 34 估的埋点被「本地拆 + 冻结材料」替代，`budgetExternalCalls=0` ③ **0.90 决策页**（`floorOptions`）：own `70/120↔113/120`、third `13/2760↔93/2760`、same-doc `2/100↔8/100`，附结构性惰性提示（`r=0` 的带内候选降权无效）
+- **判据缺陷（我的）**：R3 要求「4 条零位移全在非退化查询」——它假设两分支都可能非退化；bm25 在图像描述文本上是**非连续量**（要么全命中、要么零命中），所以本语料上该条件必然不成立。按规则**不许事后改判据迁就数据**，执行者照字面判 `UNDETERMINED` 是正确行为；要正式认可「单分支末位 + 另一分支退化并列」为证据，须**另卡改 R2/R3**
+- **责任划分（不粉饰）**：复核 PASS + 7 MINOR **全部采信**，fix1 `55b7dc3` 逐条处置。实质三条：M4 补了**不依赖 rerank 探针**的独立路径（只用 `cos` 断端值映射，`checked=6 / violations=0`）；M5 `isVecMin/isBm25Min` → `normVecAtZero/normBm25AtZero`（原名会被读成「分支最小值」）；M6 「全命中」归因改为「同 route 候选 `text` 逐字节相同、长度归一化同分」（不是 BM25 饱和的普遍规律）。另 M1 台账 + 卡面入库、M2 `runtime.externalCalls`、M3 `violations` 改累加、M7 `snap` 归整规则入锚
 - **工作树拓扑**：观察树 `D:\code\crmAndRag`（logbook + `work/` 未跟踪）；权威树 `D:\code\crmAndRag-merge-add-knowledge-admin-api`（分支 / 门禁 / 合并 / push 唯一法定树）。**坑**：`pnpm -C frontend test` 会重写 `frontend/typed-router.d.ts`（生成物 +32 行），跑完门禁须 `git checkout --` 复原，否则基线 `source-revision` 会挂 `-dirty`（本卡 M1 已再中一次）
 
 ---
@@ -39,19 +38,21 @@
 
 15. **OQ1 已收口到「能证/不能证」分界（卡 34，零外呼）**：`δ = 0.30(1−w)r ⇒ δ=0 ⇔ r=0`（12/12）；`r=0` ⇒ 融合里图像贡献 0 ⇒ **降权是结构空操作**（**可证**，与标记无关）；成因（`normalizeScores` 的 min-max 末位归 0）**只到 `CONSISTENT-NOT-PROVEN`**，`verdict=NEEDS-INSTRUMENTED-RUN`，缺 4 字段 + `rerank` 两权重的运行时值。锚 `near-dup-oq1-attribution-v1`（写模式 `-Dnear.dup.oq1.attribution.write=true`，守卫 `NearDupOq1AttributionGuardTest`）。**引用纪律**：只能说「no-op 可证 + 成因待埋点」，不得说「已证明是 min-max 造成的」
 
+16. **`r` 已本地拆开、OQ1 定案为 `UNDETERMINED`（卡 35，零外呼）**：用生产口径（`InMemoryVectorStore` → `ImageSimilarityGate` → `Bm25Scorer` → `DefaultWeightedReranker`）重建 6 查询候选集（30 行全重建），反解权重 `wv=0.6 / wb=0.4`（受控探针 + `0.9/0.1` 负对照），`r` 与卡 32 反算 **12/12 一致**（`maxAbsDiff 5.55e-16`）。**卡住的是判据不是数据**：4 条零位移 `normVec=0 ∧ normBm25=0` 成立，但 **bm25 分支 6/6 查询退化**（q0/q2 全 1.0、q1/q3/q4/q5 全 0.0）⇒ R3 的「全在非退化查询」不成立。结构发现：`r=0` 只可能出现在 bm25 全 0 的查询（否则 `r ≥ wb`），实测 4 条恰全在那里、q0/q2 最小 `r` 恰 `0.400000=wb`。埋点 `executed=false`、`budgetExternalCalls=0`（退化来自数据）。锚 `near-dup-rerank-decomposition-v1`（写模式 `-Dnear.dup.rerank.decomposition.write=true`，守卫 `NearDupRerankDecompositionGuardTest`），**同锚 `floorOptions` 承载 0.90 决策页**
+
 ---
 
-## 3. 当前在途与候选队列（near-dup-oq1-attribution 闭环刷新）
+## 3. 当前在途与候选队列（near-dup-rerank-decomposition 闭环刷新）
 
 - **在途待合入卡**：**0 张**；**已立卡待派发**：**0 张**；**待办池**：**0 条**
 - **长期储备（按优先级）**：
-  1. ~~S1 消融 / 更强变形带内构造~~ **已由卡 32 关闭（几何入口成立）**；~~窗口判据升级~~ **已由卡 33 关闭（`margin_A` 精确式）**；~~`delta=0` 成因（OQ1）~~ **已由卡 34 收口**：no-op 可证、成因只到相容未证
-  2. **OQ1 埋点真跑（Owner 决，须单列预算）**：要把「min-max 末位造成」写成结论，需在卡 32 语料上补 4 个字段（`imageRerankScore` / `imageRankInRouteList` / `routeListSize` / `fusionImageContribution`）+ 记录 `rag.retrieval.rerank` 两权重运行时值；估算 **30 外呼**（6 摄取 × 3 + 6 查询 × 2）。⚠ 注意 `degenerate=3 / nonDegenerate=3`——一半查询落在 `max≤0`/`max==min` 退化分支，埋点后要分开判，别把退化样本的能量算进「末位归 0」
-  3. **0.90 / 档位再议（Owner 决，现有可复算填充表）**：`0.90` 是 `R=94.17%` 膝盖点，代价是多压 6 张同文档图；表在 `near-dup-band-entry-v1` 的 `legB.tierFill`。动 `NEAR_DUPLICATE_FLOOR` **必须新卡**；卡 34 的新增事实可用于此项——**带内样本可能含「结构性惰性」的子集**（`r=0` 者降权无效）
+  1. ~~S1 消融 / 更强变形带内构造~~ / ~~窗口判据升级~~ / ~~`delta=0` 成因（OQ1）~~ **四项已由卡 32/33/34/35 全部收口**
+  2. **另卡改 R2/R3：认可「单分支末位 + 另一分支退化并列」为证据（Owner 决，零外呼）**：卡 35 已把事实摆齐——`r=0` 只可能出现在 bm25 全 0 的查询（`r ≥ wb` 是另一半的下界），那些查询里「末位」退化为**向量分支末位**；要把它写成 `PROVEN` 必须改判据（本卡按规则没改）。改法须**更精确更窄**：写清适用域（bm25 分支退化时等价于单分支判据）+ 双向条件句，不得放宽到「任意查询」
+  3. **0.90 / 档位拍板（Owner 决，决策页已交付）**：`near-dup-rerank-decomposition-v1#floorOptions` 两栏齐备（own `70/120↔113/120`、third `13/2760↔93/2760`、same-doc `2/100↔8/100`、多压 6 张同文档图、`R=94.17%`），并附结构性惰性提示（`r=0` 的带内候选降权无效）。**本卡不给推荐值**；动 `NEAR_DUPLICATE_FLOOR` 必须另卡
   4. **用户意图级相关性标注（唯一能消掉 A1/A2 的路）**：须真实查询 + 人标；**严禁**用 agent 生成标签充数
   5. **生产开关运行期打开（Owner 决，非代码）**：`rag.retrieval.image-vector-ingest.enabled` 默认 `false`；先跑 `bash scripts/rag-quality/image-vector-ingest-preflight.sh preflight --snapshot <四键快照>`
   6. ~~前端小表~~ / ~~文档类存量~~ **已由卡 30 双双结案（关闭）**
-- **下批推荐**：近重复这条线的**入口 / 判据 / 计数 / 归因**四题已全部收口。再往下只剩 **①OQ1 埋点真跑（第 2 条，须 Owner 批预算）** 与 **②0.90 拍板（Owner）** 两件 Owner 决策项；**不要**再开「只读代码就能自答」的取证卡（可证的部分已被卡 34 抽干），也**不要**把卡 34 的 `NEEDS-INSTRUMENTED-RUN` 读成「机制不存在」
+- **下批推荐**：近重复线**入口 / 判据 / 计数 / 归因 / 分解**五题全部收口，「还能白嫖的」已经被抽干（卡 35 的 `r` 分解是最后一次零外呼）。再往下只剩两件：**①另卡改 R2/R3**（把已摆齐的事实写进判据，零外呼）与 **②0.90 拍板（Owner）**。**不要**再开「只读就能自答」的卡；**不要**把本卡 `UNDETERMINED` 读成「机制不存在」——它是「判据在本语料上不可满足」
 
 ---
 
@@ -87,6 +88,7 @@
 28. **记录面的数字要从锚里抄，不能推算（卡 32 新增）**：`补勾依据` 写 `embedInvocationsA=12`（锚是 **6**）是把「查询嵌入 12 次」与「每跑检索链 6 次」**两个计量面混写**；`candidates 36 行` 是拿 `6×6` 猜的（实为 **30**）。凡写数字必须指到锚内**同名**字段并抄其值——**推算出来的数字就是下一个 MINOR**，而且它污染的是下一位读者对整张表的信任
 29. **判据的文本与实现必须同容差，并由守卫断言（卡 33 新增）**：`flipRisk ≤ 0` 写在三处文本、实现却是 `≤ 1e-12`——平时看不出，可一旦 `margin_A ∈ (0,1e-12]` 且 `gap > window`，「正向断言」就会和实现互相打脸；同理 `r2.forwardHolds` 硬写 `true` 等于一个有字段名的恒真（第 22/24 条的记录面版本）。**判据只要带浮点比较，文本、锚字段、实现三处必须写同一个常量，且有一条断言把三处钉在一起**；能由数据推出的布尔，不许字面写 `true`
 30. **分档结论必须被守卫反向钉住（卡 34 新增）**：把 `PROVEN` / `CONSISTENT-NOT-PROVEN` / `MISSING-EVIDENCE` 写进锚只是「声明分档」，不等于「分档守得住」——卡 34 把「末位」注入 `PROVEN` 后，守卫 7/7 仍绿，只有复算比对兜着。**凡分档结论，必须有一条反向断言：`PROVEN` 的文本里不许出现未证解释的关键词**（本卡禁式：`末位` / `min-max 把` / `归 0 造成` / `成因是`）。正向断言证明「我写了什么」，反向断言才证明「我没偷偷多写」
+31. **判据的可满足性要在写卡时自证一遍（卡 35 新增）**：卡 35 的 R3 要求「两分支同时非退化」，可 bm25 在图像描述文本上**必然**退化（全命中或零命中）⇒ **这条判据在本语料上不可满足**，执行者只能判 `UNDETERMINED`。写判据时先问一句：**「什么数据能让它取到这个值？本语料里有没有这样的数据？」** 若答案是「理论上有、本语料里没有」，那不是判据，是把 `UNDETERMINED` 写成了宿命；正确做法是**写条件化判据**（在 X 分支退化为全 0 时等价于单分支判据），并在卡里写明适用域
 
 ---
 
@@ -94,8 +96,8 @@
 
 - 接口与冻结契约：`spec/changes/add-crm-rag-fusion-platform/contracts-frozen.md`
 - 数据库迁移：`ls src/main/resources/db/migration`（实测最高 **V43**，下一可用 **V44**；最近四卡零迁移）
-- 历史裁决归档：`docs/archive/logbook-historical-202609-202610.md`；活动日志 `docs/main-agent-logbook.md`（**最新 §194**）
-- 历史任务卡：`work/archive/closed-cards/`；本卡卡面 `openspec/changes/archive/near-dup-oq1-attribution/`
+- 历史裁决归档：`docs/archive/logbook-historical-202609-202610.md`；活动日志 `docs/main-agent-logbook.md`（**最新 §197**）
+- 历史任务卡：`work/archive/closed-cards/`；本卡卡面 `openspec/changes/archive/near-dup-rerank-decomposition/`
 - 回归基线：`bash scripts/check-test-baseline.sh`（台账 `scripts/test-baseline.txt`，只经 `--update` 写）
 - **近重复图像六份锚**：`near-dup-exchange-rate-v1`／`near-dup-fusion-impact-v1`／`image-near-dup-truth-v1`／`near-dup-displacement-evidence-v1`／`image-variant-cross-matrix-v1`／`near-dup-floor-signoff-v1`（写模式见各自守卫）
 - **入库面三锚**：`near-dup-ingest-gate-probe-v1`（S0 闸门探针）／`near-dup-ingest-s1-not-run-v1`（卡 26 的 NOT-RUN 负结论，**历史不可改写**）／`image-slice-ingest-chain-v1`（七链对账 + 五种丢弃语义）
@@ -103,7 +105,8 @@
 - **S1 消融锚**：`docs/rag-quality/near-dup-ingest-s1-v1.json`（30 外呼台账 + 6 变体 `bandSide` + 逐查询 A/B + `constructionFailure`，写模式 `-Dnear.dup.ingest.s1.write=true`，守卫 `NearDupIngestS1GuardTest`；**`verdict` 需与 `downWeightedCount=0` 连读**）
 - **带内入口锚**：`docs/rag-quality/near-dup-band-entry-v1.json`（30 外呼台账 + 6 变体 `bandSide` + 逐查询 A/B + `windowCheck` 12 条 + 零外呼 `legB.tierFill`／`thresholdOptions`，写模式 `-Dnear.dup.band.entry.write=true`，守卫 `NearDupBandEntryGuardTest`；**`dwc=12`，`NO-RANK-CHANGE` 只对本构造语料成立**）
 - **窗口判据锚**：`docs/rag-quality/near-dup-window-coupling-v1.json`（12 条事件 `marginA`/`flipRisk` + 4 条假阳性两桶归因 + `marked`/`displaced` 计数 + 三组构造对照 + 上游 4 项 SHA，写模式 `-Dnear.dup.window.coupling.write=true`，守卫 `NearDupWindowCouplingGuardTest`；**`flipRisk=true` 0 条只对卡 32 构造域成立**）
-- **OQ1 归因锚（本卡）**：`docs/rag-quality/near-dup-oq1-attribution-v1.json`（12 条 `r` 反算 + 4 条 no-op 算式 + 三档 `claimClass`（`PROVEN` 3 / `CONSISTENT-NOT-PROVEN` 2 / `MISSING-EVIDENCE` 4）+ 一致性检查 6 查询 + `instrumentedPlan`（`executed=false`，30 外呼），写模式 `-Dnear.dup.oq1.attribution.write=true`，守卫 `NearDupOq1AttributionGuardTest`）
+- **OQ1 归因锚**：`docs/rag-quality/near-dup-oq1-attribution-v1.json`（12 条 `r` 反算 + 4 条 no-op 算式 + 三档 `claimClass`（`PROVEN` 3 / `CONSISTENT-NOT-PROVEN` 2 / `MISSING-EVIDENCE` 4）+ 一致性检查 6 查询 + `instrumentedPlan`（`executed=false`，30 外呼），写模式 `-Dnear.dup.oq1.attribution.write=true`，守卫 `NearDupOq1AttributionGuardTest`）
+- **r 分解锚（本卡）**：`docs/rag-quality/near-dup-rerank-decomposition-v1.json`（权重 `0.6/0.4` + 30 行候选分解 + `r` 12/12 对账 + 桶 + `vectorNormalizationIndependence` 独立路径 + `floorOptions` 0.90 决策页，写模式 `-Dnear.dup.rerank.decomposition.write=true`，守卫 `NearDupRerankDecompositionGuardTest`；**`verdict=UNDETERMINED` 是「判据不可满足」不是「机制不存在」**）
 - **评测端口锚**：`eval-port-route-v1`（`-Deval.port.route.anchor.write=true`，守卫 `EvalPortRouteGuardTest`）
 - **前端权限锚**：`docs/ui-permission-coverage-v1.json`（`UI_PERMISSION_COVERAGE_UPDATE=1`，守卫 `endpointPermissionCoverage.test.ts`）
 - **真跑 opt-in**：`RAG_BENCHMARK_REAL=1` / `RAG_VISION_EMBED_REAL=1` / `RAG_NEAR_DUP_DISPLACEMENT_REAL=1` / `RAG_IMAGE_CROSS_MATRIX_REAL=1` / `RAG_NEAR_DUP_INGEST_REAL=1`；**跳过 ≠ 通过**
