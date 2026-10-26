@@ -1,0 +1,1155 @@
+{
+  "card" : "near-dup-conditional-min-criterion",
+  "stage" : "CONDITIONAL-MIN-CRITERION",
+  "decisionVersion" : "NEAR-DUP-CONDITIONAL-MIN-CRITERION-1.0",
+  "decisionOwner" : "OWNER",
+  "scope" : "腿 A：把末位判据改成条件化三分支（bm25 全 0 / 全 1 / 非退化），逐条复判 12 条事件；腿 B：NEAR_DUPLICATE_FLOOR 降到 0.90 的影响清单与重锚清单（不执行、不给倾向值、不改任何常量）",
+  "criteria" : {
+    "R0" : "零外呼：输入是既有冻结锚（逐锚清单 16 张；其中 5 张另做上游 SHA 全校验）+ 生产纯函数 + 源码字面；不启动 Spring、不 instance provider、不设任何 *_REAL、不跑检索",
+    "R1" : "把末位判据写成三分支条件式（全 0 / 全 1 / 非退化），逐支给出 r = 0 的充要条件；三支互斥穷尽，判定只用 max/min 整值",
+    "R2" : "判定词升级为四值：PROVEN-CONDITIONAL（适用域内已证）/ PROVEN（仅非退化分支，可达但本语料未出现）/ REFUTED / UNDETERMINED，四值各写可达路径",
+    "R3" : "逐 12 条事件判「所属分支 + 是否满足该分支充要条件」，断言 4 条零位移全落 bm25 全 0 桶且 normVec = 0",
+    "R4" : "反向断言：无条件 PROVEN 档文本不得含「末位 / 两分支同时」等未在本语料成立的措辞；PROVEN-CONDITIONAL 档必须带 applicabilityDomain",
+    "R5" : "腿 B 只列事实：逐锚给字段路径 + 值样例、降门槛后是否自相矛盾、能否零外呼重算（依据：是否冻 cos/向量）、否则最小外呼量与理由",
+    "R6" : "腿 B 给重锚清单（方式 + 是否花钱 + 依赖顺序）与不受影响清单；executed = false，本卡不动任何既有锚",
+    "R7" : "边界：src/main 零 diff、pom.xml / .github 零改、既有锚零字节变动、不改任何生产常量、禁改 NearDup* 类只读",
+    "R8" : "停手：任一影响判定若无法从源锚字段证明（指不出字段路径）⇒ 记 UNDETERMINED，不许猜；清单内不得出现任何降或不降的倾向措辞"
+  },
+  "upstreamAnchors" : {
+    "bandEntry" : {
+      "path" : "docs/rag-quality/near-dup-band-entry-v1.json",
+      "sha256" : "3c927e65e70083973c48f34de965d1531afd1b5cd2c86583df688f45918195ec",
+      "readOnly" : true
+    },
+    "windowCoupling" : {
+      "path" : "docs/rag-quality/near-dup-window-coupling-v1.json",
+      "sha256" : "02a07142bca1831d648da16048427f20bc276bf7831518214d7ff58a39bf606b",
+      "readOnly" : true
+    },
+    "displacementEvidence" : {
+      "path" : "docs/rag-quality/near-dup-displacement-evidence-v1.json",
+      "sha256" : "5444719a9ff67ee696cb01533eb624821ba09530a5b87069a9c8fb62b0c9ad9b",
+      "readOnly" : true
+    },
+    "rerankDecomposition" : {
+      "path" : "docs/rag-quality/near-dup-rerank-decomposition-v1.json",
+      "sha256" : "816b01176e833a5a1190f8dc62b169baad25e90d0e0b0bd008022cb6ca16b3bb",
+      "readOnly" : true
+    },
+    "floorSignoff" : {
+      "path" : "docs/rag-quality/near-dup-floor-signoff-v1.json",
+      "sha256" : "dbe799471fd1bdb13625b85be8ad3b7c75805dbcd61dfe7fc8a05fdb31d1d022",
+      "readOnly" : true
+    }
+  },
+  "weights" : {
+    "vectorWeight" : 0.6,
+    "bm25Weight" : 0.4,
+    "source" : "卡 35 锚 weights 块（受控探针 + 0.9/0.1 负对照反解出的生产 DefaultWeightedReranker 权重）；本卡只读引用，不重测",
+    "identity" : "r = wv · normVec + wb · normBm25",
+    "identityChecked" : 15,
+    "identityViolations" : 0,
+    "identityTolerance" : 1.0E-12,
+    "identityMaxAbsDiff" : 0.0
+  },
+  "criterion" : {
+    "identity" : "r = wv · normVec + wb · normBm25（wv = 0.6、wb = 0.4，均为正）",
+    "branches" : [
+      {
+        "id" : "B0-BM25-ALL-ZERO",
+        "label" : "bm25 全 0",
+        "predicate" : "max(normBm25[q]) <= 0.0",
+        "consequence" : "r = wv · normVec + wb · 0 = wv · normVec ⇒ r = 0 ⟺ normVec = 0（向量分支取最小即充分必要）",
+        "applicableQueries" : "q1,q3,q4,q5",
+        "observedQueries" : 4,
+        "observedEvents" : 6,
+        "observedZeroEvents" : 4,
+        "reachable" : "本语料已出现（4 条查询）",
+        "decompositionAnchor" : "near-dup-rerank-decomposition"
+      },
+      {
+        "id" : "B1-BM25-ALL-ONE",
+        "label" : "bm25 全 1",
+        "predicate" : "max(normBm25[q]) == min(normBm25[q]) && max > 0.0",
+        "consequence" : "r = wv · normVec + wb · 1 >= wb > 0 ⇒ r = 0 不可能（可证的不可能性）",
+        "applicableQueries" : "q0,q2",
+        "observedQueries" : 2,
+        "observedEvents" : 6,
+        "observedZeroEvents" : 0,
+        "reachable" : "本语料已出现（2 条查询）",
+        "decompositionAnchor" : "near-dup-rerank-decomposition"
+      },
+      {
+        "id" : "B2-BM25-NON-DEGENERATE",
+        "label" : "bm25 非退化",
+        "predicate" : "max(normBm25[q]) > min(normBm25[q])",
+        "consequence" : "两个归一化项都参与 ⇒ r = 0 ⟺ normVec = 0 ∧ normBm25 = 0（卡 34 的原判据 = 本分支，属特例）",
+        "applicableQueries" : "",
+        "observedQueries" : 0,
+        "observedEvents" : 0,
+        "observedZeroEvents" : 0,
+        "reachable" : "语料外可达（需 bm25 在图像描述文本上分出高低）；本语料未出现",
+        "decompositionAnchor" : "near-dup-rerank-decomposition"
+      }
+    ],
+    "branchDecisionRule" : "逐查询取该查询全部 route 行的 normBm25，求 max 与 min：max <= 0.0 ⇒ B0；max == min && max > 0.0 ⇒ B1；max > min ⇒ B2。归一整值恒在 [0,1]，三支两两不交且覆盖全部状态；不做数值拟合（D2）",
+    "exhaustiveness" : {
+      "mutuallyExclusive" : true,
+      "exhaustive" : true,
+      "rule" : "三支判定式两两互补：(max <= 0) ∪ (max == min ∧ max > 0) ∪ (max > min) 覆盖全部实数且交集为空",
+      "queriesTotal" : 6,
+      "queriesByBranch" : {
+        "B0-BM25-ALL-ZERO" : 4,
+        "B1-BM25-ALL-ONE" : 2,
+        "B2-BM25-NON-DEGENERATE" : 0
+      },
+      "queriesCoveredSum" : 6
+    },
+    "branchCaveat" : "B2 在本语料 0 条查询出现；B0/B1 的结论只在该支的适用域内成立，不能跨支外推"
+  },
+  "queryBranches" : [
+    {
+      "queryIndex" : 0,
+      "form" : "title",
+      "routeRows" : 3,
+      "normBm25Max" : 1.0,
+      "normBm25Min" : 1.0,
+      "branch" : "B1-BM25-ALL-ONE",
+      "vecBranchDegenerate" : false
+    },
+    {
+      "queryIndex" : 1,
+      "form" : "first-sentence",
+      "routeRows" : 3,
+      "normBm25Max" : 0.0,
+      "normBm25Min" : 0.0,
+      "branch" : "B0-BM25-ALL-ZERO",
+      "vecBranchDegenerate" : false
+    },
+    {
+      "queryIndex" : 2,
+      "form" : "caption-keywords",
+      "routeRows" : 3,
+      "normBm25Max" : 1.0,
+      "normBm25Min" : 1.0,
+      "branch" : "B1-BM25-ALL-ONE",
+      "vecBranchDegenerate" : false
+    },
+    {
+      "queryIndex" : 3,
+      "form" : "title",
+      "routeRows" : 2,
+      "normBm25Max" : 0.0,
+      "normBm25Min" : 0.0,
+      "branch" : "B0-BM25-ALL-ZERO",
+      "vecBranchDegenerate" : false
+    },
+    {
+      "queryIndex" : 4,
+      "form" : "first-sentence",
+      "routeRows" : 2,
+      "normBm25Max" : 0.0,
+      "normBm25Min" : 0.0,
+      "branch" : "B0-BM25-ALL-ZERO",
+      "vecBranchDegenerate" : false
+    },
+    {
+      "queryIndex" : 5,
+      "form" : "caption-keywords",
+      "routeRows" : 2,
+      "normBm25Max" : 0.0,
+      "normBm25Min" : 0.0,
+      "branch" : "B0-BM25-ALL-ZERO",
+      "vecBranchDegenerate" : false
+    }
+  ],
+  "eventReplay" : {
+    "identity" : "r = wv · normVec + wb · normBm25",
+    "checked" : 15,
+    "violations" : 0,
+    "tolerance" : 1.0E-12,
+    "maxAbsDiff" : 0.0,
+    "vectorMinChecked" : 15,
+    "vectorMinViolations" : 0,
+    "vectorMinRule" : "normVec = 0 ⟺ 该行 cos 为其所在查询 route 内的最小 cos（只在向量分支非退化的查询上判；退化查询的末位不可分辨，不参与）"
+  },
+  "conditionalVerdict" : {
+    "verdict" : "PROVEN-CONDITIONAL",
+    "verdictReason" : "复算 r = wv · normVec + wb · normBm25 与卡 35 锚逐行一致 15/15（容差 1e-12，maxAbsDiff = 0.0）；12 条被标记事件 12/12 条满足所属分支的充要条件；4 条零位移事件 4/4 条落在 B0（bm25 全 0）且 normVec = 0 ⇒ 三分支条件式在「零位移事件全部落在 bm25 分支退化的查询（B0 4 条 / B1 2 条）」这一适用域内成立：B0 支里 r = 0 的充要条件就是 normVec = 0，实测 4/4 成立；B1 支里 r >= 0.4 > 0，r = 0 可证不可能。卡 35 之所以记 UNDETERMINED，是因为旧判据要求零位移事件落在「两分支皆非退化」的查询，而本语料 B2 查询 0 条 ⇒ 旧判据不可满足；本卡把该要求拆到适用域，判据本身未被放宽（D1：各支的充要条件都是原式的代入结果）",
+    "applicabilityDomain" : "本语料 6 条查询的分支状态：B0（bm25 全 0）4 条（q1,q3,q4,q5）、B1（bm25 全 1）2 条（q0,q2）、B2（非退化）0 条；结论只在「零位移事件全部落在 B0 或 B1 查询」这一域内成立，B2 域本卡未观测到，故不主张",
+    "rows" : [
+      {
+        "queryIndex" : 0,
+        "variantKey" : "nist-sp800-101r1-p1-b1@crop-04",
+        "chunkId" : "9821",
+        "branch" : "B1-BM25-ALL-ONE",
+        "condition" : "max == min > 0.0 ⇒ r >= wv · 0 + wb · 1 = 0.4 > 0，故 r = 0 不可能",
+        "normVec" : 1.0,
+        "normBm25" : 1.0,
+        "r" : 1.0,
+        "zeroDisplacement" : false,
+        "conditionSatisfied" : true
+      },
+      {
+        "queryIndex" : 0,
+        "variantKey" : "nist-sp800-101r1-p1-b1@crop-02",
+        "chunkId" : "9820",
+        "branch" : "B1-BM25-ALL-ONE",
+        "condition" : "max == min > 0.0 ⇒ r >= wv · 0 + wb · 1 = 0.4 > 0，故 r = 0 不可能",
+        "normVec" : 0.9825820017304508,
+        "normBm25" : 1.0,
+        "r" : 0.9895492010382705,
+        "zeroDisplacement" : false,
+        "conditionSatisfied" : true
+      },
+      {
+        "queryIndex" : 0,
+        "variantKey" : "nist-sp800-101r1-p1-b1@crop-06",
+        "chunkId" : "9822",
+        "branch" : "B1-BM25-ALL-ONE",
+        "condition" : "max == min > 0.0 ⇒ r >= wv · 0 + wb · 1 = 0.4 > 0，故 r = 0 不可能",
+        "normVec" : 0.0,
+        "normBm25" : 1.0,
+        "r" : 0.4,
+        "zeroDisplacement" : false,
+        "conditionSatisfied" : true
+      },
+      {
+        "queryIndex" : 1,
+        "variantKey" : "nist-sp800-101r1-p1-b1@crop-04",
+        "chunkId" : "9821",
+        "branch" : "B0-BM25-ALL-ZERO",
+        "condition" : "max(normBm25) <= 0.0 ⇒ r = wv · normVec，故 r = 0 ⟺ normVec = 0",
+        "normVec" : 1.0,
+        "normBm25" : 0.0,
+        "r" : 0.6,
+        "zeroDisplacement" : false,
+        "conditionSatisfied" : true
+      },
+      {
+        "queryIndex" : 1,
+        "variantKey" : "nist-sp800-101r1-p1-b1@crop-02",
+        "chunkId" : "9820",
+        "branch" : "B0-BM25-ALL-ZERO",
+        "condition" : "max(normBm25) <= 0.0 ⇒ r = wv · normVec，故 r = 0 ⟺ normVec = 0",
+        "normVec" : 0.9825820017304508,
+        "normBm25" : 0.0,
+        "r" : 0.5895492010382705,
+        "zeroDisplacement" : false,
+        "conditionSatisfied" : true
+      },
+      {
+        "queryIndex" : 1,
+        "variantKey" : "nist-sp800-101r1-p1-b1@crop-06",
+        "chunkId" : "9822",
+        "branch" : "B0-BM25-ALL-ZERO",
+        "condition" : "max(normBm25) <= 0.0 ⇒ r = wv · normVec，故 r = 0 ⟺ normVec = 0",
+        "normVec" : 0.0,
+        "normBm25" : 0.0,
+        "r" : 0.0,
+        "zeroDisplacement" : true,
+        "conditionSatisfied" : true
+      },
+      {
+        "queryIndex" : 2,
+        "variantKey" : "nist-sp800-101r1-p1-b1@crop-04",
+        "chunkId" : "9821",
+        "branch" : "B1-BM25-ALL-ONE",
+        "condition" : "max == min > 0.0 ⇒ r >= wv · 0 + wb · 1 = 0.4 > 0，故 r = 0 不可能",
+        "normVec" : 1.0,
+        "normBm25" : 1.0,
+        "r" : 1.0,
+        "zeroDisplacement" : false,
+        "conditionSatisfied" : true
+      },
+      {
+        "queryIndex" : 2,
+        "variantKey" : "nist-sp800-101r1-p1-b1@crop-02",
+        "chunkId" : "9820",
+        "branch" : "B1-BM25-ALL-ONE",
+        "condition" : "max == min > 0.0 ⇒ r >= wv · 0 + wb · 1 = 0.4 > 0，故 r = 0 不可能",
+        "normVec" : 0.9825820017304508,
+        "normBm25" : 1.0,
+        "r" : 0.9895492010382705,
+        "zeroDisplacement" : false,
+        "conditionSatisfied" : true
+      },
+      {
+        "queryIndex" : 2,
+        "variantKey" : "nist-sp800-101r1-p1-b1@crop-06",
+        "chunkId" : "9822",
+        "branch" : "B1-BM25-ALL-ONE",
+        "condition" : "max == min > 0.0 ⇒ r >= wv · 0 + wb · 1 = 0.4 > 0，故 r = 0 不可能",
+        "normVec" : 0.0,
+        "normBm25" : 1.0,
+        "r" : 0.4,
+        "zeroDisplacement" : false,
+        "conditionSatisfied" : true
+      },
+      {
+        "queryIndex" : 3,
+        "variantKey" : "nist-sp800-101r1-p16-b2@crop-04",
+        "chunkId" : "9824",
+        "branch" : "B0-BM25-ALL-ZERO",
+        "condition" : "max(normBm25) <= 0.0 ⇒ r = wv · normVec，故 r = 0 ⟺ normVec = 0",
+        "normVec" : 0.0,
+        "normBm25" : 0.0,
+        "r" : 0.0,
+        "zeroDisplacement" : true,
+        "conditionSatisfied" : true
+      },
+      {
+        "queryIndex" : 4,
+        "variantKey" : "nist-sp800-101r1-p16-b2@crop-04",
+        "chunkId" : "9824",
+        "branch" : "B0-BM25-ALL-ZERO",
+        "condition" : "max(normBm25) <= 0.0 ⇒ r = wv · normVec，故 r = 0 ⟺ normVec = 0",
+        "normVec" : 0.0,
+        "normBm25" : 0.0,
+        "r" : 0.0,
+        "zeroDisplacement" : true,
+        "conditionSatisfied" : true
+      },
+      {
+        "queryIndex" : 5,
+        "variantKey" : "nist-sp800-101r1-p16-b2@crop-04",
+        "chunkId" : "9824",
+        "branch" : "B0-BM25-ALL-ZERO",
+        "condition" : "max(normBm25) <= 0.0 ⇒ r = wv · normVec，故 r = 0 ⟺ normVec = 0",
+        "normVec" : 0.0,
+        "normBm25" : 0.0,
+        "r" : 0.0,
+        "zeroDisplacement" : true,
+        "conditionSatisfied" : true
+      }
+    ],
+    "summary" : {
+      "events" : 12,
+      "zeroDisplacement" : 4,
+      "nonZeroEvents" : 8,
+      "zeroInB0" : 4,
+      "zeroInB1" : 0,
+      "zeroInB2" : 0,
+      "satisfied" : 12
+    }
+  },
+  "verdictReachability" : {
+    "PROVEN-CONDITIONAL" : "本卡实测路径：复算一致 ∧ 全部零位移事件都满足其所属分支的充要条件 ∧ 至少 1 条零位移事件落在 B0 或 B1（即其所属分支退化）⇒ 结论只在适用域内成立，见 conditionalVerdict.applicabilityDomain",
+    "PROVEN" : "可达但本语料未出现：需要全部零位移事件都落在 B2（bm25 分支非退化）且该行两个归一化项皆为 0.0；本语料 B2 查询 0 条 ⇒ 该档在语料外可达、在本语料未出现",
+    "REFUTED" : "触发条件：复算一致但至少 1 条零位移事件违反其所属分支的充要条件（例如 r = 0 却 normVec > 0，或在 B1 查询里出现 r = 0）；本卡实测未触发",
+    "UNDETERMINED" : "触发条件：复算 r 与锚内值不一致（> 1e-12）、向量分支末位判定出现违例、无被标记事件，或零位移事件全部落在 B2 但两个归一化项不同时为 0（分支不可判定）；本卡实测未触发"
+  },
+  "unconditionalProvenNote" : "PROVEN（无条件档）可达但本语料未出现：要求零位移事件全在 B2 且两个归一化项皆为 0.0；本语料无 B2 查询。该档文本不引用未在本语料实测成立的判据措辞",
+  "impact" : {
+    "caliber" : "目标常量 = ImageSimilarityGate.NEAR_DUPLICATE_FLOOR（准入下限，现行 0.982，历史签收口径 0.9887）；ImageSimilarityGate.BAND_REFERENCE_FLOOR（带内基准 0.9887）在本判定中冻结不动——三档内边界只由它推导，不随准入下限缩放",
+    "currentValue" : 0.982,
+    "legacyValue" : 0.9887,
+    "proposedValue" : 0.9,
+    "bandReferenceFrozen" : 0.9887,
+    "contradictionRule" : "YES = 存在 operating-point 字面量（nearDuplicateFloor / signedFloor / currentProductionReference.floor）≠ 0.90，或行级 tier/band 用 0.90 参数重算后与冻结值不同；NO = 无 operating-point 字面量 ∧ 行级 0 变化 ∧ 无门槛敏感聚合字段（或锚内已有 floor=0.90 实测列，或只冻结 band/bandSide —— band 取值只由 bandReferenceFloor 决定）；UNDETERMINED = 无 cos 无法复算行级分类，或只有门槛敏感聚合字段而分母未冻结",
+    "deltaSemantics" : "rowLevelClassificationDelta 只统计「锚内已冻结的行」在 0.90 参数下是否改判（本卡 affected 锚实测全为 0）；它不覆盖 0.90 新增进带的候选——那些行不在任何既有锚里，补测代价见各锚 recordedBatchExternalCalls",
+    "contradictionWording" : "「自相矛盾」在本卡指「锚内记录与 0.90 口径不自洽、须重锚或重签」，不指行级数值在 0.90 下改判（后者由 rowLevelClassificationDelta 单列）",
+    "counterfactualBasis" : "反事实 evaluator 与生产 tierOf/bandOf 同构，仅把准入下限做成显式入参；边界沿用 bandReferenceFloor + Δ/3 与 + 2Δ/3 形式，逐行以生产函数为 oracle 校验（见 numericHygiene.oracleViolations）",
+    "perAnchor" : [
+      {
+        "anchor" : "near-dup-floor-signoff-v1",
+        "path" : "docs/rag-quality/near-dup-floor-signoff-v1.json",
+        "exists" : true,
+        "sha256" : "dbe799471fd1bdb13625b85be8ad3b7c75805dbcd61dfe7fc8a05fdb31d1d022",
+        "classificationFrozen" : false,
+        "classificationFields" : [ ],
+        "rowCount" : 0,
+        "cosFrozen" : false,
+        "hasFloor090Record" : false,
+        "operatingFloorLiteral" : "signedFloor=0.982",
+        "floorLiterals" : [
+          {
+            "path" : "signedFloor",
+            "value" : 0.982
+          },
+          {
+            "path" : "previousFloor",
+            "value" : 0.9887
+          },
+          {
+            "path" : "bandReferenceFloor",
+            "value" : 0.9887
+          },
+          {
+            "path" : "rejectedTiers[*].floor",
+            "value" : 0.9887
+          },
+          {
+            "path" : "rejectedTiers[*].floor",
+            "value" : 0.98
+          },
+          {
+            "path" : "rejectedTiers[*].floor",
+            "value" : 0.9
+          }
+        ],
+        "floorLiteralDistinctCount" : 6,
+        "floorDependentAggregateCount" : 0,
+        "rowLevelClassificationDelta" : -1,
+        "recordingFloorCandidates" : [ ],
+        "contradictionUnder090" : "YES",
+        "contradictionCause" : "OPERATING-FLOOR-LITERAL",
+        "contradictionBasis" : "operating-point 字面量 signedFloor=0.982 与 0.90 口径不自洽（须改写并重签）",
+        "zeroCallRecompute" : "true",
+        "zeroCallBasis" : "只需改写 operating-point 字面量并重签，分类数据本身仍成立",
+        "minExternalCallsIfNeeded" : 0,
+        "recordedBatchExternalCalls" : -1
+      },
+      {
+        "anchor" : "near-dup-ingest-gate-probe-v1",
+        "path" : "docs/rag-quality/near-dup-ingest-gate-probe-v1.json",
+        "exists" : true,
+        "sha256" : "6671204ec2fae043ccf88ff3da31e94b15bb800a5cee87588b92f7aa31c47442",
+        "classificationFrozen" : false,
+        "classificationFields" : [ ],
+        "rowCount" : 0,
+        "cosFrozen" : false,
+        "hasFloor090Record" : false,
+        "operatingFloorLiteral" : "",
+        "floorLiterals" : [ ],
+        "floorLiteralDistinctCount" : 0,
+        "floorDependentAggregateCount" : 2,
+        "rowLevelClassificationDelta" : -1,
+        "recordingFloorCandidates" : [ ],
+        "contradictionUnder090" : "UNDETERMINED",
+        "contradictionCause" : "AGGREGATE-ONLY",
+        "contradictionBasis" : "未冻结分类，但存在门槛敏感聚合字段（gatePassCount,gatePassRate）且其分母未冻结",
+        "zeroCallRecompute" : "UNDETERMINED",
+        "zeroCallBasis" : "门槛敏感聚合字段的分母未冻结，无法确认是否需重跑",
+        "minExternalCallsIfNeeded" : 18,
+        "recordedBatchExternalCalls" : 18
+      },
+      {
+        "anchor" : "near-dup-ingest-s1-v1",
+        "path" : "docs/rag-quality/near-dup-ingest-s1-v1.json",
+        "exists" : true,
+        "sha256" : "c89a3bed6bee0a82567626959f908a4605dc4a077aea23b25a8e065cf73b76ad",
+        "classificationFrozen" : true,
+        "classificationFields" : [
+          {
+            "path" : "bandSides[*].bandSide",
+            "sample" : "ABOVE"
+          },
+          {
+            "path" : "bandSides[*].rows[*].tier",
+            "sample" : "SAME_IMAGE"
+          },
+          {
+            "path" : "bandSides[*].rows[*].band",
+            "sample" : "null"
+          },
+          {
+            "path" : "candidates[*].tier",
+            "sample" : "SAME_IMAGE"
+          },
+          {
+            "path" : "candidates[*].band",
+            "sample" : "null"
+          }
+        ],
+        "rowCount" : 35,
+        "cosFrozen" : true,
+        "hasFloor090Record" : false,
+        "operatingFloorLiteral" : "constants.nearDuplicateFloor=0.982",
+        "floorLiterals" : [
+          {
+            "path" : "constants.nearDuplicateFloor",
+            "value" : 0.982
+          },
+          {
+            "path" : "constants.bandReferenceFloor",
+            "value" : 0.9887
+          }
+        ],
+        "floorLiteralDistinctCount" : 2,
+        "floorDependentAggregateCount" : 0,
+        "rowLevelClassificationDelta" : 0,
+        "recordingFloorCandidates" : [
+          0.9887,
+          0.982
+        ],
+        "contradictionUnder090" : "YES",
+        "contradictionCause" : "OPERATING-FLOOR-LITERAL",
+        "contradictionBasis" : "operating-point 字面量 constants.nearDuplicateFloor=0.982 与 0.90 口径不自洽（须改写并重签）",
+        "zeroCallRecompute" : "true",
+        "zeroCallBasis" : "只需改写 operating-point 字面量并重签，分类数据本身仍成立",
+        "minExternalCallsIfNeeded" : 0,
+        "recordedBatchExternalCalls" : -1
+      },
+      {
+        "anchor" : "near-dup-band-entry-v1",
+        "path" : "docs/rag-quality/near-dup-band-entry-v1.json",
+        "exists" : true,
+        "sha256" : "3c927e65e70083973c48f34de965d1531afd1b5cd2c86583df688f45918195ec",
+        "classificationFrozen" : true,
+        "classificationFields" : [
+          {
+            "path" : "bandSides[*].bandSide",
+            "sample" : "IN-BAND"
+          },
+          {
+            "path" : "bandSides[*].rows[*].tier",
+            "sample" : "NEAR_DUPLICATE"
+          },
+          {
+            "path" : "bandSides[*].rows[*].band",
+            "sample" : "NEAR_HIGH"
+          },
+          {
+            "path" : "candidates[*].tier",
+            "sample" : "NEAR_DUPLICATE"
+          },
+          {
+            "path" : "candidates[*].band",
+            "sample" : "NEAR_HIGH"
+          },
+          {
+            "path" : "windowCheck.entries[*].band",
+            "sample" : "NEAR_HIGH"
+          }
+        ],
+        "rowCount" : 42,
+        "cosFrozen" : true,
+        "hasFloor090Record" : true,
+        "operatingFloorLiteral" : "constants.nearDuplicateFloor=0.982",
+        "floorLiterals" : [
+          {
+            "path" : "constants.nearDuplicateFloor",
+            "value" : 0.982
+          },
+          {
+            "path" : "constants.bandReferenceFloor",
+            "value" : 0.9887
+          },
+          {
+            "path" : "legB.thresholdOptions.options[*].floor",
+            "value" : 0.9887
+          },
+          {
+            "path" : "legB.thresholdOptions.options[*].floor",
+            "value" : 0.9
+          },
+          {
+            "path" : "legB.thresholdOptions.currentProductionReference.floor",
+            "value" : 0.982
+          }
+        ],
+        "floorLiteralDistinctCount" : 5,
+        "floorDependentAggregateCount" : 12,
+        "rowLevelClassificationDelta" : 0,
+        "recordingFloorCandidates" : [
+          0.9887,
+          0.982
+        ],
+        "contradictionUnder090" : "YES",
+        "contradictionCause" : "OPERATING-FLOOR-LITERAL",
+        "contradictionBasis" : "operating-point 字面量 constants.nearDuplicateFloor=0.982 与 0.90 口径不自洽（须改写并重签）",
+        "zeroCallRecompute" : "true",
+        "zeroCallBasis" : "只需改写 operating-point 字面量并重签，分类数据本身仍成立",
+        "minExternalCallsIfNeeded" : 0,
+        "recordedBatchExternalCalls" : 0
+      },
+      {
+        "anchor" : "near-dup-window-coupling-v1",
+        "path" : "docs/rag-quality/near-dup-window-coupling-v1.json",
+        "exists" : true,
+        "sha256" : "02a07142bca1831d648da16048427f20bc276bf7831518214d7ff58a39bf606b",
+        "classificationFrozen" : true,
+        "classificationFields" : [
+          {
+            "path" : "events[*].band",
+            "sample" : "NEAR_HIGH"
+          },
+          {
+            "path" : "markedButNotDisplaced[*].tier",
+            "sample" : "NEAR_DUPLICATE"
+          }
+        ],
+        "rowCount" : 0,
+        "cosFrozen" : false,
+        "hasFloor090Record" : false,
+        "operatingFloorLiteral" : "",
+        "floorLiterals" : [ ],
+        "floorLiteralDistinctCount" : 0,
+        "floorDependentAggregateCount" : 0,
+        "rowLevelClassificationDelta" : -1,
+        "recordingFloorCandidates" : [ ],
+        "contradictionUnder090" : "NO",
+        "contradictionCause" : "FROZEN-CLASS-INVARIANT",
+        "contradictionBasis" : "冻结的 tier（NEAR_DUPLICATE）不含 CROSS_IMAGE 且无 null band ⇒ 降准入下限只会给此前未进带的行新增分类，已冻结行不变",
+        "zeroCallRecompute" : "NOT-APPLICABLE",
+        "zeroCallBasis" : "无需重锚（冻结的 tier（NEAR_DUPLICATE）不含 CROSS_IMAGE 且无 null band ⇒ 降准入下限只会给此前未进带的行新增分类，已冻结行不变）",
+        "minExternalCallsIfNeeded" : 0,
+        "recordedBatchExternalCalls" : 0
+      },
+      {
+        "anchor" : "near-dup-oq1-attribution-v1",
+        "path" : "docs/rag-quality/near-dup-oq1-attribution-v1.json",
+        "exists" : true,
+        "sha256" : "4f103c45a50a99a117b582bf0653f1819eae4a3bf206280ecc01ffc126590325",
+        "classificationFrozen" : true,
+        "classificationFields" : [
+          {
+            "path" : "dataCheck.rByEvent[*].band",
+            "sample" : "NEAR_HIGH"
+          },
+          {
+            "path" : "dataCheck.rByEvent[*].tier",
+            "sample" : "NEAR_DUPLICATE"
+          },
+          {
+            "path" : "dataCheck.noOpProof[*].tier",
+            "sample" : "NEAR_DUPLICATE"
+          }
+        ],
+        "rowCount" : 12,
+        "cosFrozen" : true,
+        "hasFloor090Record" : false,
+        "operatingFloorLiteral" : "",
+        "floorLiterals" : [ ],
+        "floorLiteralDistinctCount" : 0,
+        "floorDependentAggregateCount" : 0,
+        "rowLevelClassificationDelta" : 0,
+        "recordingFloorCandidates" : [
+          0.9887,
+          0.982
+        ],
+        "contradictionUnder090" : "NO",
+        "contradictionCause" : "NONE",
+        "contradictionBasis" : "行级分类 0 变化、无 operating-point 字面量、无门槛敏感聚合字段",
+        "zeroCallRecompute" : "NOT-APPLICABLE",
+        "zeroCallBasis" : "无需重锚（行级分类 0 变化、无 operating-point 字面量、无门槛敏感聚合字段）",
+        "minExternalCallsIfNeeded" : 0,
+        "recordedBatchExternalCalls" : 0
+      },
+      {
+        "anchor" : "near-dup-rerank-decomposition-v1",
+        "path" : "docs/rag-quality/near-dup-rerank-decomposition-v1.json",
+        "exists" : true,
+        "sha256" : "816b01176e833a5a1190f8dc62b169baad25e90d0e0b0bd008022cb6ca16b3bb",
+        "classificationFrozen" : true,
+        "classificationFields" : [
+          {
+            "path" : "routes[*].tier",
+            "sample" : "NEAR_DUPLICATE"
+          },
+          {
+            "path" : "routes[*].band",
+            "sample" : "NEAR_HIGH"
+          }
+        ],
+        "rowCount" : 19,
+        "cosFrozen" : true,
+        "hasFloor090Record" : true,
+        "operatingFloorLiteral" : "floorOptions.currentProductionReference.floor=0.982",
+        "floorLiterals" : [
+          {
+            "path" : "reconstruction.config.effectiveFloor",
+            "value" : 0.982
+          },
+          {
+            "path" : "floorOptions.currentProductionReference.floor",
+            "value" : 0.982
+          },
+          {
+            "path" : "floorOptions.columns[*].floor",
+            "value" : 0.9887
+          },
+          {
+            "path" : "floorOptions.columns[*].floor",
+            "value" : 0.9
+          }
+        ],
+        "floorLiteralDistinctCount" : 4,
+        "floorDependentAggregateCount" : 3,
+        "rowLevelClassificationDelta" : 0,
+        "recordingFloorCandidates" : [
+          0.9887,
+          0.982
+        ],
+        "contradictionUnder090" : "YES",
+        "contradictionCause" : "OPERATING-FLOOR-LITERAL",
+        "contradictionBasis" : "operating-point 字面量 floorOptions.currentProductionReference.floor=0.982 与 0.90 口径不自洽（须改写并重签）",
+        "zeroCallRecompute" : "true",
+        "zeroCallBasis" : "只需改写 operating-point 字面量并重签，分类数据本身仍成立",
+        "minExternalCallsIfNeeded" : 0,
+        "recordedBatchExternalCalls" : 0
+      },
+      {
+        "anchor" : "near-dup-exchange-rate-v1",
+        "path" : "docs/rag-quality/near-dup-exchange-rate-v1.json",
+        "exists" : true,
+        "sha256" : "62e43dfb46d79be9f460c6febbefe3827f06da4c94b550e0ed7c01fa57f2e36d",
+        "classificationFrozen" : false,
+        "classificationFields" : [ ],
+        "rowCount" : 0,
+        "cosFrozen" : false,
+        "hasFloor090Record" : true,
+        "operatingFloorLiteral" : "productionConstants.nearDuplicateFloor=0.9887",
+        "floorLiterals" : [
+          {
+            "path" : "productionConstants.nearDuplicateFloor",
+            "value" : 0.9887
+          },
+          {
+            "path" : "baseline.floor",
+            "value" : 0.9887
+          },
+          {
+            "path" : "grid.items[*].floor",
+            "value" : 0.9
+          },
+          {
+            "path" : "grid.items[*].floor",
+            "value" : 0.9005
+          },
+          {
+            "path" : "grid.items[*].floor",
+            "value" : 0.901
+          },
+          {
+            "path" : "grid.items[*].floor",
+            "value" : 0.9015
+          }
+        ],
+        "floorLiteralDistinctCount" : 204,
+        "floorDependentAggregateCount" : 8,
+        "rowLevelClassificationDelta" : -1,
+        "recordingFloorCandidates" : [ ],
+        "contradictionUnder090" : "YES",
+        "contradictionCause" : "OPERATING-FLOOR-LITERAL",
+        "contradictionBasis" : "operating-point 字面量 productionConstants.nearDuplicateFloor=0.9887 与 0.90 口径不自洽（须改写并重签）",
+        "zeroCallRecompute" : "true",
+        "zeroCallBasis" : "只需改写 operating-point 字面量并重签，分类数据本身仍成立",
+        "minExternalCallsIfNeeded" : 0,
+        "recordedBatchExternalCalls" : 0
+      },
+      {
+        "anchor" : "image-variant-cross-matrix-v1",
+        "path" : "docs/rag-quality/image-variant-cross-matrix-v1.json",
+        "exists" : true,
+        "sha256" : "3adde4ec96ed8b88815713fad1c25d2ac278156d7ad5caf07ba1f07073ff319b",
+        "classificationFrozen" : false,
+        "classificationFields" : [ ],
+        "rowCount" : 0,
+        "cosFrozen" : true,
+        "hasFloor090Record" : false,
+        "operatingFloorLiteral" : "productionConstants.nearDuplicateFloor=0.9887",
+        "floorLiterals" : [
+          {
+            "path" : "productionConstants.nearDuplicateFloor",
+            "value" : 0.9887
+          }
+        ],
+        "floorLiteralDistinctCount" : 1,
+        "floorDependentAggregateCount" : 0,
+        "rowLevelClassificationDelta" : -1,
+        "recordingFloorCandidates" : [ ],
+        "contradictionUnder090" : "YES",
+        "contradictionCause" : "OPERATING-FLOOR-LITERAL",
+        "contradictionBasis" : "operating-point 字面量 productionConstants.nearDuplicateFloor=0.9887 与 0.90 口径不自洽（须改写并重签）",
+        "zeroCallRecompute" : "true",
+        "zeroCallBasis" : "只需改写 operating-point 字面量并重签，分类数据本身仍成立",
+        "minExternalCallsIfNeeded" : 0,
+        "recordedBatchExternalCalls" : 144
+      },
+      {
+        "anchor" : "near-dup-displacement-evidence-v1",
+        "path" : "docs/rag-quality/near-dup-displacement-evidence-v1.json",
+        "exists" : true,
+        "sha256" : "5444719a9ff67ee696cb01533eb624821ba09530a5b87069a9c8fb62b0c9ad9b",
+        "classificationFrozen" : false,
+        "classificationFields" : [ ],
+        "rowCount" : 0,
+        "cosFrozen" : false,
+        "hasFloor090Record" : false,
+        "operatingFloorLiteral" : "productionConstants.nearDuplicateFloor=0.9887",
+        "floorLiterals" : [
+          {
+            "path" : "productionConstants.nearDuplicateFloor",
+            "value" : 0.9887
+          },
+          {
+            "path" : "retrievalScope.imageFloor",
+            "value" : 0.9887
+          }
+        ],
+        "floorLiteralDistinctCount" : 2,
+        "floorDependentAggregateCount" : 0,
+        "rowLevelClassificationDelta" : -1,
+        "recordingFloorCandidates" : [ ],
+        "contradictionUnder090" : "YES",
+        "contradictionCause" : "OPERATING-FLOOR-LITERAL",
+        "contradictionBasis" : "operating-point 字面量 productionConstants.nearDuplicateFloor=0.9887 与 0.90 口径不自洽（须改写并重签）",
+        "zeroCallRecompute" : "true",
+        "zeroCallBasis" : "只需改写 operating-point 字面量并重签，分类数据本身仍成立",
+        "minExternalCallsIfNeeded" : 0,
+        "recordedBatchExternalCalls" : 77
+      },
+      {
+        "anchor" : "near-dup-fusion-impact-v1",
+        "path" : "docs/rag-quality/near-dup-fusion-impact-v1.json",
+        "exists" : true,
+        "sha256" : "43c54ba63346488817b6c4c15348c6141c853619c5c9594d203cfd38db8e03f4",
+        "classificationFrozen" : true,
+        "classificationFields" : [
+          {
+            "path" : "bounds[*].band",
+            "sample" : "NEAR_HIGH"
+          }
+        ],
+        "rowCount" : 7,
+        "cosFrozen" : true,
+        "hasFloor090Record" : false,
+        "operatingFloorLiteral" : "productionConstants.nearDuplicateFloor=0.9887",
+        "floorLiterals" : [
+          {
+            "path" : "productionConstants.nearDuplicateFloor",
+            "value" : 0.9887
+          },
+          {
+            "path" : "gapDistribution.floor",
+            "value" : 0.9887
+          }
+        ],
+        "floorLiteralDistinctCount" : 2,
+        "floorDependentAggregateCount" : 0,
+        "rowLevelClassificationDelta" : 0,
+        "recordingFloorCandidates" : [
+          0.9887,
+          0.982
+        ],
+        "contradictionUnder090" : "YES",
+        "contradictionCause" : "OPERATING-FLOOR-LITERAL",
+        "contradictionBasis" : "operating-point 字面量 productionConstants.nearDuplicateFloor=0.9887 与 0.90 口径不自洽（须改写并重签）",
+        "zeroCallRecompute" : "true",
+        "zeroCallBasis" : "只需改写 operating-point 字面量并重签，分类数据本身仍成立",
+        "minExternalCallsIfNeeded" : 0,
+        "recordedBatchExternalCalls" : 0
+      },
+      {
+        "anchor" : "image-near-dup-truth-v1",
+        "path" : "docs/rag-quality/image-near-dup-truth-v1.json",
+        "exists" : true,
+        "sha256" : "d84838c2c2ed31e0c4cf0a5692958bdfc82f2652a2680d326f27b7745896d9a0",
+        "classificationFrozen" : false,
+        "classificationFields" : [ ],
+        "rowCount" : 0,
+        "cosFrozen" : false,
+        "hasFloor090Record" : true,
+        "operatingFloorLiteral" : "",
+        "floorLiterals" : [
+          {
+            "path" : "floors[*].floor",
+            "value" : 0.9887
+          },
+          {
+            "path" : "floors[*].floor",
+            "value" : 0.985
+          },
+          {
+            "path" : "floors[*].floor",
+            "value" : 0.982
+          },
+          {
+            "path" : "floors[*].floor",
+            "value" : 0.98
+          },
+          {
+            "path" : "floors[*].floor",
+            "value" : 0.9785
+          },
+          {
+            "path" : "floors[*].floor",
+            "value" : 0.975
+          }
+        ],
+        "floorLiteralDistinctCount" : 8,
+        "floorDependentAggregateCount" : 0,
+        "rowLevelClassificationDelta" : -1,
+        "recordingFloorCandidates" : [ ],
+        "contradictionUnder090" : "NO",
+        "contradictionCause" : "NONE",
+        "contradictionBasis" : "锚内已记录 floor=0.90 的实测列，无需改判",
+        "zeroCallRecompute" : "NOT-APPLICABLE",
+        "zeroCallBasis" : "无需重锚（锚内已记录 floor=0.90 的实测列，无需改判）",
+        "minExternalCallsIfNeeded" : 0,
+        "recordedBatchExternalCalls" : 0
+      },
+      {
+        "anchor" : "near-dup-ablation-v1",
+        "path" : "docs/rag-quality/near-dup-ablation-v1.json",
+        "exists" : true,
+        "sha256" : "e7646c9dab8bfb43efc88e20bc60d8caf3d4eb26aee0df64717ea4880b4a7bc9",
+        "classificationFrozen" : true,
+        "classificationFields" : [
+          {
+            "path" : "candidates[*].tier",
+            "sample" : "SAME_IMAGE"
+          },
+          {
+            "path" : "candidates[*].band",
+            "sample" : "null"
+          },
+          {
+            "path" : "windowCheck.entries[*].band",
+            "sample" : "NEAR_LOW"
+          }
+        ],
+        "rowCount" : 0,
+        "cosFrozen" : false,
+        "hasFloor090Record" : false,
+        "operatingFloorLiteral" : "productionConstants.nearDuplicateFloor=0.982",
+        "floorLiterals" : [
+          {
+            "path" : "productionConstants.nearDuplicateFloor",
+            "value" : 0.982
+          },
+          {
+            "path" : "productionConstants.bandReferenceFloor",
+            "value" : 0.9887
+          }
+        ],
+        "floorLiteralDistinctCount" : 2,
+        "floorDependentAggregateCount" : 0,
+        "rowLevelClassificationDelta" : -1,
+        "recordingFloorCandidates" : [ ],
+        "contradictionUnder090" : "YES",
+        "contradictionCause" : "OPERATING-FLOOR-LITERAL",
+        "contradictionBasis" : "operating-point 字面量 productionConstants.nearDuplicateFloor=0.982 与 0.90 口径不自洽（须改写并重签）",
+        "zeroCallRecompute" : "true",
+        "zeroCallBasis" : "只需改写 operating-point 字面量并重签，分类数据本身仍成立",
+        "minExternalCallsIfNeeded" : 0,
+        "recordedBatchExternalCalls" : 0
+      },
+      {
+        "anchor" : "image-slice-ingest-chain-v1",
+        "path" : "docs/rag-quality/image-slice-ingest-chain-v1.json",
+        "exists" : true,
+        "sha256" : "0ea211fee060f904e5d8a14423b1851e33de066acf8d4def78492feda2e7fbaa",
+        "classificationFrozen" : false,
+        "classificationFields" : [ ],
+        "rowCount" : 0,
+        "cosFrozen" : false,
+        "hasFloor090Record" : false,
+        "operatingFloorLiteral" : "",
+        "floorLiterals" : [ ],
+        "floorLiteralDistinctCount" : 0,
+        "floorDependentAggregateCount" : 0,
+        "rowLevelClassificationDelta" : -1,
+        "recordingFloorCandidates" : [ ],
+        "contradictionUnder090" : "NO",
+        "contradictionCause" : "NONE",
+        "contradictionBasis" : "未冻结任何分类结果、无 operating-point 字面量、无门槛敏感聚合字段",
+        "zeroCallRecompute" : "NOT-APPLICABLE",
+        "zeroCallBasis" : "无需重锚（未冻结任何分类结果、无 operating-point 字面量、无门槛敏感聚合字段）",
+        "minExternalCallsIfNeeded" : 0,
+        "recordedBatchExternalCalls" : -1
+      },
+      {
+        "anchor" : "eval-port-route-v1",
+        "path" : "docs/rag-quality/eval-port-route-v1.json",
+        "exists" : true,
+        "sha256" : "c1028f64b88a35f601b212a0e7041c8553e62ca1922156273a549508e5dd2afc",
+        "classificationFrozen" : false,
+        "classificationFields" : [ ],
+        "rowCount" : 0,
+        "cosFrozen" : false,
+        "hasFloor090Record" : false,
+        "operatingFloorLiteral" : "",
+        "floorLiterals" : [ ],
+        "floorLiteralDistinctCount" : 0,
+        "floorDependentAggregateCount" : 0,
+        "rowLevelClassificationDelta" : -1,
+        "recordingFloorCandidates" : [ ],
+        "contradictionUnder090" : "NO",
+        "contradictionCause" : "NONE",
+        "contradictionBasis" : "未冻结任何分类结果、无 operating-point 字面量、无门槛敏感聚合字段",
+        "zeroCallRecompute" : "NOT-APPLICABLE",
+        "zeroCallBasis" : "无需重锚（未冻结任何分类结果、无 operating-point 字面量、无门槛敏感聚合字段）",
+        "minExternalCallsIfNeeded" : 0,
+        "recordedBatchExternalCalls" : 0
+      },
+      {
+        "anchor" : "ui-permission-coverage-v1",
+        "path" : "docs/ui-permission-coverage-v1.json",
+        "exists" : true,
+        "sha256" : "01f8ef3660972330f735d1f7728fd496719d98e725f3f33459e4400b53c247bd",
+        "classificationFrozen" : false,
+        "classificationFields" : [ ],
+        "rowCount" : 0,
+        "cosFrozen" : false,
+        "hasFloor090Record" : false,
+        "operatingFloorLiteral" : "",
+        "floorLiterals" : [ ],
+        "floorLiteralDistinctCount" : 0,
+        "floorDependentAggregateCount" : 0,
+        "rowLevelClassificationDelta" : -1,
+        "recordingFloorCandidates" : [ ],
+        "contradictionUnder090" : "NO",
+        "contradictionCause" : "NONE",
+        "contradictionBasis" : "未冻结任何分类结果、无 operating-point 字面量、无门槛敏感聚合字段",
+        "zeroCallRecompute" : "NOT-APPLICABLE",
+        "zeroCallBasis" : "无需重锚（未冻结任何分类结果、无 operating-point 字面量、无门槛敏感聚合字段）",
+        "minExternalCallsIfNeeded" : 0,
+        "recordedBatchExternalCalls" : -1
+      }
+    ],
+    "summary" : {
+      "total" : 16,
+      "contradictionYes" : 9,
+      "contradictionNo" : 6,
+      "contradictionUndetermined" : 1,
+      "zeroCallRecomputeYes" : 9,
+      "zeroCallRecomputeNo" : 0,
+      "minExternalCallsTotal" : 18,
+      "fullRerunTotal" : 221,
+      "fullRerunTotalAffected" : 221,
+      "fullRerunTotalWithUnresolved" : 239,
+      "fullRerunTotalBoundary" : "221 只算已判定受影响的 9 张（144 + 77）；未判定 1 张（near-dup-ingest-gate-probe-v1）的 18 次外呼未计入，含之 239",
+      "minExternalCallsBasis" : "逐锚 minExternalCallsIfNeeded：行级/字面量修复 0 外呼；需重跑者取该锚自记 externalCalls（无记录记 -1 = 无法给出量级）",
+      "affected" : "near-dup-floor-signoff-v1,near-dup-ingest-s1-v1,near-dup-band-entry-v1,near-dup-rerank-decomposition-v1,near-dup-exchange-rate-v1,image-variant-cross-matrix-v1,near-dup-displacement-evidence-v1,near-dup-fusion-impact-v1,near-dup-ablation-v1",
+      "unaffected" : "near-dup-window-coupling-v1,near-dup-oq1-attribution-v1,image-near-dup-truth-v1,image-slice-ingest-chain-v1,eval-port-route-v1,ui-permission-coverage-v1",
+      "unresolved" : "near-dup-ingest-gate-probe-v1"
+    }
+  },
+  "reanchorPlan" : {
+    "executed" : false,
+    "executedBasis" : "本卡只读既有锚（零字节变动）；重锚属另卡且须 Owner 拍板，本卡不执行任何重建（D5）",
+    "orderRule" : "序 = 按锚间 sha256 引用现算，被引用者先——若 A 的 sha256 十六进制串出现在 B 的字节里（B 引用了 A），则 A 先重写；实测签收锚 near-dup-floor-signoff-v1 的 evidenceAnchors（对象，6 个键 = 文件名 → sha256）记录了 6 张证据锚（threshold-calibration-v2 / fusion-impact / exchange-rate / truth / displacement / cross-matrix），其中 4 张在本重锚清单内，且无任何锚引用签收锚的 sha256，故其序由引用关系现算（实测第 5）；「重写」= 逐锚改 operating-point 字面量（零外呼）；「重签」= 全部改写完成后按签收流程出具最终记录",
+    "ordered" : [
+      {
+        "order" : 1,
+        "anchor" : "near-dup-exchange-rate-v1",
+        "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
+        "externalCalls" : 0,
+        "cause" : "OPERATING-FLOOR-LITERAL",
+        "basis" : "operating-point 字面量 productionConstants.nearDuplicateFloor=0.9887 与 0.90 口径不自洽（须改写并重签）"
+      },
+      {
+        "order" : 2,
+        "anchor" : "near-dup-fusion-impact-v1",
+        "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
+        "externalCalls" : 0,
+        "cause" : "OPERATING-FLOOR-LITERAL",
+        "basis" : "operating-point 字面量 productionConstants.nearDuplicateFloor=0.9887 与 0.90 口径不自洽（须改写并重签）"
+      },
+      {
+        "order" : 3,
+        "anchor" : "image-variant-cross-matrix-v1",
+        "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
+        "externalCalls" : 0,
+        "cause" : "OPERATING-FLOOR-LITERAL",
+        "basis" : "operating-point 字面量 productionConstants.nearDuplicateFloor=0.9887 与 0.90 口径不自洽（须改写并重签）"
+      },
+      {
+        "order" : 4,
+        "anchor" : "near-dup-displacement-evidence-v1",
+        "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
+        "externalCalls" : 0,
+        "cause" : "OPERATING-FLOOR-LITERAL",
+        "basis" : "operating-point 字面量 productionConstants.nearDuplicateFloor=0.9887 与 0.90 口径不自洽（须改写并重签）"
+      },
+      {
+        "order" : 5,
+        "anchor" : "near-dup-floor-signoff-v1",
+        "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
+        "externalCalls" : 0,
+        "cause" : "OPERATING-FLOOR-LITERAL",
+        "basis" : "operating-point 字面量 signedFloor=0.982 与 0.90 口径不自洽（须改写并重签）"
+      },
+      {
+        "order" : 6,
+        "anchor" : "near-dup-ablation-v1",
+        "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
+        "externalCalls" : 0,
+        "cause" : "OPERATING-FLOOR-LITERAL",
+        "basis" : "operating-point 字面量 productionConstants.nearDuplicateFloor=0.982 与 0.90 口径不自洽（须改写并重签）"
+      },
+      {
+        "order" : 7,
+        "anchor" : "near-dup-ingest-s1-v1",
+        "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
+        "externalCalls" : 0,
+        "cause" : "OPERATING-FLOOR-LITERAL",
+        "basis" : "operating-point 字面量 constants.nearDuplicateFloor=0.982 与 0.90 口径不自洽（须改写并重签）"
+      },
+      {
+        "order" : 8,
+        "anchor" : "near-dup-band-entry-v1",
+        "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
+        "externalCalls" : 0,
+        "cause" : "OPERATING-FLOOR-LITERAL",
+        "basis" : "operating-point 字面量 constants.nearDuplicateFloor=0.982 与 0.90 口径不自洽（须改写并重签）"
+      },
+      {
+        "order" : 9,
+        "anchor" : "near-dup-rerank-decomposition-v1",
+        "method" : "改写 operating-point 字面量并按签收流程重签（零外呼）",
+        "externalCalls" : 0,
+        "cause" : "OPERATING-FLOOR-LITERAL",
+        "basis" : "operating-point 字面量 floorOptions.currentProductionReference.floor=0.982 与 0.90 口径不自洽（须改写并重签）"
+      }
+    ],
+    "unaffected" : [
+      {
+        "anchor" : "near-dup-window-coupling-v1",
+        "basis" : "冻结的 tier（NEAR_DUPLICATE）不含 CROSS_IMAGE 且无 null band ⇒ 降准入下限只会给此前未进带的行新增分类，已冻结行不变"
+      },
+      {
+        "anchor" : "near-dup-oq1-attribution-v1",
+        "basis" : "行级分类 0 变化、无 operating-point 字面量、无门槛敏感聚合字段"
+      },
+      {
+        "anchor" : "image-near-dup-truth-v1",
+        "basis" : "锚内已记录 floor=0.90 的实测列，无需改判"
+      },
+      {
+        "anchor" : "image-slice-ingest-chain-v1",
+        "basis" : "未冻结任何分类结果、无 operating-point 字面量、无门槛敏感聚合字段"
+      },
+      {
+        "anchor" : "eval-port-route-v1",
+        "basis" : "未冻结任何分类结果、无 operating-point 字面量、无门槛敏感聚合字段"
+      },
+      {
+        "anchor" : "ui-permission-coverage-v1",
+        "basis" : "未冻结任何分类结果、无 operating-point 字面量、无门槛敏感聚合字段"
+      }
+    ],
+    "unresolved" : [
+      {
+        "anchor" : "near-dup-ingest-gate-probe-v1",
+        "basis" : "未冻结分类，但存在门槛敏感聚合字段（gatePassCount,gatePassRate）且其分母未冻结",
+        "minExternalCallsIfNeeded" : 18
+      }
+    ],
+    "orderedCount" : 9,
+    "unaffectedCount" : 6,
+    "unresolvedCount" : 1,
+    "minExternalCallsTotal" : 18,
+    "fullRerunTotal" : 221,
+    "note" : "清单只列事实与代价：降不降是 Owner 的决定，本卡不给倾向值、不排序优劣、不执行（D4/D5）"
+  },
+  "numericHygiene" : {
+    "tolerance" : 1.0E-12,
+    "oracleChecked" : 115,
+    "oracleViolations" : 0,
+    "oracleRule" : "对每条冻结行比较反事实 evaluator（准入下限 = 现行 0.982）与生产 ImageSimilarityGate.tierOf / bandOf 的输出；不一致即视为第二把尺子、本卡判定无效",
+    "noRerun" : "本卡不重算任何既有锚的任何数值，也不改任何生产常量；only read + 反事实求值"
+  },
+  "nonExtrapolationNote" : "本卡结论只覆盖本语料（6 查询 / 6 图 / 12 条被标记事件）与 16 张列名锚的字段事实；不外推到其它语料、其它 topK、其它权重配置，也不外推到 0.90 的检索级效果",
+  "runtime" : {
+    "generatedBy" : "NearDupConditionalMinCriterionTest",
+    "javaVersion" : "21.0.9",
+    "os" : "Windows 11",
+    "externalCalls" : 0,
+    "externalCallsBasis" : "零外呼：输入只有既有锚 + 生产纯函数 + 源码字面；无 provider 调用点、不设任何 *_REAL、不启动 Spring",
+    "excludedFromReplay" : true
+  }
+}
