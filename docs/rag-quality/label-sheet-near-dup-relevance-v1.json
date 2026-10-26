@@ -1,0 +1,114 @@
+{
+  "card" : "label-sheet-near-dup-relevance",
+  "stage" : "leg-A+leg-B+leg-C",
+  "labelsStatus" : "AWAITING-HUMAN-LABELS",
+  "sheet" : {
+    "csv" : "docs/rag-quality/labels/near-dup-relevance-v1.csv",
+    "readme" : "docs/rag-quality/labels/near-dup-relevance-v1-README.md",
+    "rowCount" : 30,
+    "columnCount" : 11,
+    "columns" : [
+      "rowId",
+      "queryIndex",
+      "queryText",
+      "candidateText",
+      "fileName",
+      "pageNo",
+      "currentRank",
+      "relevance",
+      "isNearDuplicate",
+      "annotator",
+      "annotatedOn"
+    ],
+    "fillableColumns" : [
+      "relevance",
+      "isNearDuplicate",
+      "annotator",
+      "annotatedOn"
+    ],
+    "rowOrder" : "queryIndex ASC, currentRank ASC（= 现行名次，不打乱、不按 cos 排）",
+    "sha256" : "a6785fbbc2ef01e090379fd00af10bb19073be1ba34883479d7feed45bc8450e",
+    "readmeSha256" : "4c5703e64ed2c0006f0a34d91511adae1eaedd7e66ff8593ffdbadf11452aed2",
+    "annotator" : "",
+    "annotatedOn" : "",
+    "queryCount" : 6,
+    "candidatesPerQuery" : 5
+  },
+  "sheetMaterial" : {
+    "queries" : "docs/rag-quality/near-dup-band-entry-v1.json#queries[].text（冻结）",
+    "candidateIdentityAndOrder" : "docs/rag-quality/near-dup-band-entry-v1.json#candidates（生产 top-5，图像路 + 文本路）",
+    "candidateText" : "docs/rag-quality/near-dup-band-entry-v1.json#corpusMaterial.imageRecords[].text（冻结原文；仅把行内换行落成字面 \\n、去行尾空白，便于一行一条记录）",
+    "textSuppliedRowCount" : 30
+  },
+  "scenarioDefinitions" : [
+    {
+      "key" : "current-0982",
+      "label" : "现状（生产准入下限 0.982）",
+      "definition" : "tier/band 由生产 ImageSimilarityGate 现算，fused = fusedA + 0.30 × (1 − bandWeight) × r",
+      "metrics" : [
+        "precisionAt5",
+        "ndcgAt5",
+        "ySuppressionRate"
+      ]
+    },
+    {
+      "key" : "no-downweight",
+      "label" : "无降权（δ = 0）",
+      "definition" : "不施加任何 band 降权，fused = fusedA（δ = 0）",
+      "metrics" : [
+        "precisionAt5",
+        "ndcgAt5",
+        "ySuppressionRate"
+      ]
+    },
+    {
+      "key" : "floor-090",
+      "label" : "0.90 口径（准入下限降到 0.90）",
+      "definition" : "准入下限降到 0.90（阈值仍 0.9944），按同批候选重算 tier/band/weight 与 δ",
+      "metrics" : [
+        "precisionAt5",
+        "ndcgAt5",
+        "ySuppressionRate"
+      ]
+    }
+  ],
+  "scenarios" : [ ],
+  "textCoverage" : {
+    "rowCount" : 30,
+    "rowsWithText" : 30,
+    "missingRows" : 0,
+    "missingRowIds" : [ ]
+  },
+  "reconstructionCheck" : {
+    "imageRouteRowsRebuilt" : 15,
+    "reconciled" : 15,
+    "tolerance" : 1.0E-9,
+    "method" : "生产 InMemoryVectorStore.search → ImageSimilarityGate.gate → DefaultWeightedReranker.rerank（内含生产 Bm25Scorer），逐条比对锚内 cos / tier / band / (fusedB − fusedA)"
+  },
+  "residual" : {
+    "queryCount" : 6,
+    "candidateCount" : 30,
+    "note" : "本锚只对本次 6 查询 × 30 候选成立；不外推到其它语料、其它查询或线上体验。文本路候选的 fusedA 直接取自冻结锚，未在本地重算。"
+  },
+  "runtime" : {
+    "externalCalls" : 0,
+    "providerInstances" : 0,
+    "springContextStarted" : false,
+    "dockerRequired" : false,
+    "generatedAt" : "2026-10-26T20:25:22.018982900Z"
+  },
+  "numericHygiene" : {
+    "metricRounding" : "round(1e-6)",
+    "nullWhenAwaiting" : true,
+    "scenariosParallel" : true,
+    "scenariosSorted" : false,
+    "noPlaceholderScores" : true
+  },
+  "sourceAnchors" : {
+    "bandEntry" : {
+      "path" : "docs/rag-quality/near-dup-band-entry-v1.json",
+      "sha256" : "3c927e65e70083973c48f34de965d1531afd1b5cd2c86583df688f45918195ec",
+      "readOnly" : true
+    }
+  }
+}
