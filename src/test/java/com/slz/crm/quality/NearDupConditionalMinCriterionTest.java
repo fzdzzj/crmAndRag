@@ -1291,10 +1291,11 @@ class NearDupConditionalMinCriterionTest {
     plan.put("executedBasis", "本卡只读既有锚（零字节变动）；重锚属另卡且须 Owner 拍板，本卡不执行任何重建（D5）");
     plan.put(
         "orderRule",
-        "分层两句：①序 = 按锚间 sha256 引用现算，被引用者先——凡是 A 的 sha256 十六进制串出现在 B 的字节里（B 引用了 A），A 就先重写；"
-            + "实测签收锚 near-dup-floor-signoff-v1 的 signedDigests 引用了 exchange-rate / cross-matrix / displacement / fusion-impact 四张"
-            + "（且无任何锚引用签收锚的 sha256），故其序由引用关系现算而非固定位置；"
-            + "②「重写」= 逐锚改 operating-point 字面量（零外呼）；「重签」= 全部改写完成后按签收流程出具最终记录");
+        "序 = 按锚间 sha256 引用现算，被引用者先——若 A 的 sha256 十六进制串出现在 B 的字节里（B 引用了 A），则 A 先重写；"
+            + "实测签收锚 near-dup-floor-signoff-v1 的 evidenceAnchors（对象，6 个键 = 文件名 → sha256）记录了 6 张证据锚"
+            + "（threshold-calibration-v2 / fusion-impact / exchange-rate / truth / displacement / cross-matrix），"
+            + "其中 4 张在本重锚清单内，且无任何锚引用签收锚的 sha256，故其序由引用关系现算（实测第 5）；"
+            + "「重写」= 逐锚改 operating-point 字面量（零外呼）；「重签」= 全部改写完成后按签收流程出具最终记录");
     ArrayNode ordered = plan.putArray("ordered");
     List<String> affected = split(summary.path("affected").asText());
     List<String> ordered2 = dependencyOrder(affected, anchorBytes);

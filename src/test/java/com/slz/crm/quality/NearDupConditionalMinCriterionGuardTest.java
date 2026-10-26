@@ -43,6 +43,10 @@ class NearDupConditionalMinCriterionGuardTest {
   private static final Path ANCHOR_MD =
       Path.of("docs", "rag-quality", "near-dup-conditional-min-criterion-v1.md");
 
+  /** 签收源锚（重锚清单里第 5 张），用于反向核对 {@code orderRule} 的 evidenceAnchors 实况。 */
+  private static final Path SIGNOFF_ANCHOR =
+      Path.of("docs", "rag-quality", "near-dup-floor-signoff-v1.json");
+
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private static final String B0 = "B0-BM25-ALL-ZERO";
@@ -586,9 +590,16 @@ class NearDupConditionalMinCriterionGuardTest {
       assertTrue(
           orderRule.contains(token), "orderRule 必须写明分层规则，缺: " + token + "（原文: " + orderRule + "）");
     }
+    assertFalse(
+        orderRule.contains("signedDigests"),
+        "orderRule 不得声称源锚带 signedDigests 字段（签收锚实况只有 evidenceAnchors），原文: " + orderRule);
+    assertTrue(
+        orderRule.contains("evidenceAnchors"),
+        "orderRule 必须按实况写明签收锚的 evidenceAnchors 字段名，原文: " + orderRule);
     assertOrderFollowsShaReferences(plan, impact);
     JsonNode summary = impact.path("summary");
     JsonNode ordered = plan.path("ordered");
+    assertSignoffEvidenceAnchors(ordered);
     assertEquals(summary.path("contradictionYes").asInt(), ordered.size(), "重锚清单应等于受影响锚数");
     Set<Integer> orders = new LinkedHashSet<>();
     int minOrder = Integer.MAX_VALUE;
@@ -672,6 +683,69 @@ class NearDupConditionalMinCriterionGuardTest {
                 + ") 的字节中，被引用者必须先重写");
       }
     }
+  }
+
+  /**
+   * 反向断言（板规 30）：签收锚的 {@code evidenceAnchors} 实况必须被如实复述——对象、6 键、与 ordered 锚名交集 4， 且该 4 张的 order
+   * 均小于签收锚的 order（把「四张在清单内所以排其后」变成机器可验事实）。
+   */
+  private static void assertSignoffEvidenceAnchors(JsonNode ordered) throws Exception {
+    assertTrue(Files.exists(SIGNOFF_ANCHOR), "签收源锚缺失: " + SIGNOFF_ANCHOR.toAbsolutePath());
+    JsonNode source = MAPPER.readTree(Files.readAllBytes(SIGNOFF_ANCHOR));
+    JsonNode evidence = source.path("evidenceAnchors");
+    assertTrue(
+        evidence.isObject(),
+        "签收源锚 evidenceAnchors 必须是对象（文件名 → sha256），实测类型: " + evidence.getNodeType());
+    List<String> evidenceKeys = fieldNames(evidence);
+    assertEquals(
+        6,
+        evidence.size(),
+        "签收源锚 evidenceAnchors 键数应为 6，实测 " + evidence.size() + " 键: " + evidenceKeys);
+    Map<String, Integer> order = new LinkedHashMap<>();
+    for (JsonNode entry : ordered) {
+      order.put(entry.path("anchor").asText(), entry.path("order").asInt());
+    }
+    Integer signoffOrder = order.get("near-dup-floor-signoff-v1");
+    assertTrue(
+        signoffOrder != null,
+        "ordered 必须含签收锚 near-dup-floor-signoff-v1，实测 ordered 锚名: " + order.keySet());
+    List<String> matched = new ArrayList<>();
+    for (String key : evidenceKeys) {
+      String name = key.endsWith(".json") ? key.substring(0, key.length() - ".json".length()) : key;
+      if (!order.containsKey(name)) {
+        continue;
+      }
+      matched.add(name);
+      assertTrue(
+          order.get(name) < signoffOrder,
+          "evidenceAnchors 命中的 "
+              + name
+              + " 在 ordered 中 order="
+              + order.get(name)
+              + "，应小于签收锚 order="
+              + signoffOrder
+              + "（evidenceAnchors 键: "
+              + evidenceKeys
+              + "）");
+    }
+    assertEquals(
+        4,
+        matched.size(),
+        "签收锚 evidenceAnchors 键与 ordered 锚名交集应为 4，实测 "
+            + matched.size()
+            + " 张: "
+            + matched
+            + "（键: "
+            + evidenceKeys
+            + "；ordered: "
+            + order.keySet()
+            + "）");
+  }
+
+  private static List<String> fieldNames(JsonNode node) {
+    List<String> names = new ArrayList<>();
+    node.fieldNames().forEachRemaining(names::add);
+    return names;
   }
 
   private static void assertHygiene(JsonNode hygiene) {

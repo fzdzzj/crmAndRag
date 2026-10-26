@@ -32,7 +32,7 @@
 - [x] 8. 逐张判「重算是否可零外呼」：以「锚内是否冻了 `cos` 或向量」为依据；可零外呼者注明依据字段，不可者给出**最小外呼量 + 为什么非跑不可**
       补勾依据：`summary.zeroCallRecomputeYes=9`、`summary.minExternalCallsTotal=18`；`zeroCallBasis` 逐行指回 `cos` 路径；守卫 `containsCosPayload`（独立递归，不调生成器 helper）对 16 张源锚实算，与 `row.cosFrozen` 16/16 相等。
 - [x] 9. 落 `reanchorPlan`：必须重锚的锚清单 + 重建方式 + 是否花钱 + 依赖顺序；并落「不受影响」清单（同样逐张核对）；**`executed = false`**
-      补勾依据：`reanchorPlan.executed=false`、`orderedCount=9`、`unaffectedCount=6`、`unresolvedCount=1`；`order` 连续 1..9；`orderRule` 含「被引用者先」「重写」「重签」；守卫 `assertOrderFollowsShaReferences` 对 9 张两两实算 sha256 引用一致性，绿。实测签收锚 `near-dup-floor-signoff-v1` 排第 5 而非第 1——其 `signedDigests` 引用 exchange-rate / cross-matrix / displacement / fusion-impact 四张，且无任何锚引用签收锚的 sha256（`grep -c dbe79947…` 于 8 张锚 = 0），故顺序由引用关系现算。
+      补勾依据：`reanchorPlan.executed=false`、`orderedCount=9`、`unaffectedCount=6`、`unresolvedCount=1`；`order` 连续 1..9；`orderRule` 含「被引用者先」「重写」「重签」；守卫 `assertOrderFollowsShaReferences` 对 9 张两两实算 sha256 引用一致性，绿。实测签收锚 `near-dup-floor-signoff-v1` 排第 5 而非第 1——其 `evidenceAnchors`（对象，6 键 = 文件名 → sha256）记录 6 张证据锚（threshold-calibration-v2 / fusion-impact / exchange-rate / truth / displacement / cross-matrix），其中 4 张在清单内，且无任何锚引用签收锚的 sha256（`grep -c dbe79947…` 于 8 张锚 = 0），故顺序由引用关系现算。
 
 ## C · 锚与守卫（R4 / R7）
 
@@ -44,5 +44,5 @@
       补勾依据：`git diff master --stat -- src/main pom.xml .github` 输出空；`git status --porcelain -- docs/rag-quality` 仅本卡两锚 `M`（既有 16 张源锚无 `M`）；`git diff --check` 退出码 0。
 - [x] 13. 断言腿 B 清单**无推荐措辞**（`推荐` / `建议降` / `建议不降` / `应下调` / `recommend*`），双面 grep
       补勾依据：守卫 `FORBIDDEN_TENDENCY_WORDS` 对 `anchor.toString() + md` 全量断言；`Select-String -SimpleMatch` 两锚 6 词各 0 命中（`推荐=0 建议降=0 建议不降=0 应下调=0 recommend=0 Recommend=0`）。
-- [-] 14. 若三分支出现第四种状态或某锚无法判定 ⇒ 记 `UNDETERMINED` 并写 `proposal §8`；**不许**放宽 R2 四值。未触发记 `[-]`
-      补勾依据：第四种分支状态未出现（`criterion.branches` 恰 3 条、`queriesByBranch` 三键合计 6）；`near-dup-ingest-gate-probe-v1` 记 `UNDETERMINED`（`contradictionCause=AGGREGATE-ONLY`），但 `proposal.md` 不在本卡写集（只许 4 路径），§8 追记未发生 ⇒ 交 Owner 决定是否补记。
+- [x] 14. 若三分支出现第四种状态或某锚无法判定 ⇒ 记 `UNDETERMINED` 并写 `proposal §8`；**不许**放宽 R2 四值。未触发记 `[-]`
+      补勾依据：第四种分支状态未出现（`criterion.branches` 恰 3 条、`queriesByBranch` 三键合计 6）；`near-dup-ingest-gate-probe-v1` 记 `UNDETERMINED`（`contradictionCause=AGGREGATE-ONLY`）；`proposal §8` 追记由**主 agent 代笔**补记（`proposal.md` 不在执行写集），未放宽 R2 四值，未判定项单列 `impact.summary.unresolved`（18 外呼）且不并入 `fullRerunTotal`。
