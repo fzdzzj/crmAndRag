@@ -61,14 +61,17 @@ class LabelSheetNearDupRelevanceGuardTest {
     byte[] readmeBytes = Files.readAllBytes(README);
     byte[] anchorBytes = Files.readAllBytes(ANCHOR_JSON);
     byte[] mdBytes = Files.readAllBytes(ANCHOR_MD);
-    assertArrayEquals(first.csvBytes(), csvBytes, "落盘 CSV 必须等于本次生成");
+    assertArrayEquals(
+        csvBytes,
+        LabelSheetNearDupRelevanceTest.ensureSheet(CSV, first.csvBytes()),
+        "落盘 CSV 必须与本次生成同构（模板列逐格一致；标注列允许人工填写）");
     assertArrayEquals(first.readmeBytes(), readmeBytes, "落盘 README 必须等于本次生成");
     assertLf(csvBytes, "CSV");
     assertLf(readmeBytes, "README");
     assertLf(anchorBytes, "锚 JSON");
     assertLf(mdBytes, "锚 md");
 
-    assertBlindSheet(csvBytes);
+    assertBlindSheet(csvBytes, first.csvBytes());
 
     JsonNode anchor = MAPPER.readTree(anchorBytes);
     assertEquals("label-sheet-near-dup-relevance", anchor.path("card").asText(), "锚 card 不符");
@@ -153,8 +156,8 @@ class LabelSheetNearDupRelevanceGuardTest {
         LabelSheetNearDupRelevanceTest.evaluate(
             first,
             LabelSheetNearDupRelevanceTest.parseCsv(new String(csvBytes, StandardCharsets.UTF_8)));
-    ObjectNode rebuiltAnchor = LabelSheetNearDupRelevanceTest.buildAnchor(first, outcome);
-    ObjectNode rebuiltAgain = LabelSheetNearDupRelevanceTest.buildAnchor(second, outcome);
+    ObjectNode rebuiltAnchor = LabelSheetNearDupRelevanceTest.buildAnchor(first, outcome, csvBytes);
+    ObjectNode rebuiltAgain = LabelSheetNearDupRelevanceTest.buildAnchor(second, outcome, csvBytes);
     assertArrayEquals(
         LabelSheetNearDupRelevanceTest.canonicalBytes(
             LabelSheetNearDupRelevanceTest.withoutRuntime(rebuiltAnchor)),
@@ -185,6 +188,10 @@ class LabelSheetNearDupRelevanceGuardTest {
 
     String annotator = anchor.path("sheet").path("annotator").asText();
     assertFalse(AGENT_LIKE.matcher(annotator).find(), "R5：annotator 不得命中 agent/assistant/ai/model");
+    assertEquals(
+        LabelSheetNearDupRelevanceTest.labelsProvenance(outcome),
+        anchor.path("labelsProvenance").asText(),
+        "labelsProvenance 必须由 annotator 派生：机器预标不得被读成人工真值");
 
     String md = new String(mdBytes, StandardCharsets.UTF_8);
     assertTrue(md.split("\n", -1).length <= 40, "R6：锚 md 必须 ≤ 40 行");
@@ -317,10 +324,18 @@ class LabelSheetNearDupRelevanceGuardTest {
     return count;
   }
 
-  /** 盲标与结构：列名白名单、行 id 唯一且有序、候选文本非空、四列未代填、无提示字样。 */
-  private static void assertBlindSheet(byte[] csvBytes) {
+  /**
+   * 盲标与结构：列名白名单、行 id 唯一且有序、候选文本非空、生成器未代填、无提示字样。
+   *
+   * <p>D4「不得代填」断言的是**生成器模板**（模板四列必须全空）；人工表本该被填，故只要求整行全空或全填。
+   */
+  private static void assertBlindSheet(byte[] csvBytes, byte[] templateBytes) {
     List<List<String>> records =
         LabelSheetNearDupRelevanceTest.parseCsv(new String(csvBytes, StandardCharsets.UTF_8));
+    List<List<String>> template =
+        LabelSheetNearDupRelevanceTest.parseCsv(new String(templateBytes, StandardCharsets.UTF_8));
+    assertEquals(template.size(), records.size(), "人工表行数必须等于模板");
+    assertEquals(records.get(0), template.get(0), "人工表表头必须等于模板表头");
     assertFalse(records.isEmpty(), "CSV 不得为空");
     assertEquals(COLUMNS, records.get(0), "CSV 表头必须等于列名白名单");
     for (String column : records.get(0)) {
@@ -351,8 +366,16 @@ class LabelSheetNearDupRelevanceGuardTest {
         assertFalse(row.get(3).contains(word), "R2：候选文本不得带结论提示「" + word + "」: " + row.get(0));
       }
       for (int column : List.of(7, 8, 9, 10)) {
-        assertEquals("", row.get(column), "D4：执行者不得代填第 " + column + " 列: " + row.get(0));
+        assertEquals(
+            "", template.get(index).get(column), "D4：生成器不得预填第 " + column + " 列: " + row.get(0));
       }
+      int filled = 0;
+      for (int column : List.of(7, 8, 9, 10)) {
+        if (!row.get(column).isBlank()) {
+          filled++;
+        }
+      }
+      assertTrue(filled == 0 || filled == 4, "标注列必须整行全空或全填（半填不可判）: " + row.get(0));
       expectedRank++;
       boolean lastRow = index == records.size() - 1;
       String nextQuery = lastRow ? null : records.get(index + 1).get(1);

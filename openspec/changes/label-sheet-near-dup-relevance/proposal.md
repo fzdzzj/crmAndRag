@@ -79,3 +79,10 @@
 - **融合面重算**：扩池后原先「取冻结锚候选、只重算图像路」的做法不再够用（名次 6 的候选在冻结锚里没有融合分）。改为按生产口径在本地重建两路并融合（文本路用冻结 `embedCache` 查询向量 + `textRecords` 向量，图像路用冻结 `queryImageVectors`；融合文本 0.70 / 图像 0.30），30 条冻结候选的 `fusedA`（现状，含降权）与 `fusedB`（无降权）逐条对账 1e-12 ⇒ 扩出来的 6 行与既有 30 行同尺度、可复算、零外呼。
 - **实测结论（如实记，不改口径）**：池深 6 下「现状 vs 无降权」排序仍逐行相同（`downweightOrderInvariant=true`，降权位移最大 0.075 未跨越任何相邻间距）；只有「0.90 口径」因额外准入 3 行（`cos ∈ [0.90, 0.982)`，生产 `bandOf` 未定义，沿用 `weightOfBand(null) = 0.5`）而改变排序 ⇒ `invariantObserved=false`。即：**降权本身在本语料上仍无跨边界位移**，这一点不粉饰、不用改口径去制造差异。
 
+### §9 追记（fix2：仪器自锁修复 + 机器预标如实登记）
+
+- **缺陷（我方的，不是执行者的）**：本卡把「人工填写的表」当成了「生成物」，三处闸门都要求落盘 CSV **等于空模板字节**——① `writeOrCompareBytes(CSV, bundle.csvBytes())`（write 模式会**静默抹掉**已填标签）；② `buildAnchor` 用 `bundle.csvBytes()` 取 `sheet.bytes/sha256`（锚记的是空模板的 sha，不是人工表的）；③ 守卫 `assertBlindSheet` 断言 7..10 列**必须为空**（D4「不得代填」被实现成「表不得被填」）。⇒ **只要有人填表，`mvn test` 必红；write 模式重跑还会把标签清空**。已按正确语义修：`ensureSheet()` 只在文件缺失时落盘模板，存在时逐格校验 0..6 列（模板列）并原样保留 7..10 列；锚的 `sheet.bytes/sha256` 改取**落盘表**；D4 改为对**模板**断言四列全空，并对人工表要求「整行全空或全填」（半填不可判）。
+- **标签来源如实登记**：Owner 授权由主 agent 代填（R3/D4「只允许 Owner 填」被显式豁免一次），故 `annotator=machine-prelabel`，锚新增顶层 `labelsProvenance=MACHINE-PRELABEL-NOT-HUMAN-GROUND-TRUTH`。**这不是人工真值**，不得作为人判证据引用；「0.90 多压的那 3 行是不是真重复」在人工标签到位前仍属未定。
+- **另一个已知局限**：`fileName` 列（`…-p1-b1@crop-02/04/06.pdf`）按语料构造直出，`@crop-0X` 前缀即变体组 ⇒ `isNearDuplicate` **可由文件名确定性推出**，不必人判；`ySuppressionAgreement` 因此测的是「闸门对构造已知近重复的压制率」，不是人的重复感知。真正需要人判的只有 `relevance` 一列。
+- **实测（36 行机器预标下，如实记，不改口径）**：三情景 `precision@5` 全 = 0.6、`NDCG@5` 全 = 1.0（每查询只有两组文本，NDCG 结构上到顶、无分辨力），唯一差异是压制计数 `现状 9/24 → 0.90 12/24`（`ySuppressionRate` 0.375 / 0 / 0.5）⇒ `tieDetected=false`（三面非全等），但**排序质量两面完全打平**，不得据此断言 0.90 更好或更差。
+
