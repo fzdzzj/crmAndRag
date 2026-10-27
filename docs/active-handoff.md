@@ -1,6 +1,6 @@
 # 主 Agent 轮换交接活看板 (Active Main Agent Handoff)
 
-> **更新时间**：2026-10-26（near-dup-conditional-min-criterion：**判据从「不可满足」改成条件式**——三分支 + 第四判定词 `PROVEN-CONDITIONAL`（必须带适用域）；同卡交付 0.90 影响与重锚清单，**执行 0 次重建**）
+> **更新时间**：2026-10-27（label-sheet-near-dup-relevance：**人标包已合入、等你填 36 行**；关键实测——池深 6 上降权仍是 no-op，唯一改序的是 0.90 口径）
 > **维护契约**：**本文件必须采用整体覆盖更新 (Rolling Overwrite)，严禁无限追加历史流水账**！
 > **适用对象**：**新打开主 Agent 对话窗口时第一必读入口**。读完即可立即进入指导工作状态。
 
@@ -8,11 +8,10 @@
 
 ## 1. 现状快照 (Current State Snapshot)
 
-- **当前主干版本**：`master` = **`696a89c`（M1 合并）+ `f09e7aa`（基线重锚）+ 本归档笔** = origin/master。分支 `feature/eval-port-production-parity` **永久保留**（基点 `db6723e` → **2 笔**：`017254f` 首轮 / `7fe4fb6` fix1）
-- **测试基线四元组**：`source-revision=696a89c`（**树净，非 `-dirty`**）+ Surefire **报告 365 / 用例 2211 / F0 / E0 / S1** + Failsafe **报告 49 / 用例 151 / F0 / E0 / S18** + **CI = Run 40386288153（6/6 jobs 绿）**。上一卡 362/2199/0 + 49/151/18 → 本卡 surefire **+3 报告 +12 用例 +1 skip**（3 个新测试类；skip 是 opt-in 真跑那条 `assumeTrue`）、failsafe **三值不变**
-- **本卡结论（一句话）**：**评测端口的误差条交付了，但没有替换 CI 端口。** 稀疏腿在真 MySQL 8.0.36 + 真 Flyway + 生产同一条 `fulltextSearch`（`SparseRecallService:53`→`Mapper:92-117`）上对比 bigram 近似：72 例逐查询，真命中 **341** / 近似 **331** / 交集 **247**；度量腿 70 例 ×3 候选 = **210 行**三口径（`rawFusedScore`/`rank`/`margin`）恒等式最大差 **8.9e-16**；结论 `verdictPort=ERROR-BAR-PARTIAL-QUANTIFIED`。**不替换端口**是刻意的（D6：`mvn test` 契约无 Docker），语料腿仍是 15 份 fixture
-- **量化答案（唯一花钱换来的东西）**：同语料同装置**只换输入向量**（伪向量→真嵌入），`recall@5 0.84375 → 0.93519`（**+9.14pp**）、`mrr 0.78843 → 0.89931`（**+0.111**）⇒ **伪向量腿把套件分数系统性低估约 9pp**。成本 149 次调用 / ¥0.0085 / 28.9s，只跑一次
-- **两处写集缺陷（我的）**：① 写集漏了 `proposal.md`，而 tasks 第 13 条要求写 `§8` ② 写集漏了生成器 `EvalPortParitySparseTest`（锚由它重建，不改则写模式把旧文案覆盖回去）——执行者两次都按「任务优先」处理并主动报了偏差，处置正确 ⇒ 已立**板规 33**
+- **当前主干版本**：`master` = **`f275a69`（M1 合并）+ `5265792`（基线重锚）+ 本笔** = origin/master。分支 `feature/label-sheet-near-dup-relevance` **保留**（基点 `0cee754` → 2 笔：`0c5a87d` 首轮 / `932a103` fix1）；**本卡未归档**——仪器已合入，结论要等 Owner 填表后跑一次打分器
+- **测试基线四元组**：`source-revision=f275a69`（**树净，非 `-dirty`**）+ Surefire **报告 367 / 用例 2216 / F0 / E0 / S1** + Failsafe **报告 49 / 用例 151 / F0 / E0 / S18** + **CI = Run 40392200000（6/6 jobs 绿）**。上一卡 365/2211/1 + 49/151/18 → 本卡 surefire **+2 报告 +5 用例**、failsafe **三值不变**
+- **本卡交付（仪器）**：`docs/rag-quality/labels/near-dup-relevance-v1.csv`（6 查询 × **6 候选 = 36 行**，池深请求 10 但语料上限 6 = 2 base × 3 变体）+ 一页 README + 三情景打分器（`precision@5` / `NDCG@5` / `Y-压制一致率`）+ 守卫；`labelsStatus=AWAITING-HUMAN-LABELS`。fix1 顺带修两处旧缺陷：**「现状 / 无降权」两个标签原实现写反**（已按生产 pass A/B 纠正）、`.gitattributes` 缺 `*.csv eol=lf`（干净 checkout 会得 CRLF、守卫红）
+- **关键实测（先看这条）**：`downweightOrderInvariant=true`——池深 6 上降权位移最大 **0.075** 但未跨任何相邻间距 ⇒ **现状与无降权次序完全相同**；唯一改序的是 **0.90 口径**（新准入 3 行，`cos∈[0.90,0.982)`，`bandOf` 未定义故沿用 `weightOfBand(null)=0.5`）。**所以这张表最值钱的一格是：那 3 行由人判，究竟是重复还是不同**
 - **工作树拓扑**：观察树 `D:\code\crmAndRag`（logbook + `work/` 未跟踪）；权威树 `D:\code\crmAndRag-merge-add-knowledge-admin-api`（分支 / 门禁 / 合并 / push 唯一法定树）。**坑**：`pnpm -C frontend test` 会重写 `frontend/typed-router.d.ts`（生成物 +32 行），跑完门禁须 `git checkout --` 复原，否则基线 `source-revision` 会挂 `-dirty`
 
 ---
@@ -48,7 +47,7 @@
   1. ~~S1 消融 / 更强变形带内构造~~ / ~~窗口判据升级~~ / ~~`delta=0` 成因（OQ1）~~ **四项已由卡 32/33/34/35 全部收口**
   2. ~~另卡改 R2/R3~~ **已由卡 36 收口（判据条件化，未放宽）**：三分支 + `PROVEN-CONDITIONAL` 已把「单分支末位 + 另一分支退化并列」写进适用域内的条件式；`PROVEN`（无条件）仍标「可达但本语料未出现」，不许拿它冒充结论
   3. **0.90 / 档位拍板 —— 已拍板：维持 `0.982`（2026-10-26）**：裁决依据不是「0.90 太贵」，而是**收益指标与真实收益脱钩**——① 12/12 带内事件 `r=0`（卡 34/35 双证）⇒ 降权在本语料**从未测出任何位移**，迄今零证据表明它改善检索 ② `0.982` 正是 `near-dup-exchange-rate-v1` 按 E3/E4 算出的 `bestValueFloor`（无免费档，`R=0.666667 / S_same=0.03`），维持它不是停滞而是沿上次实测最优点 ③ 0.90 的收益只有自设指标 `R 0.667→0.942`，代价是 `S_same 0.03→0.08`（同文档多压 5 张）与第三图进带 `13→93/2760`，而**这些多压的是真重复还是真不同，本语料无标签可判**。**重锚清单已冻结在卡 36 锚内（9 张 / 221 或 239 外呼 / 依赖序现算），随时可启用**。翻案条件三条：人标证明近重复图挤占答案；出现 `r>0` 的带内事件；`R ≥ 0.90` 若是硬验收线（`spec/` 内未找到出处，需 Owner 指认）
-  4. **用户意图级相关性标注（唯一还能推进的路，须你出人）**：卡 37 已把测量装置备好——真嵌入通道 + 149 调用级台账（¥0.0085/次）、「伪向量低估 9pp」已量化；人标回来即可直接判「近重复图 / 伪向量偏差是否真伤答案」。须真实查询 + 人标，**严禁** agent 代标
+  4. **人标包已合入、待你填 36 行（卡 38，未归档）**：填 `docs/rag-quality/labels/near-dup-relevance-v1.csv` 的 `relevance`(2/1/0) 与 `isNearDuplicate`(Y/N/U) 两列，看不出来填 `U`，约 20 分钟；**盲标**（表里没有 `cos`/`tier`）。填完由执行者跑一次打分器出结论锚，届时再 M2 归档。**关键实测：池深 6 上降权是 no-op（`downweightOrderInvariant=true`）⇒「现状」与「无降权」次序完全相同，唯一改序的是 0.90 口径（新准入 3 行）**——所以这张表最值钱的判断是那 3 行是重复还是不同
   5. **生产开关运行期打开（Owner 决，非代码）**：`rag.retrieval.image-vector-ingest.enabled` 默认 `false`；先跑 `bash scripts/rag-quality/image-vector-ingest-preflight.sh preflight --snapshot <四键快照>`
 - **下批推荐**：近重复线七题（入口/判据/计数/归因/分解/条件化/门槛拍板）+ **评测端口误差条**全部收口 ⇒ **RAG 质量线没有「零成本自答」的题了**。再往下只有三条路：**花钱**（真语料卡）、**出人**（人标）、**运维**（`image-vector-ingest` 开关）。**不要**再开只读卡；**不要把 `+9.14pp` 读成「质量提升 9pp」**——它测的是**装置误差**，不是产品质量变化
 
