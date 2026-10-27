@@ -1,8 +1,8 @@
-# 近重复人标最小包 · v1
+# 近重复标注最小包 · v1
 
-- 卡：`label-sheet-near-dup-relevance` · 状态：`AWAITING-HUMAN-LABELS`
-- 标注表：`docs/rag-quality/labels/near-dup-relevance-v1.csv`（36 行 × 11 列，14301 字节，末 4 列待人填）
-- 填表说明：`docs/rag-quality/labels/near-dup-relevance-v1-README.md` · CSV sha256：`70e216d403466e4e5989e6c869c4e5ff614994ea59fbbcd5a441e25883266674`
+- 卡：`label-sheet-near-dup-relevance` · 状态：`LABELS-COLLECTED` · 来源：`MACHINE-PRELABEL-NOT-HUMAN-GROUND-TRUTH`
+- 标注表：`docs/rag-quality/labels/near-dup-relevance-v1.csv`（36 行 × 11 列，15309 字节，末 4 列已填）
+- 填表说明：`docs/rag-quality/labels/near-dup-relevance-v1-README.md` · CSV sha256：`9fba76b6c893331c738c875976ff9c19638e985793e19f974965f2ebbd01c293`
 - 来源锚：`docs/rag-quality/near-dup-band-entry-v1.json`（只读，sha256 `3c927e65e70083973c48f34de965d1531afd1b5cd2c86583df688f45918195ec`）
 - 池深：请求 10，实测逐查询 [6,6,6,6,6,6]，合计 36 行（语料 6 条图像记录 ⇒ 每查询上限 6，不凑数）
 
@@ -23,7 +23,8 @@
 
 ## 当前产出
 
-- 标签未填：三情景指标一律留空，不写任何占位分数。
+- 三情景：`current-0982` p@5=0.6、n@5=1.0、y一致率=0.375 ｜ `no-downweight` p@5=0.6、n@5=1.0、y一致率=0.0 ｜ `floor-090` p@5=0.6、n@5=1.0、y一致率=0.5
+- 打平检测：`tieDetected`=false（三情景不全等（至少一项指标有差异））
 
 ## 可测范围
 

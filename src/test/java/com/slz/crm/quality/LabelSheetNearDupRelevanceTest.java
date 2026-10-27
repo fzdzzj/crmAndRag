@@ -101,6 +101,9 @@ class LabelSheetNearDupRelevanceTest {
           "annotator",
           "annotatedOn");
 
+  /** 首个可填列下标（`relevance`）：0..6 为模板列，人工只允许改 7..10。 */
+  static final int FILLABLE_FROM_COLUMN = 7;
+
   /** 三情景固定顺序（并列呈现，不排序）。 */
   static final List<String> SCENARIO_KEYS = List.of("current-0982", "no-downweight", "floor-090");
 
@@ -149,11 +152,11 @@ class LabelSheetNearDupRelevanceTest {
   void generatesSheetAndScores() throws Exception {
     Bundle bundle = buildBundle();
     assertSheet(bundle);
-    writeOrCompareBytes(CSV, bundle.csvBytes());
+    byte[] sheetBytes = ensureSheet(CSV, bundle.csvBytes());
     writeOrCompareBytes(README, bundle.readmeBytes());
-    List<List<String>> records = parseCsv(Files.readString(CSV, StandardCharsets.UTF_8));
+    List<List<String>> records = parseCsv(new String(sheetBytes, StandardCharsets.UTF_8));
     LabelsOutcome outcome = evaluate(bundle, records);
-    ObjectNode anchor = buildAnchor(bundle, outcome);
+    ObjectNode anchor = buildAnchor(bundle, outcome, sheetBytes);
     writeOrCompareJson(ANCHOR_JSON, anchor);
     writeOrCompareBytes(ANCHOR_MD, buildAnchorMdBytes(anchor));
     System.out.println(
@@ -1146,16 +1149,28 @@ class LabelSheetNearDupRelevanceTest {
 
   // ==================== 锚 ====================
 
-  static ObjectNode buildAnchor(Bundle bundle, LabelsOutcome outcome) throws Exception {
+  /** 标签来源：未填 ⇒ NONE；署名以 machine 开头 ⇒ 机器预标（非人工真值）；其余 ⇒ 人工自署。 */
+  static String labelsProvenance(LabelsOutcome outcome) {
+    if (STATUS_AWAITING.equals(outcome.status())) {
+      return "NONE";
+    }
+    return outcome.annotator().startsWith("machine")
+        ? "MACHINE-PRELABEL-NOT-HUMAN-GROUND-TRUTH"
+        : "HUMAN-DECLARED";
+  }
+
+  static ObjectNode buildAnchor(Bundle bundle, LabelsOutcome outcome, byte[] sheetBytes)
+      throws Exception {
     ObjectNode root = MAPPER.createObjectNode();
     root.put("card", CARD);
     root.put("stage", "leg-A+leg-B+leg-C");
     root.put("labelsStatus", outcome.status());
+    root.put("labelsProvenance", labelsProvenance(outcome));
     ObjectNode sheet = root.putObject("sheet");
     sheet.put("csv", slash(CSV));
     sheet.put("readme", slash(README));
     sheet.put("rowCount", bundle.rows().size());
-    sheet.put("bytes", bundle.csvBytes().length);
+    sheet.put("bytes", sheetBytes.length);
     sheet.put("columnCount", COLUMNS.size());
     ArrayNode columns = sheet.putArray("columns");
     COLUMNS.forEach(columns::add);
@@ -1165,7 +1180,7 @@ class LabelSheetNearDupRelevanceTest {
     fillable.add("annotator");
     fillable.add("annotatedOn");
     sheet.put("rowOrder", "queryIndex ASC, currentRank ASC（currentRank = 现状情景全池名次，不打乱、不按 cos 排）");
-    sheet.put("sha256", RealPdfAssets.sha256(bundle.csvBytes()));
+    sheet.put("sha256", RealPdfAssets.sha256(sheetBytes));
     sheet.put("readmeSha256", RealPdfAssets.sha256(bundle.readmeBytes()));
     sheet.put("annotator", outcome.annotator());
     sheet.put("annotatedOn", outcome.annotatedOn());
@@ -1415,11 +1430,13 @@ class LabelSheetNearDupRelevanceTest {
     JsonNode scope = anchor.path("measurableScope");
     boolean awaiting = STATUS_AWAITING.equals(anchor.path("labelsStatus").asText());
     StringBuilder out = new StringBuilder();
-    out.append("# 近重复人标最小包 · v1\n\n");
+    out.append(awaiting ? "# 近重复人标最小包 · v1\n\n" : "# 近重复标注最小包 · v1\n\n");
     out.append("- 卡：`")
         .append(anchor.path("card").asText())
         .append("` · 状态：`")
         .append(anchor.path("labelsStatus").asText())
+        .append("` · 来源：`")
+        .append(anchor.path("labelsProvenance").asText())
         .append("`\n");
     out.append("- 标注表：`")
         .append(sheet.path("csv").asText())
@@ -1429,7 +1446,9 @@ class LabelSheetNearDupRelevanceTest {
         .append(sheet.path("columnCount").asInt())
         .append(" 列，")
         .append(sheet.path("bytes").asInt())
-        .append(" 字节，末 4 列待人填）\n");
+        .append(" 字节，")
+        .append(awaiting ? "末 4 列待人填" : "末 4 列已填")
+        .append("）\n");
     out.append("- 填表说明：`")
         .append(sheet.path("readme").asText())
         .append("` · CSV sha256：`")
@@ -1556,6 +1575,40 @@ class LabelSheetNearDupRelevanceTest {
         Files.exists(path), "产物缺失，先以 -Dlabel.sheet.write=true 生成一次: " + path.toAbsolutePath());
     assertArrayEquals(expected, Files.readAllBytes(path), "产物与本次生成逐字节不一致: " + path);
     System.out.println("[label-sheet] 默认复跑逐字节一致：" + path);
+  }
+
+  /**
+   * 标注表是**人工填写产物**：不存在时落盘空模板；已存在时只校验「模板列」与本次生成逐格一致， 标注列（`relevance` / `isNearDuplicate` /
+   * `annotator` / `annotatedOn`）原样保留。
+   *
+   * <p>旧实现对该文件无条件 compare-or-write 空模板字节：已填标签会同时被 write 模式抹掉、被默认模式判红， 即「填了就必然红」的死锁（本卡 fix2 修正）。
+   *
+   * @return 落盘表字节（锚的 bytes / sha256 以人工表为准，不是空模板字节）
+   */
+  static byte[] ensureSheet(Path path, byte[] templateBytes) throws Exception {
+    assertTrue(!new String(templateBytes, StandardCharsets.UTF_8).contains("\r"), "模板必须纯 LF");
+    if (!Files.exists(path)) {
+      writeAnchor(path, templateBytes);
+      return templateBytes;
+    }
+    byte[] onDisk = Files.readAllBytes(path);
+    List<List<String>> expected = parseCsv(new String(templateBytes, StandardCharsets.UTF_8));
+    List<List<String>> actual = parseCsv(new String(onDisk, StandardCharsets.UTF_8));
+    assertEquals(expected.size(), actual.size(), "标注表行数必须等于模板（不得增删行）: " + path);
+    for (int rowIndex = 0; rowIndex < expected.size(); rowIndex++) {
+      List<String> want = expected.get(rowIndex);
+      List<String> got = actual.get(rowIndex);
+      assertEquals(want.size(), got.size(), "第 " + rowIndex + " 行字段数必须为 11: " + path);
+      int templateColumns = rowIndex == 0 ? want.size() : FILLABLE_FROM_COLUMN;
+      for (int column = 0; column < templateColumns; column++) {
+        assertEquals(
+            want.get(column),
+            got.get(column),
+            "第 " + rowIndex + " 行第 " + (column + 1) + " 列属模板列，不得改动: " + path);
+      }
+    }
+    System.out.println("[label-sheet] 落盘表结构校验通过（标注列允许人工填写）: " + path);
+    return onDisk;
   }
 
   private static void writeAnchor(Path path, byte[] content) throws Exception {

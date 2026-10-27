@@ -21,7 +21,7 @@
 - [x] 4. 生成一页说明 `…-README.md`：两列取值含义 + 「看不出来就填 `U`」+ 不许参考任何锚
       依据：`docs/rag-quality/labels/near-dup-relevance-v1-README.md`（44 行，2039 字节，纯 LF；fix1 扩池后复测）；含 `relevance` `2/1/0`、`isNearDuplicate` `Y/N/U`、`看不出来（信息不足就填 U`、`不要参考任何锚或分数`，以及「四、评的是什么口径」里的同一句口径。
 - [x] 5. 确定性：同一提交连跑两次，CSV 与 README **逐字节一致**
-      依据：默认复跑 `[label-sheet] 默认复跑逐字节一致：…near-dup-relevance-v1.csv / …-README.md`；守卫 `assertArrayEquals(first.csvBytes(), second.csvBytes())` 与 `assertArrayEquals(first.readmeBytes(), second.readmeBytes())` 全绿。
+      依据（fix2 修正）：CSV 不再是纯生成物（7..10 列为人工列），确定性改为「模板逐字节稳定 + 结构逐格校验」：`buildBundle()` 两次 `csvBytes()` 逐字节相等（`assertArrayEquals(first.csvBytes(), second.csvBytes())`，生成器腿 4 项全绿）；落盘人工表由 `ensureSheet()` 逐格校验 0..6 列，实测 `[label-sheet] 落盘表结构校验通过（标注列允许人工填写）`；README 仍 `assertArrayEquals(first.readmeBytes(), second.readmeBytes())` + `默认复跑逐字节一致`。
 
 ## B · 打分器（R4/R5）
 
@@ -32,19 +32,26 @@
 - [x] 8. 三情景**不排序、不给推荐**（R4）：锚内不得出现「建议 / 推荐 / 应下调 / 倾向」（守卫词表）
       依据：守卫 `TENDENCY_WORDS` 9 词（建议/推荐/应下调/应当下调/倾向/更优/更好/更差/应该）扫描 锚 JSON + md + README，0 命中；锚 `numericHygiene.scenariosSorted=false`、`scenariosParallel=true`；`scenarios[].key` 顺序固定。
 - [x] 9. 标注人 + 日期 + CSV sha256 入锚；同一 CSV 两次打分结果逐字节一致
-      依据：锚 `sheet.annotator` / `sheet.annotatedOn` / `sheet.sha256`（`RealPdfAssets.sha256`）；守卫用同一份落盘 CSV 连算两次 `buildAnchor`，`assertArrayEquals(canonicalBytes(withoutRuntime(a1)), …a2)` 全绿。
+      依据：锚 `sheet.annotator` / `sheet.annotatedOn` / `sheet.sha256`（`RealPdfAssets.sha256`）；守卫用同一份落盘 CSV 连算两次 `buildAnchor`，`assertArrayEquals(canonicalBytes(withoutRuntime(a1)), …a2)` 全绿。**fix2 实测**：`annotator=machine-prelabel`、`annotatedOn=2026-10-27`、`sheet.bytes=15309`、`sheet.sha256=9fba76b6c893331c738c875976ff9c19638e985793e19f974965f2ebbd01c293`（取**落盘人工表**，不再是空模板的 14301/`70e216d4…`）。
 
 ## C · 锚与守卫（R6/R7/R8）
 
 - [x] 10. 锚 `docs/rag-quality/label-sheet-near-dup-relevance-v1.json` + `.md`（≤40 行）；未填标签时 `labelsStatus=AWAITING-HUMAN-LABELS` 且三情景字段为空（**不得**用假数据填充）
-      依据：锚 13 个顶层键（fix1 后 +`poolDepth`/`metricCaliber`/`measurableScope`/`tieDetected`/`tieNote`）；实测 `labelsStatus=AWAITING-HUMAN-LABELS`、`scenarios=0`；守卫 `hasField(anchor,"precisionAt5")==false` 且 `hasField(anchor,"ndcgAt5")==false`；md `mdLines=38`。
+      依据：锚 13 个顶层键（fix1 后 +`poolDepth`/`metricCaliber`/`measurableScope`/`tieDetected`/`tieNote`；**fix2 后 14 个**，+`labelsProvenance`）；实测 `labelsStatus=AWAITING-HUMAN-LABELS`、`scenarios=0`；守卫 `hasField(anchor,"precisionAt5")==false` 且 `hasField(anchor,"ndcgAt5")==false`；md `mdLines=38`。
 - [x] 11. 守卫：R1 逐字节确定性、R2 盲标白名单、R3 拒绝规则逐条、R4 无倾向措辞、R5 `annotator` 非 agent、R7 文本缺失超 3 行即 `UNDETERMINED`、R8 无外推措辞、md ≤40 行
       依据：`LabelSheetNearDupRelevanceGuardTest` 1 测试全绿（与生成器合计 `Tests run: 8, Failures: 0`，含 `GitAttributesContractGuardTest` 3）；断言项含 `AGENT_LIKE`、`textCoverage.missingRows<=3`、`用户偏好/生产相关性/全局质量` 0 命中、`mdLines=38`、`labels/` 目录仅两产物，并新增「落盘锚 == 本次重算（剔除顶层 runtime）」与「md 字节对账」（手改即红）。
 - [x] 12. 边界：`git diff master --stat -- src/main pom.xml .github` 空；既有锚零 `M`；`git diff --check` 干净
       依据：三条命令实测均为空输出 / 空集合；`git diff master --name-status -- docs/rag-quality` 仅 4 个 `A`（`labels/` 两产物、锚 json、锚 md），无既有锚 `M`。`.gitattributes` 新增 `*.csv text eol=lf`，`git ls-files --eol` 实测 `i/lf w/lf attr/text eol=lf`（fix1）。
 - [x] 13. 若 30 行里可读文本缺失 > 3 行 ⇒ 停手记 `UNDETERMINED` 并写 `proposal §8`（D5）
       依据：`textCoverage.missingRows=0`（`rowsWithText=36`，fix1 扩池后）⇒ 未触发停手；`buildBundle()` 内 `missingRows<=3` 断言成立。
-- [-] 14. 若三情景指标完全打平 ⇒ 如实记录并停手上报（`proposal §8` 预置），不许改口径造差异
-      依据：标签未填，三情景按设计未产出（`scenarios=[]`、无任何分数字段），本项待 Owner 填完 CSV 后复跑 `evaluate()` 再判定；打分器不排序、不造差异（`TENDENCY_WORDS` 0 命中）。**fix1 已加 `tieDetected` 自动检测**（`evaluate()` 对 precision@5 / NDCG@5 / Y 压制一致率三面全等即置 `tieDetected=true` 并写 `tieNote`），守卫断言 `tieDetected=false`，即「标签到手若打平即红」，不会静默写锚；同时锚内 `measurableScope.downweightOrderInvariant` 记录「现状 vs 无降权」排序实测（本次 `true`）。
+- [x] 14. 若三情景指标完全打平 ⇒ 如实记录并停手上报（`proposal §8` 预置），不许改口径造差异
+      依据（fix2 实测，标签已填）：`tieDetected=false`（三面非全等，故未触发停手）；三情景实测 `current-0982 p@5=0.6 n@5=1.0 ySup=9/24=0.375`、`no-downweight 0.6 / 1.0 / 0/24=0.0`、`floor-090 0.6 / 1.0 / 12/24=0.5`。**如实记：排序质量两面（`precision@5`、`NDCG@5`）完全打平**，唯一差异是压制计数 9→12（0.90 多压 3 条构造已知近重复）；`NDCG@5` 三情景皆 1.0 属结构到顶（每查询仅两组文本），无分辨力，不得当「质量无差异」之外的解读。
 - [x] 15. 池深扩到 10（Owner 拍板：主效应在池深 5 不可观测）
       依据：`mvn -B -ntp test -Dtest=LabelSheetNearDupRelevanceTest "-Dlabel.sheet.write=true"` → `[label-sheet] rows=36 actualPerQuery=[6, 6, 6, 6, 6, 6]`；锚内 `poolDepth.requestedDepth=10`、`poolDepth.actualPerQuery=[6, 6, 6, 6, 6, 6]`、`poolDepth.totalRows=36`、`poolDepth.candidateLimit=40`；语料只有 6 条图像记录 ⇒ 单查询两路去重后上限 6，如实记不足 10（`ceilingReason` 写明，不凑数）；`currentRank` 改为按现状情景全池名次 1..k，行序 = 该名次升序。
+
+## D · 标签填写与仪器修复（fix2）
+
+- [x] 16. 仪器自锁修复：已填的人工表必须能通过 `mvn test`（旧实现三处闸门都要求 CSV == 空模板字节）
+      依据：`ensureSheet()`（生成器）只在文件缺失时落盘模板，存在时逐格校验第 1..7 列（模板列）并原样保留第 8..11 列；`buildAnchor(bundle, outcome, sheetBytes)` 的 `sheet.bytes`/`sha256` 改取落盘表；守卫 `assertBlindSheet(csvBytes, templateBytes)` 把 D4「不得代填」改为断言**模板**四列全空 + 人工表要求「整行全空或全填」。实测：旧闸门下守卫红在 `D4：执行者不得代填第 7 列: q0:9820 ==> expected: <> but was: <1>`；修复后 `[label-sheet-guard] 守卫通过：rows=36 status=LABELS-COLLECTED mdLines=39`、`Tests run: 5, Failures: 0`。
+- [x] 17. 标签由 Owner 授权主 agent 代填，来源如实登记（不得冒充人工真值）
+      依据：`annotator=machine-prelabel`、锚 `labelsProvenance=MACHINE-PRELABEL-NOT-HUMAN-GROUND-TRUTH`（守卫断言该值必须由 `annotator` 派生，`labelsProvenance()`）；`relevance` 分布 `rel0=18 / rel1=12 / rel2=6`、`isNearDuplicate` `Y=24 / N=12`（判据：q0–q3 指向文档本身 ⇒ 封面块 `p1-b1` 记 1、p16 图记 0；q4/q5 指向内存代际图 ⇒ `p16-b2` 记 2、封面记 0）。已知局限：`isNearDuplicate` 可由 `fileName` 的 `@crop-0X` 组确定性推出，真正需人判的只有 `relevance`。
