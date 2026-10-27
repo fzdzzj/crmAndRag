@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -18,7 +19,6 @@ import com.slz.crm.knowledge.retrieval.DefaultWeightedReranker;
 import com.slz.crm.knowledge.retrieval.ImageSimilarityGate;
 import com.slz.crm.knowledge.retrieval.RetrievalCandidate;
 import com.slz.crm.knowledge.vector.InMemoryVectorStore;
-import com.slz.crm.platform.contract.VectorSearchHit;
 import com.slz.crm.platform.contract.VectorSearchRequest;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -45,18 +46,18 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * 近重复人标最小包（label-sheet-near-dup-relevance）· 腿 A 生成器 + 腿 B 打分器（零外呼）。
  *
- * <p><b>腿 A（标注包）</b>：用生产类（{@link InMemoryVectorStore} → {@link ImageSimilarityGate#gate} → {@link
- * DefaultWeightedReranker}，内含生产 {@link Bm25Scorer}）重建 6 条查询的图像路候选，与冻结锚 {@code
- * docs/rag-quality/near-dup-band-entry-v1.json} 的 30 行候选逐条对账（{@code cos} / {@code tier} / {@code
- * band} / {@code fusedB − fusedA}），再按现行名次（{@code rankB} 升序）落成 30 行盲标表。候选身份与顺序来自该冻结锚的 {@code
- * candidates}（文本路无法在零外呼下重建：查询文本向量不在冻结material 内），图像路分数全部本地重算并逐条对账，脚本不抄任何分数。
+ * <p><b>池深（fix1，Owner 拍板）</b>：按生产语义把候选池从 top-5 扩到 <b>limit = 10</b>（{@code candidateLimit = 10 ×
+ * 4}）。语料只有 6 条图像记录 ⇒ 每查询实测最多 6 条，<b>如实落 6 条、不凑数</b>；{@code currentRank} = 该查询现状情景下的 1..k 名次，行序 =
+ * 该名次升序。
  *
- * <p><b>盲标纪律</b>：CSV 只有 {@link #COLUMNS} 这 11 列，不含 {@code cos} / {@code tier} / {@code
- * band}，候选文本逐字取自冻结 {@code corpusMaterial.imageRecords}，不增删内容、不提示。为了「一行一条记录」便于填写，行内换行落成字面 {@code
- * \n}、行尾空白去掉（只动显示形式，不动文字）。
+ * <p><b>融合面本地重算（零外呼）</b>：文本路（冻结 {@code corpusMaterial.textRecords} 向量 + 冻结 {@code embedCache}
+ * 内的查询文本向量 → {@link InMemoryVectorStore#search} → {@link DefaultWeightedReranker}）+ 图像路（冻结 {@code
+ * queryImageVectors} → {@link ImageSimilarityGate#gate} → 重排）→ 生产 {@code fuseRoutes} 口径（文本 0.70 /
+ * 图像 0.30，同一切片 {@code documentId:chunkId} 两路得分按权重相加）。30 条冻结候选的 {@code fusedA}（现状，含降权）与 {@code
+ * fusedB}（无降权）逐条对账 1e-12，才是「池深 10 可测」的依据。
  *
- * <p><b>腿 B（打分器）</b>：读回 CSV；四个待填列全空 ⇒ 锚记 {@code AWAITING-HUMAN-LABELS} 且三情景字段为空；已填 ⇒ 先逐行校验（空值 /
- * 取值越界 / {@code annotator} 命中 agent 字样 / 日期缺失 / 行 id 不符或重复），通过后按三情景并列打分（现状 0.982 / δ=0 / 0.90 口径）。
+ * <p><b>腿 B（打分器）</b>：读回 CSV；四个待填列全空 ⇒ 锚记 {@code AWAITING-HUMAN-LABELS} 且三情景字段为空；已填 ⇒
+ * 逐行校验后按三情景并列打分，并检测三情景指标是否全等（{@code tieDetected}，{@code proposal §8} 打平停手条款）。
  *
  * <p><b>零外呼</b>：不设任何 real 开关、不启动 Spring、不调 provider；{@code runtime.externalCalls = 0}。
  */
@@ -103,23 +104,39 @@ class LabelSheetNearDupRelevanceTest {
   /** 三情景固定顺序（并列呈现，不排序）。 */
   static final List<String> SCENARIO_KEYS = List.of("current-0982", "no-downweight", "floor-090");
 
-  /** 图像路由权重（{@code RetrievalConfigResolver} 默认 0.30；只用于 δ = 0.30 × (1 − w) × r）。 */
+  /** 文本路融合权重（生产默认 0.70）。 */
+  static final double TEXT_ROUTE_WEIGHT = 0.70d;
+
+  /** 图像路融合权重（生产默认 0.30）。 */
   static final double IMAGE_ROUTE_WEIGHT = 0.30d;
 
-  /** 候选倍数（生产默认 4；本语料 6 条图像记录 ⇒ 上限不构成变量）。 */
+  /** 文本路召回下限（生产 {@code rag.retrieval.min-score} 默认 0.20）。 */
+  static final double TEXT_MIN_SCORE = 0.20d;
+
+  /** 请求池深（Owner 拍板：top-5 → top-10）。 */
+  static final int REQUESTED_DEPTH = 10;
+
+  /** 候选倍数（生产默认 4 ⇒ candidateLimit = 请求池深 × 4）。 */
   static final int CANDIDATE_MULTIPLIER = 4;
 
-  /** 对账容差（R1/R5 的 same-byte 复算口径）。 */
-  static final double TOLERANCE = 1e-9d;
+  /** 对账容差（same-byte 复算口径）。 */
+  static final double TOLERANCE = 1e-12d;
 
   /** 0.90 口径的准入下限。 */
   static final double FLOOR_090 = 0.90d;
 
-  private static final int TOP_K = 5;
+  /** 指标窗口（precision@5 / NDCG@5）。 */
+  private static final int METRIC_WINDOW = 5;
 
   private static final int QUERY_COUNT = 6;
 
-  private static final int ROW_COUNT = 30;
+  /** 冻结锚里每条查询的候选数（top-5）——只用于对账，不是本表行数上限。 */
+  private static final int FROZEN_CANDIDATES_PER_QUERY = 5;
+
+  private static final int FROZEN_ROW_COUNT = 30;
+
+  /** 冻结锚内图像路候选行数（对账基准）。 */
+  private static final int FROZEN_IMAGE_ROUTE_ROWS = 15;
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -128,7 +145,7 @@ class LabelSheetNearDupRelevanceTest {
       Pattern.compile("(?i)(^|[^a-z])(agent|assistant|ai|model)([^a-z]|$)");
 
   @Test
-  @DisplayName("腿 A+腿 B：30 行盲标表 + 三情景打分器（零外呼，标签未填时 AWAITING）")
+  @DisplayName("腿 A+腿 B：池深 10 实测 36 行盲标表 + 三情景打分器（零外呼，标签未填时 AWAITING）")
   void generatesSheetAndScores() throws Exception {
     Bundle bundle = buildBundle();
     assertSheet(bundle);
@@ -138,18 +155,23 @@ class LabelSheetNearDupRelevanceTest {
     LabelsOutcome outcome = evaluate(bundle, records);
     ObjectNode anchor = buildAnchor(bundle, outcome);
     writeOrCompareJson(ANCHOR_JSON, anchor);
-    writeOrCompareBytes(ANCHOR_MD, buildAnchorMd(anchor).getBytes(StandardCharsets.UTF_8));
+    writeOrCompareBytes(ANCHOR_MD, buildAnchorMdBytes(anchor));
     System.out.println(
         "[label-sheet] rows="
             + bundle.rows().size()
+            + " actualPerQuery="
+            + bundle.actualPerQuery()
             + " missingText="
             + bundle.missingRows()
             + " labelsStatus="
             + outcome.status()
             + " scenarios="
-            + outcome.scenarios().size());
+            + outcome.scenarios().size()
+            + " tieDetected="
+            + outcome.tieDetected());
     if (STATUS_AWAITING.equals(outcome.status())) {
       assertEquals(0, outcome.scenarios().size(), "未填标签时三情景必须为空（不得填假分数）");
+      assertFalse(outcome.tieDetected(), "标签未填时无指标可比，不得声称打平");
     } else {
       assertEquals(SCENARIO_KEYS.size(), outcome.scenarios().size(), "三情景必须并列产出");
     }
@@ -164,23 +186,22 @@ class LabelSheetNearDupRelevanceTest {
     assertEquals(STATUS_COLLECTED, accepted.status(), "合法合成标签必须通过校验");
     assertEquals(SCENARIO_KEYS.size(), accepted.scenarios().size(), "通过后必须产出三情景");
 
+    String firstRow = bundle.rows().get(0).rowId();
+    assertRejected(bundle, tempDir, "blank-relevance", withField(valid, firstRow, 7, ""), firstRow);
     assertRejected(
-        bundle, tempDir, "blank-relevance", withField(valid, "q0:9820", 7, ""), "q0:9820");
-    assertRejected(
-        bundle, tempDir, "relevance-range", withField(valid, "q0:9820", 7, "3"), "q0:9820");
-    assertRejected(
-        bundle, tempDir, "near-dup-value", withField(valid, "q0:9820", 8, "X"), "q0:9820");
+        bundle, tempDir, "relevance-range", withField(valid, firstRow, 7, "3"), firstRow);
+    assertRejected(bundle, tempDir, "near-dup-value", withField(valid, firstRow, 8, "X"), firstRow);
     assertRejected(
         bundle,
         tempDir,
         "agent-annotator",
-        withField(valid, "q0:9820", 9, "ai-labeler"),
+        withField(valid, firstRow, 9, "ai-labeler"),
         "ai-labeler");
-    assertRejected(bundle, tempDir, "blank-date", withField(valid, "q0:9820", 10, ""), "q0:9820");
+    assertRejected(bundle, tempDir, "blank-date", withField(valid, firstRow, 10, ""), firstRow);
     assertRejected(
-        bundle, tempDir, "bad-date", withField(valid, "q0:9820", 10, "2026-13-40"), "2026-13-40");
-    assertRejected(bundle, tempDir, "row-id", withField(valid, "q0:9820", 0, "q0:9999"), "q0:9999");
-    assertRejected(bundle, tempDir, "duplicate-row", withDuplicate(valid, "q0:9820"), "q0:9820");
+        bundle, tempDir, "bad-date", withField(valid, firstRow, 10, "2026-13-40"), "2026-13-40");
+    assertRejected(bundle, tempDir, "row-id", withField(valid, firstRow, 0, "q0:9999"), "q0:9999");
+    assertRejected(bundle, tempDir, "duplicate-row", withDuplicate(valid, firstRow), firstRow);
   }
 
   @Test
@@ -208,221 +229,447 @@ class LabelSheetNearDupRelevanceTest {
       assertEquals(
           0.6d,
           score.precisionAt5(),
-          "本合成标签下每查询 3/5 行相关（名次 1–2 记 2、名次 3 记 1、名次 4–5 记 0）⇒ precision@5 = 0.6");
+          "本合成标签下每查询前 5 名里 3 条相关（名次 1–2 记 2、名次 3 记 1）⇒ precision@5 = 3/5");
       assertTrue(score.ndcgAt5() >= 0d && score.ndcgAt5() <= 1d, "NDCG@5 必须落在 [0,1]");
       assertTrue(
           score.ySuppressionRate() == null
               || (score.ySuppressionRate() >= 0d && score.ySuppressionRate() <= 1d),
           "一致率必须落在 [0,1] 或为空");
     }
-    ScenarioScore noDownweight =
-        outcome.scenarios().stream()
-            .filter(score -> score.key().equals("no-downweight"))
-            .findFirst()
-            .orElseThrow();
-    assertEquals(6, noDownweight.yTotal(), "合成标签把每条查询的名次 1 记为 Y ⇒ 6 条 Y");
+    ScenarioScore noDownweight = scenarioOf(outcome, "no-downweight");
+    assertEquals(QUERY_COUNT, noDownweight.yTotal(), "合成标签把每条查询的名次 1 记为 Y ⇒ 6 条 Y");
     assertEquals(0.0d, noDownweight.ySuppressionRate(), "δ=0 情景不压制任何候选");
-    assertTrue(outcome.scenarios().get(0).ySuppressionRate() > 0d, "现状情景下至少一条 Y 候选被压制（Y 才有一致率可言）");
+    ScenarioScore current = scenarioOf(outcome, "current-0982");
+    assertTrue(
+        current.ySuppressed() > 0 && current.ySuppressed() < current.yTotal(),
+        "现状情景下部分 Y 候选被压制（q0–q2 的名次 1 是带内图像，q3–q5 的是同图）");
     assertEquals(
-        outcome.scenarios().get(0).precisionAt5(),
-        outcome.scenarios().get(1).precisionAt5(),
+        current.precisionAt5(),
+        scenarioOf(outcome, "floor-090").precisionAt5(),
         "本语料三情景排序一致 ⇒ precision@5 必须相同（不做排序、不造差异）");
+    assertEquals(
+        current.precisionAt5(),
+        noDownweight.precisionAt5(),
+        "本语料三情景排序一致 ⇒ precision@5 必须相同（不做排序、不造差异）");
+  }
+
+  @Test
+  @DisplayName("池深：请求 10、实测逐查询如实记条数（不足 10 不凑数），行 id 与名次升序")
+  void poolDepthIsMeasuredNotPadded() throws Exception {
+    Bundle bundle = buildBundle();
+    List<Integer> perQuery = bundle.actualPerQuery();
+    assertEquals(QUERY_COUNT, perQuery.size(), "逐查询条数必须 6 项");
+    int total = 0;
+    for (int count : perQuery) {
+      assertTrue(
+          count > 0 && count <= REQUESTED_DEPTH,
+          "每查询实际条数必须在 1.." + REQUESTED_DEPTH + "（实测 " + count + "）");
+      total += count;
+    }
+    assertEquals(total, bundle.rows().size(), "行数必须等于逐查询条数之和");
+    assertEquals(REQUESTED_DEPTH, bundle.requestedDepth(), "请求池深必须入包（Owner 拍板 10）");
+    for (int index = 0; index < QUERY_COUNT; index++) {
+      int queryIndex = index;
+      List<Integer> ranks =
+          bundle.rows().stream()
+              .filter(row -> row.queryIndex() == queryIndex)
+              .map(SheetRow::currentRank)
+              .toList();
+      assertEquals(
+          IntStream.rangeClosed(1, perQuery.get(index)).boxed().toList(),
+          ranks,
+          "行序必须是 currentRank 升序且 1..k 连续（q" + index + "）");
+    }
   }
 
   // ==================== 腿 A · 材料与重建 ====================
 
-  /** 生成一份完整包（CSV 字节 / README 字节 / 30 行 / 重建结果 / 冻结锚）。纯函数：不写盘、不读本地产物。 */
+  /** 生成一份完整包（CSV 字节 / README 字节 / 行 / 重建结果 / 冻结锚）。纯函数：不写盘。 */
   static Bundle buildBundle() throws Exception {
     ObjectNode bandEntry = (ObjectNode) readJson(BAND_ENTRY);
     assertInputs(bandEntry);
-    Reconstruction reconstruction = reconstruct(bandEntry);
-    reconcile(bandEntry, reconstruction);
+    Material material = material(bandEntry);
+    Rebuild rebuild = rebuild(bandEntry, material);
+    reconcile(bandEntry, rebuild);
     Map<String, JsonNode> imageByChunk = new LinkedHashMap<>();
     for (JsonNode node : bandEntry.path("corpusMaterial").path("imageRecords")) {
       imageByChunk.put(node.path("chunkId").asText(), node);
     }
     List<SheetRow> rows = new ArrayList<>();
-    Map<String, Double> fusedA = new LinkedHashMap<>();
+    List<Integer> actualPerQuery = new ArrayList<>();
     List<String> missingIds = new ArrayList<>();
     for (JsonNode query : bandEntry.path("queries")) {
       int queryIndex = query.path("index").asInt();
       String queryText = query.path("text").asText();
-      List<JsonNode> candidates = new ArrayList<>();
-      for (JsonNode candidate : bandEntry.path("candidates")) {
-        if (candidate.path("queryIndex").asInt() == queryIndex) {
-          candidates.add(candidate);
-        }
-      }
-      assertEquals(
-          TOP_K,
-          candidates.size(),
-          "每条查询必须恰有 " + TOP_K + " 个现行候选（不足就如实减少，本语料实测为满额）: q" + queryIndex);
+      List<Candidate> ranked = rebuild.ranked(queryIndex, "current-0982");
+      actualPerQuery.add(ranked.size());
       int currentRank = 1;
-      for (JsonNode candidate : candidates) {
-        assertEquals(
-            currentRank,
-            candidate.path("rankB").asInt(),
-            "行顺序必须等于现行名次（rankB 升序，不打乱、不按 cos 排）: q" + queryIndex);
-        String chunkId = candidate.path("chunkId").asText().replace("IMAGE:", "");
-        JsonNode record = imageByChunk.get(chunkId);
-        assertNotNull(record, "候选切片必须在冻结 corpusMaterial.imageRecords 内: " + chunkId);
+      for (Candidate candidate : ranked) {
+        JsonNode record = imageByChunk.get(candidate.chunkId());
+        assertNotNull(record, "候选切片必须在冻结 corpusMaterial.imageRecords 内: " + candidate.chunkId());
         JsonNode metadata = record.path("metadata");
         String candidateText = flattenText(record.path("text").asText(""));
         String fileName = metadata.path("filename").asText("");
         int pageNo = metadata.path("pageNo").asInt(0);
-        assertFalse(fileName.isBlank(), "候选文件名缺失: " + chunkId);
-        assertTrue(pageNo > 0, "候选页码缺失: " + chunkId);
-        String rowId = rowId(queryIndex, chunkId);
+        assertFalse(fileName.isBlank(), "候选文件名缺失: " + candidate.chunkId());
+        assertTrue(pageNo > 0, "候选页码缺失: " + candidate.chunkId());
+        String rowId = rowId(queryIndex, candidate.chunkId());
         if (candidateText.isBlank()) {
           missingIds.add(rowId);
         }
         rows.add(
             new SheetRow(
                 rowId, queryIndex, queryText, candidateText, fileName, pageNo, currentRank));
-        fusedA.put(rowId, candidate.path("fusedA").asDouble());
         currentRank++;
       }
     }
-    assertEquals(ROW_COUNT, rows.size(), "标注包必须恰 " + ROW_COUNT + " 行");
     assertEquals(
-        ROW_COUNT, new LinkedHashSet<>(rows.stream().map(SheetRow::rowId).toList()).size());
+        actualPerQuery.stream().mapToInt(Integer::intValue).sum(),
+        rows.size(),
+        "标注包行数必须等于逐查询实测条数之和");
+    assertEquals(
+        rows.size(), new LinkedHashSet<>(rows.stream().map(SheetRow::rowId).toList()).size());
     assertTrue(
         missingIds.size() <= 3,
         "R7/D5：可读文本缺失 " + missingIds.size() + " 行（> 3）⇒ 停手上报，不降级成只标能标的: " + missingIds);
     byte[] csvBytes = renderCsv(rows).getBytes(StandardCharsets.UTF_8);
-    byte[] readmeBytes = README_TEXT.getBytes(StandardCharsets.UTF_8);
+    byte[] readmeBytes =
+        readmeText(rows.size(), actualPerQuery, caliberSentence()).getBytes(StandardCharsets.UTF_8);
     assertTrue(!new String(csvBytes, StandardCharsets.UTF_8).contains("\r"), "CSV 必须纯 LF");
     assertTrue(!new String(readmeBytes, StandardCharsets.UTF_8).contains("\r"), "README 必须纯 LF");
     return new Bundle(
         List.copyOf(rows),
-        Map.copyOf(fusedA),
         csvBytes,
         readmeBytes,
-        reconstruction,
-        List.copyOf(missingIds));
+        rebuild,
+        List.copyOf(missingIds),
+        List.copyOf(actualPerQuery));
   }
 
   private static void assertInputs(ObjectNode bandEntry) {
     assertEquals(
         "near-dup-band-entry-and-tier-fill", bandEntry.path("card").asText(), "读错冻结锚（card 不符）");
     assertEquals(QUERY_COUNT, bandEntry.path("queries").size(), "冻结锚查询必须 6 条");
-    assertEquals(ROW_COUNT, bandEntry.path("candidates").size(), "冻结锚候选必须 30 行");
-    assertEquals(6, bandEntry.path("corpusMaterial").path("imageRecords").size(), "冻结材料缺图像记录");
+    assertEquals(FROZEN_ROW_COUNT, bandEntry.path("candidates").size(), "冻结锚候选必须 30 行（对账基准）");
     assertEquals(
-        6, bandEntry.path("corpusMaterial").path("queryImageVectors").size(), "冻结材料缺查询图像向量");
-    assertEquals(TOP_K, bandEntry.path("constants").path("topK").asInt(), "生产 topK 必须是 5");
+        QUERY_COUNT, bandEntry.path("corpusMaterial").path("imageRecords").size(), "冻结材料缺图像记录");
+    assertEquals(
+        QUERY_COUNT,
+        bandEntry.path("corpusMaterial").path("textRecords").size(),
+        "冻结材料缺文本记录（文本路无法重建）");
+    assertEquals(
+        QUERY_COUNT,
+        bandEntry.path("corpusMaterial").path("queryImageVectors").size(),
+        "冻结材料缺查询图像向量");
+    assertEquals(
+        QUERY_COUNT,
+        bandEntry.path("corpusMaterial").path("embedCache").size() - QUERY_COUNT,
+        "冻结 embedCache 必须含 6 条查询文本向量（其余为切片文本向量）");
+    assertEquals(
+        FROZEN_CANDIDATES_PER_QUERY,
+        bandEntry.path("constants").path("topK").asInt(),
+        "冻结锚的生产 topK 必须是 5（本表按请求池深 10 重建）");
     assertEquals(
         12, bandEntry.path("windowCheck").path("entries").size(), "冻结锚必须仍记 12 条降权事件（对账基准）");
   }
 
-  /** 用生产类重建图像路候选（顺序与 卡35 同源：search → gate → rerank）。 */
-  private static Reconstruction reconstruct(ObjectNode bandEntry) {
+  /** 冻结材料 + 生产类（文本路 / 图像路两个内存向量集合 + 生产重排器）。 */
+  private static Material material(ObjectNode bandEntry) {
     JsonNode material = bandEntry.path("corpusMaterial");
-    List<NearDupIngestS1IT.StoredRecord> imageRecords = new ArrayList<>();
+    Map<String, NearDupIngestS1IT.StoredRecord> imageByChunk = new LinkedHashMap<>();
+    List<NearDupIngestS1IT.StoredRecord> textRecords = new ArrayList<>();
+    InMemoryVectorStore textStore = new InMemoryVectorStore();
+    InMemoryVectorStore imageStore = new InMemoryVectorStore();
     for (JsonNode node : material.path("imageRecords")) {
-      imageRecords.add(NearDupIngestS1IT.StoredRecord.fromJson(node));
+      NearDupIngestS1IT.StoredRecord record = NearDupIngestS1IT.StoredRecord.fromJson(node);
+      imageByChunk.put(record.chunkId(), record);
+      imageStore.upsert(record.toVectorRecord());
     }
-    Map<Integer, float[]> queryVectors = new LinkedHashMap<>();
+    for (JsonNode node : material.path("textRecords")) {
+      NearDupIngestS1IT.StoredRecord record = NearDupIngestS1IT.StoredRecord.fromJson(node);
+      textRecords.add(record);
+      textStore.upsert(record.toVectorRecord());
+    }
+    assertEquals(imageByChunk.size(), textRecords.size(), "文本记录与图像记录必须一一对应");
+    Map<String, float[]> queryTextVectors = new LinkedHashMap<>();
+    for (JsonNode node : material.path("embedCache")) {
+      queryTextVectors.put(node.path("text").asText(), decodeVector(node.path("vector").asText()));
+    }
+    Map<Integer, float[]> queryImageVectors = new LinkedHashMap<>();
     for (JsonNode node : material.path("queryImageVectors")) {
-      queryVectors.put(node.path("index").asInt(), decodeVector(node.path("vector").asText()));
+      queryImageVectors.put(node.path("index").asInt(), decodeVector(node.path("vector").asText()));
     }
-    InMemoryVectorStore store = new InMemoryVectorStore();
-    imageRecords.forEach(record -> store.upsert(record.toVectorRecord()));
-    Map<String, Object> metadata = imageRecords.get(0).metadata();
+    Map<String, Object> metadata = imageByChunk.values().iterator().next().metadata();
     Map<String, Object> filter =
         Map.of(
             "knowledgeBaseId", String.valueOf(metadata.get("knowledgeBaseId")),
             "category", String.valueOf(metadata.get("category")));
-    double threshold = ImageSimilarityGate.DEFAULT_THRESHOLD;
-    double floor = ImageSimilarityGate.effectiveFloor(threshold);
-    int candidateLimit = TOP_K * CANDIDATE_MULTIPLIER;
-    assertTrue(
-        imageRecords.size() <= candidateLimit,
-        "图像记录数 " + imageRecords.size() + " 超过召回上限 " + candidateLimit);
     DefaultWeightedReranker reranker =
         new DefaultWeightedReranker(
             new Bm25Scorer(),
             RagBenchmarkPipelineFactory.provider(
                 RagBenchmarkPipelineFactory.dynamicConfig(bandConfigMatrix())));
-    List<RebuiltRow> rows = new ArrayList<>();
+    return new Material(
+        Map.copyOf(imageByChunk),
+        textStore,
+        imageStore,
+        Map.copyOf(queryTextVectors),
+        Map.copyOf(queryImageVectors),
+        reranker,
+        filter);
+  }
+
+  /** 按生产语义重建候选池：文本路 + 图像路 → 融合（文本 0.70 / 图像 0.30），三情景各一份融合分。 */
+  private static Rebuild rebuild(ObjectNode bandEntry, Material material) {
+    double threshold = ImageSimilarityGate.DEFAULT_THRESHOLD;
+    int candidateLimit = REQUESTED_DEPTH * CANDIDATE_MULTIPLIER;
+    int floor090GapRows = 0;
+    Map<Integer, List<Candidate>> byQuery = new LinkedHashMap<>();
     for (JsonNode query : bandEntry.path("queries")) {
       int queryIndex = query.path("index").asInt();
-      String text = query.path("text").asText();
-      float[] vector = queryVectors.get(queryIndex);
-      assertNotNull(vector, "缺 queryIndex=" + queryIndex + " 的查询图像向量");
-      List<RetrievalCandidate> recalled =
-          store.search(new VectorSearchRequest(vector, candidateLimit, floor, filter)).stream()
-              .filter(result -> result.text() != null && !result.text().isBlank())
-              .map(result -> new RetrievalCandidate(result, result.score()))
-              .toList();
-      List<RetrievalCandidate> gated = ImageSimilarityGate.gate(recalled, threshold);
-      List<RetrievalCandidate> reranked = reranker.rerank(text, gated);
-      assertEquals(gated.size(), reranked.size(), "重排必须保序且不增删: q" + queryIndex);
-      for (int index = 0; index < gated.size(); index++) {
-        VectorSearchHit hit = gated.get(index).hit();
-        rows.add(
-            new RebuiltRow(
+      String queryText = query.path("text").asText();
+      float[] textVector = material.queryTextVectors().get(queryText);
+      assertNotNull(textVector, "冻结 embedCache 缺查询文本向量 ⇒ 文本路无法零外呼重建（不得退化成只算图像路）: q" + queryIndex);
+      Map<String, Double> textScores = textRoute(material, textVector, queryText, candidateLimit);
+      assertFalse(textScores.isEmpty(), "文本路召回为空（语料/过滤口径变了？）: q" + queryIndex);
+      Map<String, ImageHit> imageHits =
+          imageRoute(
+              material,
+              material.queryImageVectors().get(queryIndex),
+              queryText,
+              candidateLimit,
+              ImageSimilarityGate.effectiveFloor(threshold),
+              false);
+      Map<String, ImageHit> floor090Hits =
+          imageRoute(
+              material,
+              material.queryImageVectors().get(queryIndex),
+              queryText,
+              candidateLimit,
+              FLOOR_090,
+              true);
+      List<Candidate> candidates = new ArrayList<>();
+      for (Map.Entry<String, Double> entry : textScores.entrySet()) {
+        String chunkId = entry.getKey();
+        double rText = entry.getValue();
+        double rImage = 0d;
+        double weight = 1d;
+        String tier = null;
+        String band = null;
+        Double cos = null;
+        ImageHit hit = imageHits.get(chunkId);
+        if (hit != null) {
+          cos = hit.cosine();
+          rImage = hit.rerankScore();
+          tier = hit.tier();
+          band = hit.band();
+          weight = hit.weight();
+        }
+        double rImage090 = 0d;
+        double weight090 = 1d;
+        ImageHit hit090 = floor090Hits.get(chunkId);
+        if (hit090 != null) {
+          rImage090 = hit090.rerankScore();
+          weight090 = hit090.weight();
+          if (ImageSimilarityGate.TIER_NEAR_DUPLICATE.equals(hit090.tier())
+              && hit090.band() == null) {
+            floor090GapRows++;
+          }
+        }
+        candidates.add(
+            new Candidate(
                 queryIndex,
-                hit.chunkId(),
-                hit.score(),
-                stringOf(hit.metadata().get(ImageSimilarityGate.TIER_METADATA_KEY)),
-                stringOf(hit.metadata().get(ImageSimilarityGate.BAND_METADATA_KEY)),
-                reranked.get(index).rerankScore()));
+                chunkId,
+                rText,
+                cos,
+                rImage,
+                tier,
+                band,
+                weight,
+                rImage090,
+                weight090,
+                TEXT_ROUTE_WEIGHT * rText + IMAGE_ROUTE_WEIGHT * weight * rImage,
+                TEXT_ROUTE_WEIGHT * rText + IMAGE_ROUTE_WEIGHT * rImage,
+                TEXT_ROUTE_WEIGHT * rText + IMAGE_ROUTE_WEIGHT * weight090 * rImage090));
       }
+      assertTrue(
+          candidates.size() <= REQUESTED_DEPTH,
+          "请求池深 " + REQUESTED_DEPTH + " 内实测 " + candidates.size() + " 条（q" + queryIndex + "）");
+      byQuery.put(queryIndex, List.copyOf(candidates));
     }
-    assertTrue(rows.size() > 0, "图像路重建结果不得为空");
-    return new Reconstruction(List.copyOf(rows));
+    return new Rebuild(Map.copyOf(byQuery), candidateLimit, floor090GapRows);
+  }
+
+  /** 文本路：冻结文本向量召回 → 生产重排（与 {@code KnowledgeRetrievalServiceImpl} 六参构造同序）。 */
+  private static Map<String, Double> textRoute(
+      Material material, float[] queryVector, String queryText, int candidateLimit) {
+    List<RetrievalCandidate> hits =
+        material
+            .textStore()
+            .search(
+                new VectorSearchRequest(
+                    queryVector, candidateLimit, TEXT_MIN_SCORE, material.filter()))
+            .stream()
+            .filter(hit -> hit.text() != null && !hit.text().isBlank())
+            .map(hit -> new RetrievalCandidate(hit, hit.score()))
+            .toList();
+    Map<String, Double> scores = new LinkedHashMap<>();
+    for (RetrievalCandidate candidate : material.reranker().rerank(queryText, hits)) {
+      scores.put(candidate.hit().chunkId(), candidate.rerankScore());
+    }
+    return scores;
   }
 
   /**
-   * 与冻结锚逐条对账（禁抽样）：{@code cos} / {@code tier} / {@code band} 必须一致；{@code fusedB − fusedA} 必须等于
-   * {@code 0.30 × (1 − w) × r}（容差 1e-9），即生产重排分 r 必须能反推锚里记录的降权位移。
+   * 图像路：冻结查询图像向量召回（下限 = 生产准入下限或 0.90）→ 分档 → 生产重排。 {@code floor090 = false} 用生产 {@link
+   * ImageSimilarityGate#gate}；{@code true} 用 0.90 口径（阈值仍 0.9944，只降准入下限）。
    */
-  private static void reconcile(ObjectNode bandEntry, Reconstruction reconstruction) {
-    Map<String, RebuiltRow> rebuilt = new LinkedHashMap<>();
-    for (RebuiltRow row : reconstruction.rows()) {
-      rebuilt.put(row.queryIndex() + "|" + row.chunkId(), row);
+  private static Map<String, ImageHit> imageRoute(
+      Material material,
+      float[] queryVector,
+      String queryText,
+      int candidateLimit,
+      double floor,
+      boolean floor090) {
+    double threshold = ImageSimilarityGate.DEFAULT_THRESHOLD;
+    List<RetrievalCandidate> recalled =
+        material
+            .imageStore()
+            .search(new VectorSearchRequest(queryVector, candidateLimit, floor, material.filter()))
+            .stream()
+            .filter(result -> result.text() != null && !result.text().isBlank())
+            .map(result -> new RetrievalCandidate(result, result.score()))
+            .toList();
+    Map<String, ImageHit> hits = new LinkedHashMap<>();
+    if (!floor090) {
+      List<RetrievalCandidate> gated = ImageSimilarityGate.gate(recalled, threshold);
+      for (RetrievalCandidate candidate : material.reranker().rerank(queryText, gated)) {
+        String band =
+            stringOf(candidate.hit().metadata().get(ImageSimilarityGate.BAND_METADATA_KEY));
+        hits.put(
+            candidate.hit().chunkId(),
+            new ImageHit(
+                candidate.hit().score(),
+                stringOf(candidate.hit().metadata().get(ImageSimilarityGate.TIER_METADATA_KEY)),
+                band,
+                band == null ? 1d : ImageSimilarityGate.weightOfBand(band),
+                candidate.rerankScore()));
+      }
+      return hits;
     }
-    int reconciled = 0;
-    for (JsonNode candidate : bandEntry.path("candidates")) {
-      int queryIndex = candidate.path("queryIndex").asInt();
-      String chunkId = candidate.path("chunkId").asText().replace("IMAGE:", "");
-      RebuiltRow row = rebuilt.get(queryIndex + "|" + chunkId);
-      JsonNode cos = candidate.path("cos");
-      if (cos.isNull() || cos.isMissingNode()) {
-        assertTrue(row == null, "锚内未走图像路的候选不得出现在重建结果里: q" + queryIndex + " " + chunkId);
+    List<RetrievalCandidate> admitted = new ArrayList<>();
+    Map<String, String[]> labels = new LinkedHashMap<>();
+    for (RetrievalCandidate candidate : recalled) {
+      double cosine = candidate.hit().score();
+      String tier =
+          cosine >= threshold
+              ? ImageSimilarityGate.TIER_SAME_IMAGE
+              : (cosine >= FLOOR_090
+                  ? ImageSimilarityGate.TIER_NEAR_DUPLICATE
+                  : ImageSimilarityGate.TIER_CROSS_IMAGE);
+      if (ImageSimilarityGate.TIER_CROSS_IMAGE.equals(tier)) {
         continue;
       }
-      assertNotNull(row, "重建缺行（图像路候选不完整）: q" + queryIndex + " " + chunkId);
-      assertEquals(cos.asDouble(), row.cos(), 1e-12d, "cos 不符: q" + queryIndex + " " + chunkId);
-      assertEquals(
-          nullableText(candidate.path("tier")),
-          row.tier(),
-          "tier 不符: q" + queryIndex + " " + chunkId);
-      assertEquals(
-          nullableText(candidate.path("band")),
-          row.band(),
-          "band 不符: q" + queryIndex + " " + chunkId);
-      double weight = row.band() == null ? 1d : ImageSimilarityGate.weightOfBand(row.band());
-      double expectedDelta = IMAGE_ROUTE_WEIGHT * (1d - weight) * row.r();
-      assertEquals(
-          expectedDelta,
-          candidate.path("fusedB").asDouble() - candidate.path("fusedA").asDouble(),
-          TOLERANCE,
-          "降权位移必须等于 0.30 × (1 − w) × r: q" + queryIndex + " " + chunkId);
-      reconciled++;
+      boolean same = ImageSimilarityGate.TIER_SAME_IMAGE.equals(tier);
+      // [0.90, 0.982) 区间生产 bandOf 未定义（内边界以 0.9887 为基准），沿用生产 weightOfBand(null) 回落最低档
+      String band = same ? null : ImageSimilarityGate.bandOf(cosine, threshold);
+      labels.put(candidate.hit().chunkId(), new String[] {tier, band});
+      admitted.add(candidate);
     }
-    assertEquals(reconstruction.rows().size(), reconciled, "重建行必须与锚内图像路候选一一对应（不多不少）");
+    for (RetrievalCandidate candidate : material.reranker().rerank(queryText, admitted)) {
+      String[] label = labels.get(candidate.hit().chunkId());
+      boolean same = ImageSimilarityGate.TIER_SAME_IMAGE.equals(label[0]);
+      hits.put(
+          candidate.hit().chunkId(),
+          new ImageHit(
+              candidate.hit().score(),
+              label[0],
+              label[1],
+              same ? 1d : ImageSimilarityGate.weightOfBand(label[1]),
+              candidate.rerankScore()));
+    }
+    return hits;
+  }
+
+  /**
+   * 与冻结锚逐条对账（禁抽样）：{@code cos} / {@code tier} / {@code band} 必须一致；现状融合分必须等于 {@code fusedA}、
+   * 无降权融合分必须等于 {@code fusedB}（容差 1e-12）；冻结 top-5 顺序必须等于现状重算顺序；12 条降权事件的位移必须等于 0.30 × (1 − w) × r。
+   */
+  private static void reconcile(ObjectNode bandEntry, Rebuild rebuild) {
+    int reconciled = 0;
+    int noDownweight = 0;
+    int imageRows = 0;
+    for (JsonNode frozenCandidate : bandEntry.path("candidates")) {
+      int queryIndex = frozenCandidate.path("queryIndex").asInt();
+      String chunkId = frozenCandidate.path("chunkId").asText().replace("IMAGE:", "");
+      Candidate built = rebuild.find(queryIndex, chunkId);
+      assertNotNull(built, "重算缺行（冻结候选必须落在重建池内）: q" + queryIndex + " " + chunkId);
+      JsonNode cos = frozenCandidate.path("cos");
+      if (cos.isNull() || cos.isMissingNode()) {
+        assertNull(built.cos(), "锚内未走图像路的候选不得有图像余弦: q" + queryIndex + " " + chunkId);
+        assertEquals(
+            0d, built.rImage(), TOLERANCE, "锚内未走图像路的候选不得有图像分: q" + queryIndex + " " + chunkId);
+      } else {
+        imageRows++;
+        assertEquals(
+            cos.asDouble(), built.cos(), TOLERANCE, "cos 不符: q" + queryIndex + " " + chunkId);
+        assertEquals(
+            nullableText(frozenCandidate.path("tier")),
+            built.tier(),
+            "tier 不符: q" + queryIndex + " " + chunkId);
+        assertEquals(
+            nullableText(frozenCandidate.path("band")),
+            built.band(),
+            "band 不符: q" + queryIndex + " " + chunkId);
+      }
+      assertEquals(
+          frozenCandidate.path("fusedA").asDouble(),
+          built.fusedCurrent(),
+          TOLERANCE,
+          "现状融合分必须等于锚内 fusedA（0.70 × 文本路 + 0.30 × w × 图像路）: q" + queryIndex + " " + chunkId);
+      reconciled++;
+      assertEquals(
+          frozenCandidate.path("fusedB").asDouble(),
+          built.fusedNoDown(),
+          TOLERANCE,
+          "无降权融合分必须等于锚内 fusedB（0.70 × 文本路 + 0.30 × 图像路）: q" + queryIndex + " " + chunkId);
+      noDownweight++;
+      assertEquals(
+          frozenCandidate.path("downWeighted").asBoolean(),
+          built.weight() < 1d,
+          "降权标记必须与重算权重一致: q" + queryIndex + " " + chunkId);
+    }
+    assertEquals(FROZEN_ROW_COUNT, reconciled, "冻结 30 条候选必须逐条对账");
+    assertEquals(FROZEN_ROW_COUNT, noDownweight, "冻结 30 条候选的两种融合分都必须逐条对账");
+    assertEquals(FROZEN_IMAGE_ROUTE_ROWS, imageRows, "冻结锚内图像路候选必须 15 行（对账基准）");
+    for (JsonNode query : bandEntry.path("queries")) {
+      int queryIndex = query.path("index").asInt();
+      List<JsonNode> frozen = new ArrayList<>();
+      for (JsonNode candidate : bandEntry.path("candidates")) {
+        if (candidate.path("queryIndex").asInt() == queryIndex) {
+          frozen.add(candidate);
+        }
+      }
+      frozen.sort(Comparator.comparingInt(node -> node.path("rankB").asInt()));
+      List<String> frozenOrder = new ArrayList<>();
+      frozen.forEach(node -> frozenOrder.add(node.path("chunkId").asText().replace("IMAGE:", "")));
+      List<String> rebuiltOrder =
+          rebuild.ranked(queryIndex, "current-0982").stream()
+              .map(Candidate::chunkId)
+              .limit(FROZEN_CANDIDATES_PER_QUERY)
+              .toList();
+      assertEquals(frozenOrder, rebuiltOrder, "冻结 top-5 顺序必须等于现状重算顺序（禁打乱）: q" + queryIndex);
+    }
     for (JsonNode entry : bandEntry.path("windowCheck").path("entries")) {
       int queryIndex = entry.path("queryIndex").asInt();
       String chunkId = entry.path("chunkId").asText().replace("IMAGE:", "");
-      RebuiltRow row = rebuilt.get(queryIndex + "|" + chunkId);
-      assertNotNull(row, "12 条降权事件必须能定位到重建候选: q" + queryIndex + " " + chunkId);
+      Candidate built = rebuild.find(queryIndex, chunkId);
+      assertNotNull(built, "12 条降权事件必须能定位到重建候选: q" + queryIndex + " " + chunkId);
       assertEquals(
           entry.path("delta").asDouble(),
-          IMAGE_ROUTE_WEIGHT * (1d - entry.path("weight").asDouble()) * row.r(),
+          IMAGE_ROUTE_WEIGHT * (1d - entry.path("weight").asDouble()) * built.rImage(),
           TOLERANCE,
-          "windowCheck.delta 必须与本地重算一致: q" + queryIndex + " " + chunkId);
+          "windowCheck.delta 必须等于 0.30 × (1 − w) × r: q" + queryIndex + " " + chunkId);
     }
   }
 
@@ -448,7 +695,7 @@ class LabelSheetNearDupRelevanceTest {
       }
     }
     if (allBlank) {
-      return new LabelsOutcome(STATUS_AWAITING, "", "", List.of());
+      return new LabelsOutcome(STATUS_AWAITING, "", "", List.of(), false, "");
     }
     List<String> errors = validate(bundle.rows(), labels);
     if (!errors.isEmpty()) {
@@ -456,7 +703,9 @@ class LabelSheetNearDupRelevanceTest {
     }
     String annotator = labels.get(0).annotator();
     String annotatedOn = labels.get(0).annotatedOn();
-    return new LabelsOutcome(STATUS_COLLECTED, annotator, annotatedOn, score(bundle, labels));
+    List<ScenarioScore> scores = score(bundle, labels);
+    return new LabelsOutcome(
+        STATUS_COLLECTED, annotator, annotatedOn, scores, tieDetected(scores), tieNote(scores));
   }
 
   private static List<LabelRow> toLabels(List<List<String>> records) {
@@ -539,7 +788,7 @@ class LabelSheetNearDupRelevanceTest {
     }
     for (SheetRow row : sheet) {
       if (!seen.containsKey(row.rowId())) {
-        errors.add("缺行（rowId=" + row.rowId() + "）：包内 30 行必须逐行给出标签");
+        errors.add("缺行（rowId=" + row.rowId() + "）：包内 " + sheet.size() + " 行必须逐行给出标签");
       }
     }
     Set<String> annotators = new LinkedHashSet<>();
@@ -561,7 +810,7 @@ class LabelSheetNearDupRelevanceTest {
     return errors;
   }
 
-  /** 三情景并列打分：每情景给 precision@5、NDCG@5、`Y` 候选被压制一致率。 */
+  /** 三情景并列打分：全池重排后取前 5（分母 = min(5, 池内条数)），另给 `Y` 候选被压制一致率。 */
   private static List<ScenarioScore> score(Bundle bundle, List<LabelRow> labels) {
     Map<String, LabelRow> byId = new LinkedHashMap<>();
     for (LabelRow label : labels) {
@@ -569,39 +818,42 @@ class LabelSheetNearDupRelevanceTest {
     }
     List<ScenarioScore> scores = new ArrayList<>();
     for (String key : SCENARIO_KEYS) {
-      Map<Integer, List<RankedRow>> ranked = rank(key, bundle);
       double precisionSum = 0d;
       double ndcgSum = 0d;
-      List<String> top5 = new ArrayList<>();
-      for (Map.Entry<Integer, List<RankedRow>> entry : ranked.entrySet()) {
-        List<RankedRow> rows = entry.getValue();
-        assertEquals(TOP_K, rows.size(), "情景 " + key + " 下每条查询必须仍可评 5 行（q" + entry.getKey() + "）");
+      int queryCount = 0;
+      List<String> top = new ArrayList<>();
+      for (int queryIndex = 0; queryIndex < QUERY_COUNT; queryIndex++) {
+        List<Candidate> ranked = bundle.rebuild().ranked(queryIndex, key);
+        int window = Math.min(METRIC_WINDOW, ranked.size());
+        assertTrue(window > 0, "情景 " + key + " 下每查询必须有候选（q" + queryIndex + "）");
         List<Integer> relevance = new ArrayList<>();
-        List<String> rowIds = new ArrayList<>();
-        for (RankedRow row : rows) {
-          relevance.add(Integer.parseInt(byId.get(row.row().rowId()).relevance()));
-          rowIds.add(row.row().rowId());
+        for (int index = 0; index < window; index++) {
+          Candidate candidate = ranked.get(index);
+          String rowId = rowId(queryIndex, candidate.chunkId());
+          relevance.add(Integer.parseInt(byId.get(rowId).relevance()));
+          top.add(rowId);
         }
         int relevant = 0;
         for (int value : relevance) {
           relevant += value >= 1 ? 1 : 0;
         }
-        precisionSum += (double) relevant / TOP_K;
+        precisionSum += (double) relevant / window;
         ndcgSum += ndcg(relevance);
-        top5.addAll(rowIds);
+        queryCount++;
       }
       int yTotal = 0;
       int ySuppressed = 0;
-      for (String rowId : bundle.rows().stream().map(SheetRow::rowId).toList()) {
-        if (!"Y".equals(byId.get(rowId).isNearDuplicate())) {
+      for (SheetRow row : bundle.rows()) {
+        if (!"Y".equals(byId.get(row.rowId()).isNearDuplicate())) {
           continue;
         }
         yTotal++;
-        if (suppressed(key, bundle, rowId)) {
+        Candidate candidate = bundle.rebuild().find(row.queryIndex(), chunkOf(row.rowId()));
+        assertNotNull(candidate, "打分器找不到候选: " + row.rowId());
+        if (candidate.weightFor(key) < 1d) {
           ySuppressed++;
         }
       }
-      int queryCount = ranked.size();
       scores.add(
           new ScenarioScore(
               key,
@@ -611,83 +863,43 @@ class LabelSheetNearDupRelevanceTest {
               yTotal == 0 ? null : round((double) ySuppressed / yTotal),
               ySuppressed,
               yTotal,
-              List.copyOf(top5)));
+              List.copyOf(top)));
     }
     return List.copyOf(scores);
   }
 
-  /** 按情景重算每行 fused 分并排序（不写回 CSV，纯内存）。 */
-  private static Map<Integer, List<RankedRow>> rank(String key, Bundle bundle) {
-    Map<Integer, List<RankedRow>> ranked = new LinkedHashMap<>();
-    for (SheetRow row : bundle.rows()) {
-      RowScore rowScore = rowScore(key, row, bundle);
-      if (rowScore.weight() <= 0d) {
-        throw new IllegalStateException("情景 " + key + " 下候选被准入下限过滤（本语料不应发生）: " + row.rowId());
+  /** 三情景在 precision@5 / NDCG@5 / `Y` 压制一致率上全等 ⇒ 打平（{@code proposal §8} 停手条款）。 */
+  private static boolean tieDetected(List<ScenarioScore> scores) {
+    ScenarioScore first = scores.get(0);
+    for (ScenarioScore score : scores) {
+      if (Double.compare(first.precisionAt5(), score.precisionAt5()) != 0
+          || Double.compare(first.ndcgAt5(), score.ndcgAt5()) != 0) {
+        return false;
       }
-      ranked
-          .computeIfAbsent(row.queryIndex(), ignored -> new ArrayList<>())
-          .add(new RankedRow(row, rowScore.score(), rowScore.weight()));
-    }
-    for (List<RankedRow> rows : ranked.values()) {
-      rows.sort(
-          Comparator.comparingDouble(RankedRow::score)
-              .reversed()
-              .thenComparingInt(value -> value.row().currentRank())
-              .thenComparing(value -> value.row().rowId()));
-    }
-    return ranked;
-  }
-
-  private static RowScore rowScore(String key, SheetRow row, Bundle bundle) {
-    double base = bundle.fusedA().get(row.rowId());
-    RebuiltRow rebuilt = bundle.reconstruction().find(row.queryIndex(), chunkOf(row.rowId()));
-    if (rebuilt == null) {
-      return new RowScore(base, 1d);
-    }
-    switch (key) {
-      case "no-downweight" -> {
-        return new RowScore(base, 1d);
-      }
-      case "current-0982" -> {
-        double weight =
-            rebuilt.band() == null ? 1d : ImageSimilarityGate.weightOfBand(rebuilt.band());
-        return new RowScore(base + IMAGE_ROUTE_WEIGHT * (1d - weight) * rebuilt.r(), weight);
-      }
-      case "floor-090" -> {
-        String tier = floor090Tier(rebuilt.cos());
-        if (ImageSimilarityGate.TIER_CROSS_IMAGE.equals(tier)) {
-          return new RowScore(base, 0d);
+      if (first.ySuppressionRate() == null || score.ySuppressionRate() == null) {
+        if (first.ySuppressionRate() != score.ySuppressionRate()) {
+          return false;
         }
-        double weight =
-            ImageSimilarityGate.TIER_NEAR_DUPLICATE.equals(tier)
-                ? ImageSimilarityGate.weightOfBand(
-                    ImageSimilarityGate.bandOf(
-                        rebuilt.cos(), ImageSimilarityGate.DEFAULT_THRESHOLD))
-                : 1d;
-        return new RowScore(base + IMAGE_ROUTE_WEIGHT * (1d - weight) * rebuilt.r(), weight);
+      } else if (Double.compare(first.ySuppressionRate(), score.ySuppressionRate()) != 0) {
+        return false;
       }
-      default -> throw new IllegalArgumentException("未知情景: " + key);
     }
+    return true;
   }
 
-  /** 0.90 口径：阈值不变（0.9944），只把准入下限从 0.982 降到 0.90。 */
-  private static String floor090Tier(double cosine) {
-    if (cosine >= ImageSimilarityGate.DEFAULT_THRESHOLD) {
-      return ImageSimilarityGate.TIER_SAME_IMAGE;
+  private static String tieNote(List<ScenarioScore> scores) {
+    if (!tieDetected(scores)) {
+      return "三情景不全等（至少一项指标有差异）";
     }
-    return cosine >= FLOOR_090
-        ? ImageSimilarityGate.TIER_NEAR_DUPLICATE
-        : ImageSimilarityGate.TIER_CROSS_IMAGE;
+    return "三情景在 precision@5 / NDCG@5 / Y 压制一致率上全等 ⇒ 按 proposal §8 停手上报，不得改口径造差异；"
+        + "原因见锚内 measurableScope.orderInvariantBasis";
   }
 
-  private static boolean suppressed(String key, Bundle bundle, String rowId) {
-    SheetRow row =
-        bundle.rows().stream()
-            .filter(value -> value.rowId().equals(rowId))
-            .findFirst()
-            .orElseThrow();
-    double weight = rowScore(key, row, bundle).weight();
-    return weight > 0d && weight < 1d;
+  private static ScenarioScore scenarioOf(LabelsOutcome outcome, String key) {
+    return outcome.scenarios().stream()
+        .filter(score -> score.key().equals(key))
+        .findFirst()
+        .orElseThrow();
   }
 
   private static double ndcg(List<Integer> relevance) {
@@ -734,13 +946,13 @@ class LabelSheetNearDupRelevanceTest {
   private static String scenarioDefinition(String key) {
     switch (key) {
       case "current-0982" -> {
-        return "tier/band 由生产 ImageSimilarityGate 现算，fused = fusedA + 0.30 × (1 − bandWeight) × r";
+        return "tier/band 由生产 ImageSimilarityGate 现算，融合分 = 0.70 × 文本路 + 0.30 × bandWeight × 图像路";
       }
       case "no-downweight" -> {
-        return "不施加任何 band 降权，fused = fusedA（δ = 0）";
+        return "不施加任何 band 降权，融合分 = 0.70 × 文本路 + 0.30 × 图像路（δ = 0）";
       }
       case "floor-090" -> {
-        return "准入下限降到 0.90（阈值仍 0.9944），按同批候选重算 tier/band/weight 与 δ";
+        return "准入下限降到 0.90（阈值仍 0.9944），按同批候选重算 tier/band/weight 与融合分；[0.90, 0.982) 区间生产 bandOf 未定义，沿用生产 weightOfBand(null) 回落最低档 0.5（实测行数见 reconstructionCheck.floor090UndefinedBandRows）";
       }
       default -> throw new IllegalArgumentException("未知情景: " + key);
     }
@@ -835,7 +1047,11 @@ class LabelSheetNearDupRelevanceTest {
   }
 
   private static void assertSheet(Bundle bundle) {
-    assertEquals(ROW_COUNT, bundle.rows().size(), "标注包必须 30 行");
+    assertTrue(!bundle.rows().isEmpty(), "标注包不得为空");
+    assertEquals(
+        bundle.actualPerQuery().stream().mapToInt(Integer::intValue).sum(),
+        bundle.rows().size(),
+        "行数必须等于逐查询实测条数之和");
     Set<String> ids = new LinkedHashSet<>();
     for (SheetRow row : bundle.rows()) {
       assertTrue(
@@ -843,13 +1059,17 @@ class LabelSheetNearDupRelevanceTest {
       assertTrue(ids.add(row.rowId()), "rowId 必须唯一: " + row.rowId());
       assertFalse(row.candidateText().isBlank(), "候选文本为空白行: " + row.rowId());
       assertFalse(row.queryText().isBlank(), "查询文本为空: " + row.rowId());
-      assertTrue(row.currentRank() >= 1 && row.currentRank() <= TOP_K, "名次越界: " + row.rowId());
+      assertTrue(
+          row.currentRank() >= 1 && row.currentRank() <= REQUESTED_DEPTH, "名次越界: " + row.rowId());
     }
     String csv = new String(bundle.csvBytes(), StandardCharsets.UTF_8);
     for (String forbidden : List.of("近重复", "可疑", "压制")) {
       assertFalse(csv.contains(forbidden), "盲标 CSV 不得出现提示字样「" + forbidden + "」");
     }
-    assertEquals(ROW_COUNT + 1, parseCsv(csv).size(), "CSV 必须 1 行表头 + 30 行数据");
+    assertEquals(bundle.rows().size() + 1, parseCsv(csv).size(), "CSV 必须 1 行表头 + 每行数据");
+    String readme = new String(bundle.readmeBytes(), StandardCharsets.UTF_8);
+    assertTrue(readme.contains(caliberSentence()), "README 必须出现与 md 同一句口径");
+    assertTrue(readme.contains("看不出来"), "README 必须写「看不出来填 U」");
   }
 
   private static String labelCsv(Bundle bundle, Function<SheetRow, String[]> labels) {
@@ -935,6 +1155,7 @@ class LabelSheetNearDupRelevanceTest {
     sheet.put("csv", slash(CSV));
     sheet.put("readme", slash(README));
     sheet.put("rowCount", bundle.rows().size());
+    sheet.put("bytes", bundle.csvBytes().length);
     sheet.put("columnCount", COLUMNS.size());
     ArrayNode columns = sheet.putArray("columns");
     COLUMNS.forEach(columns::add);
@@ -943,22 +1164,24 @@ class LabelSheetNearDupRelevanceTest {
     fillable.add("isNearDuplicate");
     fillable.add("annotator");
     fillable.add("annotatedOn");
-    sheet.put("rowOrder", "queryIndex ASC, currentRank ASC（= 现行名次，不打乱、不按 cos 排）");
+    sheet.put("rowOrder", "queryIndex ASC, currentRank ASC（currentRank = 现状情景全池名次，不打乱、不按 cos 排）");
     sheet.put("sha256", RealPdfAssets.sha256(bundle.csvBytes()));
     sheet.put("readmeSha256", RealPdfAssets.sha256(bundle.readmeBytes()));
     sheet.put("annotator", outcome.annotator());
     sheet.put("annotatedOn", outcome.annotatedOn());
     sheet.put("queryCount", QUERY_COUNT);
-    sheet.put("candidatesPerQuery", TOP_K);
     ObjectNode material = root.putObject("sheetMaterial");
     material.put("queries", "docs/rag-quality/near-dup-band-entry-v1.json#queries[].text（冻结）");
     material.put(
         "candidateIdentityAndOrder",
-        "docs/rag-quality/near-dup-band-entry-v1.json#candidates（生产 top-5，图像路 + 文本路）");
+        "本地上生产链重建（文本路 + 图像路 → 融合）后取请求池深 10；与冻结锚 #candidates 的 30 行逐条对账");
     material.put(
         "candidateText",
         "docs/rag-quality/near-dup-band-entry-v1.json#corpusMaterial.imageRecords[].text（冻结原文；仅把行内换行落成字面 \\n、去行尾空白，便于一行一条记录）");
     material.put("textSuppliedRowCount", bundle.rows().size() - bundle.missingRows());
+    root.set("poolDepth", poolDepth(bundle));
+    root.set("metricCaliber", metricCaliber(bundle));
+    root.set("measurableScope", measurableScope(bundle, outcome));
     root.set("scenarioDefinitions", scenarioDefinitions());
     ArrayNode scenarios = root.putArray("scenarios");
     for (ScenarioScore score : outcome.scenarios()) {
@@ -978,6 +1201,8 @@ class LabelSheetNearDupRelevanceTest {
       ArrayNode top5 = node.putArray("top5RowIds");
       score.top5RowIds().forEach(top5::add);
     }
+    root.put("tieDetected", outcome.tieDetected());
+    root.put("tieNote", outcome.tieNote());
     ObjectNode coverage = root.putObject("textCoverage");
     coverage.put("rowCount", bundle.rows().size());
     coverage.put("rowsWithText", bundle.rows().size() - bundle.missingRows());
@@ -985,16 +1210,23 @@ class LabelSheetNearDupRelevanceTest {
     ArrayNode missing = coverage.putArray("missingRowIds");
     bundle.missingRowIds().forEach(missing::add);
     ObjectNode reconciliation = root.putObject("reconstructionCheck");
-    reconciliation.put("imageRouteRowsRebuilt", bundle.reconstruction().rows().size());
-    reconciliation.put("reconciled", bundle.reconstruction().rows().size());
+    reconciliation.put("frozenCandidates", FROZEN_ROW_COUNT);
+    reconciliation.put("imageRouteRowsRebuilt", FROZEN_IMAGE_ROUTE_ROWS);
+    reconciliation.put("textRouteRowsRebuilt", bundle.rows().size());
+    reconciliation.put("fusedCurrentReconciled", FROZEN_ROW_COUNT);
+    reconciliation.put("fusedNoDownweightReconciled", FROZEN_ROW_COUNT);
+    reconciliation.put("orderingMatchesRankB", true);
+    reconciliation.put("floor090UndefinedBandRows", bundle.rebuild().floor090UndefinedBandRows());
     reconciliation.put("tolerance", TOLERANCE);
     reconciliation.put(
         "method",
-        "生产 InMemoryVectorStore.search → ImageSimilarityGate.gate → DefaultWeightedReranker.rerank（内含生产 Bm25Scorer），逐条比对锚内 cos / tier / band / (fusedB − fusedA)");
+        "生产口径本地重建：冻结 textRecords 向量 + 冻结 embedCache 查询文本向量 → InMemoryVectorStore.search → DefaultWeightedReranker（图像路先 ImageSimilarityGate.gate）→ 融合（文本 0.70 / 图像 0.30），逐条比对锚内 cos / tier / band / fusedA / fusedB");
     ObjectNode residual = root.putObject("residual");
     residual.put("queryCount", QUERY_COUNT);
-    residual.put("candidateCount", ROW_COUNT);
-    residual.put("note", "本锚只对本次 6 查询 × 30 候选成立；不外推到其它语料、其它查询或线上体验。文本路候选的 fusedA 直接取自冻结锚，未在本地重算。");
+    residual.put("rowCount", bundle.rows().size());
+    residual.put(
+        "note",
+        "本锚只对本次 " + QUERY_COUNT + " 查询 × " + bundle.rows().size() + " 行成立；不外推到其它语料、其它查询或线上体验。");
     ObjectNode runtime = root.putObject("runtime");
     runtime.put("externalCalls", 0);
     runtime.put("providerInstances", 0);
@@ -1013,6 +1245,151 @@ class LabelSheetNearDupRelevanceTest {
     band.put("sha256", RealPdfAssets.sha256(Files.readAllBytes(BAND_ENTRY)));
     band.put("readOnly", true);
     return root;
+  }
+
+  /** 池深（F1）：请求深度、逐查询实测条数、合计行数，以及「为什么不足 10」。 */
+  private static ObjectNode poolDepth(Bundle bundle) {
+    ObjectNode node = MAPPER.createObjectNode();
+    node.put("requestedDepth", REQUESTED_DEPTH);
+    ArrayNode perQuery = node.putArray("actualPerQuery");
+    bundle.actualPerQuery().forEach(perQuery::add);
+    node.put("totalRows", bundle.rows().size());
+    node.put("candidateLimit", REQUESTED_DEPTH * CANDIDATE_MULTIPLIER);
+    node.put(
+        "ceilingReason",
+        "语料只有 6 条图像记录（2 base × 3 变体）⇒ 单查询两路去重后最多 6 条；实测 "
+            + bundle.actualPerQuery()
+            + " 为真实上限，不足 10 如实记，不凑数");
+    node.put("rowIdRule", "q{queryIndex}:{chunkId}");
+    node.put("rowOrder", "currentRank ASC（现状情景全池名次 1..k）");
+    return node;
+  }
+
+  /** 指标口径（F3/板规 29）：逐项可 grep，同一句口径在 md 与 README 各出现一次。 */
+  private static ArrayNode metricCaliber(Bundle bundle) {
+    ArrayNode caliber = MAPPER.createArrayNode();
+    caliber.add(
+        caliberItem(
+            "pool",
+            "候选池 = 文本路 ∪ 图像路（fusionKey 去重）按请求池深 "
+                + REQUESTED_DEPTH
+                + " 截断；requestedDepth="
+                + REQUESTED_DEPTH
+                + "、actualPerQuery="
+                + bundle.actualPerQuery()
+                + "、totalRows="
+                + bundle.rows().size()));
+    caliber.add(
+        caliberItem(
+            "precision@5",
+            "每情景先按该情景融合分对全池重排，再取前 5；命中 = relevance ≥ 1；分母 = min(5, 池内条数)（本表每查询池内 6 条 ⇒ 分母 5）"));
+    caliber.add(
+        caliberItem(
+            "ndcg@5",
+            "增益 = 2^relevance − 1；IDCG = 同集合 relevance 降序后的 DCG；折损 = log2(rank+2)，rank 从 1 起"));
+    caliber.add(
+        caliberItem(
+            "ySuppressionAgreement",
+            "分子 = isNearDuplicate=Y 且该情景下 bandWeight < 1（被压制）的候选数；分母 = isNearDuplicate=Y 的候选总数（全池，不只看前 5）"));
+    caliber.add(caliberItem("rounding", "沿用 numericHygiene.metricRounding = round(1e-6)"));
+    return caliber;
+  }
+
+  private static ObjectNode caliberItem(String metric, String caliber) {
+    ObjectNode node = MAPPER.createObjectNode();
+    node.put("metric", metric);
+    node.put("caliber", caliber);
+    return node;
+  }
+
+  /** 可测范围声明（F4）：能答什么、不能答什么，以及本语料实测的位移不变量。 */
+  private static ObjectNode measurableScope(Bundle bundle, LabelsOutcome outcome) {
+    ObjectNode scope = MAPPER.createObjectNode();
+    ObjectNode canAnswer = scope.putObject("canAnswer");
+    canAnswer.put("duplicatePrevalence", "top-5 里 isNearDuplicate=Y 的候选占比（逐查询 + 合计）；标签未填时为空，不预填");
+    canAnswer.put(
+        "ySuppressionAgreement", "isNearDuplicate=Y 的候选里被该情景压制过的比例（分子/分母见 metricCaliber）");
+    canAnswer.put(
+        "nonDuplicatePromotion",
+        "降权是否让非重复候选升进 top-5：池深 " + REQUESTED_DEPTH + " 后此项才可观测（本次实测见 orderInvariant）");
+    ArrayNode cannot = scope.putArray("cannotAnswer");
+    cannot.add("语料仍是程序化 fixture（NearDuplicateCorpus 合成 PDF），不是生产库文档");
+    cannot.add("单人标注，无一致性检验（不做多人 κ、不抽样复核）");
+    cannot.add(
+        "结论只对这 " + QUERY_COUNT + " 查询 × 实测 " + bundle.rows().size() + " 行成立，不外推到别的语料/查询/线上体验");
+    boolean orderInvariant = orderInvariant(bundle);
+    boolean downweightInvariant = sameOrder(bundle, "current-0982", "no-downweight");
+    boolean floor090Invariant = sameOrder(bundle, "current-0982", "floor-090");
+    scope.put("orderInvariant", orderInvariant);
+    scope.put("invariantObserved", orderInvariant);
+    scope.put("downweightOrderInvariant", downweightInvariant);
+    scope.put("floor090OrderInvariant", floor090Invariant);
+    scope.put(
+        "orderInvariantBasis",
+        orderInvariant
+            ? "实测三情景逐查询排序逐行相同（池深 "
+                + REQUESTED_DEPTH
+                + " 实测每查询 "
+                + bundle.actualPerQuery()
+                + " 条仍无跨边界位移）：降权位移（最大 "
+                + maxDownweightShift(bundle)
+                + "）未跨越任何相邻候选间距 ⇒ 主效应在本语料上仍不可观测，如实记不变量，未为了出差异改口径"
+            : "现状 vs 无降权"
+                + (downweightInvariant ? "排序逐行相同" : "排序存在差异")
+                + "（降权位移最大 "
+                + maxDownweightShift(bundle)
+                + "）；现状 vs 0.90 口径"
+                + (floor090Invariant ? "排序逐行相同" : "排序存在差异")
+                + "（0.90 额外准入 "
+                + bundle.rebuild().floor090UndefinedBandRows()
+                + " 行，落在 [0.90, 0.982) 未定档区间，沿用生产 weightOfBand(null) = 0.5）"
+                + "⇒ 三情景并非全等，其中降权本身"
+                + (downweightInvariant ? "仍无跨边界位移" : "已产生跨边界位移"));
+    scope.put("promotionInTop5", !downweightInvariant);
+    scope.put("labelsPending", STATUS_AWAITING.equals(outcome.status()));
+    return scope;
+  }
+
+  /** 两个情景的逐查询排序是否完全相同（与标签无关，纯分数面）。 */
+  private static boolean sameOrder(Bundle bundle, String left, String right) {
+    for (int queryIndex = 0; queryIndex < QUERY_COUNT; queryIndex++) {
+      List<String> leftOrder =
+          bundle.rebuild().ranked(queryIndex, left).stream().map(Candidate::chunkId).toList();
+      List<String> rightOrder =
+          bundle.rebuild().ranked(queryIndex, right).stream().map(Candidate::chunkId).toList();
+      if (!leftOrder.equals(rightOrder)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** 三情景逐查询排序是否完全相同（与标签无关，纯分数面）。 */
+  private static boolean orderInvariant(Bundle bundle) {
+    for (int queryIndex = 0; queryIndex < QUERY_COUNT; queryIndex++) {
+      List<String> base = null;
+      for (String key : SCENARIO_KEYS) {
+        List<String> order =
+            bundle.rebuild().ranked(queryIndex, key).stream().map(Candidate::chunkId).toList();
+        if (base == null) {
+          base = order;
+        } else if (!base.equals(order)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  /** 实测最大降权位移（|现状 − 无降权|，全池）。 */
+  private static double maxDownweightShift(Bundle bundle) {
+    double max = 0d;
+    for (List<Candidate> candidates : bundle.rebuild().byQuery().values()) {
+      for (Candidate candidate : candidates) {
+        max = Math.max(max, Math.abs(candidate.fusedNoDown() - candidate.fusedCurrent()));
+      }
+    }
+    return round(max);
   }
 
   private static ArrayNode scenarioDefinitions() {
@@ -1034,66 +1411,120 @@ class LabelSheetNearDupRelevanceTest {
     JsonNode sheet = anchor.path("sheet");
     JsonNode coverage = anchor.path("textCoverage");
     JsonNode reconciliation = anchor.path("reconstructionCheck");
+    JsonNode poolDepth = anchor.path("poolDepth");
+    JsonNode scope = anchor.path("measurableScope");
     boolean awaiting = STATUS_AWAITING.equals(anchor.path("labelsStatus").asText());
     StringBuilder out = new StringBuilder();
     out.append("# 近重复人标最小包 · v1\n\n");
-    out.append("- 卡：`").append(anchor.path("card").asText()).append("`\n");
-    out.append("- 状态：`").append(anchor.path("labelsStatus").asText()).append("`\n");
+    out.append("- 卡：`")
+        .append(anchor.path("card").asText())
+        .append("` · 状态：`")
+        .append(anchor.path("labelsStatus").asText())
+        .append("`\n");
     out.append("- 标注表：`")
         .append(sheet.path("csv").asText())
         .append("`（")
         .append(sheet.path("rowCount").asInt())
         .append(" 行 × ")
         .append(sheet.path("columnCount").asInt())
-        .append(" 列，末 4 列待人填）\n");
-    out.append("- 填表说明：`").append(sheet.path("readme").asText()).append("`\n");
-    out.append("- CSV sha256：`").append(sheet.path("sha256").asText()).append("`\n");
+        .append(" 列，")
+        .append(sheet.path("bytes").asInt())
+        .append(" 字节，末 4 列待人填）\n");
+    out.append("- 填表说明：`")
+        .append(sheet.path("readme").asText())
+        .append("` · CSV sha256：`")
+        .append(sheet.path("sha256").asText())
+        .append("`\n");
     out.append("- 来源锚：`")
         .append(anchor.path("sourceAnchors").path("bandEntry").path("path").asText())
         .append("`（只读，sha256 `")
         .append(anchor.path("sourceAnchors").path("bandEntry").path("sha256").asText())
-        .append("`）\n\n");
+        .append("`）\n");
+    out.append("- 池深：请求 ")
+        .append(poolDepth.path("requestedDepth").asInt())
+        .append("，实测逐查询 ")
+        .append(poolDepth.path("actualPerQuery").toString())
+        .append("，合计 ")
+        .append(poolDepth.path("totalRows").asInt())
+        .append(" 行（语料 6 条图像记录 ⇒ 每查询上限 6，不凑数）\n\n");
     out.append("## 材料\n\n");
-    out.append("- 6 条查询 × 现行前 5 候选 = ")
-        .append(sheet.path("rowCount").asInt())
-        .append(" 行；行 id `q{queryIndex}:{chunkId}`，行序 = 现行名次（不打乱、不按相似度排）。\n");
-    out.append("- 候选可读文本取自冻结 `corpusMaterial.imageRecords`，缺失 ")
+    out.append(
+            "- 行 id `q{queryIndex}:{chunkId}`，行序 = 现状情景全池名次升序（1..k）；候选文本取自冻结 `corpusMaterial.imageRecords`，缺失 ")
         .append(coverage.path("missingRows").asInt())
         .append(" 行。\n");
-    out.append("- 图像路 cos/tier/band/r 由本地生产类重算，与来源锚逐条对账 ")
-        .append(reconciliation.path("reconciled").asInt())
+    out.append("- 融合面本地重算逐条对账：现状 ")
+        .append(reconciliation.path("fusedCurrentReconciled").asInt())
         .append("/")
+        .append(reconciliation.path("frozenCandidates").asInt())
+        .append("、无降权 ")
+        .append(reconciliation.path("fusedNoDownweightReconciled").asInt())
+        .append("/")
+        .append(reconciliation.path("frozenCandidates").asInt())
+        .append("（图像路 ")
         .append(reconciliation.path("imageRouteRowsRebuilt").asInt())
-        .append("。\n\n");
+        .append(" 行；0.90 口径未定档 ")
+        .append(reconciliation.path("floor090UndefinedBandRows").asInt())
+        .append(" 行）。\n\n");
     out.append("## 三情景（并列，不排序）\n\n");
-    out.append("| 情景 | 排序口径 |\n| --- | --- |\n");
-    out.append("| 现状 | 生产准入下限 0.982 + 三档 band 降权 |\n");
-    out.append("| 无降权 | δ = 0，不施加 band 降权 |\n");
-    out.append("| 0.90 口径 | 准入下限降到 0.90，按同批候选重算 tier/band/weight |\n\n");
+    out.append("- 现状：生产准入下限 0.982 + 三档 band 降权。\n");
+    out.append("- 无降权：δ = 0，不施加 band 降权。\n");
+    out.append("- 0.90 口径：准入下限降到 0.90，按同批候选重算 tier/band/weight。\n\n");
+    out.append("## 口径\n\n");
+    out.append("- ").append(caliberSentence()).append("\n\n");
     out.append("## 当前产出\n\n");
     if (awaiting) {
-      out.append("- 标签未填：三情景指标一律留空，不写任何占位分数。\n");
+      out.append("- 标签未填：三情景指标一律留空，不写任何占位分数。\n\n");
     } else {
+      out.append("- 三情景：");
       for (JsonNode scenario : anchor.path("scenarios")) {
-        out.append("- ")
-            .append(scenario.path("label").asText())
-            .append("：`precisionAt5`=")
+        out.append("`")
+            .append(scenario.path("key").asText())
+            .append("` p@5=")
             .append(scenario.path("precisionAt5").asText())
-            .append("、`ndcgAt5`=")
+            .append("、n@5=")
             .append(scenario.path("ndcgAt5").asText())
-            .append("、`ySuppressionRate`=")
+            .append("、y一致率=")
             .append(scenario.path("ySuppressionRate").asText())
-            .append("\n");
+            .append(" ｜ ");
       }
+      out.setLength(out.length() - 3);
+      out.append("\n");
+      out.append("- 打平检测：`tieDetected`=")
+          .append(anchor.path("tieDetected").asBoolean())
+          .append("（")
+          .append(anchor.path("tieNote").asText())
+          .append("）\n\n");
     }
-    out.append("\n## 边界\n\n");
-    out.append("- 本锚只对本次 6 查询 × 30 候选成立；不外推到其它语料、其它查询或线上体验。\n");
-    out.append("- 零外呼：`externalCalls = 0`；不启 Spring、不调 provider。\n\n");
-    out.append("## 复认证\n\n");
+    out.append("## 可测范围\n\n");
+    out.append("- 能答：top-5 重复占比、Y 压制一致率、降权是否让非重复候选升进 top-5（池深后此项才可观测）。\n");
+    out.append("- 不能答：生产库文档；单人标注无一致性检验；结论只对 ")
+        .append(anchor.path("residual").path("queryCount").asInt())
+        .append(" 查询 × ")
+        .append(anchor.path("residual").path("rowCount").asInt())
+        .append(" 行成立。\n");
+    out.append("- 三情景排序实测")
+        .append(scope.path("orderInvariant").asBoolean() ? "逐行相同" : "并非全相同")
+        .append(" ⇒ `invariantObserved`=")
+        .append(scope.path("invariantObserved").asBoolean())
+        .append("；其中降权面（现状 vs 无降权）")
+        .append(scope.path("downweightOrderInvariant").asBoolean() ? "无跨边界位移" : "有跨边界位移")
+        .append("。\n\n");
+    out.append("## 边界与复认证\n\n");
+    out.append("- 零外呼：`externalCalls = 0`；不启 Spring、不调 provider。\n");
     out.append(
-        "- 写模式：`mvn -B -ntp test -Dtest=LabelSheetNearDupRelevanceTest \"-Dlabel.sheet.write=true\"`\n");
-    out.append("- 默认复跑逐字节一致（JSON 剔除顶层 runtime）。\n");
+        "- 写模式：`mvn -B -ntp test -Dtest=LabelSheetNearDupRelevanceTest \"-Dlabel.sheet.write=true\"`；默认复跑逐字节一致（JSON 剔除顶层 runtime）。\n");
     return out.toString();
+  }
+
+  static byte[] buildAnchorMdBytes(ObjectNode anchor) {
+    return buildAnchorMd(anchor).getBytes(StandardCharsets.UTF_8);
+  }
+
+  /** md 与 README 共用同一句口径（F3：同一句各出现一次）。 */
+  static String caliberSentence() {
+    return "口径：候选全池按各情景融合分重排后取前 5（分母 = min(5, 池内条数)），"
+        + "NDCG@5 增益 2^relevance − 1、IDCG 取同集合 relevance 降序、折损 log2(rank+2)，"
+        + "Y 压制一致率 = 被压制 Y 候选数 / Y 候选总数，舍入 round(1e-6)。";
   }
 
   // ==================== 读写锚（写模式 / 逐字节复算） ====================
@@ -1111,7 +1542,7 @@ class LabelSheetNearDupRelevanceTest {
     assertArrayEquals(
         canonicalBytes(withoutRuntime(node)),
         canonicalBytes(withoutRuntime(onDisk)),
-        "锚与本次全量重算规范化字节不一致（剔除顶层 runtime）: " + path);
+        "落盘锚与重算不一致（可能被手改）: " + path);
     System.out.println("[label-sheet] 默认复跑逐字节一致（JSON 树规范化，剔除顶层 runtime）：" + path);
   }
 
@@ -1231,16 +1662,87 @@ class LabelSheetNearDupRelevanceTest {
     }
   }
 
-  /** 重建的一行图像路候选（r = 生产重排分）。 */
-  record RebuiltRow(
-      int queryIndex, String chunkId, double cos, String tier, String band, double r) {}
+  /** 一条候选的三情景融合分与图像路信息（{@code cos} = 图像路余弦，未走图像路时 null）。 */
+  record Candidate(
+      int queryIndex,
+      String chunkId,
+      double rText,
+      Double cos,
+      double rImage,
+      String tier,
+      String band,
+      double weight,
+      double rImage090,
+      double weight090,
+      double fusedCurrent,
+      double fusedNoDown,
+      double fusedFloor090) {
 
-  /** 图像路重建结果。 */
-  record Reconstruction(List<RebuiltRow> rows) {
+    double fused(String key) {
+      switch (key) {
+        case "current-0982" -> {
+          return fusedCurrent;
+        }
+        case "no-downweight" -> {
+          return fusedNoDown;
+        }
+        case "floor-090" -> {
+          return fusedFloor090;
+        }
+        default -> throw new IllegalArgumentException("未知情景: " + key);
+      }
+    }
 
-    RebuiltRow find(int queryIndex, String chunkId) {
-      return rows.stream()
-          .filter(row -> row.queryIndex() == queryIndex && row.chunkId().equals(chunkId))
+    double weightFor(String key) {
+      switch (key) {
+        case "current-0982" -> {
+          return weight;
+        }
+        case "no-downweight" -> {
+          return 1d;
+        }
+        case "floor-090" -> {
+          return weight090;
+        }
+        default -> throw new IllegalArgumentException("未知情景: " + key);
+      }
+    }
+  }
+
+  /** 图像路命中（cos / tier / band / 已施权重 / 重排分）。 */
+  record ImageHit(double cosine, String tier, String band, double weight, double rerankScore) {}
+
+  /** 冻结材料与生产类装配。 */
+  record Material(
+      Map<String, NearDupIngestS1IT.StoredRecord> imageByChunk,
+      InMemoryVectorStore textStore,
+      InMemoryVectorStore imageStore,
+      Map<String, float[]> queryTextVectors,
+      Map<Integer, float[]> queryImageVectors,
+      DefaultWeightedReranker reranker,
+      Map<String, Object> filter) {}
+
+  /** 重建结果（逐查询候选池 + 候选召回上限 + 0.90 口径未定档行数）。 */
+  record Rebuild(
+      Map<Integer, List<Candidate>> byQuery, int candidateLimit, int floor090UndefinedBandRows) {
+
+    List<Candidate> ranked(int queryIndex, String scenarioKey) {
+      List<Candidate> candidates = byQuery.get(queryIndex);
+      assertNotNull(candidates, "重建缺查询: q" + queryIndex);
+      List<Candidate> sorted = new ArrayList<>(candidates);
+      sorted.sort(
+          Comparator.comparingDouble((Candidate value) -> -value.fused(scenarioKey))
+              .thenComparing(Candidate::chunkId));
+      return List.copyOf(sorted);
+    }
+
+    Candidate find(int queryIndex, String chunkId) {
+      List<Candidate> candidates = byQuery.get(queryIndex);
+      if (candidates == null) {
+        return null;
+      }
+      return candidates.stream()
+          .filter(candidate -> candidate.chunkId().equals(chunkId))
           .findFirst()
           .orElse(null);
     }
@@ -1249,22 +1751,20 @@ class LabelSheetNearDupRelevanceTest {
   /** 一份完整包。 */
   record Bundle(
       List<SheetRow> rows,
-      Map<String, Double> fusedA,
       byte[] csvBytes,
       byte[] readmeBytes,
-      Reconstruction reconstruction,
-      List<String> missingRowIds) {
+      Rebuild rebuild,
+      List<String> missingRowIds,
+      List<Integer> actualPerQuery) {
 
     int missingRows() {
       return missingRowIds.size();
     }
+
+    int requestedDepth() {
+      return REQUESTED_DEPTH;
+    }
   }
-
-  /** 单行的情景得分与已施加权重。 */
-  record RowScore(double score, double weight) {}
-
-  /** 排序后的一行。 */
-  record RankedRow(SheetRow row, double score, double weight) {}
 
   /** 一个情景的指标（未填标签时不构造）。 */
   record ScenarioScore(
@@ -1279,48 +1779,67 @@ class LabelSheetNearDupRelevanceTest {
 
   /** 打分器结论。 */
   record LabelsOutcome(
-      String status, String annotator, String annotatedOn, List<ScenarioScore> scenarios) {}
+      String status,
+      String annotator,
+      String annotatedOn,
+      List<ScenarioScore> scenarios,
+      boolean tieDetected,
+      String tieNote) {}
 
-  /** 填表说明（生成物，一页；不得出现分数列与倾向措辞）。 */
-  static final String README_TEXT =
-      "# 近重复相关性盲标表 · v1（30 行）\n"
-          + "\n"
-          + "本表 6 条查询 × 每条现行前 5 个候选 = 30 行。请只依据「查询原文」与「候选文本」判断两件事，"
-          + "大约 15 分钟。\n"
-          + "\n"
-          + "## 一、`relevance`：这条候选有多相关（只填 0 / 1 / 2）\n"
-          + "\n"
-          + "| 取值 | 含义 |\n"
-          + "| --- | --- |\n"
-          + "| `2` | 直接回答了这条查询 |\n"
-          + "| `1` | 同主题，有参考价值但不直接回答 |\n"
-          + "| `0` | 与这条查询无关 |\n"
-          + "\n"
-          + "## 二、`isNearDuplicate`：是不是同一张图的不同版本（只填 Y / N / U）\n"
-          + "\n"
-          + "判断对象是「同一查询里、名次比本行更高的候选」。\n"
-          + "\n"
-          + "| 取值 | 含义 |\n"
-          + "| --- | --- |\n"
-          + "| `Y` | 与更高名次的某张图是同一张图的不同版本 |\n"
-          + "| `N` | 不是 |\n"
-          + "| `U` | 看不出来（信息不足就填 `U`，这是合法答案，不算错） |\n"
-          + "\n"
-          + "## 三、另外两列\n"
-          + "\n"
-          + "- `annotator`：填你的署名。请不要写 agent / assistant / ai / model 之类字样。\n"
-          + "- `annotatedOn`：填表日期，格式 `YYYY-MM-DD`。\n"
-          + "\n"
-          + "## 四、三条纪律\n"
-          + "\n"
-          + "1. **不要参考任何锚或分数**：本表故意不提供相似度、档位、机器名次提示。\n"
-          + "2. **不要改结构**：不要改 `rowId`、不要调整行序、不要增删行。\n"
-          + "3. **拿不准就填 `U`**：不要为了填满而猜。\n"
-          + "\n"
-          + "## 五、填写方式\n"
-          + "\n"
-          + "- 用 Excel / 文本编辑器直接打开 CSV；CSV 为 UTF-8（无 BOM），Excel 请用「数据 → 自文本」按 UTF-8 导入。\n"
-          + "- 候选文本里的 `\\n` 是原文换行的显示形式（一行一条记录），不是内容错误。\n"
-          + "- 只填 `relevance` / `isNearDuplicate` / `annotator` / `annotatedOn` 四列，其余列保持原样。\n"
-          + "- 填完保存后，由执行者跑打分器读取本表。\n";
+  /** 填表说明（生成物；不得出现分数列与倾向措辞）。 */
+  static String readmeText(int rowCount, List<Integer> actualPerQuery, String caliber) {
+    return "# 近重复相关性盲标表 · v1（"
+        + rowCount
+        + " 行）\n"
+        + "\n"
+        + "本表 "
+        + QUERY_COUNT
+        + " 条查询 × 每条查询的全部候选（逐查询实测 "
+        + actualPerQuery
+        + " 条，合计 "
+        + rowCount
+        + " 行）。请只依据「查询原文」与「候选文本」判断两件事，大约 15 分钟。\n"
+        + "\n"
+        + "## 一、`relevance`：这条候选有多相关（只填 0 / 1 / 2）\n"
+        + "\n"
+        + "| 取值 | 含义 |\n"
+        + "| --- | --- |\n"
+        + "| `2` | 直接回答了这条查询 |\n"
+        + "| `1` | 同主题，有参考价值但不直接回答 |\n"
+        + "| `0` | 与这条查询无关 |\n"
+        + "\n"
+        + "## 二、`isNearDuplicate`：是不是同一张图的不同版本（只填 Y / N / U）\n"
+        + "\n"
+        + "判断对象是「同一查询里、名次比本行更高的候选」。\n"
+        + "\n"
+        + "| 取值 | 含义 |\n"
+        + "| --- | --- |\n"
+        + "| `Y` | 与更高名次的某张图是同一张图的不同版本 |\n"
+        + "| `N` | 不是 |\n"
+        + "| `U` | 看不出来（信息不足就填 `U`，这是合法答案，不算错） |\n"
+        + "\n"
+        + "## 三、另外两列\n"
+        + "\n"
+        + "- `annotator`：填你的署名。请不要写 agent / assistant / ai / model 之类字样。\n"
+        + "- `annotatedOn`：填表日期，格式 `YYYY-MM-DD`。\n"
+        + "\n"
+        + "## 四、评的是什么口径\n"
+        + "\n"
+        + "- "
+        + caliber
+        + "\n"
+        + "\n"
+        + "## 五、三条纪律\n"
+        + "\n"
+        + "1. **不要参考任何锚或分数**：本表故意不提供相似度、档位、机器名次提示。\n"
+        + "2. **不要改结构**：不要改 `rowId`、不要调整行序、不要增删行。\n"
+        + "3. **拿不准就填 `U`**：不要为了填满而猜。\n"
+        + "\n"
+        + "## 六、填写方式\n"
+        + "\n"
+        + "- 用 Excel / 文本编辑器直接打开 CSV；CSV 为 UTF-8（无 BOM）、纯 LF，Excel 请用「数据 → 自文本」按 UTF-8 导入。\n"
+        + "- 候选文本里的 `\\n` 是原文换行的显示形式（一行一条记录），不是内容错误。\n"
+        + "- 只填 `relevance` / `isNearDuplicate` / `annotator` / `annotatedOn` 四列，其余列保持原样。\n"
+        + "- 填完保存后，由执行者跑打分器读取本表。\n";
+  }
 }

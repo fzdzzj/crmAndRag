@@ -34,7 +34,8 @@ import org.junit.jupiter.api.Test;
  * 守卫（label-sheet-near-dup-relevance · 腿 C）：只读落盘产物 + 复算，不写除生成物以外的任何路径。
  *
  * <p>断言面：R1 逐字节确定性、R2 盲标列名白名单、R3 行 id / 行数 / 代填禁令、R4 无倾向措辞、R5 annotator 非 agent、R6 纯 LF + md ≤40
- * 行、R7 文本缺失上限、R8 外推边界；外加「合成 CSV 未进 docs/」这一条防污染断言。
+ * 行、R7 文本缺失上限、R8 外推边界；fix1 追加：落盘锚 == 本次重算的规范化字节（剔除顶层 runtime）+ md 字节对账（防手改）、 池深 / 指标口径 / 可测范围三块可
+ * grep、打平检测一旦成立即红。
  */
 class LabelSheetNearDupRelevanceGuardTest {
 
@@ -48,7 +49,7 @@ class LabelSheetNearDupRelevanceGuardTest {
       Pattern.compile("(?i)(^|[^a-z])(agent|assistant|ai|model)([^a-z]|$)");
 
   @Test
-  @DisplayName("守卫：盲标白名单 / 30 行 / 逐字节确定性 / AWAITING 空情景 / 无倾向措辞 / 合成 CSV 未落 docs")
+  @DisplayName("守卫：盲标白名单 / 逐字节确定性 / 落盘锚==重算 / 池深与口径入锚 / 打平即红 / 无倾向措辞")
   void guardsSheetAndAnchor() throws Exception {
     LabelSheetNearDupRelevanceTest.Bundle first = LabelSheetNearDupRelevanceTest.buildBundle();
     LabelSheetNearDupRelevanceTest.Bundle second = LabelSheetNearDupRelevanceTest.buildBundle();
@@ -71,34 +72,50 @@ class LabelSheetNearDupRelevanceGuardTest {
 
     JsonNode anchor = MAPPER.readTree(anchorBytes);
     assertEquals("label-sheet-near-dup-relevance", anchor.path("card").asText(), "锚 card 不符");
-    assertEquals(30, anchor.path("sheet").path("rowCount").asInt(), "锚必须记 30 行");
+    assertEquals(first.rows().size(), anchor.path("sheet").path("rowCount").asInt(), "锚行数必须等于本次生成");
+    assertEquals(csvBytes.length, anchor.path("sheet").path("bytes").asInt(), "锚内字节数必须等于落盘字节");
     assertEquals(
         RealPdfAssets.sha256(csvBytes),
         anchor.path("sheet").path("sha256").asText(),
         "锚内 CSV sha256 必须等于落盘字节");
+    assertEquals(
+        RealPdfAssets.sha256(readmeBytes),
+        anchor.path("sheet").path("readmeSha256").asText(),
+        "锚内 README sha256 必须等于落盘字节");
     assertEquals(
         RealPdfAssets.sha256(Files.readAllBytes(BAND_ENTRY)),
         anchor.path("sourceAnchors").path("bandEntry").path("sha256").asText(),
         "来源锚 sha256 必须与磁盘一致（既有锚零字节变动）");
     assertEquals(0, anchor.path("runtime").path("externalCalls").asInt(), "零外呼：externalCalls 必须 0");
     assertFalse(anchor.path("runtime").path("springContextStarted").asBoolean(), "不得启动 Spring");
-    assertEquals(30, anchor.path("textCoverage").path("rowsWithText").asInt(), "30 行必须都有可读文本");
+    assertEquals(
+        first.rows().size(),
+        anchor.path("textCoverage").path("rowsWithText").asInt(),
+        "每行必须都有可读文本");
     assertTrue(anchor.path("textCoverage").path("missingRows").asInt() <= 3, "R7：缺失 > 3 行必须停手");
     assertTrue(
         anchor.path("residual").path("note").asText().contains("6 查询"),
         "R8：residual 必须写明只对 6 查询成立");
     assertTrue(
-        anchor.path("residual").path("note").asText().contains("30 候选"),
-        "R8：residual 必须写明只对 30 候选成立");
+        anchor.path("residual").path("note").asText().contains("36 行"),
+        "R8：residual 必须写明只对 36 行成立");
     assertTrue(
         anchor.path("numericHygiene").path("noPlaceholderScores").asBoolean(),
         "numericHygiene 必须声明无占位分数");
     assertEquals(3, anchor.path("scenarioDefinitions").size(), "三情景定义必须都在（与是否填标签无关）");
     JsonNode reconciliation = anchor.path("reconstructionCheck");
     assertEquals(
-        reconciliation.path("imageRouteRowsRebuilt").asInt(),
-        reconciliation.path("reconciled").asInt(),
-        "重建行必须全部对账通过");
+        reconciliation.path("frozenCandidates").asInt(),
+        reconciliation.path("fusedCurrentReconciled").asInt(),
+        "现状融合分必须全部对账通过");
+    assertEquals(
+        reconciliation.path("frozenCandidates").asInt(),
+        reconciliation.path("fusedNoDownweightReconciled").asInt(),
+        "无降权融合分必须全部对账通过");
+
+    assertPoolDepth(anchor, first);
+    assertMetricCaliber(anchor, csvBytes, readmeBytes, mdBytes);
+    assertMeasurableScope(anchor, first);
 
     String status = anchor.path("labelsStatus").asText();
     if (STATUS_AWAITING.equals(status)) {
@@ -107,6 +124,7 @@ class LabelSheetNearDupRelevanceGuardTest {
       assertFalse(hasField(anchor, "ndcgAt5"), "AWAITING 时不得写入 NDCG 键（不得填假分数）");
       assertEquals(
           "", anchor.path("sheet").path("annotator").asText(), "AWAITING 时 annotator 必须为空");
+      assertFalse(anchor.path("tieDetected").asBoolean(), "标签未填时不得声称打平");
     } else {
       assertEquals(STATUS_COLLECTED, status, "labelsStatus 只允许两态");
       assertEquals(3, anchor.path("scenarios").size(), "已填标签必须产出三情景");
@@ -122,6 +140,12 @@ class LabelSheetNearDupRelevanceGuardTest {
               anchor.path("scenarios").get(1).path("key").asText(),
               anchor.path("scenarios").get(2).path("key").asText()),
           "三情景必须按固定顺序并列，不排序");
+      assertFalse(
+          anchor.path("tieDetected").asBoolean(),
+          "打平即红（proposal §8）：三情景指标全等 ⇒ "
+              + anchor.path("tieNote").asText()
+              + "；不得改口径造差异，须停手上报 Owner");
+      assertFalse(anchor.path("tieNote").asText().isBlank(), "tieNote 必须写明是否打平及其依据");
     }
     assertEquals(COLUMNS, toTextList(anchor.path("sheet").path("columns")), "锚内列名必须等于 CSV 白名单");
 
@@ -137,6 +161,16 @@ class LabelSheetNearDupRelevanceGuardTest {
         LabelSheetNearDupRelevanceTest.canonicalBytes(
             LabelSheetNearDupRelevanceTest.withoutRuntime(rebuiltAgain)),
         "R6：锚两次生成必须逐字节一致（剔除顶层 runtime）");
+    assertArrayEquals(
+        LabelSheetNearDupRelevanceTest.canonicalBytes(
+            LabelSheetNearDupRelevanceTest.withoutRuntime(rebuiltAnchor)),
+        LabelSheetNearDupRelevanceTest.canonicalBytes(
+            LabelSheetNearDupRelevanceTest.withoutRuntime(anchor)),
+        "落盘锚与重算不一致（可能被手改）：期望剔除顶层 runtime 后逐字节相同");
+    assertArrayEquals(
+        LabelSheetNearDupRelevanceTest.buildAnchorMdBytes(rebuiltAnchor),
+        mdBytes,
+        "落盘 md 与重算不一致（可能被手改）");
 
     String haystack =
         new String(anchorBytes, StandardCharsets.UTF_8)
@@ -174,13 +208,116 @@ class LabelSheetNearDupRelevanceGuardTest {
             .contains("synthetic"),
         "锚内不得引用合成 CSV");
     System.out.println(
-        "[label-sheet-guard] 守卫通过：rows=30 status="
+        "[label-sheet-guard] 守卫通过：rows="
+            + first.rows().size()
+            + " status="
             + status
             + " mdLines="
             + md.split("\n", -1).length);
   }
 
-  /** 盲标与结构：列名白名单、30 行、rowId 唯一且有序、候选文本非空、四列未代填、无提示字样。 */
+  /** F1：池深三件套必须入锚且与实测一致；不足请求深度必须写明原因（不凑数）。 */
+  private static void assertPoolDepth(
+      JsonNode anchor, LabelSheetNearDupRelevanceTest.Bundle bundle) {
+    JsonNode pool = anchor.path("poolDepth");
+    assertEquals(
+        LabelSheetNearDupRelevanceTest.REQUESTED_DEPTH,
+        pool.path("requestedDepth").asInt(),
+        "F1：锚内 requestedDepth 必须记 10（Owner 拍板）");
+    List<Integer> perQuery = new ArrayList<>();
+    pool.path("actualPerQuery").forEach(node -> perQuery.add(node.asInt()));
+    assertEquals(bundle.actualPerQuery(), perQuery, "F1：逐查询条数必须等于本次实测");
+    assertEquals(
+        perQuery.stream().mapToInt(Integer::intValue).sum(),
+        pool.path("totalRows").asInt(),
+        "F1：totalRows 必须等于逐查询条数之和");
+    assertEquals(bundle.rows().size(), pool.path("totalRows").asInt(), "F1：totalRows 必须等于实际行数");
+    for (int count : perQuery) {
+      assertTrue(
+          count <= LabelSheetNearDupRelevanceTest.REQUESTED_DEPTH,
+          "F1：逐查询条数不得超过请求深度（实测 " + count + "）");
+    }
+    assertFalse(pool.path("ceilingReason").asText().isBlank(), "F1：不足请求深度必须写明上限原因");
+  }
+
+  /** F3：口径逐项可 grep，且同一句在 md 与 README 各出现一次。 */
+  private static void assertMetricCaliber(
+      JsonNode anchor, byte[] csvBytes, byte[] readmeBytes, byte[] mdBytes) {
+    JsonNode caliber = anchor.path("metricCaliber");
+    assertTrue(caliber.isArray() && caliber.size() >= 5, "F3：metricCaliber 必须逐项列出（≥5 项）");
+    Set<String> metrics = new LinkedHashSet<>();
+    caliber.forEach(node -> metrics.add(node.path("metric").asText()));
+    for (String expected :
+        List.of("pool", "precision@5", "ndcg@5", "ySuppressionAgreement", "rounding")) {
+      assertTrue(metrics.contains(expected), "F3：metricCaliber 缺项「" + expected + "」，实测 " + metrics);
+    }
+    String caliberText = caliber.toString();
+    assertTrue(caliberText.contains("min(5"), "F3：precision@5 必须写明分母口径 min(5, 池内条数)");
+    assertTrue(caliberText.contains("2^relevance"), "F3：ndcg@5 必须写明增益 2^relevance − 1");
+    assertTrue(caliberText.contains("log2(rank+2)"), "F3：ndcg@5 必须写明折损 log2(rank+2)");
+    assertTrue(caliberText.contains("IDCG"), "F3：ndcg@5 必须写明 IDCG 口径");
+    assertTrue(caliberText.contains("bandWeight < 1"), "F3：一致率必须写明分子口径");
+    assertEquals(
+        anchor.path("numericHygiene").path("metricRounding").asText(),
+        caliber
+            .get(caliber.size() - 1)
+            .path("caliber")
+            .asText()
+            .replace("沿用 numericHygiene.metricRounding = ", ""),
+        "F3：rounding 必须沿用 numericHygiene.metricRounding");
+    String sentence = LabelSheetNearDupRelevanceTest.caliberSentence();
+    assertEquals(
+        1,
+        occurrences(new String(mdBytes, StandardCharsets.UTF_8), sentence),
+        "F3：口径句在 md 必须恰出现一次");
+    assertEquals(
+        1,
+        occurrences(new String(readmeBytes, StandardCharsets.UTF_8), sentence),
+        "F3：口径句在 README 必须恰出现一次（给 Owner 看）");
+    assertTrue(csvBytes.length > 0, "F3：CSV 必须存在");
+  }
+
+  /** F4：可测范围三件套（能答 / 不能答 / 不变量）必须入锚。 */
+  private static void assertMeasurableScope(
+      JsonNode anchor, LabelSheetNearDupRelevanceTest.Bundle bundle) {
+    JsonNode scope = anchor.path("measurableScope");
+    JsonNode canAnswer = scope.path("canAnswer");
+    assertTrue(canAnswer.isObject(), "F4：可测范围必须声明 canAnswer");
+    for (String key :
+        List.of("duplicatePrevalence", "ySuppressionAgreement", "nonDuplicatePromotion")) {
+      assertFalse(canAnswer.path(key).asText().isBlank(), "F4：canAnswer 缺「" + key + "」");
+    }
+    JsonNode cannot = scope.path("cannotAnswer");
+    assertEquals(3, cannot.size(), "F4：cannotAnswer 必须写明三条（fixture / 单人标注 / 只对本批成立）");
+    assertTrue(cannot.toString().contains("fixture"), "F4：cannotAnswer 必须点明语料是程序化 fixture");
+    assertTrue(cannot.toString().contains("一致性检验"), "F4：cannotAnswer 必须点明单人标注无一致性检验");
+    assertTrue(scope.path("orderInvariant").isBoolean(), "F4：必须记 orderInvariant 实测值");
+    assertEquals(
+        scope.path("orderInvariant").asBoolean(),
+        scope.path("invariantObserved").asBoolean(),
+        "F4：invariantObserved 必须等于三情景排序全等的实测值");
+    assertFalse(scope.path("orderInvariantBasis").asText().isBlank(), "F4：必须写明不变量/差异的实测原因");
+    assertEquals(
+        !scope.path("downweightOrderInvariant").asBoolean(),
+        scope.path("promotionInTop5").asBoolean(),
+        "F4：promotionInTop5 必须等于「现状 vs 无降权」排序不同的实测值");
+    assertEquals(
+        bundle.actualPerQuery().size(),
+        anchor.path("poolDepth").path("actualPerQuery").size(),
+        "F4：逐查询条数必须与池深声明同长");
+  }
+
+  private static int occurrences(String text, String needle) {
+    int count = 0;
+    int index = text.indexOf(needle);
+    while (index >= 0) {
+      count++;
+      index = text.indexOf(needle, index + needle.length());
+    }
+    return count;
+  }
+
+  /** 盲标与结构：列名白名单、行 id 唯一且有序、候选文本非空、四列未代填、无提示字样。 */
   private static void assertBlindSheet(byte[] csvBytes) {
     List<List<String>> records =
         LabelSheetNearDupRelevanceTest.parseCsv(new String(csvBytes, StandardCharsets.UTF_8));
@@ -192,11 +329,12 @@ class LabelSheetNearDupRelevanceGuardTest {
           lower.contains("cos") || lower.contains("tier") || lower.contains("band"),
           "R2：CSV 不得出现 cos/tier/band 列: " + column);
     }
-    assertEquals(31, records.size(), "CSV 必须 1 行表头 + 30 行数据");
+    assertEquals(records.size() - 1, records.size() - 1, "行数自洽");
     Set<String> rowIds = new LinkedHashSet<>();
     int expectedQuery = 0;
     int expectedRank = 1;
     List<Integer> perQuery = new ArrayList<>();
+    int previousCount = -1;
     for (int index = 1; index < records.size(); index++) {
       List<String> row = records.get(index);
       assertEquals(COLUMNS.size(), row.size(), "第 " + index + " 行字段数必须 11");
@@ -216,17 +354,26 @@ class LabelSheetNearDupRelevanceGuardTest {
         assertEquals("", row.get(column), "D4：执行者不得代填第 " + column + " 列: " + row.get(0));
       }
       expectedRank++;
-      if (expectedRank > 5) {
+      boolean lastRow = index == records.size() - 1;
+      String nextQuery = lastRow ? null : records.get(index + 1).get(1);
+      if (lastRow || !nextQuery.equals(row.get(1))) {
         perQuery.add(expectedRank - 1);
+        if (previousCount >= 0) {
+          assertEquals(previousCount, perQuery.get(perQuery.size() - 1), "各查询条数必须一致（同一语料同一池深）");
+        }
+        previousCount = expectedRank - 1;
         expectedQuery++;
         expectedRank = 1;
       }
     }
-    assertEquals(30, rowIds.size(), "rowId 必须 30 个且唯一");
     assertEquals(6, expectedQuery, "必须恰 6 条查询");
-    assertEquals(6, perQuery.size(), "必须 6 条查询各 5 行（本语料无不足 5 条的查询）");
+    assertEquals(6, perQuery.size(), "必须 6 条查询各若干行");
+    int total = perQuery.stream().mapToInt(Integer::intValue).sum();
+    assertEquals(records.size() - 1, total, "CSV 数据行数必须等于逐查询条数之和");
     for (int count : perQuery) {
-      assertEquals(5, count, "每条查询必须 5 行");
+      assertTrue(
+          count >= 1 && count <= LabelSheetNearDupRelevanceTest.REQUESTED_DEPTH,
+          "逐查询条数必须在 1.." + LabelSheetNearDupRelevanceTest.REQUESTED_DEPTH + "（实测 " + count + "）");
     }
   }
 

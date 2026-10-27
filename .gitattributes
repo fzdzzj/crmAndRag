@@ -13,4 +13,6 @@
 *.properties text eol=lf
 *.sql text eol=lf
 *.json text eol=lf
+# 人标 CSV 也必须是纯 LF：守卫按字节对账 sha256，干净 checkout 若变 CRLF 会直接红（卡 label-sheet fix1）
+*.csv text eol=lf
 .gitattributes text eol=lf

@@ -5,7 +5,8 @@
   "sheet" : {
     "csv" : "docs/rag-quality/labels/near-dup-relevance-v1.csv",
     "readme" : "docs/rag-quality/labels/near-dup-relevance-v1-README.md",
-    "rowCount" : 30,
+    "rowCount" : 36,
+    "bytes" : 14301,
     "columnCount" : 11,
     "columns" : [
       "rowId",
@@ -26,25 +27,81 @@
       "annotator",
       "annotatedOn"
     ],
-    "rowOrder" : "queryIndex ASC, currentRank ASC（= 现行名次，不打乱、不按 cos 排）",
-    "sha256" : "a6785fbbc2ef01e090379fd00af10bb19073be1ba34883479d7feed45bc8450e",
-    "readmeSha256" : "4c5703e64ed2c0006f0a34d91511adae1eaedd7e66ff8593ffdbadf11452aed2",
+    "rowOrder" : "queryIndex ASC, currentRank ASC（currentRank = 现状情景全池名次，不打乱、不按 cos 排）",
+    "sha256" : "70e216d403466e4e5989e6c869c4e5ff614994ea59fbbcd5a441e25883266674",
+    "readmeSha256" : "46e3a4c606e8e26141daaebf9a0c2a87184571c60e9f2dfcc0e3ebaa3124a1f5",
     "annotator" : "",
     "annotatedOn" : "",
-    "queryCount" : 6,
-    "candidatesPerQuery" : 5
+    "queryCount" : 6
   },
   "sheetMaterial" : {
     "queries" : "docs/rag-quality/near-dup-band-entry-v1.json#queries[].text（冻结）",
-    "candidateIdentityAndOrder" : "docs/rag-quality/near-dup-band-entry-v1.json#candidates（生产 top-5，图像路 + 文本路）",
+    "candidateIdentityAndOrder" : "本地上生产链重建（文本路 + 图像路 → 融合）后取请求池深 10；与冻结锚 #candidates 的 30 行逐条对账",
     "candidateText" : "docs/rag-quality/near-dup-band-entry-v1.json#corpusMaterial.imageRecords[].text（冻结原文；仅把行内换行落成字面 \\n、去行尾空白，便于一行一条记录）",
-    "textSuppliedRowCount" : 30
+    "textSuppliedRowCount" : 36
+  },
+  "poolDepth" : {
+    "requestedDepth" : 10,
+    "actualPerQuery" : [
+      6,
+      6,
+      6,
+      6,
+      6,
+      6
+    ],
+    "totalRows" : 36,
+    "candidateLimit" : 40,
+    "ceilingReason" : "语料只有 6 条图像记录（2 base × 3 变体）⇒ 单查询两路去重后最多 6 条；实测 [6, 6, 6, 6, 6, 6] 为真实上限，不足 10 如实记，不凑数",
+    "rowIdRule" : "q{queryIndex}:{chunkId}",
+    "rowOrder" : "currentRank ASC（现状情景全池名次 1..k）"
+  },
+  "metricCaliber" : [
+    {
+      "metric" : "pool",
+      "caliber" : "候选池 = 文本路 ∪ 图像路（fusionKey 去重）按请求池深 10 截断；requestedDepth=10、actualPerQuery=[6, 6, 6, 6, 6, 6]、totalRows=36"
+    },
+    {
+      "metric" : "precision@5",
+      "caliber" : "每情景先按该情景融合分对全池重排，再取前 5；命中 = relevance ≥ 1；分母 = min(5, 池内条数)（本表每查询池内 6 条 ⇒ 分母 5）"
+    },
+    {
+      "metric" : "ndcg@5",
+      "caliber" : "增益 = 2^relevance − 1；IDCG = 同集合 relevance 降序后的 DCG；折损 = log2(rank+2)，rank 从 1 起"
+    },
+    {
+      "metric" : "ySuppressionAgreement",
+      "caliber" : "分子 = isNearDuplicate=Y 且该情景下 bandWeight < 1（被压制）的候选数；分母 = isNearDuplicate=Y 的候选总数（全池，不只看前 5）"
+    },
+    {
+      "metric" : "rounding",
+      "caliber" : "沿用 numericHygiene.metricRounding = round(1e-6)"
+    }
+  ],
+  "measurableScope" : {
+    "canAnswer" : {
+      "duplicatePrevalence" : "top-5 里 isNearDuplicate=Y 的候选占比（逐查询 + 合计）；标签未填时为空，不预填",
+      "ySuppressionAgreement" : "isNearDuplicate=Y 的候选里被该情景压制过的比例（分子/分母见 metricCaliber）",
+      "nonDuplicatePromotion" : "降权是否让非重复候选升进 top-5：池深 10 后此项才可观测（本次实测见 orderInvariant）"
+    },
+    "cannotAnswer" : [
+      "语料仍是程序化 fixture（NearDuplicateCorpus 合成 PDF），不是生产库文档",
+      "单人标注，无一致性检验（不做多人 κ、不抽样复核）",
+      "结论只对这 6 查询 × 实测 36 行成立，不外推到别的语料/查询/线上体验"
+    ],
+    "orderInvariant" : false,
+    "invariantObserved" : false,
+    "downweightOrderInvariant" : true,
+    "floor090OrderInvariant" : false,
+    "orderInvariantBasis" : "现状 vs 无降权排序逐行相同（降权位移最大 0.075）；现状 vs 0.90 口径排序存在差异（0.90 额外准入 3 行，落在 [0.90, 0.982) 未定档区间，沿用生产 weightOfBand(null) = 0.5）⇒ 三情景并非全等，其中降权本身仍无跨边界位移",
+    "promotionInTop5" : false,
+    "labelsPending" : true
   },
   "scenarioDefinitions" : [
     {
       "key" : "current-0982",
       "label" : "现状（生产准入下限 0.982）",
-      "definition" : "tier/band 由生产 ImageSimilarityGate 现算，fused = fusedA + 0.30 × (1 − bandWeight) × r",
+      "definition" : "tier/band 由生产 ImageSimilarityGate 现算，融合分 = 0.70 × 文本路 + 0.30 × bandWeight × 图像路",
       "metrics" : [
         "precisionAt5",
         "ndcgAt5",
@@ -54,7 +111,7 @@
     {
       "key" : "no-downweight",
       "label" : "无降权（δ = 0）",
-      "definition" : "不施加任何 band 降权，fused = fusedA（δ = 0）",
+      "definition" : "不施加任何 band 降权，融合分 = 0.70 × 文本路 + 0.30 × 图像路（δ = 0）",
       "metrics" : [
         "precisionAt5",
         "ndcgAt5",
@@ -64,7 +121,7 @@
     {
       "key" : "floor-090",
       "label" : "0.90 口径（准入下限降到 0.90）",
-      "definition" : "准入下限降到 0.90（阈值仍 0.9944），按同批候选重算 tier/band/weight 与 δ",
+      "definition" : "准入下限降到 0.90（阈值仍 0.9944），按同批候选重算 tier/band/weight 与融合分；[0.90, 0.982) 区间生产 bandOf 未定义，沿用生产 weightOfBand(null) 回落最低档 0.5（实测行数见 reconstructionCheck.floor090UndefinedBandRows）",
       "metrics" : [
         "precisionAt5",
         "ndcgAt5",
@@ -73,29 +130,36 @@
     }
   ],
   "scenarios" : [ ],
+  "tieDetected" : false,
+  "tieNote" : "",
   "textCoverage" : {
-    "rowCount" : 30,
-    "rowsWithText" : 30,
+    "rowCount" : 36,
+    "rowsWithText" : 36,
     "missingRows" : 0,
     "missingRowIds" : [ ]
   },
   "reconstructionCheck" : {
+    "frozenCandidates" : 30,
     "imageRouteRowsRebuilt" : 15,
-    "reconciled" : 15,
-    "tolerance" : 1.0E-9,
-    "method" : "生产 InMemoryVectorStore.search → ImageSimilarityGate.gate → DefaultWeightedReranker.rerank（内含生产 Bm25Scorer），逐条比对锚内 cos / tier / band / (fusedB − fusedA)"
+    "textRouteRowsRebuilt" : 36,
+    "fusedCurrentReconciled" : 30,
+    "fusedNoDownweightReconciled" : 30,
+    "orderingMatchesRankB" : true,
+    "floor090UndefinedBandRows" : 3,
+    "tolerance" : 1.0E-12,
+    "method" : "生产口径本地重建：冻结 textRecords 向量 + 冻结 embedCache 查询文本向量 → InMemoryVectorStore.search → DefaultWeightedReranker（图像路先 ImageSimilarityGate.gate）→ 融合（文本 0.70 / 图像 0.30），逐条比对锚内 cos / tier / band / fusedA / fusedB"
   },
   "residual" : {
     "queryCount" : 6,
-    "candidateCount" : 30,
-    "note" : "本锚只对本次 6 查询 × 30 候选成立；不外推到其它语料、其它查询或线上体验。文本路候选的 fusedA 直接取自冻结锚，未在本地重算。"
+    "rowCount" : 36,
+    "note" : "本锚只对本次 6 查询 × 36 行成立；不外推到其它语料、其它查询或线上体验。"
   },
   "runtime" : {
     "externalCalls" : 0,
     "providerInstances" : 0,
     "springContextStarted" : false,
     "dockerRequired" : false,
-    "generatedAt" : "2026-10-26T20:25:22.018982900Z"
+    "generatedAt" : "2026-10-27T03:06:09.802677800Z"
   },
   "numericHygiene" : {
     "metricRounding" : "round(1e-6)",
