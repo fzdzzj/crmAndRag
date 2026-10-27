@@ -9,7 +9,7 @@
 ## 1. 现状快照 (Current State Snapshot)
 
 - **当前主干版本**：`master` = **`f275a69`（M1 合并）+ `5265792`（基线重锚）+ 本笔** = origin/master。分支 `feature/label-sheet-near-dup-relevance` **保留**（基点 `0cee754` → 2 笔：`0c5a87d` 首轮 / `932a103` fix1）；**本卡未归档**——仪器已合入，结论要等 Owner 填表后跑一次打分器
-- **测试基线四元组**：`source-revision=f275a69`（**树净，非 `-dirty`**）+ Surefire **报告 367 / 用例 2216 / F0 / E0 / S1** + Failsafe **报告 49 / 用例 151 / F0 / E0 / S18** + **CI = Run 40392200000（6/6 jobs 绿）**。上一卡 365/2211/1 + 49/151/18 → 本卡 surefire **+2 报告 +5 用例**、failsafe **三值不变**
+- **测试基线四元组**：`source-revision=f275a69`（**树净，非 `-dirty`**）+ Surefire **报告 367 / 用例 2216 / F0 / E0 / S1** + Failsafe **报告 49 / 用例 151 / F0 / E0 / S18** + **CI = Run 40447563787（6/6 jobs 绿）**。上一卡 365/2211/1 + 49/151/18 → 本卡 surefire **+2 报告 +5 用例**、failsafe **三值不变**
 - **本卡交付（仪器）**：`docs/rag-quality/labels/near-dup-relevance-v1.csv`（6 查询 × **6 候选 = 36 行**，池深请求 10 但语料上限 6 = 2 base × 3 变体）+ 一页 README + 三情景打分器（`precision@5` / `NDCG@5` / `Y-压制一致率`）+ 守卫；`labelsStatus=AWAITING-HUMAN-LABELS`。fix1 顺带修两处旧缺陷：**「现状 / 无降权」两个标签原实现写反**（已按生产 pass A/B 纠正）、`.gitattributes` 缺 `*.csv eol=lf`（干净 checkout 会得 CRLF、守卫红）
 - **关键实测（先看这条）**：`downweightOrderInvariant=true`——池深 6 上降权位移最大 **0.075** 但未跨任何相邻间距 ⇒ **现状与无降权次序完全相同**；唯一改序的是 **0.90 口径**（新准入 3 行，`cos∈[0.90,0.982)`，`bandOf` 未定义故沿用 `weightOfBand(null)=0.5`）。**所以这张表最值钱的一格是：那 3 行由人判，究竟是重复还是不同**
 - **工作树拓扑**：观察树 `D:\code\crmAndRag`（logbook + `work/` 未跟踪）；权威树 `D:\code\crmAndRag-merge-add-knowledge-admin-api`（分支 / 门禁 / 合并 / push 唯一法定树）。**坑**：`pnpm -C frontend test` 会重写 `frontend/typed-router.d.ts`（生成物 +32 行），跑完门禁须 `git checkout --` 复原，否则基线 `source-revision` 会挂 `-dirty`
