@@ -8,9 +8,9 @@
 
 ## 1. 现状快照 (Current State Snapshot)
 
-- **当前主干版本**：`master` = `f275a69`（M1 合并）+ `5265792`（基线重锚）+ `1b2b123`（板笔）= origin/master。分支 `feature/label-sheet-near-dup-relevance` **保留，领先 master 1 笔（fix2：仪器自锁修复 + 36 行代填 + 锚再生）**，**待 Owner 合并授权**（M1 未做、基线未重锚）；**本卡未归档**
-- **测试基线四元组**（**fix2 后尚未重锚，以下仍是 `f275a69` 口径**）：`source-revision=f275a69`（**树净，非 `-dirty`**）+ Surefire **报告 367 / 用例 2216 / F0 / E0 / S1** + Failsafe **报告 49 / 用例 151 / F0 / E0 / S18** + **CI = Run 40447563787（6/6 jobs 绿）**
-- **本卡交付（仪器 + 已填表）**：`docs/rag-quality/labels/near-dup-relevance-v1.csv`（6 查询 × 6 候选 = 36 行；池深请求 10、语料上限 6 = 2 base × 3 变体）+ 一页 README + 三情景打分器（`precision@5`/`NDCG@5`/`Y-压制一致率`）+ 守卫；`labelsStatus=LABELS-COLLECTED`、`annotator=machine-prelabel`、`labelsProvenance=MACHINE-PRELABEL-NOT-HUMAN-GROUND-TRUTH`（**Owner 授权主 agent 代填，不是人工真值**）。fix1 修旧缺陷：**「现状 / 无降权」两标签原实现写反**、`.gitattributes` 缺 `*.csv eol=lf`；fix2 修**仪器自锁**（三处闸门都要求 CSV == 空模板字节 ⇒ 人一填必红、write 模式还会静默清空标签）
+- **当前主干版本**：`master` = `8e1a97b`（M1 合并）+ `66c1e24`（基线重锚）+ 本笔 = origin/master。分支 `feature/label-sheet-near-dup-relevance` **保留**（已推送）；**本卡已归档** `openspec/changes/archive/label-sheet-near-dup-relevance/`
+- **测试基线四元组**：`source-revision=8e1a97b`（**树净，非 `-dirty`**）+ Surefire **报告 367 / 用例 2216 / F0 / E0 / S1** + Failsafe **报告 49 / 用例 151 / F0 / E0 / S18** + **CI = Run 40456696420（6/6 jobs 绿）**。fix2 只动 `src/test` 与产物 ⇒ **三值不变**，未改口径
+- **本卡交付（仪器 + 已填表）**：`docs/rag-quality/labels/near-dup-relevance-v1.csv`（6 查询 × 6 候选 = 36 行；池深请求 10、语料上限 6 = 2 base × 3 变体）+ 一页 README + 三情景打分器（`precision@5`/`NDCG@5`/`Y-压制一致率`）+ 守卫；`labelsStatus=LABELS-COLLECTED`、`annotator=machine-prelabel`、`labelsProvenance=MACHINE-PRELABEL-NOT-HUMAN-GROUND-TRUTH`（**Owner 授权主 agent 代填，不是人工真值**）。fix1 修旧缺陷：**「现状 / 无降权」两标签原实现写反**、`.gitattributes` 缺 `*.csv eol=lf`；fix2 修**仪器自锁**（三处闸门都要求 CSV == 空模板字节 ⇒ 人一填必红、write 模式还会静默清空标签）；**M2 已归档**
 - **关键实测（先看这条）**：`downweightOrderInvariant=true`——池深 6 上降权位移最大 **0.075** 未跨任何相邻间距 ⇒ 现状与无降权次序**完全相同**；唯一改序的是 **0.90 口径**（新准入 3 行，`cos∈[0.90,0.982)`，`bandOf` 未定义故沿用 `weightOfBand(null)=0.5`）。**36 行代填后三情景**：`precision@5` 全 **0.6**、`NDCG@5` 全 **1.0**（每查询仅两组文本，结构上到顶、无分辨力）、压制 `现状 9/24 → 0.90 12/24`（`ySuppressionRate` 0.375 / 0 / 0.5）⇒ `tieDetected=false`，但**排序质量两面完全打平**，不得据此说 0.90 更好或更差
 - **工作树拓扑**：观察树 `D:\code\crmAndRag`（logbook + `work/` 未跟踪）；权威树 `D:\code\crmAndRag-merge-add-knowledge-admin-api`（分支 / 门禁 / 合并 / push 唯一法定树）。**坑**：`pnpm -C frontend test` 会重写 `frontend/typed-router.d.ts`（生成物 +32 行），跑完门禁须 `git checkout --` 复原，否则基线 `source-revision` 会挂 `-dirty`
 
@@ -47,7 +47,7 @@
   1. ~~S1 消融 / 更强变形带内构造~~ / ~~窗口判据升级~~ / ~~`delta=0` 成因（OQ1）~~ **四项已由卡 32/33/34/35 全部收口**
   2. ~~另卡改 R2/R3~~ **已由卡 36 收口（判据条件化，未放宽）**：三分支 + `PROVEN-CONDITIONAL` 已把「单分支末位 + 另一分支退化并列」写进适用域内的条件式；`PROVEN`（无条件）仍标「可达但本语料未出现」，不许拿它冒充结论
   3. **0.90 / 档位拍板 —— 已拍板：维持 `0.982`（2026-10-26）**：裁决依据不是「0.90 太贵」，而是**收益指标与真实收益脱钩**——① 12/12 带内事件 `r=0`（卡 34/35 双证）⇒ 降权在本语料**从未测出任何位移**，迄今零证据表明它改善检索 ② `0.982` 正是 `near-dup-exchange-rate-v1` 按 E3/E4 算出的 `bestValueFloor`（无免费档，`R=0.666667 / S_same=0.03`），维持它不是停滞而是沿上次实测最优点 ③ 0.90 的收益只有自设指标 `R 0.667→0.942`，代价是 `S_same 0.03→0.08`（同文档多压 5 张）与第三图进带 `13→93/2760`，而**这些多压的是真重复还是真不同，本语料无标签可判**。**重锚清单已冻结在卡 36 锚内（9 张 / 221 或 239 外呼 / 依赖序现算），随时可启用**。翻案条件三条：人标证明近重复图挤占答案；出现 `r>0` 的带内事件；`R ≥ 0.90` 若是硬验收线（`spec/` 内未找到出处，需 Owner 指认）
-  4. **卡 38 已代填 36 行、待合并授权（未归档）**：标签由 Owner 授权主 agent 代填（`machine-prelabel`，非人工真值）；锚已再生为 `LABELS-COLLECTED` 三情景。**下一步两步**：Owner 批 M1（`merge --no-ff` + 干净树 `clean verify` + 基线 `--update` + push + CI）→ M2 归档。**人工标签仍为 0**：`relevance` 一列若由人重标，现在**换表重跑即可，不必改代码**（仪器已能容纳已填表）。已知局限：`isNearDuplicate` 可由 `fileName` 的 `@crop-0X` 组确定性推出，真正需人判的只有 `relevance`
+  4. **卡 38 已归档（M1 `8e1a97b` / 基线 `66c1e24` / CI `40456696420`）**：36 行标签为**机器预标**（`annotator=machine-prelabel`，非人工真值）；三情景 `p@5` 全 0.6、`NDCG@5` 全 1.0（每查询仅两组文本，结构到顶）、压制 `9/24 → 0/24 → 12/24` ⇒ **0.90 多压 3 条构造已知近重复，换不来任何排序收益**。若日后要人判证据：换 `relevance` 列重跑即可（仪器已能容纳已填表，不必改代码），或另立真语料卡；已知局限：`isNearDuplicate` 可由 `fileName` 的 `@crop-0X` 组确定性推出
   5. **生产开关运行期打开（Owner 决，非代码）**：`rag.retrieval.image-vector-ingest.enabled` 默认 `false`；先跑 `bash scripts/rag-quality/image-vector-ingest-preflight.sh preflight --snapshot <四键快照>`
 - **下批推荐**：近重复线七题（入口/判据/计数/归因/分解/条件化/门槛拍板）+ **评测端口误差条**全部收口 ⇒ **RAG 质量线没有「零成本自答」的题了**。再往下只有三条路：**花钱**（真语料卡）、**出人**（人标）、**运维**（`image-vector-ingest` 开关）。**不要**再开只读卡；**不要把 `+9.14pp` 读成「质量提升 9pp」**——它测的是**装置误差**，不是产品质量变化
 
@@ -96,7 +96,7 @@
 
 - 接口与冻结契约：`spec/changes/add-crm-rag-fusion-platform/contracts-frozen.md`
 - 数据库迁移：`ls src/main/resources/db/migration`（实测最高 **V43**，下一可用 **V44**；最近四卡零迁移）
-- 历史裁决归档：`docs/archive/logbook-historical-202609-202610.md`；活动日志 `docs/main-agent-logbook.md`（**最新 §202**）；历史任务卡 `work/archive/closed-cards/`；最近归档卡面 `openspec/changes/archive/eval-port-production-parity/`，本卡未归档 `openspec/changes/label-sheet-near-dup-relevance/`
+- 历史裁决归档：`docs/archive/logbook-historical-202609-202610.md`；活动日志 `docs/main-agent-logbook.md`（**最新 §202**）；历史任务卡 `work/archive/closed-cards/`；最近归档卡面 `openspec/changes/archive/label-sheet-near-dup-relevance/`（前一卡 `…/eval-port-production-parity/`）
 - 回归基线：`bash scripts/check-test-baseline.sh`（台账 `scripts/test-baseline.txt`，只经 `--update` 写）
 - **近重复图像六份锚**：`near-dup-exchange-rate-v1`／`near-dup-fusion-impact-v1`／`image-near-dup-truth-v1`／`near-dup-displacement-evidence-v1`／`image-variant-cross-matrix-v1`／`near-dup-floor-signoff-v1`（写模式见各自守卫）
 - **入库面三锚**：`near-dup-ingest-gate-probe-v1`（S0 闸门探针）／`near-dup-ingest-s1-not-run-v1`（卡 26 的 NOT-RUN 负结论，**历史不可改写**）／`image-slice-ingest-chain-v1`（七链对账 + 五种丢弃语义）
